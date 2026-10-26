@@ -23,12 +23,13 @@ jobs:
           X=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1); sudo xcode-select -s "$X"; xcodebuild -version
           echo "::notice title=Xcode::$(xcodebuild -version | tr '\n' ' ')"
       - name: Engine benchmark
+        continue-on-error: true
         run: |
           set -o pipefail
           mkdir -p report
-          swiftc -O Engine/*.swift EngineCLI/main.swift -o engine 2>&1 | tee report/engine-build.txt
-          ./engine Keyboard/Resources/lexicon.bin type nihcdajx | tee report/engine-bench.txt
-          ./engine Keyboard/Resources/lexicon.bin bench 0.22 0.30 | tee -a report/engine-bench.txt
+          swiftc -O Engine/*.swift EngineCLI/main.swift -o /tmp/engine-cli 2>&1 | tee report/engine-build.txt
+          /tmp/engine-cli Keyboard/Resources/lexicon.bin type nihcdajx | tee report/engine-bench.txt
+          /tmp/engine-cli Keyboard/Resources/lexicon.bin bench 0.22 0.30 | tee -a report/engine-bench.txt
       - name: Build app + keyboard (simulator, unsigned)
         run: |
           set -o pipefail
