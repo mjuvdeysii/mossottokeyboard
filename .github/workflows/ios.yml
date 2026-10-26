@@ -1,0 +1,127 @@
+name: iOS
+# Every push to main: compile the keyboard on the newest Xcode, run the engine benchmark, then
+# (when the App Store Connect secrets are set) archive, sign and upload the build to TestFlight.
+# A short build report is pushed to the ci-logs branch.
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["README.md", "LICENSE"]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Xcode
+        run: |
+          X=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1); sudo xcode-select -s "$X"; xcodebuild -version
+          echo "::notice title=Xcode::$(xcodebuild -version | tr '\n' ' ')"
+      - name: Engine benchmark
+        run: |
+          set -o pipefail
+          mkdir -p report
+          swiftc -O Engine/*.swift EngineCLI/main.swift -o engine 2>&1 | tee report/engine-build.txt
+          ./engine Keyboard/Resources/lexicon.bin type nihcdajx | tee report/engine-bench.txt
+          ./engine Keyboard/Resources/lexicon.bin bench 0.22 0.30 | tee -a report/engine-bench.txt
+      - name: Build app + keyboard (simulator, unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild build -project MossOttoKeyboard.xcodeproj -scheme MossOttoKeyboard -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO 2>&1 | tee build.log | grep -E "error:|warning:|\*\* " || true
+          grep -q "BUILD SUCCEEDED" build.log
+      - name: Build report
+        if: always()
+        run: |
+          mkdir -p report
+          { echo "commit ${GITHUB_SHA}"; xcodebuild -version | tr '\n' ' '; echo
+            grep -q "BUILD SUCCEEDED" build.log 2>/dev/null && echo "BUILD SUCCEEDED" || echo "BUILD FAILED"
+            echo "-- errors --"; grep -E "error:" build.log 2>/dev/null | sed "s#$PWD/##" | sort -u | head -80
+            echo "-- warnings (project files) --"; grep -E "warning:" build.log 2>/dev/null | grep -E "/(App|Keyboard|Engine)/" | sed "s#$PWD/##" | sort -u | head -60
+          } > report/build.txt
+          cat report/build.txt | head -40
+          grep -E "error:" build.log 2>/dev/null | sort -u | head -40 | while IFS= read -r l; do echo "::error::$l"; done
+      - name: Publish report to ci-logs branch
+        if: always()
+        continue-on-error: true
+        run: |
+          cp -r report /tmp/report
+          git config user.name "github-actions"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -q --orphan logs-tmp && git rm -rqf --cached . && find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp /tmp/report/* . && git add -A && git commit -qm "ci report ${GITHUB_SHA}" && git push -qf origin logs-tmp:ci-logs
+
+  testflight:
+    # Needs repository secrets ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8, APPLE_TEAM_ID (same values as the other app).
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+      TEAM: ${{ secrets.APPLE_TEAM_ID }}
+      BUNDLE: app.mossling.keyboard
+    steps:
+      - name: Secrets present?
+        if: env.ASC_KEY_ID == ''
+        run: echo "::warning title=TestFlight skipped::Add secrets ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8, APPLE_TEAM_ID to this repository."
+      - uses: actions/checkout@v4
+        if: env.ASC_KEY_ID != ''
+      - name: Bundle IDs and app record
+        if: env.ASC_KEY_ID != ''
+        run: |
+          pip3 install --quiet --break-system-packages pyjwt cryptography 2>/dev/null || pip3 install --quiet pyjwt cryptography
+          python3 Tools/asc.py ensure-bundle-ids "$BUNDLE" "$BUNDLE.ext"
+          python3 Tools/asc.py check-app "$BUNDLE"
+      - name: Archive and upload
+        if: env.ASC_KEY_ID != ''
+        run: |
+          set -o pipefail
+          X=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1); sudo xcode-select -s "$X"
+          mkdir -p ~/private_keys && printf '%s' "$ASC_KEY_P8" > ~/private_keys/AuthKey_$ASC_KEY_ID.p8
+          AUTH=(-allowProvisioningUpdates -authenticationKeyPath "$HOME/private_keys/AuthKey_$ASC_KEY_ID.p8" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
+          BUILD=$((100 + ${{ github.run_number }}))
+          # Archive unsigned; signing happens at export with the account's cloud-managed distribution certificate,
+          # so no new development certificate is created on each run.
+          xcodebuild archive -project MossOttoKeyboard.xcodeproj -scheme MossOttoKeyboard -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath build/K.xcarchive DEVELOPMENT_TEAM="$TEAM" \
+            CURRENT_PROJECT_VERSION=$BUILD CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tee archive.log | grep -E "error:|\*\* " || true
+          grep -q "ARCHIVE SUCCEEDED" archive.log
+          APPDIR=build/K.xcarchive/Products/Applications/MossOttoKeyboard.app
+          for x in "$APPDIR"/PlugIns/*.appex; do codesign -f -s - "$x"; done
+          codesign -f -s - "$APPDIR"
+          cat > ExportOptions.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$TEAM</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath build/K.xcarchive -exportOptionsPlist ExportOptions.plist -exportPath build/export "${AUTH[@]}" 2>&1 | tee export.log | grep -E "error:|Upload|\*\* " || true
+          grep -q "EXPORT SUCCEEDED" export.log
+          echo "::notice title=TestFlight::build $BUILD uploaded; it appears in TestFlight after Apple finishes processing (usually 10–30 minutes)"
+      - name: Report errors
+        if: failure()
+        run: cat archive.log export.log 2>/dev/null | grep -E "error:|Error|failed" | sort -u | head -40 | while IFS= read -r l; do echo "::error::$l"; done
+      - name: Publish TestFlight report to ci-logs-testflight branch
+        if: always() && env.ASC_KEY_ID != ''
+        continue-on-error: true
+        run: |
+          { echo "commit ${GITHUB_SHA}"
+            grep -q "EXPORT SUCCEEDED" export.log 2>/dev/null && echo "UPLOAD SUCCEEDED build $((100 + ${{ github.run_number }}))" || echo "UPLOAD NOT COMPLETED"
+            echo "-- archive --"; grep -E "error:|\*\* " archive.log 2>/dev/null | sed "s#$PWD/##" | sort -u | head -40
+            echo "-- export/upload --"; grep -iE "error|warning|upload|\*\* " export.log 2>/dev/null | sort -u | head -60
+          } > /tmp/testflight.txt
+          git config user.name "github-actions"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -q --orphan tf-tmp && git rm -rqf --cached . && find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp /tmp/testflight.txt . && git add -A && git commit -qm "testflight report ${GITHUB_SHA}" && git push -qf origin tf-tmp:ci-logs-testflight

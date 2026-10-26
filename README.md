@@ -14,12 +14,20 @@
 | 手感 | 自绘按键、整块区域统一处理触摸、多指连按不丢字、空格拖动移光标、删除长按加速 |
 | 隐私 | 不联网；词库和学习数据只存在本机 |
 
-## 安装到 iPhone
+## 发布到 TestFlight（自动）
 
-1. Mac 上用 Xcode 15 或更新版本打开 `MossOttoKeyboard.xcodeproj`。
-2. 两个 target（`MossOttoKeyboard`、`MossOttoKeyboardExt`）的 **Signing & Capabilities** 里选自己的 Team。若提示 Bundle ID 已被占用，把 `com.mossotto.keyboard` 改成自己的前缀（扩展须保持 `<主 App ID>.ext`）。
-3. 选择 iPhone 真机，Run。
-4. iPhone：设置 › 通用 › 键盘 › 键盘 › 添加新键盘 › 小鹤双拼。可选开启“允许完全访问”（仅用于震动与按键音）。
+推送到 `main` 后，GitHub Actions（`.github/workflows/ios.yml`）自动：编译 → 引擎基准测试 → 归档签名 → 上传 TestFlight。
+
+一次性准备：
+1. 本仓库 Settings › Secrets and variables › Actions 添加 `ASC_KEY_ID`、`ASC_ISSUER_ID`、`ASC_KEY_P8`、`APPLE_TEAM_ID`（App Store Connect API 密钥，可与其他 App 共用）。
+2. App Store Connect › App › ＋ 新建 App：平台 iOS，套装 ID `app.mossling.keyboard`（首次运行流程会自动注册该 ID 及扩展 ID `app.mossling.keyboard.ext`），名称与 SKU 自定。
+
+构建报告推送到 `ci-logs`（编译）与 `ci-logs-testflight`（上传）分支。
+
+## 本地安装到 iPhone
+
+1. Mac 上用 Xcode 15 或更新版本打开 `MossOttoKeyboard.xcodeproj`，两个 target 的 Signing 选自己的 Team，真机 Run。
+2. iPhone：设置 › 通用 › 键盘 › 键盘 › 添加新键盘 › 小鹤双拼。可选开启“允许完全访问”（仅用于震动与按键音）。
 
 ## 键位
 

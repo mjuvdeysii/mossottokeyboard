@@ -9,7 +9,7 @@ os.chdir(ROOT)
 
 APP = "MossOttoKeyboard"
 EXT = "MossOttoKeyboardExt"
-BUNDLE = "com.mossotto.keyboard"
+BUNDLE = "app.mossling.keyboard"
 DEPLOY = "16.0"
 
 
@@ -19,7 +19,8 @@ def oid(*parts):
 
 app_sources = sorted(glob.glob("App/*.swift"))
 ext_sources = sorted(glob.glob("Keyboard/*.swift")) + sorted(glob.glob("Engine/*.swift"))
-ext_resources = ["Keyboard/Resources/lexicon.bin"]
+ext_resources = ["Keyboard/Resources/lexicon.bin", "Keyboard/Resources/PrivacyInfo.xcprivacy"]
+app_resources = ["App/Assets.xcassets", "App/PrivacyInfo.xcprivacy"]
 
 objs = {}  # id -> text
 
@@ -29,12 +30,12 @@ def add(i, body):
 
 
 def file_type(p):
-    return {"swift": "sourcecode.swift", "plist": "text.plist.xml", "bin": "file"}[p.rsplit(".", 1)[1]]
+    return {"swift": "sourcecode.swift", "plist": "text.plist.xml", "bin": "file", "xcassets": "folder.assetcatalog", "xcprivacy": "text.xml"}[p.rsplit(".", 1)[1]]
 
 
 # File references grouped by folder
 groups = {}
-for p in app_sources + ext_sources + ext_resources + ["Keyboard/Info.plist"]:
+for p in app_sources + app_resources + ext_sources + ext_resources + ["Keyboard/Info.plist"]:
     d, name = os.path.split(p)
     groups.setdefault(d, []).append(p)
     add(oid("ref", p), f'{{isa = PBXFileReference; lastKnownFileType = {file_type(p)}; path = "{name}"; sourceTree = "<group>"; }}')
@@ -77,7 +78,7 @@ def phase(kind, target, files, extra=""):
 
 app_src_phase = phase("PBXSourcesBuildPhase", APP, build_files(APP, app_sources))
 app_fw_phase = phase("PBXFrameworksBuildPhase", APP, [])
-app_res_phase = phase("PBXResourcesBuildPhase", APP, [])
+app_res_phase = phase("PBXResourcesBuildPhase", APP, build_files(APP, app_resources))
 embed_bf = oid("bf", APP, "embed")
 add(embed_bf, f'{{isa = PBXBuildFile; fileRef = {ext_product}; settings = {{ATTRIBUTES = (RemoveHeadersOnCopy, ); }}; }}')
 embed_phase = phase("PBXCopyFilesBuildPhase", APP, [embed_bf], 'dstPath = ""; dstSubfolderSpec = 13; name = "Embed Foundation Extensions"; ')
@@ -121,7 +122,7 @@ common_target = {
     "CURRENT_PROJECT_VERSION": "1",
     "MARKETING_VERSION": "1.0",
     "GENERATE_INFOPLIST_FILE": "YES",
-    "TARGETED_DEVICE_FAMILY": '"1,2"',
+    "TARGETED_DEVICE_FAMILY": "1",
     "DEVELOPMENT_TEAM": '""',
     "INFOPLIST_KEY_CFBundleDisplayName": '"小鹤双拼"',
 }
@@ -131,9 +132,9 @@ app_settings = dict(common_target, **{
     "INFOPLIST_KEY_UILaunchScreen_Generation": "YES",
     "INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents": "YES",
     "INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone": '"UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"',
-    "INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad": '"UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"',
+    "INFOPLIST_KEY_ITSAppUsesNonExemptEncryption": "NO",
     "LD_RUNPATH_SEARCH_PATHS": '("$(inherited)", "@executable_path/Frameworks", )',
-    "ASSETCATALOG_COMPILER_APPICON_NAME": '""',
+    "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
 })
 ext_settings = dict(common_target, **{
     "PRODUCT_BUNDLE_IDENTIFIER": BUNDLE + ".ext",
@@ -165,3 +166,45 @@ os.makedirs(f"{APP}.xcodeproj", exist_ok=True)
 with open(f"{APP}.xcodeproj/project.pbxproj", "w", encoding="utf-8") as f:
     f.write("\n".join(out))
 print(f"wrote {APP}.xcodeproj ({len(objs)} objects, {len(app_sources)} app + {len(ext_sources)} keyboard sources)")
+
+# Shared scheme so xcodebuild (CI) can build/archive without opening Xcode
+scheme_dir = f"{APP}.xcodeproj/xcshareddata/xcschemes"
+os.makedirs(scheme_dir, exist_ok=True)
+
+
+def ref(target_id, name, product):
+    return (f'<BuildableReference BuildableIdentifier = "primary" BlueprintIdentifier = "{target_id}" '
+            f'BuildableName = "{product}" BlueprintName = "{name}" ReferencedContainer = "container:{APP}.xcodeproj"></BuildableReference>')
+
+
+app_ref = ref(app_target, APP, APP + ".app")
+ext_ref = ref(ext_target, EXT, EXT + ".appex")
+scheme = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Scheme LastUpgradeVersion = "1500" version = "1.7">
+   <BuildAction parallelizeBuildables = "YES" buildImplicitDependencies = "YES">
+      <BuildActionEntries>
+         <BuildActionEntry buildForTesting = "YES" buildForRunning = "YES" buildForProfiling = "YES" buildForArchiving = "YES" buildForAnalyzing = "YES">
+            {app_ref}
+         </BuildActionEntry>
+         <BuildActionEntry buildForTesting = "YES" buildForRunning = "YES" buildForProfiling = "YES" buildForArchiving = "YES" buildForAnalyzing = "YES">
+            {ext_ref}
+         </BuildActionEntry>
+      </BuildActionEntries>
+   </BuildAction>
+   <TestAction buildConfiguration = "Debug" selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB" shouldUseLaunchSchemeArgsEnv = "YES">
+   </TestAction>
+   <LaunchAction buildConfiguration = "Debug" selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB" launchStyle = "0" useCustomWorkingDirectory = "NO" ignoresPersistentStateOnLaunch = "NO" debugDocumentVersioning = "YES" debugServiceExtension = "internal" allowLocationSimulation = "YES">
+      <BuildableProductRunnable runnableDebuggingMode = "0">
+         {app_ref}
+      </BuildableProductRunnable>
+   </LaunchAction>
+   <ProfileAction buildConfiguration = "Release" shouldUseLaunchSchemeArgsEnv = "YES" savedToolIdentifier = "" useCustomWorkingDirectory = "NO" debugDocumentVersioning = "YES">
+   </ProfileAction>
+   <AnalyzeAction buildConfiguration = "Debug">
+   </AnalyzeAction>
+   <ArchiveAction buildConfiguration = "Release" revealArchiveInOrganizer = "YES">
+   </ArchiveAction>
+</Scheme>
+"""
+with open(f"{scheme_dir}/{APP}.xcscheme", "w", encoding="utf-8") as f:
+    f.write(scheme)
