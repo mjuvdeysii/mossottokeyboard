@@ -6,23 +6,24 @@ final class CandidateBarView: UIView {
     var onSelect: ((Int) -> Void)?
     var onExpand: (() -> Void)?
     var onSettings: (() -> Void)?
-    var onDismissKeyboard: (() -> Void)?
 
     private let preedit = UILabel()
     private let row = UIView()
     private let expandButton = UIButton(type: .system)
     private let settingsButton = UIButton(type: .system)
-    private let dismissButton = UIButton(type: .system)
     private var labels: [UILabel] = []
     private var candidates: [Candidate] = []
     private(set) var visibleCount = 0
     private var pressedIndex: Int?
 
-    static let font = UIFont.systemFont(ofSize: 19)
+    static let font = UIFont.systemFont(ofSize: 20)
+    /// Settings live on the bottom row (Gboard's gear position); the toolbar shows a gear only
+    /// when that slot is taken by the system globe key.
+    var showSettingsWhenIdle = false { didSet { setNeedsLayout() } }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        preedit.font = .systemFont(ofSize: 13)
+        preedit.font = .systemFont(ofSize: 14)
         preedit.textColor = Theme.secondaryText
         addSubview(preedit)
         addSubview(row)
@@ -30,14 +31,12 @@ final class CandidateBarView: UIView {
         let cfg = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
         expandButton.setImage(UIImage(systemName: "chevron.down", withConfiguration: cfg), for: .normal)
         settingsButton.setImage(UIImage(systemName: "gearshape", withConfiguration: cfg), for: .normal)
-        dismissButton.setImage(UIImage(systemName: "keyboard.chevron.compact.down", withConfiguration: cfg), for: .normal)
-        for b in [expandButton, settingsButton, dismissButton] {
+        for b in [expandButton, settingsButton] {
             b.tintColor = Theme.secondaryText
             addSubview(b)
         }
         expandButton.addTarget(self, action: #selector(expandTapped), for: .touchUpInside)
         settingsButton.addTarget(self, action: #selector(settingsTapped), for: .touchUpInside)
-        dismissButton.addTarget(self, action: #selector(dismissTapped), for: .touchUpInside)
         update(preedit: "", candidates: [])
     }
 
@@ -45,14 +44,12 @@ final class CandidateBarView: UIView {
 
     @objc private func expandTapped() { onExpand?() }
     @objc private func settingsTapped() { onSettings?() }
-    @objc private func dismissTapped() { onDismissKeyboard?() }
 
     func update(preedit text: String, candidates: [Candidate]) {
         preedit.text = text
         self.candidates = candidates
         let composing = !candidates.isEmpty
-        settingsButton.isHidden = composing
-        dismissButton.isHidden = composing
+        settingsButton.isHidden = composing || !showSettingsWhenIdle
         preedit.isHidden = !composing
         setNeedsLayout()
         layoutIfNeeded()
@@ -61,10 +58,9 @@ final class CandidateBarView: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         let h = bounds.height
-        let preH: CGFloat = 16
+        let preH: CGFloat = min(20, h * 0.3)
         preedit.frame = CGRect(x: 10, y: 2, width: bounds.width - 20, height: preH)
         settingsButton.frame = CGRect(x: 4, y: 0, width: 44, height: h)
-        dismissButton.frame = CGRect(x: bounds.width - 48, y: 0, width: 44, height: h)
         let rowY = preH
         let rowH = h - preH
         expandButton.frame = CGRect(x: bounds.width - 44, y: rowY, width: 44, height: rowH)
@@ -85,8 +81,8 @@ final class CandidateBarView: UIView {
             if i == 0 {
                 // Auto-corrected first choice is marked, like Gboard.
                 let attrs: [NSAttributedString.Key: Any] = c.corrected
-                    ? [.underlineStyle: NSUnderlineStyle.single.rawValue, .underlineColor: Theme.correctedMark, .font: UIFont.systemFont(ofSize: 19, weight: .semibold)]
-                    : [.font: UIFont.systemFont(ofSize: 19, weight: .semibold)]
+                    ? [.underlineStyle: NSUnderlineStyle.single.rawValue, .underlineColor: Theme.correctedMark, .font: UIFont.systemFont(ofSize: 20, weight: .semibold)]
+                    : [.font: UIFont.systemFont(ofSize: 20, weight: .semibold)]
                 l.attributedText = NSAttributedString(string: c.text, attributes: attrs)
             } else {
                 l.text = c.text
@@ -237,6 +233,7 @@ final class SettingsPanelView: UIView {
     private let correctionSwitch = UISwitch()
     private let strength = UISegmentedControl(items: ["保守", "标准", "积极"])
     private let feedbackSwitch = UISwitch()
+    private let bordersSwitch = UISwitch()
     private let note = UILabel()
 
     override init(frame: CGRect) {
@@ -262,6 +259,7 @@ final class SettingsPanelView: UIView {
         stack.addArrangedSubview(row("自动纠错（按触点位置）", correctionSwitch))
         stack.addArrangedSubview(row("纠错强度", strength))
         stack.addArrangedSubview(row("按键震动与音效", feedbackSwitch))
+        stack.addArrangedSubview(row("按键边框", bordersSwitch))
 
         let reset = UIButton(type: .system)
         reset.setTitle("清空已学习的词语与触点习惯", for: .normal)
@@ -278,6 +276,7 @@ final class SettingsPanelView: UIView {
         correctionSwitch.addTarget(self, action: #selector(changed), for: .valueChanged)
         strength.addTarget(self, action: #selector(changed), for: .valueChanged)
         feedbackSwitch.addTarget(self, action: #selector(changed), for: .valueChanged)
+        bordersSwitch.addTarget(self, action: #selector(changed), for: .valueChanged)
         load()
     }
 
@@ -301,6 +300,7 @@ final class SettingsPanelView: UIView {
         strength.selectedSegmentIndex = s.strength
         strength.isEnabled = s.autocorrect
         feedbackSwitch.isOn = s.feedback
+        bordersSwitch.isOn = s.keyBorders
     }
 
     func setNote(_ text: String) { note.text = text }
@@ -310,6 +310,7 @@ final class SettingsPanelView: UIView {
         s.autocorrect = correctionSwitch.isOn
         s.strength = strength.selectedSegmentIndex
         s.feedback = feedbackSwitch.isOn
+        s.keyBorders = bordersSwitch.isOn
         strength.isEnabled = s.autocorrect
         onChange?()
     }
@@ -340,6 +341,11 @@ final class KeyboardSettings {
     var strength: Int {
         get { d.object(forKey: "strength") as? Int ?? 1 }
         set { d.set(newValue, forKey: "strength") }
+    }
+    /// Off = Gboard's borderless keys; on = classic iOS key caps.
+    var keyBorders: Bool {
+        get { d.object(forKey: "keyBorders") as? Bool ?? false }
+        set { d.set(newValue, forKey: "keyBorders") }
     }
     var feedback: Bool {
         get { d.object(forKey: "feedback") as? Bool ?? true }

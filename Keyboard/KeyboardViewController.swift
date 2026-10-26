@@ -28,7 +28,8 @@ final class KeyboardViewController: UIInputViewController {
     private var lastDocumentID: UUID?
     private let haptic = UIImpactFeedbackGenerator(style: .light)
 
-    private let barHeight: CGFloat = 50
+    private var isLandscape: Bool { view.bounds.width > view.bounds.height && view.bounds.height > 0 }
+    private var barHeight: CGFloat { isLandscape ? Metrics.toolbarHeightLandscape : Metrics.toolbarHeight }
 
     // MARK: - Lifecycle
 
@@ -48,7 +49,6 @@ final class KeyboardViewController: UIInputViewController {
         candidateBar.onSelect = { [weak self] i in self?.select(i) }
         candidateBar.onExpand = { [weak self] in self?.showGrid(true) }
         candidateBar.onSettings = { [weak self] in self?.showSettings(true) }
-        candidateBar.onDismissKeyboard = { [weak self] in self?.dismissKeyboard() }
         grid.onSelect = { [weak self] i in self?.showGrid(false); self?.select(i) }
         grid.onClose = { [weak self] in self?.showGrid(false) }
         grid.onDelete = { [weak self] in
@@ -103,7 +103,8 @@ final class KeyboardViewController: UIInputViewController {
 
     private func preferredHeight(landscape: Bool? = nil) -> CGFloat {
         let isLandscape = landscape ?? (UIScreen.main.bounds.width > UIScreen.main.bounds.height)
-        return barHeight + (isLandscape ? 4 * 40 : 4 * 54)
+        return isLandscape ? Metrics.toolbarHeightLandscape + 4 * Metrics.rowPitchLandscape
+                           : Metrics.toolbarHeight + 4 * Metrics.rowPitch
     }
 
     override func viewDidLayoutSubviews() {
@@ -148,6 +149,7 @@ final class KeyboardViewController: UIInputViewController {
         decoder?.apply(strength: Decoder.Strength(rawValue: s.strength) ?? .standard)
         settingsPanel.setNote("词库：\(lexicon?.entryCount ?? 0) 条；已学习：\(userDict?.count ?? 0) 条。"
             + (hasFullAccess ? "" : "\n震动与按键音需在 设置 › 通用 › 键盘 › 键盘 › 本键盘 中开启“允许完全访问”。本键盘不联网。"))
+        reconfigure()
         if !taps.isEmpty { refresh() }
     }
 
@@ -175,7 +177,8 @@ final class KeyboardViewController: UIInputViewController {
         reconfigure()
     }
 
-    private func returnLabel() -> (String, Bool) {
+    /// nil = default return key, drawn as the ↵ icon like Gboard.
+    private func returnLabel() -> (String?, Bool) {
         let type = textDocumentProxy.returnKeyType ?? .default
         let zh: [UIReturnKeyType: String] = [.go: "前往", .search: "搜索", .send: "发送", .done: "完成",
                                              .next: "下一项", .join: "加入", .route: "路线", .continue: "继续",
@@ -183,16 +186,17 @@ final class KeyboardViewController: UIInputViewController {
         let en: [UIReturnKeyType: String] = [.go: "go", .search: "search", .send: "send", .done: "done",
                                              .next: "next", .join: "join", .route: "route", .continue: "continue",
                                              .google: "search", .yahoo: "search", .emergencyCall: "SOS"]
-        if !taps.isEmpty { return (chinese ? "确认" : "return", false) }
-        let label = (chinese ? zh[type] : en[type]) ?? (chinese ? "换行" : "return")
-        return (label, type != .default)
+        if !taps.isEmpty || type == .default { return (nil, false) }
+        return ((chinese ? zh[type] : en[type]), true)
     }
 
     private func reconfigure() {
         let (label, accent) = returnLabel()
         keyboard.configure(LayoutContext(page: page, chinese: chinese, showGlobe: needsInputModeSwitchKey,
                                          returnLabel: label, returnIsAccent: accent,
-                                         shifted: shifted, capsLock: capsLock))
+                                         shifted: shifted, capsLock: capsLock,
+                                         keyBorders: KeyboardSettings.shared.keyBorders))
+        candidateBar.showSettingsWhenIdle = needsInputModeSwitchKey
     }
 
     // MARK: - Key handling
@@ -223,6 +227,9 @@ final class KeyboardViewController: UIInputViewController {
             capsLock = false
             if !chinese { updateAutoShift() }
             reconfigure()
+        case .settings:
+            if !taps.isEmpty { commitAll() }
+            showSettings(true)
         case .globe:
             break
         }

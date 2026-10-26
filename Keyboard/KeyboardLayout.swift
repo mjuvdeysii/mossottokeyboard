@@ -9,6 +9,7 @@ enum KeyAction: Equatable {
     case space
     case ret
     case globe
+    case settings
     case page(KeyboardPage)
     case toggleLanguage
 }
@@ -19,23 +20,45 @@ struct KeySpec {
     var action: KeyAction
     var label: String
     var symbol: String? = nil        // SF Symbol name
-    var width: CGFloat = 1           // in letter-key units; 0 = flexible
+    var width: CGFloat = 1           // in letter-key units (1 = screen width / 10); 0 = flexible
     var alt: String? = nil           // long-press alternate
     var style: KeyStyle = .normal
     var isLetter: Bool = false
+    var hint: String? = nil          // small corner label (top-row digits, like Gboard)
 }
 
 struct LayoutContext {
     var page: KeyboardPage
     var chinese: Bool
     var showGlobe: Bool
-    var returnLabel: String
+    /// nil = default return key (drawn as the ↵ icon); otherwise the host's action title.
+    var returnLabel: String?
     var returnIsAccent: Bool
     var shifted: Bool
     var capsLock: Bool
+    var keyBorders: Bool
 }
 
-/// All pages fit on screen: 10 keys max per row, nothing hidden, no scrolling.
+/// Geometry measured from Gboard iOS 2.3 on a 402 pt wide iPhone (1206 px screenshots):
+/// toolbar 65 pt, row pitch 53 pt, key gaps ~5.5 pt × 11 pt, space bar 42 pt tall with ~6 pt corners,
+/// borderless keys, letter glyphs ~24 pt, top-row digit hints ~10 pt.
+/// Bottom rows: letters 1.25 | 1.125 | 1.125 | space 4 | 1 | 1.5; symbol pages 1.25 | 1.125 | 1.125 | 4 | 2.5.
+/// Symbol third rows: 1.5 | 6 × 7/6 | 1.5. Every page fits on screen, nothing scrolls.
+enum Metrics {
+    static let toolbarHeight: CGFloat = 64
+    static let rowPitch: CGFloat = 53
+    static let rowPitchLandscape: CGFloat = 40
+    static let toolbarHeightLandscape: CGFloat = 46
+    static let gapX: CGFloat = 5.5
+    static let gapY: CGFloat = 11
+    static let cornerRadius: CGFloat = 6
+    static let letterFont: CGFloat = 24
+    static let symbolFont: CGFloat = 24
+    static let functionFont: CGFloat = 16
+    static let hintFont: CGFloat = 11
+    static let iconSize: CGFloat = 21
+}
+
 enum Layouts {
     static let letterRows = ["qwertyuiop", "asdfghjkl", "zxcvbnm"]
     static let topRowDigits = Array("1234567890").map(String.init)
@@ -43,6 +66,7 @@ enum Layouts {
         "a": "@", "s": "*", "d": "+", "f": "-", "g": "=", "h": "/", "j": "#", "k": "(", "l": ")",
         "z": "_", "x": "$", "c": "\"", "v": "'", "b": ":", "n": ";", "m": "!",
     ]
+    static let sixth: CGFloat = 7.0 / 6.0
 
     static func rows(_ ctx: LayoutContext) -> [[KeySpec]] {
         switch ctx.page {
@@ -50,6 +74,25 @@ enum Layouts {
         case .numbers: return numbers(ctx)
         case .symbols: return symbols(ctx)
         }
+    }
+
+    /// Second and third keys of every bottom row: settings (or the system globe when the
+    /// device needs it) and the 中/英 switch, in Gboard's settings / emoji positions.
+    private static func middleKeys(_ ctx: LayoutContext) -> [KeySpec] {
+        let first = ctx.showGlobe
+            ? KeySpec(action: .globe, label: "", symbol: "globe", width: 1.125, style: .function)
+            : KeySpec(action: .settings, label: "", symbol: "gearshape.fill", width: 1.125, style: .function)
+        return [first, KeySpec(action: .toggleLanguage, label: ctx.chinese ? "中" : "英", width: 1.125, style: .function)]
+    }
+
+    private static func returnKey(_ ctx: LayoutContext, width: CGFloat, wide: Bool) -> KeySpec {
+        if let l = ctx.returnLabel {
+            return KeySpec(action: .ret, label: l, width: width, style: ctx.returnIsAccent ? .accent : .function)
+        }
+        if wide {
+            return KeySpec(action: .ret, label: ctx.chinese ? "回车键" : "return", width: width, style: .function)
+        }
+        return KeySpec(action: .ret, label: "", symbol: "return.left", width: width, style: .function)
     }
 
     private static func letters(_ ctx: LayoutContext) -> [[KeySpec]] {
@@ -60,7 +103,8 @@ enum Layouts {
                 let upper = ctx.shifted || ctx.capsLock
                 let label = upper ? String(c).uppercased() : String(c)
                 let alt = r == 0 ? topRowDigits[i] : longPressAlt[c]
-                specs.append(KeySpec(action: .char(String(c)), label: label, alt: alt, isLetter: true))
+                specs.append(KeySpec(action: .char(String(c)), label: label, alt: alt, isLetter: true,
+                                     hint: r == 0 ? topRowDigits[i] : nil))
             }
             if r == 2 {
                 let shiftSymbol = ctx.capsLock ? "capslock.fill" : (ctx.shifted ? "shift.fill" : "shift")
@@ -70,58 +114,52 @@ enum Layouts {
             rows.append(specs)
         }
         var bottom: [KeySpec] = [KeySpec(action: .page(.numbers), label: "123", width: 1.25, style: .function)]
-        if ctx.showGlobe { bottom.append(KeySpec(action: .globe, label: "", symbol: "globe", width: 1, style: .function)) }
-        if ctx.chinese {
-            bottom.append(KeySpec(action: .char("，"), label: "，", width: 1, alt: "？", style: .function))
-            bottom.append(KeySpec(action: .space, label: "小鹤双拼", width: 0))
-            bottom.append(KeySpec(action: .char("。"), label: "。", width: 1, alt: "！", style: .function))
-        } else {
-            bottom.append(KeySpec(action: .char(","), label: ",", width: 1, alt: "?", style: .function))
-            bottom.append(KeySpec(action: .space, label: "space", width: 0))
-            bottom.append(KeySpec(action: .char("."), label: ".", width: 1, alt: "!", style: .function))
-        }
-        bottom.append(KeySpec(action: .toggleLanguage, label: ctx.chinese ? "中" : "英", width: 1, style: .function))
-        bottom.append(KeySpec(action: .ret, label: ctx.returnLabel, width: 1.75, style: ctx.returnIsAccent ? .accent : .function))
+        bottom += middleKeys(ctx)
+        bottom.append(KeySpec(action: .space, label: "", width: 0))
+        bottom.append(ctx.chinese
+            ? KeySpec(action: .char("，"), label: "，", width: 1, alt: "。", style: .function)
+            : KeySpec(action: .char("."), label: ".", width: 1, alt: ",", style: .function))
+        bottom.append(returnKey(ctx, width: 1.5, wide: false))
         rows.append(bottom)
         return rows
     }
 
-    private static func charRow(_ s: [String]) -> [KeySpec] {
-        s.map { KeySpec(action: .char($0), label: $0) }
+    private static func charRow(_ s: [String], width: CGFloat = 1, alts: [String: String] = [:]) -> [KeySpec] {
+        s.map { KeySpec(action: .char($0), label: $0, width: width, alt: alts[$0]) }
     }
 
     private static func bottomRow(_ ctx: LayoutContext) -> [KeySpec] {
-        var bottom: [KeySpec] = [KeySpec(action: .page(.letters), label: ctx.chinese ? "拼音" : "ABC", width: 1.25, style: .function)]
-        if ctx.showGlobe { bottom.append(KeySpec(action: .globe, label: "", symbol: "globe", width: 1, style: .function)) }
-        bottom.append(KeySpec(action: .space, label: ctx.chinese ? "空格" : "space", width: 0))
-        bottom.append(KeySpec(action: .ret, label: ctx.returnLabel, width: 1.75, style: ctx.returnIsAccent ? .accent : .function))
+        var bottom: [KeySpec] = [KeySpec(action: .page(.letters), label: ctx.chinese ? "中文" : "ABC", width: 1.25, style: .function)]
+        bottom += middleKeys(ctx)
+        bottom.append(KeySpec(action: .space, label: "", width: 0))
+        bottom.append(returnKey(ctx, width: 2.5, wide: true))
         return bottom
     }
 
     private static func numbers(_ ctx: LayoutContext) -> [[KeySpec]] {
         let row1 = charRow(topRowDigits)
         let row2 = ctx.chinese
-            ? charRow(["-", "/", "：", "；", "（", "）", "¥", "@", "“", "”"])
+            ? charRow(["-", "/", "：", "；", "（", "）", "¥", "@", "“", "”"], alts: ["“": "‘", "”": "’", "¥": "￥"])
             : charRow(["-", "/", ":", ";", "(", ")", "$", "&", "@", "\""])
         var row3: [KeySpec] = [KeySpec(action: .page(.symbols), label: "#+=", width: 1.5, style: .function)]
         row3 += ctx.chinese
-            ? charRow(["。", "，", "、", "？", "！", "…", "."])
-            : charRow([".", ",", "?", "!", "'", "%", "*"])
+            ? charRow(["。", "，", "、", "？", "！", "."], width: sixth, alts: ["。": "…"])
+            : charRow([".", ",", "?", "!", "'", "%"], width: sixth)
         row3.append(KeySpec(action: .delete, label: "", symbol: "delete.left", width: 1.5, style: .function))
         return [row1, row2, row3, bottomRow(ctx)]
     }
 
     private static func symbols(_ ctx: LayoutContext) -> [[KeySpec]] {
         let row1 = ctx.chinese
-            ? charRow(["【", "】", "{", "}", "#", "%", "^", "*", "+", "="])
+            ? charRow(["【", "】", "｛", "｝", "#", "%", "^", "*", "+", "="], alts: ["【": "「", "】": "」", "｛": "『", "｝": "』"])
             : charRow(["[", "]", "{", "}", "#", "%", "^", "*", "+", "="])
         let row2 = ctx.chinese
-            ? charRow(["_", "—", "\\", "|", "～", "《", "》", "&", "·", "€"])
-            : charRow(["_", "\\", "|", "~", "<", ">", "€", "£", "¥", "•"])
+            ? charRow(["_", "—", "\\", "|", "～", "《", "》", "$", "&", "·"], alts: ["《": "〈", "》": "〉", "～": "°", "$": "€", "·": "•"])
+            : charRow(["_", "\\", "|", "~", "<", ">", "€", "£", "¥", "•"], alts: ["~": "°"])
         var row3: [KeySpec] = [KeySpec(action: .page(.numbers), label: "123", width: 1.5, style: .function)]
         row3 += ctx.chinese
-            ? charRow(["「", "」", "‘", "’", "〈", "〉", "°"])
-            : charRow([".", ",", "?", "!", "'", "`", "°"])
+            ? charRow(["…", "，", "^_^", "？", "！", "'"], width: sixth, alts: ["'": "’"])
+            : charRow([".", ",", "?", "!", "'", "`"], width: sixth)
         row3.append(KeySpec(action: .delete, label: "", symbol: "delete.left", width: 1.5, style: .function))
         return [row1, row2, row3, bottomRow(ctx)]
     }
@@ -131,7 +169,7 @@ enum Theme {
     static func dyn(_ light: UIColor, _ dark: UIColor) -> UIColor {
         UIColor { $0.userInterfaceStyle == .dark ? dark : light }
     }
-    static let background = dyn(UIColor(red: 0.82, green: 0.83, blue: 0.85, alpha: 1), UIColor(white: 0.17, alpha: 1))
+    static let background = dyn(UIColor(red: 210/255, green: 213/255, blue: 218/255, alpha: 1), UIColor(white: 0.17, alpha: 1))
     static let key = dyn(.white, UIColor(white: 0.42, alpha: 1))
     static let keyPressed = dyn(UIColor(white: 0.86, alpha: 1), UIColor(white: 0.30, alpha: 1))
     static let functionKey = dyn(UIColor(red: 0.67, green: 0.69, blue: 0.73, alpha: 1), UIColor(white: 0.27, alpha: 1))
@@ -141,4 +179,6 @@ enum Theme {
     static let candidateText = dyn(.black, .white)
     static let secondaryText = dyn(UIColor(white: 0.35, alpha: 1), UIColor(white: 0.7, alpha: 1))
     static let correctedMark = UIColor.systemBlue
+    /// Pressed highlight behind borderless keys.
+    static let keyHighlight = dyn(UIColor(white: 1, alpha: 0.75), UIColor(white: 1, alpha: 0.18))
 }

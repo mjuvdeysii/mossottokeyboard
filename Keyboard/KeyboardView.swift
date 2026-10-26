@@ -2,60 +2,77 @@ import UIKit
 
 final class KeyView: UIView {
     private(set) var spec: KeySpec
+    private(set) var borders = false
     private let label = UILabel()
+    private let hintLabel = UILabel()
     private let icon = UIImageView()
 
     var pressed = false { didSet { if pressed != oldValue { updateColors() } } }
 
-    init(spec: KeySpec) {
+    init(spec: KeySpec, borders: Bool) {
         self.spec = spec
         super.init(frame: .zero)
         isUserInteractionEnabled = false
-        layer.cornerRadius = 5
+        layer.cornerRadius = Metrics.cornerRadius
         layer.shadowOffset = CGSize(width: 0, height: 1)
         layer.shadowRadius = 0
-        layer.shadowOpacity = 1
         label.textAlignment = .center
         label.adjustsFontSizeToFitWidth = true
         label.minimumScaleFactor = 0.5
+        hintLabel.font = .systemFont(ofSize: Metrics.hintFont, weight: .regular)
+        hintLabel.textAlignment = .center
         icon.contentMode = .center
         addSubview(label)
+        addSubview(hintLabel)
         addSubview(icon)
-        apply(spec)
+        apply(spec, borders: borders)
     }
 
     /// Update label / icon / style without recreating the view (keeps touches alive).
-    func apply(_ spec: KeySpec) {
+    func apply(_ spec: KeySpec, borders: Bool) {
         self.spec = spec
+        self.borders = borders
         label.text = spec.label
+        hintLabel.text = spec.hint
+        hintLabel.isHidden = spec.hint == nil
         switch spec.action {
-        case .char where spec.isLetter: label.font = .systemFont(ofSize: 23, weight: .regular)
-        case .char: label.font = .systemFont(ofSize: 21, weight: .regular)
-        case .space: label.font = .systemFont(ofSize: 15, weight: .regular)
-        default: label.font = .systemFont(ofSize: 16, weight: .regular)
+        case .char where spec.isLetter: label.font = .systemFont(ofSize: Metrics.letterFont, weight: .medium)
+        case .char: label.font = .systemFont(ofSize: Metrics.symbolFont, weight: .medium)
+        default: label.font = .systemFont(ofSize: Metrics.functionFont + 1, weight: .semibold)
         }
         if let name = spec.symbol {
-            icon.image = UIImage(systemName: name, withConfiguration: UIImage.SymbolConfiguration(pointSize: 19, weight: .regular))
+            icon.image = UIImage(systemName: name, withConfiguration: UIImage.SymbolConfiguration(pointSize: Metrics.iconSize, weight: .medium))
             icon.isHidden = false
         } else {
             icon.image = nil
             icon.isHidden = true
         }
         updateColors()
+        setNeedsLayout()
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
+    /// Gboard draws keys borderless: only the space bar (and an action-coloured return key)
+    /// has a filled cap. With "按键边框" on, every key gets the classic iOS cap.
+    private var hasCap: Bool { borders || spec.action == .space || spec.style == .accent }
+
     private func updateColors() {
         let bg: UIColor
-        switch spec.style {
-        case .normal: bg = pressed ? Theme.keyPressed : Theme.key
-        case .function: bg = pressed ? Theme.key : Theme.functionKey
-        case .accent: bg = pressed ? Theme.functionKey : Theme.accentKey
+        if hasCap {
+            switch spec.style {
+            case .normal: bg = pressed ? Theme.keyPressed : Theme.key
+            case .function: bg = pressed ? Theme.key : Theme.functionKey
+            case .accent: bg = pressed ? Theme.functionKey : Theme.accentKey
+            }
+        } else {
+            bg = pressed ? Theme.keyHighlight : .clear
         }
         backgroundColor = bg
+        layer.shadowOpacity = hasCap ? 1 : 0
         let fg: UIColor = spec.style == .accent && !pressed ? .white : Theme.keyText
         label.textColor = fg
+        hintLabel.textColor = Theme.secondaryText
         icon.tintColor = fg
         layer.shadowColor = Theme.keyShadow.resolvedColor(with: traitCollection).cgColor
     }
@@ -69,7 +86,9 @@ final class KeyView: UIView {
         super.layoutSubviews()
         label.frame = bounds.insetBy(dx: 2, dy: 0)
         icon.frame = bounds
-        layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: 5).cgPath
+        // Digit hint sits up and to the right of the letter, as on Gboard.
+        hintLabel.frame = CGRect(x: bounds.midX + bounds.width * 0.18, y: 0, width: 14, height: 14)
+        layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: Metrics.cornerRadius).cgPath
     }
 }
 
@@ -148,7 +167,7 @@ final class KeyboardView: UIView {
         rows = newRows
         if sameShape && keyViews.count == newRows.reduce(0, { $0 + $1.count }) {
             // Labels only (shift state, return key title): update in place so in-flight touches survive.
-            for (kv, spec) in zip(keyViews, newRows.flatMap { $0 }) { kv.apply(spec) }
+            for (kv, spec) in zip(keyViews, newRows.flatMap { $0 }) { kv.apply(spec, borders: ctx.keyBorders) }
         } else {
             rebuild()
         }
@@ -159,7 +178,8 @@ final class KeyboardView: UIView {
         keyViews.forEach { $0.removeFromSuperview() }
         globeButton?.removeFromSuperview()
         globeButton = nil
-        keyViews = rows.flatMap { $0 }.map { KeyView(spec: $0) }
+        let borders = context?.keyBorders ?? false
+        keyViews = rows.flatMap { $0 }.map { KeyView(spec: $0, borders: borders) }
         keyViews.forEach { addSubview($0) }
         if let idx = keyViews.firstIndex(where: { $0.spec.action == .globe }), let ic = inputController {
             // The system input-mode menu needs a real UIControl wired to handleInputModeList.
@@ -177,8 +197,8 @@ final class KeyboardView: UIView {
         guard !rows.isEmpty, bounds.width > 0 else { return }
         let rowH = bounds.height / CGFloat(rows.count)
         let unit = bounds.width / 10
-        let gapX: CGFloat = 6
-        let gapY: CGFloat = min(12, rowH * 0.22)
+        let gapX = Metrics.gapX
+        let gapY = min(Metrics.gapY, rowH * 0.22)
         hitRects = []
         var i = 0
         var spatialKeys: [SpatialModel.Key] = []
