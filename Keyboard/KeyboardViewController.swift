@@ -1,0 +1,384 @@
+import UIKit
+import AudioToolbox
+
+final class KeyboardViewController: UIInputViewController {
+    // Engine
+    private var lexicon: Lexicon?
+    private var decoder: Decoder?
+    private var userDict: UserDictionary?
+    private let spatial = SpatialModel.standard()
+
+    // Views
+    private let candidateBar = CandidateBarView()
+    private lazy var keyboard = KeyboardView(spatial: spatial)
+    private let grid = CandidateGridView()
+    private let settingsPanel = SettingsPanelView()
+    private var heightConstraint: NSLayoutConstraint?
+
+    // State
+    private var chinese = true
+    private var page: KeyboardPage = .letters
+    private var shifted = false
+    private var capsLock = false
+    private var lastShiftTap: Date = .distantPast
+    private var taps: [Tap] = []
+    private var result: Decoder.Result?
+    private var committedParts: [(text: String, ids: [UInt16])] = []
+    private var lastInsertedSpace = false
+    private var lastDocumentID: UUID?
+    private let haptic = UIImpactFeedbackGenerator(style: .light)
+
+    private let barHeight: CGFloat = 50
+
+    // MARK: - Lifecycle
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = Theme.background
+        loadEngine()
+
+        keyboard.inputController = self
+        keyboard.onAction = { [weak self] action, tap in self?.handle(action, tap: tap) }
+        keyboard.onCursorMove = { [weak self] d in
+            guard let self, self.taps.isEmpty else { return }
+            self.textDocumentProxy.adjustTextPosition(byCharacterOffset: d)
+        }
+        keyboard.onKeyDown = { [weak self] in self?.playFeedback() }
+
+        candidateBar.onSelect = { [weak self] i in self?.select(i) }
+        candidateBar.onExpand = { [weak self] in self?.showGrid(true) }
+        candidateBar.onSettings = { [weak self] in self?.showSettings(true) }
+        candidateBar.onDismissKeyboard = { [weak self] in self?.dismissKeyboard() }
+        grid.onSelect = { [weak self] i in self?.showGrid(false); self?.select(i) }
+        grid.onClose = { [weak self] in self?.showGrid(false) }
+        grid.onDelete = { [weak self] in
+            guard let self else { return }
+            self.handle(.delete, tap: nil)
+            if self.taps.isEmpty { self.showGrid(false) } else { self.grid.show(self.result?.candidates ?? []) }
+        }
+        settingsPanel.onClose = { [weak self] in self?.showSettings(false) }
+        settingsPanel.onChange = { [weak self] in self?.applySettings() }
+        settingsPanel.onResetLearning = { [weak self] in
+            self?.userDict?.reset()
+            self?.spatial.offsetX = 0
+            self?.spatial.offsetY = 0
+            KeyboardSettings.shared.touchOffset = (0, 0)
+            self?.settingsPanel.setNote("已清空。")
+        }
+
+        for v in [candidateBar, keyboard, grid, settingsPanel] as [UIView] { view.addSubview(v) }
+        grid.isHidden = true
+        settingsPanel.isHidden = true
+        applySettings()
+        let off = KeyboardSettings.shared.touchOffset
+        spatial.offsetX = off.0
+        spatial.offsetY = off.1
+        reconfigure()
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        if heightConstraint == nil {
+            let c = view.heightAnchor.constraint(equalToConstant: preferredHeight())
+            c.priority = UILayoutPriority(999)
+            c.isActive = true
+            heightConstraint = c
+        }
+        lastDocumentID = textDocumentProxy.documentIdentifier
+        adaptToField()
+        haptic.prepare()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        if !taps.isEmpty { commitRaw() }
+        userDict?.save()
+        KeyboardSettings.shared.touchOffset = (spatial.offsetX, spatial.offsetY)
+    }
+
+    override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
+        super.viewWillTransition(to: size, with: coordinator)
+        heightConstraint?.constant = preferredHeight(landscape: size.width > size.height)
+    }
+
+    private func preferredHeight(landscape: Bool? = nil) -> CGFloat {
+        let isLandscape = landscape ?? (UIScreen.main.bounds.width > UIScreen.main.bounds.height)
+        return barHeight + (isLandscape ? 4 * 40 : 4 * 54)
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        let b = view.bounds
+        candidateBar.frame = CGRect(x: 0, y: 0, width: b.width, height: barHeight)
+        let keysFrame = CGRect(x: 0, y: barHeight, width: b.width, height: b.height - barHeight)
+        keyboard.frame = keysFrame
+        grid.frame = CGRect(x: 0, y: barHeight, width: b.width, height: b.height - barHeight)
+        settingsPanel.frame = b
+    }
+
+    override func textDidChange(_ textInput: UITextInput?) {
+        super.textDidChange(textInput)
+        let id = textDocumentProxy.documentIdentifier
+        if id != lastDocumentID {
+            // Switched to another field: drop stale composition and adapt to its type.
+            lastDocumentID = id
+            if !taps.isEmpty { clearComposition() }
+            adaptToField()
+        } else {
+            if !chinese { updateAutoShift() }
+            reconfigure()
+        }
+    }
+
+    // MARK: - Engine
+
+    private func loadEngine() {
+        guard let path = Bundle.main.path(forResource: "lexicon", ofType: "bin"),
+              let lex = try? Lexicon(path: path) else { return }
+        lexicon = lex
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        let ud = UserDictionary(lexicon: lex, url: dir?.appendingPathComponent("userdict.json"))
+        userDict = ud
+        decoder = Decoder(lexicon: lex, user: ud)
+    }
+
+    private func applySettings() {
+        let s = KeyboardSettings.shared
+        decoder?.correctionEnabled = s.autocorrect
+        decoder?.apply(strength: Decoder.Strength(rawValue: s.strength) ?? .standard)
+        settingsPanel.setNote("词库：\(lexicon?.entryCount ?? 0) 条；已学习：\(userDict?.count ?? 0) 条。"
+            + (hasFullAccess ? "" : "\n震动与按键音需在 设置 › 通用 › 键盘 › 键盘 › 本键盘 中开启“允许完全访问”。本键盘不联网。"))
+        if !taps.isEmpty { refresh() }
+    }
+
+    private func playFeedback() {
+        guard KeyboardSettings.shared.feedback, hasFullAccess else { return }
+        haptic.impactOccurred()
+        AudioServicesPlaySystemSound(1104)
+        haptic.prepare()
+    }
+
+    // MARK: - Field adaptation
+
+    private func adaptToField() {
+        let proxy = textDocumentProxy
+        switch proxy.keyboardType ?? .default {
+        case .numberPad, .decimalPad, .phonePad, .numbersAndPunctuation, .asciiCapableNumberPad:
+            page = .numbers
+        case .emailAddress, .URL, .webSearch:
+            page = .letters
+            if taps.isEmpty { chinese = false }
+        default:
+            page = .letters
+        }
+        if !chinese { updateAutoShift() }
+        reconfigure()
+    }
+
+    private func returnLabel() -> (String, Bool) {
+        let type = textDocumentProxy.returnKeyType ?? .default
+        let zh: [UIReturnKeyType: String] = [.go: "前往", .search: "搜索", .send: "发送", .done: "完成",
+                                             .next: "下一项", .join: "加入", .route: "路线", .continue: "继续",
+                                             .google: "搜索", .yahoo: "搜索", .emergencyCall: "紧急"]
+        let en: [UIReturnKeyType: String] = [.go: "go", .search: "search", .send: "send", .done: "done",
+                                             .next: "next", .join: "join", .route: "route", .continue: "continue",
+                                             .google: "search", .yahoo: "search", .emergencyCall: "SOS"]
+        if !taps.isEmpty { return (chinese ? "确认" : "return", false) }
+        let label = (chinese ? zh[type] : en[type]) ?? (chinese ? "换行" : "return")
+        return (label, type != .default)
+    }
+
+    private func reconfigure() {
+        let (label, accent) = returnLabel()
+        keyboard.configure(LayoutContext(page: page, chinese: chinese, showGlobe: needsInputModeSwitchKey,
+                                         returnLabel: label, returnIsAccent: accent,
+                                         shifted: shifted, capsLock: capsLock))
+    }
+
+    // MARK: - Key handling
+
+    private func handle(_ action: KeyAction, tap: Tap?) {
+        switch action {
+        case .char(let s):
+            if let tap, page == .letters { letter(s, tap: tap) } else { symbol(s) }
+        case .space:
+            space()
+        case .delete:
+            delete()
+        case .ret:
+            if !taps.isEmpty { commitRaw() } else { textDocumentProxy.insertText("\n") }
+            lastInsertedSpace = false
+            if !chinese { updateAutoShift() }
+            reconfigure()
+        case .shift:
+            shiftTapped()
+        case .page(let p):
+            if p != .letters, !taps.isEmpty { commitAll() }
+            page = p
+            reconfigure()
+        case .toggleLanguage:
+            if !taps.isEmpty { commitRaw() }
+            chinese.toggle()
+            shifted = false
+            capsLock = false
+            if !chinese { updateAutoShift() }
+            reconfigure()
+        case .globe:
+            break
+        }
+    }
+
+    private func letter(_ s: String, tap: Tap) {
+        lastInsertedSpace = false
+        if chinese && !(shifted || capsLock) {
+            guard decoder != nil else { textDocumentProxy.insertText(s); return }
+            taps.append(tap)
+            refresh()
+            return
+        }
+        // English, or Shift held in Chinese mode: direct letter.
+        if !taps.isEmpty { commitAll() }
+        textDocumentProxy.insertText((shifted || capsLock) ? s.uppercased() : s)
+        if shifted && !capsLock {
+            shifted = false
+            reconfigure()
+        }
+    }
+
+    private func symbol(_ s: String) {
+        if !taps.isEmpty { commitAll() }
+        textDocumentProxy.insertText(s)
+        lastInsertedSpace = false
+        if !chinese && [".", "!", "?"].contains(s) { updateAutoShift(); reconfigure() }
+    }
+
+    private func space() {
+        if !taps.isEmpty {
+            commitAll()
+            return
+        }
+        let proxy = textDocumentProxy
+        if !chinese, lastInsertedSpace, let before = proxy.documentContextBeforeInput,
+           before.hasSuffix(" "), let prev = before.dropLast().last, prev.isLetter || prev.isNumber {
+            proxy.deleteBackward()
+            proxy.insertText(". ")
+            lastInsertedSpace = false
+            updateAutoShift()
+            reconfigure()
+            return
+        }
+        proxy.insertText(" ")
+        lastInsertedSpace = true
+        if !chinese { updateAutoShift(); reconfigure() }
+    }
+
+    private func delete() {
+        lastInsertedSpace = false
+        if !taps.isEmpty {
+            taps.removeLast()
+            if taps.isEmpty { clearComposition() } else { refresh() }
+            return
+        }
+        textDocumentProxy.deleteBackward()
+        if !chinese { updateAutoShift(); reconfigure() }
+    }
+
+    private func shiftTapped() {
+        let now = Date()
+        if capsLock {
+            capsLock = false
+            shifted = false
+        } else if shifted && now.timeIntervalSince(lastShiftTap) < 0.35 {
+            capsLock = true
+        } else {
+            shifted.toggle()
+        }
+        lastShiftTap = now
+        reconfigure()
+    }
+
+    private func updateAutoShift() {
+        guard !capsLock else { return }
+        let proxy = textDocumentProxy
+        guard (proxy.autocapitalizationType ?? .sentences) != .none else { shifted = false; return }
+        let before = proxy.documentContextBeforeInput ?? ""
+        let trimmed = before.trimmingCharacters(in: .whitespaces)
+        shifted = before.isEmpty || trimmed.hasSuffix(".") && before.hasSuffix(" ")
+            || trimmed.hasSuffix("!") && before.hasSuffix(" ") || trimmed.hasSuffix("?") && before.hasSuffix(" ")
+            || before.hasSuffix("\n")
+    }
+
+    // MARK: - Composition
+
+    private func refresh() {
+        guard let decoder else { return }
+        let r = decoder.decode(taps)
+        result = r
+        candidateBar.update(preedit: r.preedit, candidates: r.candidates)
+        if !grid.isHidden { grid.show(r.candidates) }
+        reconfigure()
+    }
+
+    private func select(_ index: Int) {
+        guard let decoder, let r = result, index < r.candidates.count else { return }
+        let c = r.candidates[index]
+        guard c.tapCount > 0 else { return }
+        textDocumentProxy.insertText(c.text)
+        // Learn: the word itself and where this user's finger actually lands.
+        if !c.syllables.isEmpty {
+            userDict?.learn(syllables: c.syllables, text: c.text)
+            committedParts.append((c.text, c.syllables))
+            let keys = decoder.keys(for: c)
+            for (tap, key) in zip(taps.prefix(c.tapCount), keys) { spatial.observe(tap: tap, intended: key) }
+        }
+        taps.removeFirst(min(c.tapCount, taps.count))
+        if taps.isEmpty {
+            if committedParts.count > 1 {
+                let ids = committedParts.flatMap { $0.ids }
+                if ids.count <= 8 { userDict?.learn(syllables: ids, text: committedParts.map { $0.text }.joined()) }
+            }
+            clearComposition()
+        } else {
+            refresh()
+        }
+    }
+
+    private func commitAll() {
+        var guardCount = 0
+        while !taps.isEmpty && guardCount < 32 {
+            guardCount += 1
+            if result == nil { refresh() }
+            if let c = result?.candidates.first, c.tapCount > 0, !c.syllables.isEmpty {
+                select(0)
+            } else {
+                commitRaw()
+            }
+        }
+    }
+
+    private func commitRaw() {
+        textDocumentProxy.insertText(String(taps.map { $0.key }))
+        clearComposition()
+    }
+
+    private func clearComposition() {
+        taps.removeAll()
+        result = nil
+        committedParts.removeAll()
+        candidateBar.update(preedit: "", candidates: [])
+        showGrid(false)
+        reconfigure()
+    }
+
+    // MARK: - Panels
+
+    private func showGrid(_ on: Bool) {
+        if on, let r = result { grid.show(r.candidates) }
+        grid.isHidden = !on
+    }
+
+    private func showSettings(_ on: Bool) {
+        if on { settingsPanel.load(); applySettings() }
+        settingsPanel.isHidden = !on
+    }
+}
