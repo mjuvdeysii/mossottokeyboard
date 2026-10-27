@@ -301,12 +301,7 @@ final class SettingsPanelView: UIView {
     private let schemeControl = UISegmentedControl(items: ["小鹤双拼", "全拼"])
     private let layoutControl = UISegmentedControl(items: ["全键盘", "九宫格"])
     private let englishSwitch = UISwitch()
-    private let predictionSwitch = UISwitch()
-    private let inlineControl = UISegmentedControl(items: ["字母", "拼音", "不显示"])
     private let correctionSwitch = UISwitch()
-    private let strength = UISegmentedControl(items: ["保守", "标准", "积极"])
-    private let numberControl = UISegmentedControl(items: ["九宫格", "全键盘"])
-    private let bordersSwitch = UISwitch()
     private let feedbackSwitch = UISwitch()
     private let soundSwitch = UISwitch()
     private let appearance = UISegmentedControl(items: ["自动", "日光", "夜灯"])
@@ -361,16 +356,11 @@ final class SettingsPanelView: UIView {
             row("输入方案", schemeControl),
             row("中文键盘", layoutControl),
             row("中英混输", englishSwitch),
-            row("联想", predictionSwitch),
-            row("输入框中显示", inlineControl),
-        ], footer: "中文键盘：九宫格时每个键代表它上面的几个字母，小鹤双拼与全拼都能用（全拼更准）；分词键用来切开音节。中英混输：打 ok、ios 直接出 OK、iOS。输入框中显示：打字时把按下的字母（或拼音）写进输入框，带下划线，选了候选才替换成汉字；选“不显示”则显示在候选栏上方。")
+        ], footer: "中文键盘：九宫格时每个键代表它上面的几个字母，小鹤双拼与全拼都能用（全拼更准）；分词键用来切开音节。打字时按下的字母写进输入框，带下划线，选了候选才替换成汉字。中英混输：打 ok、ios 直接出 OK、iOS。")
         section("自动纠错", rows: [
             row("按触点位置纠错", correctionSwitch),
-            row("强度", strength),
         ], footer: "首选带下划线 = 已纠错；上屏后立刻按删除可撤回这次纠错。英文模式同样按触点纠错：teh → the、dont → don't、im → I'm，空格时替换，删除可撤回。")
         section("键盘", rows: [
-            row("数字键盘", numberControl),
-            row("显示键帽", bordersSwitch),
             row("按键震动", feedbackSwitch),
             row("按键音", soundSwitch),
         ], footer: "震动与按键音在按下的一瞬间发出（与系统键盘一样）；按键音跟随静音开关。")
@@ -396,11 +386,11 @@ final class SettingsPanelView: UIView {
         note.textColor = Theme.secondaryText
         stack.addArrangedSubview(inset(note))
 
-        for c in [schemeControl, layoutControl, inlineControl, strength, numberControl, appearance] {
+        for c in [schemeControl, layoutControl, appearance] {
             c.addTarget(self, action: #selector(changed), for: .valueChanged)
             c.setContentHuggingPriority(.required, for: .horizontal)
         }
-        for sw in [englishSwitch, predictionSwitch, correctionSwitch, bordersSwitch, feedbackSwitch, soundSwitch] {
+        for sw in [englishSwitch, correctionSwitch, feedbackSwitch, soundSwitch] {
             sw.addTarget(self, action: #selector(changed), for: .valueChanged)
         }
         load()
@@ -522,13 +512,7 @@ final class SettingsPanelView: UIView {
         schemeControl.selectedSegmentIndex = s.scheme
         layoutControl.selectedSegmentIndex = s.pinyinGrid ? 1 : 0
         englishSwitch.isOn = s.english
-        predictionSwitch.isOn = s.predictions
-        inlineControl.selectedSegmentIndex = s.inlineMode
         correctionSwitch.isOn = s.autocorrect
-        strength.selectedSegmentIndex = s.strength
-        strength.isEnabled = s.autocorrect
-        numberControl.selectedSegmentIndex = s.numberGrid ? 0 : 1
-        bordersSwitch.isOn = s.keyBorders
         feedbackSwitch.isOn = s.feedback
         soundSwitch.isOn = s.keySound
         appearance.selectedSegmentIndex = s.appearance
@@ -543,16 +527,10 @@ final class SettingsPanelView: UIView {
         s.scheme = schemeControl.selectedSegmentIndex
         s.pinyinGrid = layoutControl.selectedSegmentIndex == 1
         s.english = englishSwitch.isOn
-        s.predictions = predictionSwitch.isOn
-        s.inlineMode = inlineControl.selectedSegmentIndex
         s.autocorrect = correctionSwitch.isOn
-        s.strength = strength.selectedSegmentIndex
-        s.numberGrid = numberControl.selectedSegmentIndex == 0
-        s.keyBorders = bordersSwitch.isOn
         s.feedback = feedbackSwitch.isOn
         s.keySound = soundSwitch.isOn
         s.appearance = appearance.selectedSegmentIndex
-        strength.isEnabled = s.autocorrect
         updateStatus()
         onChange?()
     }
@@ -586,40 +564,15 @@ final class KeyboardSettings {
         get { d.object(forKey: "autocorrect") as? Bool ?? true }
         set { d.set(newValue, forKey: "autocorrect") }
     }
-    var strength: Int {
-        get { d.object(forKey: "strength") as? Int ?? 1 }
-        set { d.set(newValue, forKey: "strength") }
-    }
-    /// On = iOS 26 key caps (default); off = Gboard's borderless keys.
-    var keyBorders: Bool {
-        get { d.object(forKey: "keyCaps") as? Bool ?? true }
-        set { d.set(newValue, forKey: "keyCaps") }
-    }
     /// 中英混输: English words offered among the Chinese candidates.
     var english: Bool {
         get { d.object(forKey: "english") as? Bool ?? true }
         set { d.set(newValue, forKey: "english") }
     }
-    /// What is written into the text field while composing (underlined marked text, replaced by the chosen
-    /// candidate): 0 the letters as typed (default), 1 the pinyin, 2 nothing (shown above the candidates instead).
-    var inlineMode: Int {
-        get { d.object(forKey: "inlineText") as? Int ?? 0 }
-        set { d.set(newValue, forKey: "inlineText") }
-    }
     /// Chinese typed on the 九宫格 pinyin keypad (on) or the full keyboard (off).
     var pinyinGrid: Bool {
         get { d.object(forKey: "pinyinGrid") as? Bool ?? false }
         set { d.set(newValue, forKey: "pinyinGrid") }
-    }
-    /// 123 opens the 九宫格 number pad (default) or the full 123 page.
-    var numberGrid: Bool {
-        get { d.object(forKey: "numberGrid") as? Bool ?? true }
-        set { d.set(newValue, forKey: "numberGrid") }
-    }
-    /// 联想 (next-word suggestions after a commit): off by default — a plain input method, as Gboard.
-    var predictions: Bool {
-        get { d.object(forKey: "suggestNext") as? Bool ?? false }
-        set { d.set(newValue, forKey: "suggestNext") }
     }
     /// 0 自动 (follows the system's light / dark mode), 1 日光, 2 夜灯. (The old 3 "晚上" reads as 自动.)
     var appearance: Int {

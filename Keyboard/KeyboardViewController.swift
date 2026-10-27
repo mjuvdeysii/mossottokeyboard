@@ -6,7 +6,6 @@ final class KeyboardViewController: UIInputViewController {
     private var lexicon: Lexicon?
     private var decoder: Decoder?
     private var userDict: UserDictionary?
-    private var predictor: Predictor?
     private let spatial = SpatialModel.standard()
 
     // Views. Everything sits in `root`, whose light (日光 / 夜灯) is forced; the controller's own view keeps the
@@ -35,11 +34,9 @@ final class KeyboardViewController: UIInputViewController {
     /// The last auto-corrected commit made with the space bar, undone by an immediate delete (as on Gboard).
     private var undoable: (text: String, taps: [Tap], syllables: [UInt16])?
     private var lastDocumentID: UUID?
-    private var predictions: [String] = []
     private var isNight = false
     /// Pinyin currently written into the host field as marked text.
     private var hasMarkedText = false
-    private var inlineMode = 0
 
     // English mode: the word being typed (its taps and the characters inserted), its suggestions and the
     // autocorrection space would apply; the last applied correction, which a delete right after takes back.
@@ -71,6 +68,10 @@ final class KeyboardViewController: UIInputViewController {
         keyboard.inputController = self
         keyboard.onAction = { [weak self] action, tap in self?.handle(action, tap: tap) }
         keyboard.canMoveCursor = { [weak self] in self?.taps.isEmpty ?? false }
+        keyboard.stripIsEmpty = { [weak self] in
+            guard let self else { return true }
+            return self.taps.isEmpty && self.enSuggestions.isEmpty
+        }
         keyboard.onCursorMove = { [weak self] d in
             guard let self, self.taps.isEmpty else { return }
             // one visible character per step: an emoji or other surrogate pair is two UTF-16 units
@@ -184,8 +185,8 @@ final class KeyboardViewController: UIInputViewController {
         root.frame = b
         tintView.frame = b
         candidateBar.frame = CGRect(x: 0, y: 0, width: b.width, height: barHeight)
-        // the keys reach 10 pt up into the strip: taps that land a little high still type (see topReach)
-        let reach: CGFloat = 10
+        // the keys reach 22 pt up into the strip: taps that land high while typing still type (see KeyboardView.hitTest)
+        let reach: CGFloat = 22
         keyboard.frame = CGRect(x: 0, y: barHeight - reach, width: b.width, height: b.height - barHeight + reach)
         keyboard.topReach = reach
         grid.frame = CGRect(x: 0, y: barHeight, width: b.width, height: b.height - barHeight)
@@ -217,7 +218,6 @@ final class KeyboardViewController: UIInputViewController {
         let ud = UserDictionary(lexicon: lex, url: dir?.appendingPathComponent("userdict.json"))
         userDict = ud
         decoder = Decoder(lexicon: lex, user: ud)
-        if let pp = Bundle.main.path(forResource: "predictions", ofType: "bin") { predictor = try? Predictor(path: pp) }
         // The lexicon needs no tables in memory (its file is sorted for direct lookup). The English word list and
         // its trie are built off the main thread, so the keyboard appears at once and its first keys do not stall;
         // English joins in a moment later.
@@ -278,10 +278,7 @@ final class KeyboardViewController: UIInputViewController {
             decoder?.scheme = scheme
         }
         decoder?.correctionEnabled = s.autocorrect
-        decoder?.apply(strength: Decoder.Strength(rawValue: s.strength) ?? .standard)
         decoder?.englishEnabled = s.english
-        candidateBar.showsPreedit = s.inlineMode == 2
-        inlineMode = s.inlineMode
         hapticsOn = s.feedback
         soundOn = s.keySound
         settingsPanel.setLearned("词库 \(lexicon?.entryCount ?? 0) 条 · 已学习 \(userDict?.count ?? 0) 个词")
@@ -292,7 +289,6 @@ final class KeyboardViewController: UIInputViewController {
             + "键盘不联网，词库与学习记录只存在本机。")
         reconfigure()
         applyAppearance()
-        if !KeyboardSettings.shared.predictions { clearPredictions() }
         if !taps.isEmpty { refresh() }
     }
 
@@ -325,7 +321,7 @@ final class KeyboardViewController: UIInputViewController {
         case .numberPad, .decimalPad, .phonePad, .asciiCapableNumberPad:
             page = .numpad   // digits-only fields always get the 九宫格 pad
         case .numbersAndPunctuation:
-            page = KeyboardSettings.shared.numberGrid ? .numpad : .numbers
+            page = .numpad
         case .emailAddress, .URL, .webSearch:
             page = .letters
             if taps.isEmpty { chinese = false }
@@ -357,8 +353,8 @@ final class KeyboardViewController: UIInputViewController {
         let ctx = LayoutContext(page: page, chinese: chinese, showGlobe: needsInputModeSwitchKey,
                                          returnLabel: label, returnIsAccent: accent,
                                          shifted: shifted, capsLock: capsLock,
-                                         keyBorders: KeyboardSettings.shared.keyBorders,
-                                         numberGrid: KeyboardSettings.shared.numberGrid,
+                                         keyBorders: true,
+                                         numberGrid: true,
                                          pinyinGrid: KeyboardSettings.shared.pinyinGrid, composing: !taps.isEmpty)
         // most keystrokes change nothing on the keys: skip the work entirely (it ran twice per keystroke before)
         if ctx == lastContext { return }
@@ -389,7 +385,6 @@ final class KeyboardViewController: UIInputViewController {
         default: endEnglishWord()
         }
         // any key ends the suggestions, as on Gboard
-        if !predictions.isEmpty, action != .settings, action != .globe { clearPredictions() }
         switch action {
         case .char(let s):
             if let tap, page == .letters { letter(s, tap: tap) } else { symbol(s) }
@@ -581,7 +576,7 @@ final class KeyboardViewController: UIInputViewController {
         enTyped = ""
         enSuggestions = []
         enCorrection = nil
-        if taps.isEmpty && predictions.isEmpty { candidateBar.update(preedit: "", candidates: []) }
+        if taps.isEmpty { candidateBar.update(preedit: "", candidates: []) }
     }
 
     /// Held delete: the whole composition, else back over one word — two Chinese characters, or a Latin word with
@@ -644,18 +639,11 @@ final class KeyboardViewController: UIInputViewController {
         guard let decoder else { return }
         let r = decoder.decode(taps)
         result = r
-        let mode = inlineMode
-        if mode != 2 {
-            // Written into the text field, underlined, until a candidate replaces it: the letters as typed
-            // (九宫格 keys have no single letter, so their pinyin), or the pinyin.
-            let marked = mode == 0 && !taps.contains(where: { $0.group }) ? String(taps.map { $0.key }) : r.preedit
-            textDocumentProxy.setMarkedText(marked, selectedRange: NSRange(location: (marked as NSString).length, length: 0))
-            hasMarkedText = true
-        } else if hasMarkedText {
-            textDocumentProxy.setMarkedText("", selectedRange: NSRange(location: 0, length: 0))
-            textDocumentProxy.unmarkText()
-            hasMarkedText = false
-        }
+        // Written into the text field, underlined, until a candidate replaces it: the letters as typed (九宫格 keys
+        // have no single letter, so the pinyin read from them).
+        let marked = !taps.contains(where: { $0.group }) ? String(taps.map { $0.key }) : r.preedit
+        textDocumentProxy.setMarkedText(marked, selectedRange: NSRange(location: (marked as NSString).length, length: 0))
+        hasMarkedText = true
         candidateBar.update(preedit: r.preedit, candidates: r.candidates)
         if !grid.isHidden { grid.show(r.candidates) }
         updateSyllablePicker()
@@ -667,7 +655,6 @@ final class KeyboardViewController: UIInputViewController {
         let c = r.candidates[index]
         guard c.tapCount > 0 else { return }
         insertCommitted(c.text)
-        let committedText = c.text
         // Learn: the word itself and where this user's finger actually lands.
         if !c.syllables.isEmpty {
             userDict?.learn(syllables: c.syllables, text: c.text)
@@ -677,12 +664,8 @@ final class KeyboardViewController: UIInputViewController {
         }
         taps.removeFirst(min(c.tapCount, taps.count))
         if taps.isEmpty {
-            if committedParts.count > 1 {
-                let ids = committedParts.flatMap { $0.ids }
-                if ids.count <= 8 { userDict?.learn(syllables: ids, text: committedParts.map { $0.text }.joined()) }
-            }
+            userDict?.learn(parts: committedParts)
             clearComposition()
-            if !c.syllables.isEmpty { showPredictions(after: committedText) }
         } else {
             refresh()
         }
@@ -694,7 +677,6 @@ final class KeyboardViewController: UIInputViewController {
         guard taps.isEmpty, let decoder, (textDocumentProxy.documentContextBeforeInput ?? "").hasSuffix(u.text) else { return false }
         for _ in u.text { textDocumentProxy.deleteBackward() }
         if !u.syllables.isEmpty { userDict?.unlearn(syllables: u.syllables, text: u.text) }
-        predictions = []
         taps = u.taps
         let was = decoder.correctionEnabled
         decoder.correctionEnabled = false
@@ -785,7 +767,7 @@ final class KeyboardViewController: UIInputViewController {
         reconfigure()
     }
 
-    // MARK: - Predictions (联想)
+    // MARK: - Candidates
 
     private func candidateTapped(_ i: Int) {
         if taps.isEmpty, !enTaps.isEmpty, i < enSuggestions.count {
@@ -797,32 +779,7 @@ final class KeyboardViewController: UIInputViewController {
             updateAutoShift(); reconfigure()
             return
         }
-        if taps.isEmpty, i < predictions.count {
-            let text = predictions[i]
-            textDocumentProxy.insertText(text)
-            showPredictions(after: text)
-        } else {
-            select(i)
-        }
-    }
-
-    private func showPredictions(after text: String) {
-        guard KeyboardSettings.shared.predictions, chinese, let predictor else { return }
-        predictions = predictor.predict(after: text)
-        guard !predictions.isEmpty else { clearPredictions(); return }
-        let cands = predictions.map { Candidate(text: $0, tapCount: 0, syllables: [], corrected: false, score: 0) }
-        candidateBar.update(preedit: "", candidates: cands, prediction: true)
-        result = Decoder.Result(candidates: cands, preedit: "")
-    }
-
-    private func clearPredictions() {
-        guard !predictions.isEmpty else { return }
-        predictions = []
-        if taps.isEmpty {
-            result = nil
-            candidateBar.update(preedit: "", candidates: [])
-            showGrid(false)
-        }
+        select(i)
     }
 
     // MARK: - Panels

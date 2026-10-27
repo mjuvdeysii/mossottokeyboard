@@ -32,6 +32,10 @@ if let v = env["SIG"].flatMap(Double.init) { model.sigmaX = v; model.sigmaY = v 
 if let v = env["WP"].flatMap(Double.init) { decoder.wordPenalty = v }
 if env["SCHEME"] == "quanpin" { decoder.scheme = .quanpin }
 if let v = env["ABBR"].flatMap(Double.init) { decoder.abbreviationPenalty = v }
+if let v = env["UW"].flatMap(Double.init) { decoder.userWeight = v }
+if let v = env["UC"].flatMap(Double.init) { decoder.userCap = v }
+if let v = env["UP"].flatMap(Double.init) { decoder.userPhraseScore = v }
+if let v = env["UB"].flatMap(Double.init) { decoder.userWordBoost = v }
 
 
 func codeLetters(_ ids: [UInt16]) -> String {
@@ -83,10 +87,6 @@ case "entype":
     let taps = (args.count > 3 ? args[3] : "").map { Tap.exact($0) }
     print("autocorrect:", ed.autocorrection(taps)?.text ?? "-")
     for s in ed.suggestions(taps) { print(String(format: "%7.2f", s.score), s.text, s.corrected ? "[corrected]" : "", s.completion ? "[completion]" : "") }
-
-case "predict":
-    let pr = try Predictor(path: args[1].replacingOccurrences(of: "lexicon.bin", with: "predictions.bin"))
-    for w in args[3...] { print(w, "→", pr.predict(after: w)) }
 
 case "codes":
     for s in lex.syllables { print(s, XiaoheScheme.code(for: s) ?? "-") }
@@ -207,6 +207,56 @@ case "bench", "gate":
         }
     }
 
+    // Learning, as a user would teach it: type each sentence; when the first candidate is not what was meant, pick the
+    // longest candidate that is (as the keyboard learns from picks), repeating until the sentence is in.
+    //   learn.picks  — candidate picks per sentence on the first pass (1.0 = space was enough every time)
+    //   learn.same   — the same sentences typed again: right first time (%)
+    //   learn.heldout — sentences never typed, after learning the others: right first time (%), against
+    //   learn.base   — the same held-out sentences with nothing learned (learning must not make them worse)
+    do {
+        decoder.correctionEnabled = true
+        func typeIn(_ t: String, _ ids: [UInt16], _ ud: UserDictionary) -> Int {
+            var taps = codeLetters(ids).map { Tap.exact($0) }
+            var rest = Substring(t)
+            var picks = 0
+            var parts: [(String, [UInt16])] = []
+            while !taps.isEmpty, picks < 20 {
+                let r = decoder.decode(taps)
+                guard let c = r.candidates.first(where: { $0.tapCount > 0 && !$0.syllables.isEmpty && rest.hasPrefix($0.text) }) else { break }
+                if r.candidates.first?.text != c.text || picks > 0 || c.tapCount < taps.count { picks += 1 }
+                ud.learn(syllables: c.syllables, text: c.text)
+                parts.append((c.text, c.syllables))
+                rest = rest.dropFirst(c.text.count)
+                taps.removeFirst(c.tapCount)
+            }
+            ud.learn(parts: parts.map { (text: $0.0, ids: $0.1) })
+            return max(1, picks)
+        }
+        func firstTime(_ set: ArraySlice<(String, [UInt16])>) -> Double {
+            var ok = 0
+            for (t, ids) in set {
+                let top = decoder.decode(codeLetters(ids).map { Tap.exact($0) }).candidates.first?.text
+                if top == t { ok += 1 } else if env["LEARN_DEBUG"] != nil { print("  ", t, "→", top ?? "") }
+            }
+            return 100 * Double(ok) / Double(set.count)
+        }
+        let half = sentItems.count / 2
+        decoder.user = nil
+        metrics["learn.base"] = firstTime(sentItems[half...])
+        let ud = UserDictionary(lexicon: lex, url: nil)
+        decoder.user = ud
+        var picks = 0
+        for (t, ids) in sentItems[..<half] { picks += typeIn(t, ids, ud) }
+        metrics["learn.heldout"] = firstTime(sentItems[half...])
+        for (t, ids) in sentItems[half...] { picks += typeIn(t, ids, ud) }
+        metrics["learn.picks"] = Double(picks) / Double(sentItems.count)
+        metrics["learn.same"] = firstTime(sentItems[...])
+        metrics["learn.harm"] = metrics["learn.base"]! - metrics["learn.heldout"]!
+        decoder.user = nil
+        print(String(format: "== learning: picks/sentence %.2f | typed again %.1f%% | unseen after learning %.1f%% (nothing learned %.1f%%)",
+                     metrics["learn.picks"]!, metrics["learn.same"]!, metrics["learn.heldout"]!, metrics["learn.base"]!))
+    }
+
     if let en = decoder.english, decoder.scheme == .xiaohe {
         let m = englishBench(EnglishDecoder(lexicon: en))
         for (k, v) in m { metrics[k] = v }
@@ -227,6 +277,8 @@ case "bench", "gate":
             ("t9.words.top1", 47.0, true),     // 九宫格 (each key = its 3–4 letters), perfect keys
             ("t9.sentences.top3", 45.0, true),
             ("t9.sentences.ms", 20.0, false),
+            ("learn.same", 95.0, true),        // sentences typed again after picking them once (%)
+            ("learn.harm", 1.0, false),        // unseen sentences made worse by what was learned (points) — at most
         ] : [
             ("words.on", 97.0, true),
             ("words.broken", 1.0, false),
@@ -236,6 +288,8 @@ case "bench", "gate":
             ("t9.words.top1", 63.0, true),
             ("t9.sentences.top1", 62.0, true),
             ("t9.sentences.ms", 150.0, false),
+            ("learn.same", 95.0, true),
+            ("learn.harm", 1.0, false),
         ]
         print("scheme:", decoder.scheme == .xiaohe ? "小鹤双拼" : "全拼")
         var failed = false

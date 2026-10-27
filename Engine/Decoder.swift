@@ -39,7 +39,16 @@ public final class Decoder {
     public var spatialWeight = 1.0
     public var correctionPenalty = 1.5
     public var wordPenalty = 22.0
-    public var userBonus = 4.0
+    /// What learning adds. A word the lexicon has gets its own frequency plus  userWeight·ln(1 + times picked),
+    /// at most `userCap` (a single character at most a quarter of it) — so picking 得 once in 过得 lifts 得 a little
+    /// without pushing 的 out of every other sentence. A phrase of the user's own (not in the lexicon) starts from
+    /// `userPhraseScore`, an ordinary word's frequency.
+    public var userWeight = 2.0
+    public var userCap = 8.0
+    /// A word of two or more syllables the user picked starts this much ahead (a picked word should come first next
+    /// time; homophone words rarely collide the way single characters do).
+    public var userWordBoost = 3.0
+    public var userPhraseScore = 9.0
     /// 中英混输: English words for the typed letters, ranked against the Chinese readings by frequency.
     public var english: EnglishLexicon?
     public var englishEnabled = true
@@ -412,7 +421,9 @@ public final class Decoder {
                         let L = u.ids.count
                         if first.kind == 2 && L == 1 { continue }
                         if first.kind == 1 && L > 1 { continue }
-                        let base = log(Double(u.count) + 1) * 2 + userBonus - 8
+                        let gain = L == 1 ? min(userCap / 4, userWeight * log(1 + Double(u.count)))
+                                          : min(userCap, userWordBoost + userWeight * log(1 + Double(u.count)))
+                        let base = (u.lex.map { Double($0) / 100 } ?? userPhraseScore) - wordPenalty + gain
                         chains({ u.ids[$0] }, count: L, first: first, base: base) { end, sp, corr, cuts, kinds in
                             insert(Edge(start: i, end: end, score: base + sp, corrected: corr, entry: -1, userText: u.text,
                                         ids: u.ids, cuts: cuts, kinds: kinds))
@@ -593,17 +604,6 @@ public final class Decoder {
 }
 
 public extension Decoder {
-    /// Correction strength presets exposed in settings.
-    enum Strength: Int, CaseIterable { case conservative = 0, standard = 1, aggressive = 2 }
-
-    func apply(strength: Strength) {
-        switch strength {
-        case .conservative: correctionPenalty = 2.5
-        case .standard: correctionPenalty = 1.5
-        case .aggressive: correctionPenalty = 0.8
-        }
-    }
-
     /// The key sequence a candidate stands for (used to learn the personal touch offset).
     func keys(for candidate: Candidate) -> [Character] { candidate.intendedKeys }
 }

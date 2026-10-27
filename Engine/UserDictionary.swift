@@ -10,7 +10,9 @@ public final class UserDictionary {
     }
 
     private var items: [String: Item] = [:]
-    private var byFirst: [UInt16: [(ids: [UInt16], key: String)]] = [:]
+    /// Per first syllable: the learned items, with the lexicon's own score for the same word (nil for words the
+    /// lexicon does not have — the user's own phrases).
+    private var byFirst: [UInt16: [(ids: [UInt16], key: String, lex: Int16?)]] = [:]
     private let lexicon: Lexicon
     private let url: URL?
     private var dirty = false
@@ -34,15 +36,15 @@ public final class UserDictionary {
         for (k, it) in items {
             let ids = it.p.compactMap { idMap[$0] }
             guard ids.count == it.p.count, let f = ids.first else { continue }
-            byFirst[f, default: []].append((ids, k))
+            byFirst[f, default: []].append((ids, k, lexicon.score(of: ids, text: it.t)))
         }
     }
 
     public var count: Int { items.count }
 
-    func candidates(first: UInt16) -> [(ids: [UInt16], text: String, count: Int)] {
+    func candidates(first: UInt16) -> [(ids: [UInt16], text: String, count: Int, lex: Int16?)] {
         guard let list = byFirst[first] else { return [] }
-        return list.compactMap { e in items[e.key].map { (e.ids, $0.t, $0.c) } }
+        return list.compactMap { e in items[e.key].map { (e.ids, $0.t, $0.c, e.lex) } }
     }
 
     public func learn(syllables ids: [UInt16], text: String) {
@@ -56,10 +58,24 @@ public final class UserDictionary {
             items[k] = it
         } else {
             items[k] = Item(p: p, t: text, c: 1, u: now)
-            byFirst[ids[0], default: []].append((ids, k))
+            byFirst[ids[0], default: []].append((ids, k, lexicon.score(of: ids, text: text)))
         }
         if items.count > maxItems { prune() }
         dirty = true
+    }
+
+    /// A sentence committed in several picks: remember how its pieces go together — the whole of it when it is short
+    /// enough (≤ 8 syllables), else each neighbouring pair of pieces — so it comes out in one go next time.
+    public func learn(parts: [(text: String, ids: [UInt16])]) {
+        guard parts.count > 1 else { return }
+        let all = parts.flatMap { $0.ids }
+        if all.count <= 8 {
+            learn(syllables: all, text: parts.map { $0.text }.joined())
+            return
+        }
+        for (a, b) in zip(parts, parts.dropFirst()) where a.ids.count + b.ids.count <= 8 {
+            learn(syllables: a.ids + b.ids, text: a.text + b.text)
+        }
     }
 
     public func contains(syllables ids: [UInt16], text: String) -> Bool {

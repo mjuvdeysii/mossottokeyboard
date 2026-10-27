@@ -138,10 +138,16 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         }
         // the last tab: Mosto's face (his 颜文字)
         let mosto = UIButton(type: .custom)
-        let face = UIImage(named: "mosto_day", in: Bundle(for: EmojiPanelView.self), with: nil)
-        mosto.setImage(face, for: .normal)
-        mosto.imageView?.contentMode = .scaleAspectFit
-        mosto.imageEdgeInsets = UIEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)
+        // drawn at the size of the other tab icons (a 24 pt face), so the button needs no insets
+        if let face = UIImage(named: "mosto_day", in: Bundle(for: EmojiPanelView.self), with: nil) {
+            let side: CGFloat = 24
+            let small = UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { _ in
+                let scale = min(side / face.size.width, side / face.size.height)
+                let w = face.size.width * scale, h = face.size.height * scale
+                face.draw(in: CGRect(x: (side - w) / 2, y: (side - h) / 2, width: w, height: h))
+            }
+            mosto.setImage(small, for: .normal)
+        }
         mosto.tag = Self.categoryNames.count + 1
         mosto.accessibilityLabel = Self.kaomojiName
         mosto.layer.cornerRadius = 7

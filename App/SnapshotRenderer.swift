@@ -32,7 +32,6 @@ enum SnapshotRenderer {
         let shots: [Shot] = [
             Shot(name: "letters_idle", page: .letters, state: "idle", borders: true, panel: nil),
             Shot(name: "letters_composing", page: .letters, state: "composing", borders: true, panel: nil),
-            Shot(name: "letters_predict", page: .letters, state: "predict", borders: true, panel: nil),
             Shot(name: "letters_shift", page: .letters, state: "shift", borders: true, panel: nil),
             Shot(name: "numbers", page: .numbers, state: "idle", borders: true, panel: nil),
             Shot(name: "symbols", page: .symbols, state: "idle", borders: true, panel: nil),
@@ -40,7 +39,6 @@ enum SnapshotRenderer {
             Shot(name: "t9_idle", page: .letters, state: "idle", borders: true, panel: nil),
             Shot(name: "t9_composing", page: .letters, state: "composing", borders: true, panel: nil),
             Shot(name: "numpad_press_5", page: .numpad, state: "idle", borders: true, panel: "press:5"),
-            Shot(name: "letters_gboard_borderless", page: .letters, state: "composing", borders: false, panel: nil),
             Shot(name: "grid", page: .letters, state: "composing", borders: true, panel: "grid"),
             Shot(name: "settings", page: .letters, state: "idle", borders: true, panel: "settings"),
             Shot(name: "settings_full", page: .letters, state: "idle", borders: true, panel: "settings_full"),

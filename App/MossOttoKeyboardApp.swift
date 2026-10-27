@@ -78,7 +78,7 @@ struct HomeContent: View {
                             Usage(icon: "character.cursor.ibeam", text: "英文模式（中/英 切到“英”）也按触点纠错并给出候选：teh → the、dont → don't、im → I'm；空格时替换，删除可撤回；首字母自动大写，双击空格出句号。")
                             Usage(icon: "chevron.down", text: "候选栏右侧 ⌄ 展开全部候选；长按自己学过的词可以删掉它。")
                             Usage(icon: "arrow.left.and.right", text: "按住空格左右拖动移动光标。数字和符号在 123（九宫格数字键盘）与 #+= 页；长按 ， 可选 。？！、…：")
-                            Usage(icon: "face.smiling", text: "😊 表情：常用与八个分类，上下滑动，底栏一点跳到分类。按住 😊 打开键盘设置：输入方案、九宫格、自动纠错、联想（默认关闭）、震动与按键音、外观等。")
+                            Usage(icon: "face.smiling", text: "😊 表情：常用与八个分类，上下滑动，底栏一点跳到分类。按住 😊 打开键盘设置：输入方案、九宫格、中英混输、自动纠错、震动与按键音、外观。")
                             Usage(icon: "circle.lefthalf.filled", text: "外观：自动跟随系统浅色 / 深色；也可固定日光或夜灯。")
                         }
                         Card(title: "Mosto 的两种光") {

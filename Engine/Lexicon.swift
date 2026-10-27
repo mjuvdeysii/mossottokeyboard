@@ -169,6 +169,23 @@ public final class Lexicon {
     }
     private var pairCache: [Int32] = []
 
+    /// The lexicon's own score for this word (text and syllables), if it has it.
+    public func score(of ids: [UInt16], text: String) -> Int16? {
+        guard let f = ids.first else { return nil }
+        let candidates: [Int]
+        if ids.count == 1 {
+            candidates = singles(f)
+        } else {
+            let r = followers(first: f, second: ids[1])
+            candidates = Array(ids.count == 2 ? r.pairs : r.longer)
+        }
+        for i in candidates {
+            let e = entry(i)
+            if e.sylCount == ids.count, self.text(e) == text, syllableIDs(e) == ids { return e.score }
+        }
+        return nil
+    }
+
     public func id(of syllable: String) -> UInt16? {
         syllables.firstIndex(of: syllable).map { UInt16($0) }
     }

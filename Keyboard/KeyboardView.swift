@@ -451,8 +451,18 @@ final class KeyboardView: UIView {
             return o.hitTest(convert(point, to: o), with: event)
         }
         if let g = globeButton, g.frame.contains(point) { return g }
-        return bounds.contains(point) ? self : nil
+        guard bounds.contains(point) else { return nil }
+        // The band above the top row overlaps the bottom of the candidate strip. Its lower 8 pt always types; the
+        // rest types while the user is typing (a key went down in the last 0.4 s — a fast finger landing high) or
+        // when the strip has nothing to tap; otherwise the touch goes to the candidate under it.
+        if point.y < topReach - 8, CACurrentMediaTime() - lastKeyDown > 0.4, !(stripIsEmpty?() ?? true) { return nil }
+        return self
     }
+
+    /// When the last key went down (see hitTest).
+    private var lastKeyDown: CFTimeInterval = 0
+    /// Whether the candidate strip above has nothing to tap.
+    var stripIsEmpty: (() -> Bool)?
 
     // MARK: - Touches
 
@@ -478,6 +488,7 @@ final class KeyboardView: UIView {
             touchOrder.append(id)
             let kv = keyViews[idx]
             kv.pressed = true
+            lastKeyDown = CACurrentMediaTime()
             onKeyDown?(kv.spec.action)
             switch kv.spec.action {
             case .char:
