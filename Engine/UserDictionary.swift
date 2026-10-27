@@ -62,6 +62,10 @@ public final class UserDictionary {
         dirty = true
     }
 
+    public func contains(syllables ids: [UInt16], text: String) -> Bool {
+        items[Self.key(ids.map { lexicon.syllables[Int($0)] }, text)] != nil
+    }
+
     /// Take back one commit (an undone auto-correction): the count drops by one, the entry goes at zero.
     public func unlearn(syllables ids: [UInt16], text: String) {
         let k = Self.key(ids.map { lexicon.syllables[Int($0)] }, text)

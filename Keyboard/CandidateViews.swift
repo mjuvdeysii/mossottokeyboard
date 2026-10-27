@@ -6,8 +6,12 @@ final class CandidateBarView: UIView {
     var onSelect: ((Int) -> Void)?
     var onExpand: (() -> Void)?
     var onSettings: (() -> Void)?
+    /// Long press on a candidate (to offer removing a learned word).
+    var onLongPress: ((Int) -> Void)?
 
     private let preedit = UILabel()
+    private var longPressTimer: Timer?
+    private var longPressed = false
     private let row = UIView()
     private let expandButton = UIButton(type: .system)
     let mosto = MostoView()
@@ -105,11 +109,23 @@ final class CandidateBarView: UIView {
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let t = touches.first else { return }
         pressedIndex = candidateIndex(at: t.location(in: self))
+        longPressed = false
+        longPressTimer?.invalidate()
+        if let idx = pressedIndex, !isPrediction {
+            longPressTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
+                guard let self, self.pressedIndex == idx else { return }
+                self.longPressed = true
+                self.pressedIndex = nil
+                self.setNeedsLayout()
+                self.onLongPress?(idx)
+            }
+        }
         setNeedsLayout()
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard let t = touches.first else { return }
+        longPressTimer?.invalidate()
+        guard let t = touches.first, !longPressed else { longPressed = false; return }
         let idx = candidateIndex(at: t.location(in: self))
         let was = pressedIndex
         pressedIndex = nil
@@ -118,8 +134,37 @@ final class CandidateBarView: UIView {
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        longPressTimer?.invalidate()
         pressedIndex = nil
         setNeedsLayout()
+    }
+
+    // MARK: - Remove a learned word
+
+    private var forgetButton: UIButton?
+
+    /// A one-tap confirmation over the candidate row: "删除已学词语「…」". Any other touch dismisses it.
+    func offerForget(_ text: String, confirm: @escaping () -> Void) {
+        dismissForget()
+        var cfg = UIButton.Configuration.filled()
+        cfg.title = "删除已学词语「\(text)」"
+        cfg.baseBackgroundColor = .systemRed
+        cfg.baseForegroundColor = .white
+        cfg.cornerStyle = .capsule
+        cfg.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 14, bottom: 6, trailing: 14)
+        let b = UIButton(configuration: cfg, primaryAction: UIAction { [weak self] _ in confirm(); self?.dismissForget() })
+        b.sizeToFit()
+        b.frame.origin = CGPoint(x: 10, y: (bounds.height - b.bounds.height) / 2 + 4)
+        addSubview(b)
+        forgetButton = b
+        Timer.scheduledTimer(withTimeInterval: 4, repeats: false) { [weak self, weak b] _ in
+            if let b, self?.forgetButton === b { self?.dismissForget() }
+        }
+    }
+
+    func dismissForget() {
+        forgetButton?.removeFromSuperview()
+        forgetButton = nil
     }
 }
 

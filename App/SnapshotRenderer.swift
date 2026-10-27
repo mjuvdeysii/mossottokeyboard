@@ -44,6 +44,7 @@ enum SnapshotRenderer {
             Shot(name: "press_g", page: .letters, state: "composing", borders: true, panel: "press:g"),
             Shot(name: "press_q", page: .letters, state: "composing", borders: true, panel: "press:q"),
             Shot(name: "cursor_drag", page: .letters, state: "idle", borders: true, panel: "cursor"),
+            Shot(name: "forget_word", page: .letters, state: "composing", borders: true, panel: "forget"),
             Shot(name: "press_comma_numbers", page: .numbers, state: "idle", borders: true, panel: "press:，"),
         ]
         for night in [false, true] {
@@ -76,6 +77,8 @@ enum SnapshotRenderer {
                 if let panel = shot.panel, panel.hasPrefix("press:") {
                     kb.layoutIfNeeded()
                     kb.demoPress(String(panel.dropFirst(6)))
+                } else if shot.panel == "forget" {
+                    bar.offerForget("尼好") {}
                 } else if shot.panel == "cursor" {
                     kb.layoutIfNeeded()
                     kb.demoCursorMode()

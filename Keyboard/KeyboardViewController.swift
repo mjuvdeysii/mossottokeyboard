@@ -65,6 +65,7 @@ final class KeyboardViewController: UIInputViewController {
 
         candidateBar.onSelect = { [weak self] i in self?.candidateTapped(i) }
         candidateBar.onExpand = { [weak self] in self?.showGrid(true) }
+        candidateBar.onLongPress = { [weak self] i in self?.offerForget(i) }
         candidateBar.onSettings = { [weak self] in self?.showSettings(true) }
         grid.onSelect = { [weak self] i in self?.showGrid(false); self?.candidateTapped(i) }
         grid.onClose = { [weak self] in self?.showGrid(false) }
@@ -269,6 +270,7 @@ final class KeyboardViewController: UIInputViewController {
     // MARK: - Key handling
 
     private func handle(_ action: KeyAction, tap: Tap?) {
+        candidateBar.dismissForget()
         let undo = undoable
         undoable = nil
         if action == .delete, let undo, undoCorrection(undo) { return }
@@ -443,6 +445,19 @@ final class KeyboardViewController: UIInputViewController {
         refresh()
         decoder.correctionEnabled = was
         return true
+    }
+
+    /// Long press on a candidate this user taught the keyboard: offer to remove it from what was learned.
+    /// Words from the built-in lexicon cannot be removed, so nothing is offered for them.
+    private func offerForget(_ i: Int) {
+        guard let r = result, i < r.candidates.count, let userDict else { return }
+        let c = r.candidates[i]
+        guard !c.syllables.isEmpty, userDict.contains(syllables: c.syllables, text: c.text) else { return }
+        candidateBar.offerForget(c.text) { [weak self] in
+            self?.userDict?.forget(syllables: c.syllables, text: c.text)
+            self?.userDict?.save()
+            if self?.taps.isEmpty == false { self?.refresh() }
+        }
     }
 
     private func commitAll() {
