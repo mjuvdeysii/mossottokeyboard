@@ -257,6 +257,7 @@ final class SettingsPanelView: UIView {
         let done = UIButton(type: .system)
         done.setTitle("完成", for: .normal)
         done.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
+        done.tintColor = Theme.accentKey
         done.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
         let header = UIStackView(arrangedSubviews: [title, UIView(), done])
         stack.addArrangedSubview(header)
@@ -287,6 +288,7 @@ final class SettingsPanelView: UIView {
         note.textColor = Theme.secondaryText
         stack.addArrangedSubview(note)
 
+        for s in [correctionSwitch, feedbackSwitch, bordersSwitch, predictionSwitch] { s.onTintColor = Theme.accentKey }
         schemeControl.addTarget(self, action: #selector(changed), for: .valueChanged)
         correctionSwitch.addTarget(self, action: #selector(changed), for: .valueChanged)
         strength.addTarget(self, action: #selector(changed), for: .valueChanged)

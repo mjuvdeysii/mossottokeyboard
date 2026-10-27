@@ -192,8 +192,8 @@ enum Theme {
     static let functionKey = dyn(UIColor(white: 0, alpha: 0.11), UIColor(white: 1, alpha: 0.09))
     static let keyHighlight = dyn(UIColor(white: 1, alpha: 0.75), UIColor(white: 1, alpha: 0.18))
     static let bubble = dyn(.white, hex(0x2C3766))
-    /// Brand teal by day (Moss & Otto #0B7D74); the lamp's amber at night.
-    static let accentKey = dyn(hex(0x0B7D74), hex(0xFFC66E))
+    /// Mosto's colours: its deep lavender by day (the wings, #5B45B0), the gold of its glow at night.
+    static let accentKey = dyn(hex(0x5B45B0), hex(0xFFC66E))
     static let accentText = dyn(.white, hex(0x1C1D19))
     static let keyText = dyn(hex(0x1C1D19), hex(0xF4EBDD))
     static let keyShadow = dyn(UIColor(white: 0, alpha: 0.16), UIColor(white: 0, alpha: 0))

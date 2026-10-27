@@ -50,6 +50,9 @@ struct ContentView: View {
                 }
             }
             .navigationTitle("小鹤双拼键盘")
+            .tint(Color(UIColor { $0.userInterfaceStyle == .dark   // Mosto's lavender, as in the keyboard
+                ? UIColor(red: 0xBB / 255, green: 0xA8 / 255, blue: 0xF2 / 255, alpha: 1)
+                : UIColor(red: 0x5B / 255, green: 0x45 / 255, blue: 0xB0 / 255, alpha: 1) }))
             .task {
                 // CI only: render the keyboard's real views to PNGs, then exit (SnapshotRenderer.swift)
                 if SnapshotRenderer.requested,
