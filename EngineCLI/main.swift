@@ -224,7 +224,7 @@ case "bench", "gate":
             ("en.top3", 98.0, true),            // English: the word among the first three suggestions (%)
             ("t9.words.top1", 48.0, true),     // 九宫格 (each key = its 3–4 letters), perfect keys
             ("t9.sentences.top3", 33.0, true),
-            ("t9.sentences.ms", 40.0, false),
+            ("t9.sentences.ms", 20.0, false),
         ] : [
             ("words.on", 97.0, true),
             ("words.broken", 1.0, false),
@@ -233,7 +233,7 @@ case "bench", "gate":
             ("sentences.ms", 16.0, false),     // CI runners vary 2–5× (2.3 ms locally)
             ("t9.words.top1", 65.0, true),
             ("t9.sentences.top1", 50.0, true),
-            ("t9.sentences.ms", 300.0, false),
+            ("t9.sentences.ms", 150.0, false),
         ]
         print("scheme:", decoder.scheme == .xiaohe ? "小鹤双拼" : "全拼")
         var failed = false

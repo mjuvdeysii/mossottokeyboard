@@ -53,7 +53,10 @@ enum SnapshotRenderer {
             Shot(name: "forced_light", page: .letters, state: "composing", borders: true, panel: "forced"),
             Shot(name: "forget_word", page: .letters, state: "composing", borders: true, panel: "forget"),
             Shot(name: "press_comma_numbers", page: .numbers, state: "idle", borders: true, panel: "press:，"),
+            Shot(name: "emoji", page: .letters, state: "idle", borders: true, panel: "emoji"),
         ]
+        // 表情 opens on 常用 when something was used: a few, as after some use
+        for e in ["👍", "😭", "❤️", "🙏", "😂"] { EmojiPanelView.remember(e) }
         for night in [false, true] {
             for shot in shots {
                 // settings_full: the whole settings list at once (a tall frame), to review every section
@@ -128,6 +131,13 @@ enum SnapshotRenderer {
                     popup.frame.origin = CGPoint(x: x, y: key.minY - popup.frame.height - 4)
                     popup.selected = 1
                     kb.addSubview(popup)
+                } else if shot.panel == "emoji" {
+                    let panel = EmojiPanelView(frame: root.bounds)
+                    root.addSubview(panel)
+                    kb.isHidden = true; bar.isHidden = true   // as in the keyboard: the emoji page covers both
+                    panel.setChinese(true)
+                    panel.layoutIfNeeded()
+                    panel.load()
                 } else if shot.panel == "settings" || shot.panel == "settings_full" {
                     let panel = SettingsPanelView(frame: root.bounds)
                     root.addSubview(panel)

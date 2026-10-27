@@ -19,6 +19,8 @@ enum KeyAction: Equatable {
     case clearInput
     /// Held delete, after a while: a word at a time (two Chinese characters, or a Latin word with its space).
     case deleteWord
+    /// 表情: the emoji page. Held, it opens the keyboard settings instead (as Gboard's emoji key).
+    case emoji
 }
 
 enum KeyStyle { case normal, function, accent }
@@ -89,12 +91,15 @@ enum Layouts {
         }
     }
 
-    /// Second and third keys of every bottom row: settings (or the system globe when the
-    /// device needs it) and the 中/英 switch, in Gboard's settings / emoji positions.
+    /// The emoji key: 表情 on a tap, the keyboard settings on a long press (as on Gboard).
+    static let emojiKey = KeySpec(action: .emoji, label: "", symbol: "face.smiling", width: 1, style: .function)
+
+    /// Second and third keys of every bottom row: 表情 (or the system globe when the device needs it) and the 中/英
+    /// switch, where the iOS and Gboard keyboards have them.
     private static func middleKeys(_ ctx: LayoutContext) -> [KeySpec] {
         let first = ctx.showGlobe
             ? KeySpec(action: .globe, label: "", symbol: "globe", width: 1, style: .function)
-            : KeySpec(action: .settings, label: "", symbol: "gearshape", width: 1, style: .function)
+            : emojiKey
         return [first, KeySpec(action: .toggleLanguage, label: ctx.chinese ? "中" : "英", width: 1, style: .function)]
     }
 
@@ -175,7 +180,7 @@ enum Layouts {
         let row3 = [p("？", "！"), k("7", "PQRS"), k("8", "TUV"), k("9", "WXYZ"), returnKey(ctx, width: side, wide: true)]
         let gear = ctx.showGlobe
             ? KeySpec(action: .globe, label: "", symbol: "globe", width: 1, style: .function)
-            : KeySpec(action: .settings, label: "", symbol: "gearshape", width: 1, style: .function)
+            : emojiKey
         let row4 = [KeySpec(action: .page(ctx.numberGrid ? .numpad : .numbers), label: "123", width: side, style: .function),
                     gear,
                     KeySpec(action: .page(.symbols), label: "符号", width: mid - 1 + 0.27, style: .function),

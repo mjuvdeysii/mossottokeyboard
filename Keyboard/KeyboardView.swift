@@ -82,6 +82,7 @@ final class KeyView: UIView {
         case .ret: return spec.label.isEmpty ? "换行" : spec.label
         case .globe: return "下一个键盘"
         case .settings: return "键盘设置"
+        case .emoji: return "表情，按住打开键盘设置"
         case .toggleLanguage: return spec.label == "中" ? "中文，轻点切换到英文" : "英文，轻点切换到中文"
         case .t9(let d): return d == "'" ? "分词" : "\(d)，\(spec.label)"
         case .deleteWord: return "删除词"
@@ -495,6 +496,13 @@ final class KeyboardView: UIView {
                 }
             case .shift:
                 onAction?(.shift, nil)
+            case .emoji:
+                // held: the keyboard settings (and the tap that follows is not an emoji tap)
+                tr.longPressTimer = Timer.scheduledTimer(withTimeInterval: 0.45, repeats: false) { [weak self, weak tr] _ in
+                    guard let self, let tr else { return }
+                    tr.altShown = true
+                    self.onAction?(.settings, nil)
+                }
             default:
                 break
             }
@@ -634,6 +642,8 @@ final class KeyboardView: UIView {
             if !tr.dragging { onAction?(.space, nil) }
         case .delete, .shift, .globe:
             break
+        case .emoji:
+            if !tr.altShown { onAction?(.emoji, nil) }
         default:
             onAction?(kv.spec.action, nil)
         }

@@ -308,6 +308,7 @@ final class SettingsPanelView: UIView {
     private let numberControl = UISegmentedControl(items: ["九宫格", "全键盘"])
     private let bordersSwitch = UISwitch()
     private let feedbackSwitch = UISwitch()
+    private let soundSwitch = UISwitch()
     private let appearance = UISegmentedControl(items: ["自动", "日光", "夜灯"])
     private let learnedLabel = UILabel()
     private let diagLabel = UILabel()
@@ -370,8 +371,9 @@ final class SettingsPanelView: UIView {
         section("键盘", rows: [
             row("数字键盘", numberControl),
             row("显示键帽", bordersSwitch),
-            row("按键震动与按键音", feedbackSwitch),
-        ], footer: nil)
+            row("按键震动", feedbackSwitch),
+            row("按键音", soundSwitch),
+        ], footer: "震动与按键音在按下的一瞬间发出（与系统键盘一样）；按键音跟随静音开关。")
         section("外观", rows: [row("外观", appearance)], footer: "自动：跟随系统的浅色 / 深色模式。夜灯：深夜蓝底色，Mosto 待在候选栏左边，尾巴尖亮起金光。")
 
         learnedLabel.font = .systemFont(ofSize: 15)
@@ -398,7 +400,7 @@ final class SettingsPanelView: UIView {
             c.addTarget(self, action: #selector(changed), for: .valueChanged)
             c.setContentHuggingPriority(.required, for: .horizontal)
         }
-        for sw in [englishSwitch, predictionSwitch, correctionSwitch, bordersSwitch, feedbackSwitch] {
+        for sw in [englishSwitch, predictionSwitch, correctionSwitch, bordersSwitch, feedbackSwitch, soundSwitch] {
             sw.addTarget(self, action: #selector(changed), for: .valueChanged)
         }
         load()
@@ -528,6 +530,7 @@ final class SettingsPanelView: UIView {
         numberControl.selectedSegmentIndex = s.numberGrid ? 0 : 1
         bordersSwitch.isOn = s.keyBorders
         feedbackSwitch.isOn = s.feedback
+        soundSwitch.isOn = s.keySound
         appearance.selectedSegmentIndex = s.appearance
     }
 
@@ -547,6 +550,7 @@ final class SettingsPanelView: UIView {
         s.numberGrid = numberControl.selectedSegmentIndex == 0
         s.keyBorders = bordersSwitch.isOn
         s.feedback = feedbackSwitch.isOn
+        s.keySound = soundSwitch.isOn
         s.appearance = appearance.selectedSegmentIndex
         strength.isEnabled = s.autocorrect
         updateStatus()
@@ -622,9 +626,16 @@ final class KeyboardSettings {
         get { min(d.object(forKey: "appearance") as? Int ?? 0, 3) % 3 }
         set { d.set(newValue, forKey: "appearance") }
     }
+    /// Haptic tap on key down (the key kept its old name: it used to switch sound and haptics together).
     var feedback: Bool {
         get { d.object(forKey: "feedback") as? Bool ?? true }
         set { d.set(newValue, forKey: "feedback") }
+    }
+    /// The system keyboard's click sounds on key down (follow the ring / silent switch). Until set on its own it
+    /// follows the old combined switch.
+    var keySound: Bool {
+        get { d.object(forKey: "keySound") as? Bool ?? feedback }
+        set { d.set(newValue, forKey: "keySound") }
     }
     var touchOffset: (Double, Double) {
         get { (d.double(forKey: "offsetX"), d.double(forKey: "offsetY")) }

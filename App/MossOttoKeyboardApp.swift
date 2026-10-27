@@ -54,7 +54,7 @@ struct HomeContent: View {
                             Divider()
                             Step(n: 2, text: "打字时长按或轻点 🌐，切换到 Mosto键盘。")
                             Divider()
-                            Step(n: 3, text: "（可选）在键盘列表中点 Mosto键盘，开启“允许完全访问”，就有震动和按键音。键盘本身不联网。")
+                            Step(n: 3, text: "（可选）在键盘列表中点 Mosto键盘，开启“允许完全访问”，就有按键震动和按键音。键盘本身不联网。")
                             Divider()
                             Button {
                                 if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
@@ -78,7 +78,7 @@ struct HomeContent: View {
                             Usage(icon: "character.cursor.ibeam", text: "英文模式（中/英 切到“英”）也按触点纠错并给出候选：teh → the、dont → don't、im → I'm；空格时替换，删除可撤回；首字母自动大写，双击空格出句号。")
                             Usage(icon: "chevron.down", text: "候选栏右侧 ⌄ 展开全部候选；长按自己学过的词可以删掉它。")
                             Usage(icon: "arrow.left.and.right", text: "按住空格左右拖动移动光标。数字和符号在 123（九宫格数字键盘）与 #+= 页；长按 ， 可选 。？！、…：")
-                            Usage(icon: "gearshape", text: "⚙︎ 打开键盘设置：输入方案、九宫格、自动纠错、联想（默认关闭）、外观等。")
+                            Usage(icon: "face.smiling", text: "😊 表情：常用与八个分类，上下滑动，底栏一点跳到分类。按住 😊 打开键盘设置：输入方案、九宫格、自动纠错、联想（默认关闭）、震动与按键音、外观等。")
                             Usage(icon: "circle.lefthalf.filled", text: "外观：自动跟随系统浅色 / 深色；也可固定日光或夜灯。")
                         }
                         Card(title: "Mosto 的两种光") {
@@ -222,6 +222,8 @@ struct AboutView: View {
                     License(name: "雾凇拼音 rime-ice（中文词库）", license: "GPL-3.0", url: "https://github.com/iDvel/rime-ice")
                     Divider()
                     License(name: "wordfreq（英文词频，中英混输）", license: "数据 CC BY-SA 4.0", url: "https://github.com/rspeer/wordfreq")
+                    Divider()
+                    License(name: "Emojibase（表情列表与分类）", license: "MIT", url: "https://github.com/milesj/emojibase")
                     Divider()
                     License(name: "Mosto键盘", license: "GPL-3.0", url: "https://github.com/mjuvdeysii/mossottokeyboard")
                 }

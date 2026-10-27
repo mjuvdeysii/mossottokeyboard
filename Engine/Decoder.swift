@@ -297,40 +297,60 @@ public final class Decoder {
         var has = [[Bool]](repeating: [Bool](repeating: false, count: lexicon.syllables.count), count: n + 1)
         for i in 0..<n { for s in spansFrom[i] { spanAt[i][s.id, default: []].append(s); has[i][Int(s.id)] = true } }
 
-        // Edge buckets keyed by (start, end)
+        // Edge buckets keyed by (start, end), each keeping its best `cap` words. `floor` is the score a new word must
+        // beat once a bucket is full, checked before an edge is even built (most candidate words never get in).
         var buckets: [Int: [Edge]] = [:]
+        var floor: [Int: Double] = [:]
         // 九宫格 input is far more ambiguous per key: keep more words per span
         let wide = taps.contains { $0.group } ? (scheme == .xiaohe ? 4 : 1) : 1
-        func cap(_ e: Edge) -> Int { (e.start == 0 ? (e.cuts.count == 1 ? 120 : 40) : 12) * wide }
+        @inline(__always) func cap(_ start: Int, _ syllables: Int) -> Int { (start == 0 ? (syllables == 1 ? 120 : 40) : 12) * wide }
+        // a one-syllable word at the start may join a bucket while it holds fewer than 120; any other word, fewer than
+        // its own cap — so each bucket has two bars, by the cap of the word asking
+        @inline(__always) func fkey(_ start: Int, _ end: Int, _ syllables: Int) -> Int {
+            (start * 1024 + end) * 2 + (start == 0 && syllables == 1 ? 1 : 0)
+        }
+        @inline(__always) func accepts(_ start: Int, _ end: Int, _ syllables: Int, _ score: Double) -> Bool {
+            score > (floor[fkey(start, end, syllables)] ?? -.infinity)
+        }
         func insert(_ e: Edge) {
             let key = e.start * 1024 + e.end
-            var list = buckets[key] ?? []
-            let c = cap(e)
+            var list = buckets.removeValue(forKey: key) ?? []
+            let c = cap(e.start, e.cuts.count)
             if list.count < c {
                 list.append(e)
             } else if let minIdx = list.indices.min(by: { list[$0].score < list[$1].score }), list[minIdx].score < e.score {
                 list[minIdx] = e
-            } else { return }
+            }
+            let low = list.count >= cap(e.start, 2) || list.count >= cap(e.start, 1) ? (list.map { $0.score }.min() ?? -.infinity) : -.infinity
+            if list.count >= cap(e.start, 2) { floor[fkey(e.start, e.end, 2)] = low }
+            if list.count >= cap(e.start, 1) { floor[fkey(e.start, e.end, 1)] = low }
             buckets[key] = list
         }
 
         // Match a syllable sequence (word) from a first span onwards; calls `found` for every complete chain.
-        func chains(_ syl: (Int) -> UInt16, count L: Int, first: Span,
+        // Depth-first with one shared path (no arrays built per step); only a chain that may enter a bucket is copied.
+        var cutBuf: [Int] = []
+        var kindBuf: [UInt8] = []
+        cutBuf.reserveCapacity(8); kindBuf.reserveCapacity(8)
+        func chains(_ syl: (Int) -> UInt16, count L: Int, first: Span, base: Double,
                     found: (_ end: Int, _ spatial: Double, _ corrected: Bool, _ cuts: [Int], _ kinds: [UInt8]) -> Void) {
-            var stack: [(k: Int, pos: Int, sp: Double, corr: Bool, cuts: [Int], kinds: [UInt8])] =
-                [(1, first.end, first.spatial, first.corrected, [first.end], [first.kind])]
-            while let top = stack.popLast() {
-                if top.k == L {
+            cutBuf.removeAll(keepingCapacity: true); kindBuf.removeAll(keepingCapacity: true)
+            cutBuf.append(first.end); kindBuf.append(first.kind)
+            func walk(_ k: Int, _ pos: Int, _ sp: Double, _ corr: Bool) {
+                if k == L {
                     // a word made only of abbreviations must be at least two syllables; one-syllable abbreviations are noise
-                    if !(L == 1 && top.kinds[0] == 2) { found(top.pos, top.sp, top.corr, top.cuts, top.kinds) }
-                    continue
+                    if L == 1 && kindBuf[0] == 2 { return }
+                    found(pos, sp, corr, cutBuf, kindBuf)
+                    return
                 }
-                guard top.pos < n, let next = spanAt[top.pos][syl(top.k)] else { continue }
+                guard pos < n, kindBuf.last != 1, let next = spanAt[pos][syl(k)] else { return }
                 for s in next {
-                    if top.kinds.last == 1 { continue }       // a half-typed syllable can only be the last one
-                    stack.append((top.k + 1, s.end, top.sp + s.spatial, top.corr || s.corrected, top.cuts + [s.end], top.kinds + [s.kind]))
+                    cutBuf.append(s.end); kindBuf.append(s.kind)
+                    walk(k + 1, s.end, sp + s.spatial, corr || s.corrected)
+                    cutBuf.removeLast(); kindBuf.removeLast()
                 }
             }
+            walk(1, first.end, first.spatial, first.corrected)
         }
 
         // Only start words where a chain of syllables from the beginning can arrive, and from where one can
@@ -342,30 +362,53 @@ public final class Decoder {
 
         for i in 0..<n where reach[i] {
             for first in spansFrom[i] {
-                // Fast path for the common cases; the full chain walk only when the second syllable can follow.
                 let firstEnd = first.end
-                func scan(_ idx: Int) {
-                    let e = lexicon.entry(idx)
-                    let L = e.sylCount
-                    if first.kind == 2 && L == 1 { return }
-                    if first.kind == 1 && L > 1 { return }
-                    let base = Double(e.score) / 100 - wordPenalty
-                    if L == 1 {
+                // Single characters (best first: stop at the first that no longer makes the cut). An abbreviation
+                // is never a one-character word.
+                if first.kind != 2 {
+                    for idx in lexicon.singles(first.id) {
+                        let base = Double(lexicon.entry(idx).score) / 100 - wordPenalty
+                        guard accepts(i, firstEnd, 1, base + first.spatial) else { break }
                         insert(Edge(start: i, end: firstEnd, score: base + first.spatial, corrected: first.corrected, entry: idx,
                                     userText: nil, ids: [], cuts: [firstEnd], kinds: [first.kind]))
-                        return
-                    }
-                    guard firstEnd < n, has[firstEnd][Int(lexicon.syllable(e, 1))] else { return }
-                    chains({ self.lexicon.syllable(e, $0) }, count: L, first: first) { end, sp, corr, cuts, kinds in
-                        insert(Edge(start: i, end: end, score: base + sp, corrected: corr, entry: idx, userText: nil,
-                                    ids: [], cuts: cuts, kinds: kinds))
                     }
                 }
-                // a half-typed syllable can only be a one-syllable word: walk just the single characters
-                if first.kind == 1 {
-                    for idx in lexicon.singles(first.id) { scan(idx) }
-                } else {
-                    for idx in lexicon.range(firstSyllable: first.id) { scan(idx) }
+                // Longer words only through the syllables that can start where this one ends (a half-typed syllable
+                // is always the last, so it starts no longer word).
+                let follow = first.kind != 1 && firstEnd < n ? lexicon.followers(of: first.id) : Lexicon.Followers()
+                for (sid, seconds) in first.kind != 1 && firstEnd < n ? spanAt[firstEnd] : [:] {
+                    // two-syllable words: each reading of the second syllable, the words best first
+                    if let list = follow.pairs[sid] {
+                        for s2 in seconds {
+                            let sp = first.spatial + s2.spatial
+                            let corr = first.corrected || s2.corrected
+                            for idx32 in list {
+                                let idx = Int(idx32)
+                                let base = Double(lexicon.entry(idx).score) / 100 - wordPenalty
+                                guard accepts(i, s2.end, 2, base + sp) else { break }
+                                insert(Edge(start: i, end: s2.end, score: base + sp, corrected: corr, entry: idx, userText: nil,
+                                            ids: [], cuts: [firstEnd, s2.end], kinds: [first.kind, s2.kind]))
+                            }
+                        }
+                    }
+                    // three syllables or more: walk the rest of the chain
+                    if let list = follow.longer[sid] {
+                        // where a third syllable could start; a word goes on only if its third can start at one of them
+                        let thirds = seconds.compactMap { $0.kind == 1 || $0.end >= n ? nil : $0.end }
+                        if thirds.isEmpty { continue }
+                        for idx32 in list {
+                            let idx = Int(idx32)
+                            let e = lexicon.entry(idx)
+                            let third = Int(lexicon.syllable(e, 2))
+                            guard thirds.contains(where: { has[$0][third] }) else { continue }
+                            let base = Double(e.score) / 100 - wordPenalty
+                            chains({ self.lexicon.syllable(e, $0) }, count: e.sylCount, first: first, base: base) { end, sp, corr, cuts, kinds in
+                                guard accepts(i, end, cuts.count, base + sp) else { return }
+                                insert(Edge(start: i, end: end, score: base + sp, corrected: corr, entry: idx, userText: nil,
+                                            ids: [], cuts: cuts, kinds: kinds))
+                            }
+                        }
+                    }
                 }
                 if let user {
                     for u in user.candidates(first: first.id) {
@@ -373,7 +416,7 @@ public final class Decoder {
                         if first.kind == 2 && L == 1 { continue }
                         if first.kind == 1 && L > 1 { continue }
                         let base = log(Double(u.count) + 1) * 2 + userBonus - 8
-                        chains({ u.ids[$0] }, count: L, first: first) { end, sp, corr, cuts, kinds in
+                        chains({ u.ids[$0] }, count: L, first: first, base: base) { end, sp, corr, cuts, kinds in
                             insert(Edge(start: i, end: end, score: base + sp, corrected: corr, entry: -1, userText: u.text,
                                         ids: u.ids, cuts: cuts, kinds: kinds))
                         }

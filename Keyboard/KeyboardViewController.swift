@@ -17,6 +17,7 @@ final class KeyboardViewController: UIInputViewController {
     private lazy var keyboard = KeyboardView(spatial: spatial)
     private let grid = CandidateGridView()
     private let settingsPanel = SettingsPanelView()
+    private lazy var emojiPanel: EmojiPanelView = makeEmojiPanel()
     private let syllablePicker = SyllablePickerView()
     private var syllableChoices: (start: Int, choices: [(text: String, keys: [Character])]) = (0, [])
     private var heightConstraint: NSLayoutConstraint?
@@ -38,6 +39,7 @@ final class KeyboardViewController: UIInputViewController {
     private var isNight = false
     /// Pinyin currently written into the host field as marked text.
     private var hasMarkedText = false
+    private var inlineMode = 0
 
     // English mode: the word being typed (its taps and the characters inserted), its suggestions and the
     // autocorrection space would apply; the last applied correction, which a delete right after takes back.
@@ -76,7 +78,7 @@ final class KeyboardViewController: UIInputViewController {
             let ch = d < 0 ? proxy.documentContextBeforeInput?.last : proxy.documentContextAfterInput?.first
             // some apps share no context: then step one unit and let the system clamp at the ends
             proxy.adjustTextPosition(byCharacterOffset: d * (ch?.utf16.count ?? 1))
-            if ch != nil, KeyboardSettings.shared.feedback, self.hasFullAccess { self.tick.selectionChanged() }
+            if ch != nil, self.hapticsOn, self.hasFullAccess { self.tick.selectionChanged() }
         }
         keyboard.onKeyDown = { [weak self] action in self?.playFeedback(action) }
 
@@ -188,6 +190,7 @@ final class KeyboardViewController: UIInputViewController {
         keyboard.topReach = reach
         grid.frame = CGRect(x: 0, y: barHeight, width: b.width, height: b.height - barHeight)
         settingsPanel.frame = b
+        if emojiShown { emojiPanel.frame = b }
     }
 
     override func textDidChange(_ textInput: UITextInput?) {
@@ -215,9 +218,20 @@ final class KeyboardViewController: UIInputViewController {
         userDict = ud
         decoder = Decoder(lexicon: lex, user: ud)
         if let pp = Bundle.main.path(forResource: "predictions", ofType: "bin") { predictor = try? Predictor(path: pp) }
-        if let ep = Bundle.main.path(forResource: "english", ofType: "txt"), let en = try? EnglishLexicon(path: ep) {
-            decoder?.english = en
-            english = EnglishDecoder(lexicon: en)
+        // The heavy parts — the decoder's word tables (half a million entries) and the English word list with its
+        // trie — are built off the main thread, so the keyboard appears at once and its first keys do not stall.
+        // Until they arrive, typing works: the tables build lazily, and English joins in a moment later.
+        let ep = Bundle.main.path(forResource: "english", ofType: "txt")
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let indexes = lex.buildIndexes()
+            DispatchQueue.main.async { lex.install(indexes) }
+            guard let ep, let en = try? EnglishLexicon(path: ep) else { return }
+            let ed = EnglishDecoder(lexicon: en)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.decoder?.english = en
+                self.english = ed
+            }
         }
     }
 
@@ -269,11 +283,14 @@ final class KeyboardViewController: UIInputViewController {
         decoder?.apply(strength: Decoder.Strength(rawValue: s.strength) ?? .standard)
         decoder?.englishEnabled = s.english
         candidateBar.showsPreedit = s.inlineMode == 2
+        inlineMode = s.inlineMode
+        hapticsOn = s.feedback
+        soundOn = s.keySound
         settingsPanel.setLearned("词库 \(lexicon?.entryCount ?? 0) 条 · 已学习 \(userDict?.count ?? 0) 个词")
         let d = keyboard.stats
         settingsPanel.setDiagnostics("本次按键 \(d.began) 次：输入 \(d.emitted)，系统取消后保留 \(d.cancelKept)，丢弃 \(d.dropped)；"
             + String(format: "每键处理 平均 %.1f ms、最长 %.0f ms", handleCount > 0 ? handleTotal / Double(handleCount) : 0, handleMax))
-        settingsPanel.setNote((hasFullAccess ? "" : "震动与按键音需在 设置 › 通用 › 键盘 › 键盘 › Mosto键盘 中开启“允许完全访问”。")
+        settingsPanel.setNote((hasFullAccess ? "" : "按键震动与按键音需在 设置 › 通用 › 键盘 › 键盘 › Mosto键盘 中开启“允许完全访问”。")
             + "键盘不联网，词库与学习记录只存在本机。")
         reconfigure()
         applyAppearance()
@@ -281,18 +298,25 @@ final class KeyboardViewController: UIInputViewController {
         if !taps.isEmpty { refresh() }
     }
 
+    /// Haptics and sound, read once per settings change rather than from the defaults on every key.
+    private var hapticsOn = true
+    private var soundOn = true
+    /// Click sounds are started off the main thread: AudioServicesPlaySystemSound can block for a few milliseconds
+    /// (most of all on the first sound after the keyboard appears), and the key press must not wait for it.
+    private static let soundQueue = DispatchQueue(label: "mosto.keysound", qos: .userInteractive)
+
     /// The system keyboard's three click sounds: letters and symbols, delete, and the other function keys.
     private func playFeedback(_ action: KeyAction) {
-        guard KeyboardSettings.shared.feedback, hasFullAccess else { return }
-        haptic.impactOccurred()
+        guard hasFullAccess else { return }
+        if hapticsOn { haptic.impactOccurred(); haptic.prepare() }
+        guard soundOn else { return }
         let sound: SystemSoundID
         switch action {
         case .char, .space, .t9: sound = 1104
-        case .delete: sound = 1155
+        case .delete, .deleteWord: sound = 1155
         default: sound = 1156
         }
-        AudioServicesPlaySystemSound(sound)
-        haptic.prepare()
+        Self.soundQueue.async { AudioServicesPlaySystemSound(sound) }
     }
 
     // MARK: - Field adaptation
@@ -408,6 +432,9 @@ final class KeyboardViewController: UIInputViewController {
             if !taps.isEmpty { clearComposition() }
         case .deleteWord:
             deleteWord()
+        case .emoji:
+            if !taps.isEmpty { commitAll() }
+            showEmoji(true)
         }
     }
 
@@ -619,7 +646,7 @@ final class KeyboardViewController: UIInputViewController {
         guard let decoder else { return }
         let r = decoder.decode(taps)
         result = r
-        let mode = KeyboardSettings.shared.inlineMode
+        let mode = inlineMode
         if mode != 2 {
             // Written into the text field, underlined, until a candidate replaces it: the letters as typed
             // (九宫格 keys have no single letter, so their pinyin), or the pinyin.
@@ -806,13 +833,58 @@ final class KeyboardViewController: UIInputViewController {
         if on, let r = result { grid.show(r.candidates) }
         grid.isHidden = !on
         // panels sit on the same system glass as the keys (no opaque sheet stacked on it): hide what is underneath
-        keyboard.isHidden = on || !settingsPanel.isHidden
+        keyboard.isHidden = on || !settingsPanel.isHidden || emojiShown
     }
 
     private func showSettings(_ on: Bool) {
-        if on { settingsPanel.load(); applySettings() }
+        if on { showEmoji(false); settingsPanel.load(); applySettings() }
         settingsPanel.isHidden = !on
         candidateBar.isHidden = on
         keyboard.isHidden = on || !grid.isHidden
+    }
+
+    // MARK: - 表情
+
+    private var emojiShown = false
+
+    /// Built on first use (the emoji list is read then), on the same glass as the keys.
+    private func makeEmojiPanel() -> EmojiPanelView {
+        let p = EmojiPanelView()
+        p.isHidden = true
+        root.addSubview(p)
+        p.onEmoji = { [weak self] e in
+            guard let self else { return }
+            self.playFeedback(.char(e))
+            self.textDocumentProxy.insertText(e)
+            self.lastInsertedSpace = false
+        }
+        p.onDelete = { [weak self] in
+            guard let self else { return }
+            self.playFeedback(.delete)
+            self.textDocumentProxy.deleteBackward()
+        }
+        p.onBack = { [weak self] in self?.playFeedback(.page(.letters)); self?.showEmoji(false) }
+        p.onSettings = { [weak self] in self?.showSettings(true) }
+        return p
+    }
+
+    /// The emoji page covers the keys and the candidate strip, as the system emoji keyboard does.
+    private func showEmoji(_ on: Bool) {
+        guard on != emojiShown else { return }
+        emojiShown = on
+        if on {
+            showGrid(false)
+            endEnglishWord()
+            emojiPanel.setChinese(chinese)
+            emojiPanel.frame = view.bounds
+            emojiPanel.load()
+            root.bringSubviewToFront(emojiPanel)
+        } else if !chinese {
+            updateAutoShift()
+            reconfigure()
+        }
+        emojiPanel.isHidden = !on
+        candidateBar.isHidden = on || !settingsPanel.isHidden
+        keyboard.isHidden = on || !grid.isHidden || !settingsPanel.isHidden
     }
 }

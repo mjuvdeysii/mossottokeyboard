@@ -21,7 +21,7 @@ def oid(*parts):
 app_sources = sorted(glob.glob("App/*.swift")) + sorted(glob.glob("Keyboard/*.swift")) + sorted(glob.glob("Engine/*.swift"))
 ext_sources = sorted(glob.glob("Keyboard/*.swift")) + sorted(glob.glob("Engine/*.swift"))
 ext_resources = sorted(p for p in glob.glob("Keyboard/Resources/*") if not p.endswith(".DS_Store"))
-app_resources = ["App/Assets.xcassets", "App/PrivacyInfo.xcprivacy"] + sorted(glob.glob("Keyboard/Resources/mosto_*.png"))
+app_resources = ["App/Assets.xcassets", "App/PrivacyInfo.xcprivacy", "Keyboard/Resources/emoji.txt"] + sorted(glob.glob("Keyboard/Resources/mosto_*.png"))
 
 objs = {}  # id -> text
 

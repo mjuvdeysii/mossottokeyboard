@@ -121,14 +121,58 @@ public final class Lexicon {
     /// Entries of one syllable (single characters), per syllable, best first — built on first use.
     private var singlesIndex: [[Int]]?
     public func singles(_ s: UInt16) -> [Int] {
-        if singlesIndex == nil {
-            var idx = [[Int]](repeating: [], count: syllables.count)
-            for sid in 0..<syllables.count {
-                for i in range(firstSyllable: UInt16(sid)) where entry(i).sylCount == 1 { idx[sid].append(i) }
-            }
-            singlesIndex = idx
-        }
+        if singlesIndex == nil { singlesIndex = buildSingles() }
         return singlesIndex![Int(s)]
+    }
+
+    private func buildSingles() -> [[Int]] {
+        var idx = [[Int]](repeating: [], count: syllables.count)
+        for sid in 0..<syllables.count {
+            for i in range(firstSyllable: UInt16(sid)) where entry(i).sylCount == 1 { idx[sid].append(i) }
+        }
+        return idx
+    }
+
+    /// The decoder's lookup tables, built in one pass. Only reads the mapped file, so it can run off the main thread
+    /// while the keyboard comes up; `install` then hands them over (on the thread that decodes), and the first keys
+    /// typed never pay for building them.
+    public struct Indexes {
+        fileprivate let singles: [[Int]]
+        fileprivate let followers: [Followers]
+    }
+    public func buildIndexes() -> Indexes {
+        Indexes(singles: buildSingles(), followers: (0..<syllables.count).map { buildFollowers(UInt16($0)) })
+    }
+    public func install(_ x: Indexes) {
+        singlesIndex = x.singles
+        followIndex = x.followers.map { Optional($0) }
+    }
+
+    /// Words of two or more syllables starting with `first`, grouped by their second syllable, best first — two-syllable
+    /// words and longer ones apart. Built per first syllable on first use, so the decoder visits only words whose
+    /// second syllable can actually follow, and can stop at the first two-syllable word that no longer makes the cut
+    /// (the 九宫格 lattice has dozens of syllables per position; scanning every word of each was most of the time).
+    public struct Followers {
+        public var pairs: [UInt16: [Int32]] = [:]
+        public var longer: [UInt16: [Int32]] = [:]
+    }
+    private var followIndex: [Followers?] = []
+    public func followers(of s: UInt16) -> Followers {
+        if followIndex.isEmpty { followIndex = Array(repeating: nil, count: syllables.count) }
+        if let f = followIndex[Int(s)] { return f }
+        let f = buildFollowers(s)
+        followIndex[Int(s)] = f
+        return f
+    }
+
+    private func buildFollowers(_ s: UInt16) -> Followers {
+        var f = Followers()
+        for i in range(firstSyllable: s) {
+            let e = entry(i)
+            if e.sylCount == 2 { f.pairs[syllable(e, 1), default: []].append(Int32(i)) }
+            else if e.sylCount > 2 { f.longer[syllable(e, 1), default: []].append(Int32(i)) }
+        }
+        return f
     }
 
     public func id(of syllable: String) -> UInt16? {
