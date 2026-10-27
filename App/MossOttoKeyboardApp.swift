@@ -19,7 +19,7 @@ struct ContentView: View {
                             .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Mosto").font(.title2.weight(.semibold))
-                            Text("Moss 的好奇心与薄荷叶，Otto 的倦眼与灯珠。白天睁着一只眼陪你打字，夜里眯起眼、灯珠亮起。")
+                            Text("名字念快了像“魔头”：一只住在键盘里的小恶魔。白天一只眼圆睁、一只眼半垂地看你打字，夜里眯起眼，尾巴尖亮起红光。")
                                 .font(.subheadline).foregroundStyle(.secondary)
                         }
                     }
@@ -36,13 +36,13 @@ struct ContentView: View {
                     }
                 }
                 Section("试打") {
-                    TextField("在这里试打，例如 nihc → 你好", text: $text, axis: .vertical)
+                    TextField("在这里试打：小鹤 nihc 或全拼 nihao → 你好", text: $text, axis: .vertical)
                         .lineLimit(3...8)
                 }
                 Section("用法") {
-                    Text("小鹤双拼：每个字两个键，直接用小写字母输入。")
+                    Text("两种输入方案，在键盘设置里切换：小鹤双拼（每个字两个键）与全拼（完整拼写，也可只打声母，如 nh → 你好）。")
                     Text("空格：上屏首选　回车：上屏字母　删除：逐键回退")
-                    Text("首选下方带蓝色下划线 = 已按触点位置自动纠错；第二个候选是未纠错的原文。")
+                    Text("首选带下划线 = 已按触点位置自动纠错；第二个候选是未纠错的原文。两种方案都支持。")
                     Text("候选栏右侧 ⌄ 展开全部候选。")
                     Text("空格键左右拖动可移动光标；长按字母输入数字和符号。")
                     Text("上屏后候选栏显示联想词；空闲时点 Mosto 或 ⚙︎ 打开设置。")

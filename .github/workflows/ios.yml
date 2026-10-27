@@ -66,7 +66,8 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p report
-          /tmp/engine-cli Keyboard/Resources/lexicon.bin gate | grep -E "PASS|FAIL" | tee report/engine-gate.txt
+          /tmp/engine-cli Keyboard/Resources/lexicon.bin gate | grep -E "scheme|PASS|FAIL" | tee report/engine-gate.txt
+          SCHEME=quanpin /tmp/engine-cli Keyboard/Resources/lexicon.bin gate | grep -E "scheme|PASS|FAIL" | tee -a report/engine-gate.txt
       - name: Build report
         if: always()
         run: |

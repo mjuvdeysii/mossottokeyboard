@@ -118,6 +118,19 @@ public final class Lexicon {
 
     public func syllableIDs(_ e: Entry) -> [UInt16] { (0..<e.sylCount).map { syllable(e, $0) } }
 
+    /// Entries of one syllable (single characters), per syllable, best first — built on first use.
+    private var singlesIndex: [[Int]]?
+    public func singles(_ s: UInt16) -> [Int] {
+        if singlesIndex == nil {
+            var idx = [[Int]](repeating: [], count: syllables.count)
+            for sid in 0..<syllables.count {
+                for i in range(firstSyllable: UInt16(sid)) where entry(i).sylCount == 1 { idx[sid].append(i) }
+            }
+            singlesIndex = idx
+        }
+        return singlesIndex![Int(s)]
+    }
+
     public func id(of syllable: String) -> UInt16? {
         syllables.firstIndex(of: syllable).map { UInt16($0) }
     }

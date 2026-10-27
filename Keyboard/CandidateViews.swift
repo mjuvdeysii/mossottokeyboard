@@ -231,6 +231,7 @@ final class SettingsPanelView: UIView {
 
     private let scroll = UIScrollView()
     private let stack = UIStackView()
+    private let schemeControl = UISegmentedControl(items: ["小鹤双拼", "全拼"])
     private let correctionSwitch = UISwitch()
     private let strength = UISegmentedControl(items: ["保守", "标准", "积极"])
     private let feedbackSwitch = UISwitch()
@@ -260,6 +261,7 @@ final class SettingsPanelView: UIView {
         let header = UIStackView(arrangedSubviews: [title, UIView(), done])
         stack.addArrangedSubview(header)
 
+        stack.addArrangedSubview(row("输入方案", schemeControl))
         stack.addArrangedSubview(row("自动纠错（按触点位置）", correctionSwitch))
         stack.addArrangedSubview(row("纠错强度", strength))
         stack.addArrangedSubview(row("按键震动与音效", feedbackSwitch))
@@ -285,6 +287,7 @@ final class SettingsPanelView: UIView {
         note.textColor = Theme.secondaryText
         stack.addArrangedSubview(note)
 
+        schemeControl.addTarget(self, action: #selector(changed), for: .valueChanged)
         correctionSwitch.addTarget(self, action: #selector(changed), for: .valueChanged)
         strength.addTarget(self, action: #selector(changed), for: .valueChanged)
         feedbackSwitch.addTarget(self, action: #selector(changed), for: .valueChanged)
@@ -310,6 +313,7 @@ final class SettingsPanelView: UIView {
 
     func load() {
         let s = KeyboardSettings.shared
+        schemeControl.selectedSegmentIndex = s.scheme
         correctionSwitch.isOn = s.autocorrect
         strength.selectedSegmentIndex = s.strength
         strength.isEnabled = s.autocorrect
@@ -323,6 +327,7 @@ final class SettingsPanelView: UIView {
 
     @objc private func changed() {
         let s = KeyboardSettings.shared
+        s.scheme = schemeControl.selectedSegmentIndex
         s.autocorrect = correctionSwitch.isOn
         s.strength = strength.selectedSegmentIndex
         s.feedback = feedbackSwitch.isOn
@@ -352,6 +357,11 @@ final class KeyboardSettings {
     static let shared = KeyboardSettings()
     private let d = UserDefaults.standard
 
+    /// 0 小鹤双拼, 1 全拼 (PinyinScheme raw value)
+    var scheme: Int {
+        get { d.object(forKey: "scheme") as? Int ?? 0 }
+        set { d.set(newValue, forKey: "scheme") }
+    }
     var autocorrect: Bool {
         get { d.object(forKey: "autocorrect") as? Bool ?? true }
         set { d.set(newValue, forKey: "autocorrect") }

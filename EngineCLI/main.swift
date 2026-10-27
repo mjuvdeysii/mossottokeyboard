@@ -26,10 +26,12 @@ let env = ProcessInfo.processInfo.environment
 if let v = env["PEN"].flatMap(Double.init) { decoder.correctionPenalty = v }
 if let v = env["SIG"].flatMap(Double.init) { model.sigmaX = v; model.sigmaY = v * 0.9 }
 if let v = env["WP"].flatMap(Double.init) { decoder.wordPenalty = v }
+if env["SCHEME"] == "quanpin" { decoder.scheme = .quanpin }
+if let v = env["ABBR"].flatMap(Double.init) { decoder.abbreviationPenalty = v }
 
 
 func codeLetters(_ ids: [UInt16]) -> String {
-    ids.map { XiaoheScheme.code(for: lex.syllables[Int($0)])! }.joined()
+    ids.map { decoder.spelling(of: $0) }.joined()
 }
 
 func noisyTaps(_ letters: String, sigmaX: Double, sigmaY: Double, rng: inout RNG) -> [Tap] {
@@ -133,13 +135,21 @@ case "bench", "gate":
 
     if args[2] == "gate" {
         // Regression gate for CI: the release does not go out if typing quality drops below these floors.
-        let floors: [(String, Double, Bool)] = [
+        // 小鹤双拼 and 全拼 each have their own floors (set a little under the measured values)
+        let floors: [(String, Double, Bool)] = decoder.scheme == .xiaohe ? [
             ("words.on", 96.0, true),          // σ=0.22 touch noise, correction on, top-1 (%)
             ("words.broken", 1.0, false),      // clean words changed by correction (%) — at most
             ("sentences.perfect", 72.0, true), // perfect keys, top-1 equals the intended sentence (%)
             ("sentences.on", 86.0, true),
             ("words.ms", 3.0, false),          // average decode time (ms) — at most
+        ] : [
+            ("words.on", 97.0, true),
+            ("words.broken", 1.0, false),
+            ("sentences.perfect", 72.0, true),
+            ("sentences.on", 90.0, true),
+            ("sentences.ms", 8.0, false),
         ]
+        print("scheme:", decoder.scheme == .xiaohe ? "小鹤双拼" : "全拼")
         var failed = false
         for (k, v, atLeast) in floors {
             let m = metrics[k] ?? .nan

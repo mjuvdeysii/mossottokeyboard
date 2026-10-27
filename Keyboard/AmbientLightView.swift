@@ -2,7 +2,7 @@ import UIKit
 
 /// The light under the keys, in Moss & Otto's two lights. It sits on the system glass, below everything else:
 /// 日光 — a breath of warm paper and a soft sunbeam from the top right (the app's daylight comes from there);
-/// 夜灯 — the deep night tint and the warm glow of Mosto's lamp bead in the top-left corner.
+/// 夜灯 — the deep night tint and the red glow of Mosto's tail tip in the top-left corner.
 /// Static (no motion), faint, and always under the keys, so it never competes with the legends.
 final class AmbientLightView: UIView {
     private let glow = CAGradientLayer()
@@ -10,7 +10,7 @@ final class AmbientLightView: UIView {
     /// Night chosen while the system is light: the glass below is pale, so the tint must be denser.
     var forcedNight = false { didSet { refresh() } }
     /// Where the lamp bead is (container coordinates), so the night glow centres on it.
-    var lampPoint = CGPoint(x: 21, y: 22) { didSet { refresh() } }
+    var lampPoint = CGPoint(x: 50, y: 22) { didSet { refresh() } }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -38,8 +38,8 @@ final class AmbientLightView: UIView {
         glow.frame = bounds
         let w = bounds.width, h = bounds.height
         if night {
-            let c = Theme.hex(0xFFC66E)
-            glow.colors = [c.withAlphaComponent(0.30).cgColor, c.withAlphaComponent(0.10).cgColor, c.withAlphaComponent(0).cgColor]
+            let c = Theme.hex(0xFF4D5E)   // Mosto's ember
+            glow.colors = [c.withAlphaComponent(0.22).cgColor, c.withAlphaComponent(0.07).cgColor, c.withAlphaComponent(0).cgColor]
             glow.locations = [0, 0.4, 1]
             glow.startPoint = CGPoint(x: lampPoint.x / w, y: lampPoint.y / h)
             glow.endPoint = CGPoint(x: (lampPoint.x + 150) / w, y: (lampPoint.y + 120) / h)

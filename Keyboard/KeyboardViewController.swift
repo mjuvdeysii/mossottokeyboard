@@ -187,6 +187,11 @@ final class KeyboardViewController: UIInputViewController {
 
     private func applySettings() {
         let s = KeyboardSettings.shared
+        let scheme = PinyinScheme(rawValue: s.scheme) ?? .xiaohe
+        if decoder?.scheme != scheme {
+            if !taps.isEmpty { commitRaw() }     // keys typed under the other scheme mean something else
+            decoder?.scheme = scheme
+        }
         decoder?.correctionEnabled = s.autocorrect
         decoder?.apply(strength: Decoder.Strength(rawValue: s.strength) ?? .standard)
         settingsPanel.setNote("词库：\(lexicon?.entryCount ?? 0) 条；已学习：\(userDict?.count ?? 0) 条。"
