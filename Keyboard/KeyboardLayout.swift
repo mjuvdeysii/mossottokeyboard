@@ -49,15 +49,16 @@ struct LayoutContext {
 /// Bottom rows: letters 1.25 | 1.125 | 1.125 | space 4 | 1 | 1.5; symbol pages 1.25 | 1.125 | 1.125 | 4 | 2.5.
 /// Symbol third rows: 1.5 | 6 × 7/6 | 1.5. Every page fits on screen, nothing scrolls.
 enum Metrics {
-    static let toolbarHeight: CGFloat = 64
-    static let rowPitch: CGFloat = 53
+    /// The system keyboard's candidate / prediction strip (no separate pinyin line: the pinyin goes into the field).
+    static let toolbarHeight: CGFloat = 48
+    static let rowPitch: CGFloat = 54
     static let rowPitchLandscape: CGFloat = 40
-    static let toolbarHeightLandscape: CGFloat = 46
-    static let gapX: CGFloat = 5.5
-    static let gapY: CGFloat = 11
+    static let toolbarHeightLandscape: CGFloat = 38
+    static let gapX: CGFloat = 6
+    static let gapY: CGFloat = 12
     /// iOS 26 caps are rounder than Gboard's space bar (6 pt); 8.5 pt is an estimate pending a native screenshot.
     static let cornerRadius: CGFloat = 8.5
-    static let letterFont: CGFloat = 24
+    static let letterFont: CGFloat = 23
     static let symbolFont: CGFloat = 24
     static let functionFont: CGFloat = 16
     static let hintFont: CGFloat = 11
@@ -82,19 +83,17 @@ enum Layouts {
     /// device needs it) and the 中/英 switch, in Gboard's settings / emoji positions.
     private static func middleKeys(_ ctx: LayoutContext) -> [KeySpec] {
         let first = ctx.showGlobe
-            ? KeySpec(action: .globe, label: "", symbol: "globe", width: 1.125, style: .function)
-            : KeySpec(action: .settings, label: "", symbol: "gearshape.fill", width: 1.125, style: .function)
-        return [first, KeySpec(action: .toggleLanguage, label: ctx.chinese ? "中" : "英", width: 1.125, style: .function)]
+            ? KeySpec(action: .globe, label: "", symbol: "globe", width: 1, style: .function)
+            : KeySpec(action: .settings, label: "", symbol: "gearshape", width: 1, style: .function)
+        return [first, KeySpec(action: .toggleLanguage, label: ctx.chinese ? "中" : "英", width: 1, style: .function)]
     }
 
+    /// As on the system keyboard: 换行 / return, the host's action (搜索, 发送…) in blue, 确认 while composing.
     private static func returnKey(_ ctx: LayoutContext, width: CGFloat, wide: Bool) -> KeySpec {
         if let l = ctx.returnLabel {
             return KeySpec(action: .ret, label: l, width: width, style: ctx.returnIsAccent ? .accent : .function)
         }
-        if wide {
-            return KeySpec(action: .ret, label: ctx.chinese ? "回车键" : "return", width: width, style: .function)
-        }
-        return KeySpec(action: .ret, label: "", symbol: "return.left", width: width, style: .function)
+        return KeySpec(action: .ret, label: ctx.chinese ? "换行" : "return", width: width, style: .function)
     }
 
     private static func letters(_ ctx: LayoutContext) -> [[KeySpec]] {
@@ -118,11 +117,11 @@ enum Layouts {
         }
         var bottom: [KeySpec] = [KeySpec(action: .page(ctx.numberGrid ? .numpad : .numbers), label: "123", width: 1.25, style: .function)]
         bottom += middleKeys(ctx)
-        bottom.append(KeySpec(action: .space, label: "", width: 0))
+        bottom.append(KeySpec(action: .space, label: ctx.chinese ? "空格" : "space", width: 0))
         bottom.append(ctx.chinese
             ? KeySpec(action: .char("，"), label: "，", width: 1, alt: "。", style: .function, moreAlts: ["？", "！", "、", "…", "："])
             : KeySpec(action: .char("."), label: ".", width: 1, alt: ",", style: .function, moreAlts: ["?", "!", "'", ":"]))
-        bottom.append(returnKey(ctx, width: 1.5, wide: false))
+        bottom.append(returnKey(ctx, width: 2, wide: false))
         rows.append(bottom)
         return rows
     }
@@ -134,7 +133,7 @@ enum Layouts {
     private static func bottomRow(_ ctx: LayoutContext) -> [KeySpec] {
         var bottom: [KeySpec] = [KeySpec(action: .page(.letters), label: ctx.chinese ? "中文" : "ABC", width: 1.25, style: .function)]
         bottom += middleKeys(ctx)
-        bottom.append(KeySpec(action: .space, label: "", width: 0))
+        bottom.append(KeySpec(action: .space, label: ctx.chinese ? "空格" : "space", width: 0))
         bottom.append(returnKey(ctx, width: 2.5, wide: true))
         return bottom
     }
@@ -200,21 +199,25 @@ enum Theme {
     static func hex(_ v: UInt32, _ a: CGFloat = 1) -> UIColor {
         UIColor(red: CGFloat((v >> 16) & 0xFF) / 255, green: CGFloat((v >> 8) & 0xFF) / 255, blue: CGFloat(v & 0xFF) / 255, alpha: a)
     }
-    /// Tint laid over the system glass: a breath of warm paper by day, the deep lamp-lit blue at night.
-    static let glassTint = dyn(hex(0xFFF6EA, 0.10), hex(0x1B2245, 0.62))
+    /// Tint laid over the system glass: none by day (the system keyboard's own glass), the deep lamp-lit blue at night.
+    static let glassTint = dyn(.clear, hex(0x1B2245, 0.62))
     /// Night forced while the system is light: the glass underneath is pale, so the tint must carry the night alone.
     static let forcedNightTint = hex(0x1B2245, 0.92)
     /// Opaque panels over the keys (candidate grid, settings).
-    static let panel = dyn(hex(0xF4F2EE), hex(0x1B2245))   // opaque: keys must not show through a panel
+    static let panel = dyn(hex(0xF2F2F7), hex(0x1B2245))   // opaque: keys must not show through a panel
+    /// Settings, as iOS Settings draws them: grouped background, rounded white groups, hairline separators.
+    static let settingsBackground = dyn(hex(0xF2F2F7), hex(0x161C3A))
+    static let settingsGroup = dyn(.white, hex(0x252D57))
+    static let separator = dyn(UIColor(white: 0, alpha: 0.12), UIColor(white: 1, alpha: 0.12))
     // iOS 26 key caps: translucent, no hard shadow
     static let key = dyn(UIColor(white: 1, alpha: 0.93), UIColor(white: 1, alpha: 0.17))
     static let keyPressed = dyn(UIColor(white: 0.80, alpha: 0.95), UIColor(white: 1, alpha: 0.32))
     static let functionKey = dyn(UIColor(white: 0, alpha: 0.11), UIColor(white: 1, alpha: 0.09))
     static let keyHighlight = dyn(UIColor(white: 1, alpha: 0.75), UIColor(white: 1, alpha: 0.18))
     static let bubble = dyn(.white, hex(0x2C3766))
-    /// Mosto's colours: its deep lavender by day (the wings, #5B45B0), the gold of its glow at night.
-    static let accentKey = dyn(hex(0x5B45B0), hex(0xFFC66E))
-    static let accentText = dyn(.white, hex(0x1C1D19))
+    /// The system keyboard's action blue (return key with 搜索 / 发送…, selected alternates, the correction mark).
+    static let accentKey = UIColor.systemBlue
+    static let accentText = UIColor.white
     static let keyText = dyn(hex(0x1C1D19), hex(0xF4EBDD))
     static let keyShadow = dyn(UIColor(white: 0, alpha: 0.16), UIColor(white: 0, alpha: 0))
     static let candidateText = keyText

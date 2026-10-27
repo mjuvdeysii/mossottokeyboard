@@ -40,6 +40,8 @@ enum SnapshotRenderer {
             Shot(name: "letters_gboard_borderless", page: .letters, state: "composing", borders: false, panel: nil),
             Shot(name: "grid", page: .letters, state: "composing", borders: true, panel: "grid"),
             Shot(name: "settings", page: .letters, state: "idle", borders: true, panel: "settings"),
+            Shot(name: "settings_full", page: .letters, state: "idle", borders: true, panel: "settings_full"),
+            Shot(name: "letters_english", page: .letters, state: "english", borders: true, panel: nil),
             Shot(name: "longpress_comma", page: .letters, state: "idle", borders: true, panel: "longpress"),
             Shot(name: "press_g", page: .letters, state: "composing", borders: true, panel: "press:g"),
             Shot(name: "press_q", page: .letters, state: "composing", borders: true, panel: "press:q"),
@@ -49,7 +51,9 @@ enum SnapshotRenderer {
         ]
         for night in [false, true] {
             for shot in shots {
-                let root = UIView(frame: CGRect(x: 0, y: 0, width: width, height: Metrics.toolbarHeight + 4 * Metrics.rowPitch))
+                // settings_full: the whole settings list at once (a tall frame), to review every section
+                let height = shot.panel == "settings_full" ? 820 : Metrics.toolbarHeight + 4 * Metrics.rowPitch
+                let root = UIView(frame: CGRect(x: 0, y: 0, width: width, height: height))
                 root.overrideUserInterfaceStyle = night ? .dark : .light
                 root.backgroundColor = night ? UIColor(white: 0.13, alpha: 1) : UIColor(red: 0.90, green: 0.91, blue: 0.93, alpha: 1)
                 window.addSubview(root)
@@ -60,6 +64,7 @@ enum SnapshotRenderer {
                 let bar = CandidateBarView(frame: CGRect(x: 0, y: 0, width: width, height: Metrics.toolbarHeight))
                 root.addSubview(bar)
                 bar.mosto.setNight(night)
+                bar.showsMosto = night
                 let kb = KeyboardView(spatial: SpatialModel.standard(width: Double(width)))
                 kb.frame = CGRect(x: 0, y: Metrics.toolbarHeight, width: width, height: 4 * Metrics.rowPitch)
                 root.addSubview(kb)
@@ -69,6 +74,7 @@ enum SnapshotRenderer {
                 let composing = candidates(["你好", "尼好", "泥好", "拟好", "你", "尼", "泥", "拟", "逆", "腻", "nihc"], correctedFirst: true)
                 switch shot.state {
                 case "composing": bar.update(preedit: "ni hao", candidates: composing)
+                case "english": bar.update(preedit: "ios", candidates: candidates(["iOS", "戳死", "戳所", "戳三", "ios"], correctedFirst: false))
                 case "predict":
                     bar.update(preedit: "", candidates: ["吗", "啊", "呀", "坏", "毒", "漂亮"].map {
                         Candidate(text: $0, tapCount: 0, syllables: [], corrected: false, score: 0) }, prediction: true)
@@ -97,10 +103,12 @@ enum SnapshotRenderer {
                     popup.frame.origin = CGPoint(x: x, y: key.minY - popup.frame.height - 4)
                     popup.selected = 1
                     kb.addSubview(popup)
-                } else if shot.panel == "settings" {
+                } else if shot.panel == "settings" || shot.panel == "settings_full" {
                     let panel = SettingsPanelView(frame: root.bounds)
                     root.addSubview(panel)
-                    panel.setNote("词库：546858 条；已学习：0 条。")
+                    panel.setNight(night)
+                    panel.setLearned("词库 546858 条 · 已学习 0 个词")
+                    panel.setNote("键盘不联网，词库与学习记录只存在本机。")
                 }
                 root.setNeedsLayout(); root.layoutIfNeeded()
                 kb.layoutIfNeeded(); bar.layoutIfNeeded()

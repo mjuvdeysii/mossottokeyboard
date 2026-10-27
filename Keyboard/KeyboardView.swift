@@ -46,12 +46,13 @@ final class KeyView: UIView {
         hintLabel.text = spec.hint
         hintLabel.isHidden = spec.hint == nil
         switch spec.action {
-        case .char where spec.isLetter: label.font = .systemFont(ofSize: Metrics.letterFont, weight: .medium)
-        case .char: label.font = .systemFont(ofSize: Metrics.symbolFont, weight: .medium)
-        default: label.font = .systemFont(ofSize: Metrics.functionFont + 1, weight: .semibold)
+        // the system keyboard's type: regular weight throughout
+        case .char where spec.isLetter: label.font = .systemFont(ofSize: Metrics.letterFont, weight: .regular)
+        case .char: label.font = .systemFont(ofSize: Metrics.symbolFont, weight: .regular)
+        default: label.font = .systemFont(ofSize: Metrics.functionFont, weight: .regular)
         }
         if let name = spec.symbol {
-            icon.image = UIImage(systemName: name, withConfiguration: UIImage.SymbolConfiguration(pointSize: Metrics.iconSize, weight: .medium))
+            icon.image = UIImage(systemName: name, withConfiguration: UIImage.SymbolConfiguration(pointSize: Metrics.iconSize, weight: .regular))
             icon.isHidden = false
         } else {
             icon.image = nil

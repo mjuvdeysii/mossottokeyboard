@@ -9,7 +9,9 @@ final class KeyboardViewController: UIInputViewController {
     private var predictor: Predictor?
     private let spatial = SpatialModel.standard()
 
-    // Views
+    // Views. Everything sits in `root`, whose light (日光 / 夜灯) is forced; the controller's own view keeps the
+    // system's, so 自动 can always read the real light / dark mode.
+    private let root = UIView()
     private let tintView = AmbientLightView()
     private let candidateBar = CandidateBarView()
     private lazy var keyboard = KeyboardView(spatial: spatial)
@@ -32,6 +34,8 @@ final class KeyboardViewController: UIInputViewController {
     private var lastDocumentID: UUID?
     private var predictions: [String] = []
     private var isNight = false
+    /// Pinyin currently written into the host field as marked text.
+    private var hasMarkedText = false
     private let haptic = UIImpactFeedbackGenerator(style: .light)
     private let tick = UISelectionFeedbackGenerator()
 
@@ -45,8 +49,10 @@ final class KeyboardViewController: UIInputViewController {
         // Clear, so the system's Liquid Glass (or the classic keyboard backdrop in older apps) shows through;
         // 日光 / 夜灯 only tint it.
         view.backgroundColor = .clear
+        root.backgroundColor = .clear
+        view.addSubview(root)
         tintView.isUserInteractionEnabled = false
-        view.addSubview(tintView)
+        root.addSubview(tintView)
         loadEngine()
 
         keyboard.inputController = self
@@ -81,10 +87,10 @@ final class KeyboardViewController: UIInputViewController {
             self?.spatial.offsetX = 0
             self?.spatial.offsetY = 0
             KeyboardSettings.shared.touchOffset = (0, 0)
-            self?.settingsPanel.setNote("已清空。")
+            self?.settingsPanel.setLearned("已清空。")
         }
 
-        for v in [candidateBar, keyboard, grid, settingsPanel] as [UIView] { view.addSubview(v) }
+        for v in [candidateBar, keyboard, grid, settingsPanel] as [UIView] { root.addSubview(v) }
         grid.isHidden = true
         settingsPanel.isHidden = true
         applySettings()
@@ -134,6 +140,7 @@ final class KeyboardViewController: UIInputViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         let b = view.bounds
+        root.frame = b
         tintView.frame = b
         candidateBar.frame = CGRect(x: 0, y: 0, width: b.width, height: barHeight)
         let keysFrame = CGRect(x: 0, y: barHeight, width: b.width, height: b.height - barHeight)
@@ -168,31 +175,32 @@ final class KeyboardViewController: UIInputViewController {
         userDict = ud
         decoder = Decoder(lexicon: lex, user: ud)
         if let pp = Bundle.main.path(forResource: "predictions", ofType: "bin") { predictor = try? Predictor(path: pp) }
+        if let ep = Bundle.main.path(forResource: "english", ofType: "txt") { decoder?.english = try? EnglishLexicon(path: ep) }
     }
 
     // MARK: - 日光 / 夜灯
 
-    /// The system's own light: the screen's style, or a host that asks for a dark keyboard.
+    /// The system's own light: dark mode, or a host that asks for a dark keyboard (Spotlight, some search bars).
+    /// Read from the controller's view, which is never overridden (only `root` is).
     private var systemIsDark: Bool {
-        UIScreen.main.traitCollection.userInterfaceStyle == .dark || textDocumentProxy.keyboardAppearance == .dark
+        view.traitCollection.userInterfaceStyle == .dark || textDocumentProxy.keyboardAppearance == .dark
     }
 
     private func applyAppearance() {
-        let mode = KeyboardSettings.shared.appearance
-        let hour = Calendar.current.component(.hour, from: Date())
         let night: Bool
-        switch mode {
+        switch KeyboardSettings.shared.appearance {
         case 1: night = false
         case 2: night = true
-        case 3: night = hour >= 19 || hour < 6 || systemIsDark
         default: night = systemIsDark
         }
         isNight = night
-        view.overrideUserInterfaceStyle = night ? .dark : .light
+        root.overrideUserInterfaceStyle = night ? .dark : .light
         // a forced night over light glass needs a denser tint to read as night
         tintView.night = night
         tintView.forcedNight = night && !systemIsDark
         candidateBar.mosto.setNight(night)
+        candidateBar.showsMosto = night
+        settingsPanel.setNight(night)
     }
 
     private func applySettings() {
@@ -204,8 +212,11 @@ final class KeyboardViewController: UIInputViewController {
         }
         decoder?.correctionEnabled = s.autocorrect
         decoder?.apply(strength: Decoder.Strength(rawValue: s.strength) ?? .standard)
-        settingsPanel.setNote("词库：\(lexicon?.entryCount ?? 0) 条；已学习：\(userDict?.count ?? 0) 条。"
-            + (hasFullAccess ? "" : "\n震动与按键音需在 设置 › 通用 › 键盘 › 键盘 › 本键盘 中开启“允许完全访问”。本键盘不联网。"))
+        decoder?.englishEnabled = s.english
+        candidateBar.showsPreedit = s.inlineMode == 2
+        settingsPanel.setLearned("词库 \(lexicon?.entryCount ?? 0) 条 · 已学习 \(userDict?.count ?? 0) 个词")
+        settingsPanel.setNote((hasFullAccess ? "" : "震动与按键音需在 设置 › 通用 › 键盘 › 键盘 › Mosto键盘 中开启“允许完全访问”。")
+            + "键盘不联网，词库与学习记录只存在本机。")
         reconfigure()
         applyAppearance()
         if !KeyboardSettings.shared.predictions { clearPredictions() }
@@ -254,7 +265,8 @@ final class KeyboardViewController: UIInputViewController {
         let en: [UIReturnKeyType: String] = [.go: "go", .search: "search", .send: "send", .done: "done",
                                              .next: "next", .join: "join", .route: "route", .continue: "continue",
                                              .google: "search", .yahoo: "search", .emergencyCall: "SOS"]
-        if !taps.isEmpty || type == .default { return (nil, false) }
+        if !taps.isEmpty { return (chinese ? "确认" : "return", false) }   // commits the letters, as the system keyboard
+        if type == .default { return (nil, false) }
         return ((chinese ? zh[type] : en[type]), true)
     }
 
@@ -401,6 +413,21 @@ final class KeyboardViewController: UIInputViewController {
         guard let decoder else { return }
         let r = decoder.decode(taps)
         result = r
+        let mode = KeyboardSettings.shared.inlineMode
+        if mode != 2 {
+            // Written into the text field, underlined, until a candidate replaces it: the first candidate (what space
+            // will type, with any keys it does not cover still as letters) or, as the system keyboard, the pinyin.
+            var marked = r.preedit
+            if mode == 0, let c = r.candidates.first, c.tapCount > 0 {
+                marked = c.text + String(taps.dropFirst(min(c.tapCount, taps.count)).map { $0.key })
+            }
+            textDocumentProxy.setMarkedText(marked, selectedRange: NSRange(location: (marked as NSString).length, length: 0))
+            hasMarkedText = true
+        } else if hasMarkedText {
+            textDocumentProxy.setMarkedText("", selectedRange: NSRange(location: 0, length: 0))
+            textDocumentProxy.unmarkText()
+            hasMarkedText = false
+        }
         candidateBar.update(preedit: r.preedit, candidates: r.candidates)
         if !grid.isHidden { grid.show(r.candidates) }
         reconfigure()
@@ -410,7 +437,7 @@ final class KeyboardViewController: UIInputViewController {
         guard let decoder, let r = result, index < r.candidates.count else { return }
         let c = r.candidates[index]
         guard c.tapCount > 0 else { return }
-        textDocumentProxy.insertText(c.text)
+        insertCommitted(c.text)
         let committedText = c.text
         // Learn: the word itself and where this user's finger actually lands.
         if !c.syllables.isEmpty {
@@ -465,7 +492,7 @@ final class KeyboardViewController: UIInputViewController {
         while !taps.isEmpty && guardCount < 32 {
             guardCount += 1
             if result == nil { refresh() }
-            if let c = result?.candidates.first, c.tapCount > 0, !c.syllables.isEmpty {
+            if let c = result?.candidates.first, c.tapCount > 0, !c.syllables.isEmpty || c.isEnglish {
                 select(0)
             } else {
                 commitRaw()
@@ -473,12 +500,23 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
+    /// Insert committed text; it replaces the marked pinyin when there is one.
+    private func insertCommitted(_ text: String) {
+        textDocumentProxy.insertText(text)
+        hasMarkedText = false
+    }
+
     private func commitRaw() {
-        textDocumentProxy.insertText(String(taps.map { $0.key }))
+        insertCommitted(String(taps.map { $0.key }))
         clearComposition()
     }
 
     private func clearComposition() {
+        if hasMarkedText {
+            textDocumentProxy.setMarkedText("", selectedRange: NSRange(location: 0, length: 0))
+            textDocumentProxy.unmarkText()
+            hasMarkedText = false
+        }
         taps.removeAll()
         result = nil
         committedParts.removeAll()

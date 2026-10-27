@@ -1,7 +1,8 @@
 import UIKit
 
-/// Top strip: pinyin preedit + as many candidates as fit (no horizontal scrolling);
-/// the chevron opens the full candidate grid.
+/// Top strip, as on the system keyboard: as many candidates as fit (no horizontal scrolling) and a chevron that
+/// opens the full grid. Idle it stays empty — only at night Mosto sits at its left, tail tip glowing.
+/// The pinyin is written into the text field as marked text; with that turned off it shows above the candidates.
 final class CandidateBarView: UIView {
     var onSelect: ((Int) -> Void)?
     var onExpand: (() -> Void)?
@@ -20,6 +21,10 @@ final class CandidateBarView: UIView {
     private var candidates: [Candidate] = []
     private(set) var visibleCount = 0
     private var pressedIndex: Int?
+    /// Mosto in the idle corner: at night only (by day it lives in settings).
+    var showsMosto = false { didSet { update(preedit: preedit.text ?? "", candidates: candidates, prediction: isPrediction) } }
+    /// Pinyin above the candidates (when it is not written into the text field).
+    var showsPreedit = false { didSet { setNeedsLayout() } }
 
     static let font = UIFont.systemFont(ofSize: 20)
 
@@ -52,8 +57,8 @@ final class CandidateBarView: UIView {
         self.candidates = candidates
         isPrediction = prediction
         let busy = !candidates.isEmpty
-        mosto.isHidden = busy
-        preedit.isHidden = !busy || prediction
+        mosto.isHidden = busy || !showsMosto
+        preedit.isHidden = !busy || prediction || !showsPreedit
         setNeedsLayout()
         layoutIfNeeded()
     }
@@ -61,7 +66,7 @@ final class CandidateBarView: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         let h = bounds.height
-        let preH: CGFloat = min(20, h * 0.3)
+        let preH: CGFloat = showsPreedit ? min(20, h * 0.3) : 0
         preedit.frame = CGRect(x: 10, y: 2, width: bounds.width - 20, height: preH)
         let ms = min(h - 12, 46)
         mosto.frame = CGRect(x: 10, y: (h - ms) / 2 + 2, width: ms, height: ms)
@@ -82,12 +87,10 @@ final class CandidateBarView: UIView {
             l.textAlignment = .center
             l.lineBreakMode = .byTruncatingTail
             l.textColor = Theme.candidateText
-            if i == 0 && !isPrediction {
-                // Auto-corrected first choice is marked, like Gboard.
-                let attrs: [NSAttributedString.Key: Any] = c.corrected
-                    ? [.underlineStyle: NSUnderlineStyle.single.rawValue, .underlineColor: Theme.correctedMark, .font: UIFont.systemFont(ofSize: 20, weight: .semibold)]
-                    : [.font: UIFont.systemFont(ofSize: 20, weight: .semibold)]
-                l.attributedText = NSAttributedString(string: c.text, attributes: attrs)
+            if i == 0 && !isPrediction && c.corrected {
+                // an auto-corrected first choice is underlined (the only mark the system bar does not have)
+                l.attributedText = NSAttributedString(string: c.text, attributes: [
+                    .underlineStyle: NSUnderlineStyle.single.rawValue, .underlineColor: Theme.correctedMark, .font: Self.font])
             } else {
                 l.text = c.text
             }
@@ -268,124 +271,244 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
     }
 }
 
-/// In-keyboard settings (no App Group / full access needed to change them).
+/// In-keyboard settings, laid out like iOS Settings: a fixed header (Mosto, title, 完成) over grouped, rounded
+/// sections that scroll vertically. Every change applies at once (no App Group or full access needed).
 final class SettingsPanelView: UIView {
-    var onChange: (() -> Void)?
     var onClose: (() -> Void)?
+    var onChange: (() -> Void)?
     var onResetLearning: (() -> Void)?
 
+    private let header = UIView()
+    private let mostoImage = UIImageView()
     private let scroll = UIScrollView()
     private let stack = UIStackView()
+
     private let schemeControl = UISegmentedControl(items: ["小鹤双拼", "全拼"])
+    private let englishSwitch = UISwitch()
+    private let predictionSwitch = UISwitch()
+    private let inlineControl = UISegmentedControl(items: ["首选", "拼音", "不显示"])
     private let correctionSwitch = UISwitch()
     private let strength = UISegmentedControl(items: ["保守", "标准", "积极"])
-    private let feedbackSwitch = UISwitch()
-    private let bordersSwitch = UISwitch()
-    private let predictionSwitch = UISwitch()
-    private let appearance = UISegmentedControl(items: ["自动", "日光", "夜灯", "晚上"])
     private let numberControl = UISegmentedControl(items: ["九宫格", "全键盘"])
+    private let bordersSwitch = UISwitch()
+    private let feedbackSwitch = UISwitch()
+    private let appearance = UISegmentedControl(items: ["自动", "日光", "夜灯"])
+    private let learnedLabel = UILabel()
     private let note = UILabel()
+    private var groups: [UIView] = []
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        backgroundColor = Theme.panel
-        stack.axis = .vertical
-        stack.spacing = 10
-        scroll.addSubview(stack)
-        scroll.alwaysBounceHorizontal = false
-        scroll.contentInsetAdjustmentBehavior = .never   // no safe-area inset: the panel starts at its top edge
-        addSubview(scroll)
+        backgroundColor = Theme.settingsBackground
 
+        // Header: Mosto (day or night), the name, 完成 — fixed above the scrolling list
+        mostoImage.contentMode = .scaleAspectFit
+        mostoImage.image = UIImage(named: "mosto_day", in: Bundle(for: SettingsPanelView.self), with: nil)
         let title = UILabel()
-        title.text = "键盘设置"
+        title.text = "Mosto键盘"
         title.font = .systemFont(ofSize: 17, weight: .semibold)
         title.textColor = Theme.keyText
         let done = UIButton(type: .system)
         done.setTitle("完成", for: .normal)
         done.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
-        done.tintColor = Theme.accentKey
         done.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
-        let header = UIStackView(arrangedSubviews: [title, UIView(), done])
-        stack.addArrangedSubview(header)
+        let h = UIStackView(arrangedSubviews: [mostoImage, title, UIView(), done])
+        h.alignment = .center
+        h.spacing = 8
+        mostoImage.widthAnchor.constraint(equalToConstant: 34).isActive = true
+        mostoImage.heightAnchor.constraint(equalToConstant: 34).isActive = true
+        header.addSubview(h)
+        h.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            h.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 14),
+            h.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -16),
+            h.centerYAnchor.constraint(equalTo: header.centerYAnchor),
+        ])
+        addSubview(header)
 
-        stack.addArrangedSubview(row("输入方案", schemeControl))
-        stack.addArrangedSubview(row("自动纠错（按触点位置）", correctionSwitch))
-        stack.addArrangedSubview(row("纠错强度", strength))
-        stack.addArrangedSubview(row("按键震动与音效", feedbackSwitch))
-        stack.addArrangedSubview(row("数字键盘", numberControl))
-        stack.addArrangedSubview(row("外观", appearance))
-        let appearanceNote = UILabel()
-        appearanceNote.text = "自动：跟随系统浅色 / 深色。晚上：19:00–6:00 自动开夜灯，其余时间跟随系统。与摸索台灯的日光、夜灯规则一致。"
-        appearanceNote.numberOfLines = 0
-        appearanceNote.font = .systemFont(ofSize: 12)
-        appearanceNote.textColor = Theme.secondaryText
-        stack.addArrangedSubview(appearanceNote)
-        stack.addArrangedSubview(row("联想（上屏后推荐下一个词）", predictionSwitch))
-        stack.addArrangedSubview(row("显示键帽（关闭为 Gboard 无边框样式）", bordersSwitch))
+        stack.axis = .vertical
+        stack.spacing = 6
+        scroll.addSubview(stack)
+        scroll.alwaysBounceHorizontal = false
+        scroll.showsHorizontalScrollIndicator = false
+        scroll.contentInsetAdjustmentBehavior = .never   // no safe-area inset: the list starts under the header
+        addSubview(scroll)
 
+        section("输入", rows: [
+            row("输入方案", schemeControl),
+            row("中英混输", englishSwitch),
+            row("联想", predictionSwitch),
+            row("输入框中显示", inlineControl),
+        ], footer: "中英混输：打 ok、ios 直接出 OK、iOS。输入框中显示：打字时把首选结果（或拼音）先写进输入框，带下划线，候选栏不再被拼音挤占；选“不显示”则拼音显示在候选栏上方。")
+        section("自动纠错", rows: [
+            row("按触点位置纠错", correctionSwitch),
+            row("强度", strength),
+        ], footer: "首选带下划线 = 已纠错；上屏后立刻按删除可撤回这次纠错。")
+        section("键盘", rows: [
+            row("数字键盘", numberControl),
+            row("显示键帽", bordersSwitch),
+            row("按键震动与按键音", feedbackSwitch),
+        ], footer: nil)
+        section("外观", rows: [row("外观", appearance)], footer: "自动：跟随系统的浅色 / 深色模式。夜灯：深夜蓝底色，Mosto 待在候选栏左边，尾巴尖亮起金光。")
+
+        learnedLabel.font = .systemFont(ofSize: 15)
+        learnedLabel.textColor = Theme.secondaryText
+        learnedLabel.numberOfLines = 0
         let reset = UIButton(type: .system)
         reset.setTitle("清空已学习的词语与触点习惯", for: .normal)
         reset.setTitleColor(.systemRed, for: .normal)
+        reset.titleLabel?.font = .systemFont(ofSize: 15)
         reset.contentHorizontalAlignment = .leading
         reset.addTarget(self, action: #selector(resetTapped), for: .touchUpInside)
-        stack.addArrangedSubview(reset)
+        section("学习", rows: [learnedLabel, reset], footer: nil)
 
         note.numberOfLines = 0
         note.font = .systemFont(ofSize: 12)
         note.textColor = Theme.secondaryText
-        stack.addArrangedSubview(note)
+        stack.addArrangedSubview(inset(note))
 
-        for s in [correctionSwitch, feedbackSwitch, bordersSwitch, predictionSwitch] { s.onTintColor = Theme.accentKey }
-        schemeControl.addTarget(self, action: #selector(changed), for: .valueChanged)
-        correctionSwitch.addTarget(self, action: #selector(changed), for: .valueChanged)
-        strength.addTarget(self, action: #selector(changed), for: .valueChanged)
-        feedbackSwitch.addTarget(self, action: #selector(changed), for: .valueChanged)
-        bordersSwitch.addTarget(self, action: #selector(changed), for: .valueChanged)
-        predictionSwitch.addTarget(self, action: #selector(changed), for: .valueChanged)
-        appearance.addTarget(self, action: #selector(changed), for: .valueChanged)
-        numberControl.addTarget(self, action: #selector(changed), for: .valueChanged)
+        for c in [schemeControl, inlineControl, strength, numberControl, appearance] {
+            c.addTarget(self, action: #selector(changed), for: .valueChanged)
+            c.setContentHuggingPriority(.required, for: .horizontal)
+        }
+        for sw in [englishSwitch, predictionSwitch, correctionSwitch, bordersSwitch, feedbackSwitch] {
+            sw.addTarget(self, action: #selector(changed), for: .valueChanged)
+        }
         load()
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
+    private func inset(_ v: UIView) -> UIView {
+        let wrap = UIView()
+        wrap.addSubview(v)
+        v.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            v.leadingAnchor.constraint(equalTo: wrap.leadingAnchor, constant: 16),
+            v.trailingAnchor.constraint(equalTo: wrap.trailingAnchor, constant: -16),
+            v.topAnchor.constraint(equalTo: wrap.topAnchor, constant: 2),
+            v.bottomAnchor.constraint(equalTo: wrap.bottomAnchor, constant: -2),
+        ])
+        return wrap
+    }
+
+    /// One iOS-style group: a small grey caption, rounded rows separated by hairlines, an optional footnote.
+    private func section(_ title: String, rows: [UIView], footer: String?) {
+        let cap = UILabel()
+        cap.text = title
+        cap.font = .systemFont(ofSize: 13)
+        cap.textColor = Theme.secondaryText
+        let capWrap = inset(cap)
+        stack.addArrangedSubview(capWrap)
+        stack.setCustomSpacing(4, after: capWrap)
+
+        let group = UIView()
+        group.backgroundColor = Theme.settingsGroup
+        group.layer.cornerRadius = 12
+        group.layer.cornerCurve = .continuous
+        let inner = UIStackView()
+        inner.axis = .vertical
+        for (i, r) in rows.enumerated() {
+            if i > 0 {
+                let line = UIView()
+                line.backgroundColor = Theme.separator
+                line.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale).isActive = true
+                inner.addArrangedSubview(line)
+            }
+            let cell = UIView()
+            cell.addSubview(r)
+            r.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                r.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 14),
+                r.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -12),
+                r.topAnchor.constraint(equalTo: cell.topAnchor, constant: 7),
+                r.bottomAnchor.constraint(equalTo: cell.bottomAnchor, constant: -7),
+                cell.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
+            ])
+            inner.addArrangedSubview(cell)
+        }
+        group.addSubview(inner)
+        inner.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            inner.leadingAnchor.constraint(equalTo: group.leadingAnchor),
+            inner.trailingAnchor.constraint(equalTo: group.trailingAnchor),
+            inner.topAnchor.constraint(equalTo: group.topAnchor),
+            inner.bottomAnchor.constraint(equalTo: group.bottomAnchor),
+        ])
+        let wrap = UIView()
+        wrap.addSubview(group)
+        group.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            group.leadingAnchor.constraint(equalTo: wrap.leadingAnchor, constant: 12),
+            group.trailingAnchor.constraint(equalTo: wrap.trailingAnchor, constant: -12),
+            group.topAnchor.constraint(equalTo: wrap.topAnchor),
+            group.bottomAnchor.constraint(equalTo: wrap.bottomAnchor),
+        ])
+        stack.addArrangedSubview(wrap)
+        groups.append(group)
+        if let footer {
+            let f = UILabel()
+            f.text = footer
+            f.numberOfLines = 0
+            f.font = .systemFont(ofSize: 12)
+            f.textColor = Theme.secondaryText
+            stack.setCustomSpacing(4, after: wrap)
+            let fw = inset(f)
+            stack.addArrangedSubview(fw)
+            stack.setCustomSpacing(14, after: fw)
+        } else {
+            stack.setCustomSpacing(14, after: wrap)
+        }
+    }
+
     private func row(_ text: String, _ control: UIView) -> UIView {
         let l = UILabel()
         l.text = text
-        l.font = .systemFont(ofSize: 15)
+        l.font = .systemFont(ofSize: 16)
         l.textColor = Theme.keyText
         l.numberOfLines = 0
-        let s = UIStackView(arrangedSubviews: [l, control])
+        l.setContentCompressionResistancePriority(.required, for: .horizontal)
+        let s = UIStackView(arrangedSubviews: [l, UIView(), control])
         s.alignment = .center
-        s.spacing = 12
+        s.spacing = 10
         return s
+    }
+
+    /// Mosto in the header shows the light the keyboard is in.
+    func setNight(_ night: Bool) {
+        mostoImage.image = UIImage(named: night ? "mosto_night" : "mosto_day", in: Bundle(for: SettingsPanelView.self), with: nil)
     }
 
     func load() {
         let s = KeyboardSettings.shared
         schemeControl.selectedSegmentIndex = s.scheme
+        englishSwitch.isOn = s.english
+        predictionSwitch.isOn = s.predictions
+        inlineControl.selectedSegmentIndex = s.inlineMode
         correctionSwitch.isOn = s.autocorrect
         strength.selectedSegmentIndex = s.strength
         strength.isEnabled = s.autocorrect
-        feedbackSwitch.isOn = s.feedback
-        bordersSwitch.isOn = s.keyBorders
-        predictionSwitch.isOn = s.predictions
-        appearance.selectedSegmentIndex = s.appearance
         numberControl.selectedSegmentIndex = s.numberGrid ? 0 : 1
+        bordersSwitch.isOn = s.keyBorders
+        feedbackSwitch.isOn = s.feedback
+        appearance.selectedSegmentIndex = s.appearance
     }
 
     func setNote(_ text: String) { note.text = text }
+    func setLearned(_ text: String) { learnedLabel.text = text }
 
     @objc private func changed() {
         let s = KeyboardSettings.shared
         s.scheme = schemeControl.selectedSegmentIndex
+        s.english = englishSwitch.isOn
+        s.predictions = predictionSwitch.isOn
+        s.inlineMode = inlineControl.selectedSegmentIndex
         s.autocorrect = correctionSwitch.isOn
         s.strength = strength.selectedSegmentIndex
-        s.feedback = feedbackSwitch.isOn
-        s.keyBorders = bordersSwitch.isOn
-        s.predictions = predictionSwitch.isOn
-        s.appearance = appearance.selectedSegmentIndex
         s.numberGrid = numberControl.selectedSegmentIndex == 0
+        s.keyBorders = bordersSwitch.isOn
+        s.feedback = feedbackSwitch.isOn
+        s.appearance = appearance.selectedSegmentIndex
         strength.isEnabled = s.autocorrect
         onChange?()
     }
@@ -395,13 +518,14 @@ final class SettingsPanelView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        scroll.frame = bounds
-        let w = bounds.width - 32
+        header.frame = CGRect(x: 0, y: 0, width: bounds.width, height: 48)
+        scroll.frame = CGRect(x: 0, y: 48, width: bounds.width, height: bounds.height - 48)
+        let w = bounds.width
         let size = stack.systemLayoutSizeFitting(CGSize(width: w, height: 0),
                                                  withHorizontalFittingPriority: .required,
                                                  verticalFittingPriority: .fittingSizeLevel)
-        stack.frame = CGRect(x: 16, y: 10, width: w, height: size.height)
-        scroll.contentSize = CGSize(width: bounds.width, height: size.height + 20)
+        stack.frame = CGRect(x: 0, y: 4, width: w, height: size.height)
+        scroll.contentSize = CGSize(width: w, height: size.height + 16)
     }
 }
 
@@ -427,6 +551,17 @@ final class KeyboardSettings {
         get { d.object(forKey: "keyCaps") as? Bool ?? true }
         set { d.set(newValue, forKey: "keyCaps") }
     }
+    /// 中英混输: English words offered among the Chinese candidates.
+    var english: Bool {
+        get { d.object(forKey: "english") as? Bool ?? true }
+        set { d.set(newValue, forKey: "english") }
+    }
+    /// What is written into the text field while composing (underlined marked text):
+    /// 0 the first candidate (default), 1 the pinyin (as the system keyboard), 2 nothing (pinyin above the candidates).
+    var inlineMode: Int {
+        get { d.object(forKey: "inlineMode") as? Int ?? 0 }
+        set { d.set(newValue, forKey: "inlineMode") }
+    }
     /// 123 opens the 九宫格 number pad (default) or the full 123 page.
     var numberGrid: Bool {
         get { d.object(forKey: "numberGrid") as? Bool ?? true }
@@ -436,9 +571,9 @@ final class KeyboardSettings {
         get { d.object(forKey: "predictions") as? Bool ?? true }
         set { d.set(newValue, forKey: "predictions") }
     }
-    /// 0 自动 (system), 1 日光, 2 夜灯, 3 晚上 (night lamp 19:00–6:00, otherwise system)
+    /// 0 自动 (follows the system's light / dark mode), 1 日光, 2 夜灯. (The old 3 "晚上" reads as 自动.)
     var appearance: Int {
-        get { d.object(forKey: "appearance") as? Int ?? 0 }
+        get { min(d.object(forKey: "appearance") as? Int ?? 0, 3) % 3 }
         set { d.set(newValue, forKey: "appearance") }
     }
     var feedback: Bool {

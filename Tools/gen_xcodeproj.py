@@ -31,7 +31,7 @@ def add(i, body):
 
 
 def file_type(p):
-    return {"swift": "sourcecode.swift", "plist": "text.plist.xml", "bin": "file", "xcassets": "folder.assetcatalog", "xcprivacy": "text.xml", "png": "image.png"}[p.rsplit(".", 1)[1]]
+    return {"swift": "sourcecode.swift", "plist": "text.plist.xml", "bin": "file", "xcassets": "folder.assetcatalog", "xcprivacy": "text.xml", "png": "image.png", "txt": "text"}[p.rsplit(".", 1)[1]]
 
 
 # File references grouped by folder

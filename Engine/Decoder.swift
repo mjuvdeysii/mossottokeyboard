@@ -11,6 +11,8 @@ public struct Candidate: Equatable {
     /// The keys this candidate stands for, one per consumed tap (empty when it used an abbreviation or a
     /// half-typed syllable). Used to learn the personal touch offset.
     public var intendedKeys: [Character] = []
+    /// An English word offered in Chinese mode (中英混输); committed as written, never learned as pinyin.
+    public var isEnglish = false
 }
 
 /// The two ways of spelling a syllable this keyboard accepts.
@@ -38,6 +40,15 @@ public final class Decoder {
     public var correctionPenalty = 1.5
     public var wordPenalty = 22.0
     public var userBonus = 4.0
+    /// 中英混输: English words for the typed letters, ranked against the Chinese readings by frequency.
+    public var english: EnglishLexicon?
+    public var englishEnabled = true
+    /// Cost of reading the letters as English in Chinese mode (English is the less likely intent there).
+    public var englishPenalty = 3.0
+    /// Extra cost of a completion (the word is longer than what was typed).
+    public var englishCompletionPenalty = 3.0
+    /// Words usually written with capitals in Chinese text (iOS, iPhone, OK…) are typed on purpose: a bonus.
+    public var englishCasedBonus = 3.0
     public var maxSyllableAlternatives = 6
     public var pruneMargin = 7.0
     public var beam = 4
@@ -374,6 +385,36 @@ public final class Decoder {
             }
         }
         for c in fullCands.dropFirst() { add(candidate(c.0, tapCount: n, corrected: c.1, score: c.2), c.0) }
+
+        // 中英混输: the letters as an English word (exact, then the likeliest completion), placed by score among
+        // the readings that cover all the input — so "ok" leads with OK, while "de" still leads with 的.
+        if englishEnabled, let english, n >= 2 {
+            let typed = String(taps.map { $0.key }).lowercased()
+            var extra: [Candidate] = []
+            // short plain words (so, me, an…) mostly collide with pinyin being typed: they need more evidence
+            let short = n == 2 ? 3.0 : n == 3 ? 1.5 : 0
+            func score(_ w: EnglishLexicon.Word) -> Double {
+                w.display != w.key ? w.logp - englishPenalty + englishCasedBonus : w.logp - englishPenalty - short
+            }
+            if let w = english.exact(typed) {
+                var c = Candidate(text: w.display, tapCount: n, syllables: [], corrected: false, score: score(w))
+                c.isEnglish = true
+                extra.append(c)
+            }
+            if n >= 3, let w = english.completion(typed) {
+                var c = Candidate(text: w.display, tapCount: n, syllables: [], corrected: false,
+                                  score: score(w) - englishCompletionPenalty)
+                c.isEnglish = true
+                extra.append(c)
+            }
+            for c in extra.sorted(by: { $0.score > $1.score }) where seen.insert(c.text).inserted {
+                var pos = result.prefix(while: { $0.score >= c.score }).count
+                // a short plain word never displaces a Chinese reading of the same keys (么 before "me")
+                if n <= 3, !result.isEmpty, english.exact(typed)?.display == c.text, c.text == typed { pos = max(pos, 1) }
+                result.insert(c, at: pos)
+                resultEdges.insert([], at: pos)
+            }
+        }
 
         // Words covering a shorter prefix of the input, longest first
         if n > 1 {

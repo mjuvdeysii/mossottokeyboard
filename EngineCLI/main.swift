@@ -21,6 +21,10 @@ let args = CommandLine.arguments
 guard args.count >= 3 else { print("usage: EngineCLI <lexicon.bin> type|bench|codes ..."); exit(1) }
 let lex = try Lexicon(path: args[1])
 let decoder = Decoder(lexicon: lex)
+// 中英混输: english.txt next to the lexicon (ENGLISH=0 turns it off)
+let englishPath = (args[1] as NSString).deletingLastPathComponent + "/english.txt"
+if ProcessInfo.processInfo.environment["ENGLISH"] != "0", let en = try? EnglishLexicon(path: englishPath) { decoder.english = en }
+if let v = ProcessInfo.processInfo.environment["ENP"], let d = Double(v) { decoder.englishPenalty = d }
 let model = SpatialModel.standard()
 let env = ProcessInfo.processInfo.environment
 if let v = env["PEN"].flatMap(Double.init) { decoder.correctionPenalty = v }
@@ -157,6 +161,24 @@ case "bench", "gate":
         ]
         print("scheme:", decoder.scheme == .xiaohe ? "小鹤双拼" : "全拼")
         var failed = false
+        // 中英混输: English words people type in Chinese chat lead; Chinese syllables keep their Chinese first.
+        if decoder.english != nil {
+            decoder.correctionEnabled = true
+            let mixed: [(String, String)] = [("ok", "OK"), ("ios", "iOS"), ("iph", "iPhone"), ("github", "GitHub"),
+                                             ("wifi", "Wi-Fi"), ("hello", "hello"),
+                                             ("de", "的"), ("he", "和"), ("wo", "我"), ("me", "么")]
+            var bad: [String] = []
+            for (k, want) in mixed {
+                let top = decoder.decode(k.map { Tap.exact($0) }).candidates.first?.text ?? ""
+                // English wants must match exactly; for a Chinese want any Chinese reading first is fine (么/没)
+                let chineseWanted = want.unicodeScalars.contains { $0.value > 0x2E80 }
+                let good = chineseWanted ? top.unicodeScalars.contains { $0.value > 0x2E80 } : top == want
+                if !good { bad.append("\(k)→\(top)") }
+            }
+            let ok = bad.isEmpty
+            print(ok ? "PASS mixed.top1 \(mixed.count)/\(mixed.count)" : "FAIL mixed.top1 " + bad.joined(separator: " "))
+            if !ok { failed = true }
+        }
         for (k, v, atLeast) in floors {
             let m = metrics[k] ?? .nan
             let ok = atLeast ? m >= v : m <= v
