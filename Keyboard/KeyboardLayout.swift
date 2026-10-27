@@ -51,7 +51,8 @@ enum Metrics {
     static let toolbarHeightLandscape: CGFloat = 46
     static let gapX: CGFloat = 5.5
     static let gapY: CGFloat = 11
-    static let cornerRadius: CGFloat = 6
+    /// iOS 26 caps are rounder than Gboard's space bar (6 pt); 8.5 pt is an estimate pending a native screenshot.
+    static let cornerRadius: CGFloat = 8.5
     static let letterFont: CGFloat = 24
     static let symbolFont: CGFloat = 24
     static let functionFont: CGFloat = 16
@@ -165,20 +166,35 @@ enum Layouts {
     }
 }
 
+/// Two lights, as in Moss & Otto: 日光 (day) and 夜灯 (night lamp). They map onto the light / dark trait, so every
+/// colour below resolves by itself; the keyboard forces the trait when the user picks 日光 or 夜灯.
+/// The keyboard's own background is clear: on iOS 26 the system puts third-party keyboards on its Liquid Glass
+/// (an opaque background shows up as a grey band), so the light only tints that glass.
 enum Theme {
-    static func dyn(_ light: UIColor, _ dark: UIColor) -> UIColor {
-        UIColor { $0.userInterfaceStyle == .dark ? dark : light }
+    static func dyn(_ day: UIColor, _ night: UIColor) -> UIColor {
+        UIColor { $0.userInterfaceStyle == .dark ? night : day }
     }
-    static let background = dyn(UIColor(red: 210/255, green: 213/255, blue: 218/255, alpha: 1), UIColor(white: 0.17, alpha: 1))
-    static let key = dyn(.white, UIColor(white: 0.42, alpha: 1))
-    static let keyPressed = dyn(UIColor(white: 0.86, alpha: 1), UIColor(white: 0.30, alpha: 1))
-    static let functionKey = dyn(UIColor(red: 0.67, green: 0.69, blue: 0.73, alpha: 1), UIColor(white: 0.27, alpha: 1))
-    static let accentKey = UIColor.systemBlue
-    static let keyText = dyn(.black, .white)
-    static let keyShadow = dyn(UIColor(white: 0, alpha: 0.35), UIColor(white: 0, alpha: 0.6))
-    static let candidateText = dyn(.black, .white)
-    static let secondaryText = dyn(UIColor(white: 0.35, alpha: 1), UIColor(white: 0.7, alpha: 1))
-    static let correctedMark = UIColor.systemBlue
-    /// Pressed highlight behind borderless keys.
+    static func hex(_ v: UInt32, _ a: CGFloat = 1) -> UIColor {
+        UIColor(red: CGFloat((v >> 16) & 0xFF) / 255, green: CGFloat((v >> 8) & 0xFF) / 255, blue: CGFloat(v & 0xFF) / 255, alpha: a)
+    }
+    /// Tint laid over the system glass: a breath of warm paper by day, the deep lamp-lit blue at night.
+    static let glassTint = dyn(hex(0xFFF6EA, 0.10), hex(0x1B2245, 0.62))
+    /// Night forced while the system is light: the glass underneath is pale, so the tint must carry the night alone.
+    static let forcedNightTint = hex(0x1B2245, 0.92)
+    /// Opaque panels over the keys (candidate grid, settings).
+    static let panel = dyn(hex(0xF4F2EE, 0.97), hex(0x1B2245, 0.97))
+    // iOS 26 key caps: translucent, no hard shadow
+    static let key = dyn(UIColor(white: 1, alpha: 0.93), UIColor(white: 1, alpha: 0.17))
+    static let keyPressed = dyn(UIColor(white: 0.80, alpha: 0.95), UIColor(white: 1, alpha: 0.32))
+    static let functionKey = dyn(UIColor(white: 0, alpha: 0.11), UIColor(white: 1, alpha: 0.09))
     static let keyHighlight = dyn(UIColor(white: 1, alpha: 0.75), UIColor(white: 1, alpha: 0.18))
+    static let bubble = dyn(.white, hex(0x2C3766))
+    /// Brand teal by day (Moss & Otto #0B7D74); the lamp's amber at night.
+    static let accentKey = dyn(hex(0x0B7D74), hex(0xFFC66E))
+    static let accentText = dyn(.white, hex(0x1C1D19))
+    static let keyText = dyn(hex(0x1C1D19), hex(0xF4EBDD))
+    static let keyShadow = dyn(UIColor(white: 0, alpha: 0.16), UIColor(white: 0, alpha: 0))
+    static let candidateText = keyText
+    static let secondaryText = dyn(hex(0x5E5F66), hex(0xAEB4CC))
+    static let correctedMark = accentKey
 }

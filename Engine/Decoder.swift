@@ -232,10 +232,9 @@ public final class Decoder {
             }
         }
 
+        // The letters as typed are always the last choice (Gboard offers the raw input too).
         let raw = String(taps.map { $0.key })
-        if result.isEmpty {
-            result.append(Candidate(text: raw, tapCount: taps.count, syllables: [], corrected: false, score: -.infinity))
-        }
+        add(Candidate(text: raw, tapCount: taps.count, syllables: [], corrected: false, score: -.infinity))
 
         // Preedit: pinyin of the top candidate; dangling single tap shown as typed.
         var preedit = raw

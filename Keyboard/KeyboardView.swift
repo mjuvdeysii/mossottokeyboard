@@ -69,8 +69,8 @@ final class KeyView: UIView {
             bg = pressed ? Theme.keyHighlight : .clear
         }
         backgroundColor = bg
-        layer.shadowOpacity = hasCap ? 1 : 0
-        let fg: UIColor = spec.style == .accent && !pressed ? .white : Theme.keyText
+        layer.shadowOpacity = hasCap && !pressed ? 1 : 0
+        let fg: UIColor = spec.style == .accent && !pressed ? Theme.accentText : Theme.keyText
         label.textColor = fg
         hintLabel.textColor = Theme.secondaryText
         icon.tintColor = fg
@@ -86,8 +86,8 @@ final class KeyView: UIView {
         super.layoutSubviews()
         label.frame = bounds.insetBy(dx: 2, dy: 0)
         icon.frame = bounds
-        // Digit hint sits up and to the right of the letter, as on Gboard.
-        hintLabel.frame = CGRect(x: bounds.midX + bounds.width * 0.18, y: 0, width: 14, height: 14)
+        // Digit hint in the cap's top-right corner (Gboard's hint, kept inside the iOS key cap).
+        hintLabel.frame = CGRect(x: bounds.width - 16, y: 2, width: 12, height: 13)
         layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: Metrics.cornerRadius).cgPath
     }
 }
@@ -98,8 +98,8 @@ final class KeyPreview: UIView {
     override init(frame: CGRect) {
         super.init(frame: frame)
         isUserInteractionEnabled = false
-        backgroundColor = Theme.key
-        layer.cornerRadius = 8
+        backgroundColor = Theme.bubble
+        layer.cornerRadius = 10
         layer.shadowColor = UIColor.black.cgColor
         layer.shadowOpacity = 0.25
         layer.shadowRadius = 3

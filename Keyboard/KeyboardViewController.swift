@@ -6,9 +6,11 @@ final class KeyboardViewController: UIInputViewController {
     private var lexicon: Lexicon?
     private var decoder: Decoder?
     private var userDict: UserDictionary?
+    private var predictor: Predictor?
     private let spatial = SpatialModel.standard()
 
     // Views
+    private let tintView = UIView()
     private let candidateBar = CandidateBarView()
     private lazy var keyboard = KeyboardView(spatial: spatial)
     private let grid = CandidateGridView()
@@ -26,6 +28,8 @@ final class KeyboardViewController: UIInputViewController {
     private var committedParts: [(text: String, ids: [UInt16])] = []
     private var lastInsertedSpace = false
     private var lastDocumentID: UUID?
+    private var predictions: [String] = []
+    private var isNight = false
     private let haptic = UIImpactFeedbackGenerator(style: .light)
 
     private var isLandscape: Bool { view.bounds.width > view.bounds.height && view.bounds.height > 0 }
@@ -35,7 +39,11 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = Theme.background
+        // Clear, so the system's Liquid Glass (or the classic keyboard backdrop in older apps) shows through;
+        // 日光 / 夜灯 only tint it.
+        view.backgroundColor = .clear
+        tintView.isUserInteractionEnabled = false
+        view.addSubview(tintView)
         loadEngine()
 
         keyboard.inputController = self
@@ -46,10 +54,10 @@ final class KeyboardViewController: UIInputViewController {
         }
         keyboard.onKeyDown = { [weak self] in self?.playFeedback() }
 
-        candidateBar.onSelect = { [weak self] i in self?.select(i) }
+        candidateBar.onSelect = { [weak self] i in self?.candidateTapped(i) }
         candidateBar.onExpand = { [weak self] in self?.showGrid(true) }
         candidateBar.onSettings = { [weak self] in self?.showSettings(true) }
-        grid.onSelect = { [weak self] i in self?.showGrid(false); self?.select(i) }
+        grid.onSelect = { [weak self] i in self?.showGrid(false); self?.candidateTapped(i) }
         grid.onClose = { [weak self] in self?.showGrid(false) }
         grid.onDelete = { [weak self] in
             guard let self else { return }
@@ -86,7 +94,13 @@ final class KeyboardViewController: UIInputViewController {
         }
         lastDocumentID = textDocumentProxy.documentIdentifier
         adaptToField()
+        applyAppearance()
         haptic.prepare()
+    }
+
+    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+        super.traitCollectionDidChange(previous)
+        applyAppearance()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -110,6 +124,7 @@ final class KeyboardViewController: UIInputViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         let b = view.bounds
+        tintView.frame = b
         candidateBar.frame = CGRect(x: 0, y: 0, width: b.width, height: barHeight)
         let keysFrame = CGRect(x: 0, y: barHeight, width: b.width, height: b.height - barHeight)
         keyboard.frame = keysFrame
@@ -125,6 +140,7 @@ final class KeyboardViewController: UIInputViewController {
             lastDocumentID = id
             if !taps.isEmpty { clearComposition() }
             adaptToField()
+            applyAppearance()
         } else {
             if !chinese { updateAutoShift() }
             reconfigure()
@@ -141,6 +157,31 @@ final class KeyboardViewController: UIInputViewController {
         let ud = UserDictionary(lexicon: lex, url: dir?.appendingPathComponent("userdict.json"))
         userDict = ud
         decoder = Decoder(lexicon: lex, user: ud)
+        if let pp = Bundle.main.path(forResource: "predictions", ofType: "bin") { predictor = try? Predictor(path: pp) }
+    }
+
+    // MARK: - 日光 / 夜灯
+
+    /// The system's own light: the screen's style, or a host that asks for a dark keyboard.
+    private var systemIsDark: Bool {
+        UIScreen.main.traitCollection.userInterfaceStyle == .dark || textDocumentProxy.keyboardAppearance == .dark
+    }
+
+    private func applyAppearance() {
+        let mode = KeyboardSettings.shared.appearance
+        let hour = Calendar.current.component(.hour, from: Date())
+        let night: Bool
+        switch mode {
+        case 1: night = false
+        case 2: night = true
+        case 3: night = hour >= 19 || hour < 6 || systemIsDark
+        default: night = systemIsDark
+        }
+        isNight = night
+        view.overrideUserInterfaceStyle = night ? .dark : .light
+        // a forced night over light glass needs a denser tint to read as night
+        tintView.backgroundColor = night && !systemIsDark ? Theme.forcedNightTint : Theme.glassTint
+        candidateBar.mosto.setNight(night)
     }
 
     private func applySettings() {
@@ -150,6 +191,8 @@ final class KeyboardViewController: UIInputViewController {
         settingsPanel.setNote("词库：\(lexicon?.entryCount ?? 0) 条；已学习：\(userDict?.count ?? 0) 条。"
             + (hasFullAccess ? "" : "\n震动与按键音需在 设置 › 通用 › 键盘 › 键盘 › 本键盘 中开启“允许完全访问”。本键盘不联网。"))
         reconfigure()
+        applyAppearance()
+        if !KeyboardSettings.shared.predictions { clearPredictions() }
         if !taps.isEmpty { refresh() }
     }
 
@@ -196,12 +239,13 @@ final class KeyboardViewController: UIInputViewController {
                                          returnLabel: label, returnIsAccent: accent,
                                          shifted: shifted, capsLock: capsLock,
                                          keyBorders: KeyboardSettings.shared.keyBorders))
-        candidateBar.showSettingsWhenIdle = needsInputModeSwitchKey
     }
 
     // MARK: - Key handling
 
     private func handle(_ action: KeyAction, tap: Tap?) {
+        // any key ends the suggestions, as on Gboard
+        if !predictions.isEmpty, action != .settings, action != .globe { clearPredictions() }
         switch action {
         case .char(let s):
             if let tap, page == .letters { letter(s, tap: tap) } else { symbol(s) }
@@ -331,6 +375,7 @@ final class KeyboardViewController: UIInputViewController {
         let c = r.candidates[index]
         guard c.tapCount > 0 else { return }
         textDocumentProxy.insertText(c.text)
+        let committedText = c.text
         // Learn: the word itself and where this user's finger actually lands.
         if !c.syllables.isEmpty {
             userDict?.learn(syllables: c.syllables, text: c.text)
@@ -345,6 +390,7 @@ final class KeyboardViewController: UIInputViewController {
                 if ids.count <= 8 { userDict?.learn(syllables: ids, text: committedParts.map { $0.text }.joined()) }
             }
             clearComposition()
+            if !c.syllables.isEmpty { showPredictions(after: committedText) }
         } else {
             refresh()
         }
@@ -375,6 +421,37 @@ final class KeyboardViewController: UIInputViewController {
         candidateBar.update(preedit: "", candidates: [])
         showGrid(false)
         reconfigure()
+    }
+
+    // MARK: - Predictions (联想)
+
+    private func candidateTapped(_ i: Int) {
+        if taps.isEmpty, i < predictions.count {
+            let text = predictions[i]
+            textDocumentProxy.insertText(text)
+            showPredictions(after: text)
+        } else {
+            select(i)
+        }
+    }
+
+    private func showPredictions(after text: String) {
+        guard KeyboardSettings.shared.predictions, chinese, let predictor else { return }
+        predictions = predictor.predict(after: text)
+        guard !predictions.isEmpty else { clearPredictions(); return }
+        let cands = predictions.map { Candidate(text: $0, tapCount: 0, syllables: [], corrected: false, score: 0) }
+        candidateBar.update(preedit: "", candidates: cands, prediction: true)
+        result = Decoder.Result(candidates: cands, preedit: "")
+    }
+
+    private func clearPredictions() {
+        guard !predictions.isEmpty else { return }
+        predictions = []
+        if taps.isEmpty {
+            result = nil
+            candidateBar.update(preedit: "", candidates: [])
+            showGrid(false)
+        }
     }
 
     // MARK: - Panels

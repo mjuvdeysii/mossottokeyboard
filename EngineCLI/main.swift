@@ -41,6 +41,10 @@ func noisyTaps(_ letters: String, sigmaX: Double, sigmaY: Double, rng: inout RNG
 }
 
 switch args[2] {
+case "predict":
+    let pr = try Predictor(path: args[1].replacingOccurrences(of: "lexicon.bin", with: "predictions.bin"))
+    for w in args[3...] { print(w, "→", pr.predict(after: w)) }
+
 case "codes":
     for s in lex.syllables { print(s, XiaoheScheme.code(for: s) ?? "-") }
 

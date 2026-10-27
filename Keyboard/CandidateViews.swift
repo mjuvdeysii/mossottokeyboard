@@ -10,16 +10,14 @@ final class CandidateBarView: UIView {
     private let preedit = UILabel()
     private let row = UIView()
     private let expandButton = UIButton(type: .system)
-    private let settingsButton = UIButton(type: .system)
+    let mosto = MostoView()
     private var labels: [UILabel] = []
+    private var isPrediction = false
     private var candidates: [Candidate] = []
     private(set) var visibleCount = 0
     private var pressedIndex: Int?
 
     static let font = UIFont.systemFont(ofSize: 20)
-    /// Settings live on the bottom row (Gboard's gear position); the toolbar shows a gear only
-    /// when that slot is taken by the system globe key.
-    var showSettingsWhenIdle = false { didSet { setNeedsLayout() } }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -30,13 +28,12 @@ final class CandidateBarView: UIView {
         row.isUserInteractionEnabled = false
         let cfg = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
         expandButton.setImage(UIImage(systemName: "chevron.down", withConfiguration: cfg), for: .normal)
-        settingsButton.setImage(UIImage(systemName: "gearshape", withConfiguration: cfg), for: .normal)
-        for b in [expandButton, settingsButton] {
-            b.tintColor = Theme.secondaryText
-            addSubview(b)
-        }
+        expandButton.tintColor = Theme.secondaryText
+        addSubview(expandButton)
         expandButton.addTarget(self, action: #selector(expandTapped), for: .touchUpInside)
-        settingsButton.addTarget(self, action: #selector(settingsTapped), for: .touchUpInside)
+        // Mosto sits in the idle corner; a tap opens settings (also reachable from the ⚙︎ key)
+        addSubview(mosto)
+        mosto.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(settingsTapped)))
         update(preedit: "", candidates: [])
     }
 
@@ -45,12 +42,14 @@ final class CandidateBarView: UIView {
     @objc private func expandTapped() { onExpand?() }
     @objc private func settingsTapped() { onSettings?() }
 
-    func update(preedit text: String, candidates: [Candidate]) {
+    /// `prediction`: the row shows next-word suggestions (联想) rather than candidates for typed keys.
+    func update(preedit text: String, candidates: [Candidate], prediction: Bool = false) {
         preedit.text = text
         self.candidates = candidates
-        let composing = !candidates.isEmpty
-        settingsButton.isHidden = composing || !showSettingsWhenIdle
-        preedit.isHidden = !composing
+        isPrediction = prediction
+        let busy = !candidates.isEmpty
+        mosto.isHidden = busy
+        preedit.isHidden = !busy || prediction
         setNeedsLayout()
         layoutIfNeeded()
     }
@@ -60,7 +59,8 @@ final class CandidateBarView: UIView {
         let h = bounds.height
         let preH: CGFloat = min(20, h * 0.3)
         preedit.frame = CGRect(x: 10, y: 2, width: bounds.width - 20, height: preH)
-        settingsButton.frame = CGRect(x: 4, y: 0, width: 44, height: h)
+        let ms = min(h - 12, 46)
+        mosto.frame = CGRect(x: 10, y: (h - ms) / 2 + 2, width: ms, height: ms)
         let rowY = preH
         let rowH = h - preH
         expandButton.frame = CGRect(x: bounds.width - 44, y: rowY, width: 44, height: rowH)
@@ -78,7 +78,7 @@ final class CandidateBarView: UIView {
             l.textAlignment = .center
             l.lineBreakMode = .byTruncatingTail
             l.textColor = Theme.candidateText
-            if i == 0 {
+            if i == 0 && !isPrediction {
                 // Auto-corrected first choice is marked, like Gboard.
                 let attrs: [NSAttributedString.Key: Any] = c.corrected
                     ? [.underlineStyle: NSUnderlineStyle.single.rawValue, .underlineColor: Theme.correctedMark, .font: UIFont.systemFont(ofSize: 20, weight: .semibold)]
@@ -87,7 +87,7 @@ final class CandidateBarView: UIView {
             } else {
                 l.text = c.text
             }
-            if i == pressedIndex { l.backgroundColor = Theme.functionKey; l.layer.cornerRadius = 6; l.clipsToBounds = true }
+            if i == pressedIndex { l.backgroundColor = Theme.functionKey; l.layer.cornerRadius = 8; l.clipsToBounds = true }
             row.addSubview(l)
             labels.append(l)
             x += w
@@ -162,7 +162,7 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         layout.sectionInset = UIEdgeInsets(top: 6, left: 6, bottom: 6, right: 6)
         collection = UICollectionView(frame: .zero, collectionViewLayout: layout)
         super.init(frame: frame)
-        backgroundColor = Theme.background
+        backgroundColor = Theme.panel
         collection.backgroundColor = .clear
         collection.alwaysBounceHorizontal = false
         collection.showsHorizontalScrollIndicator = false
@@ -234,11 +234,13 @@ final class SettingsPanelView: UIView {
     private let strength = UISegmentedControl(items: ["保守", "标准", "积极"])
     private let feedbackSwitch = UISwitch()
     private let bordersSwitch = UISwitch()
+    private let predictionSwitch = UISwitch()
+    private let appearance = UISegmentedControl(items: ["自动", "日光", "夜灯", "晚上"])
     private let note = UILabel()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        backgroundColor = Theme.background
+        backgroundColor = Theme.panel
         stack.axis = .vertical
         stack.spacing = 10
         scroll.addSubview(stack)
@@ -259,7 +261,15 @@ final class SettingsPanelView: UIView {
         stack.addArrangedSubview(row("自动纠错（按触点位置）", correctionSwitch))
         stack.addArrangedSubview(row("纠错强度", strength))
         stack.addArrangedSubview(row("按键震动与音效", feedbackSwitch))
-        stack.addArrangedSubview(row("按键边框", bordersSwitch))
+        stack.addArrangedSubview(row("外观", appearance))
+        let appearanceNote = UILabel()
+        appearanceNote.text = "自动：跟随系统浅色 / 深色。晚上：19:00–6:00 自动开夜灯，其余时间跟随系统。与摸索台灯的日光、夜灯规则一致。"
+        appearanceNote.numberOfLines = 0
+        appearanceNote.font = .systemFont(ofSize: 12)
+        appearanceNote.textColor = Theme.secondaryText
+        stack.addArrangedSubview(appearanceNote)
+        stack.addArrangedSubview(row("联想（上屏后推荐下一个词）", predictionSwitch))
+        stack.addArrangedSubview(row("显示键帽（关闭为 Gboard 无边框样式）", bordersSwitch))
 
         let reset = UIButton(type: .system)
         reset.setTitle("清空已学习的词语与触点习惯", for: .normal)
@@ -277,6 +287,8 @@ final class SettingsPanelView: UIView {
         strength.addTarget(self, action: #selector(changed), for: .valueChanged)
         feedbackSwitch.addTarget(self, action: #selector(changed), for: .valueChanged)
         bordersSwitch.addTarget(self, action: #selector(changed), for: .valueChanged)
+        predictionSwitch.addTarget(self, action: #selector(changed), for: .valueChanged)
+        appearance.addTarget(self, action: #selector(changed), for: .valueChanged)
         load()
     }
 
@@ -301,6 +313,8 @@ final class SettingsPanelView: UIView {
         strength.isEnabled = s.autocorrect
         feedbackSwitch.isOn = s.feedback
         bordersSwitch.isOn = s.keyBorders
+        predictionSwitch.isOn = s.predictions
+        appearance.selectedSegmentIndex = s.appearance
     }
 
     func setNote(_ text: String) { note.text = text }
@@ -311,6 +325,8 @@ final class SettingsPanelView: UIView {
         s.strength = strength.selectedSegmentIndex
         s.feedback = feedbackSwitch.isOn
         s.keyBorders = bordersSwitch.isOn
+        s.predictions = predictionSwitch.isOn
+        s.appearance = appearance.selectedSegmentIndex
         strength.isEnabled = s.autocorrect
         onChange?()
     }
@@ -342,10 +358,19 @@ final class KeyboardSettings {
         get { d.object(forKey: "strength") as? Int ?? 1 }
         set { d.set(newValue, forKey: "strength") }
     }
-    /// Off = Gboard's borderless keys; on = classic iOS key caps.
+    /// On = iOS 26 key caps (default); off = Gboard's borderless keys.
     var keyBorders: Bool {
-        get { d.object(forKey: "keyBorders") as? Bool ?? false }
-        set { d.set(newValue, forKey: "keyBorders") }
+        get { d.object(forKey: "keyCaps") as? Bool ?? true }
+        set { d.set(newValue, forKey: "keyCaps") }
+    }
+    var predictions: Bool {
+        get { d.object(forKey: "predictions") as? Bool ?? true }
+        set { d.set(newValue, forKey: "predictions") }
+    }
+    /// 0 自动 (system), 1 日光, 2 夜灯, 3 晚上 (night lamp 19:00–6:00, otherwise system)
+    var appearance: Int {
+        get { d.object(forKey: "appearance") as? Int ?? 0 }
+        set { d.set(newValue, forKey: "appearance") }
     }
     var feedback: Bool {
         get { d.object(forKey: "feedback") as? Bool ?? true }

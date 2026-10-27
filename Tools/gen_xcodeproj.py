@@ -19,7 +19,7 @@ def oid(*parts):
 
 app_sources = sorted(glob.glob("App/*.swift"))
 ext_sources = sorted(glob.glob("Keyboard/*.swift")) + sorted(glob.glob("Engine/*.swift"))
-ext_resources = ["Keyboard/Resources/lexicon.bin", "Keyboard/Resources/PrivacyInfo.xcprivacy"]
+ext_resources = sorted(p for p in glob.glob("Keyboard/Resources/*") if not p.endswith(".DS_Store"))
 app_resources = ["App/Assets.xcassets", "App/PrivacyInfo.xcprivacy"]
 
 objs = {}  # id -> text
@@ -30,7 +30,7 @@ def add(i, body):
 
 
 def file_type(p):
-    return {"swift": "sourcecode.swift", "plist": "text.plist.xml", "bin": "file", "xcassets": "folder.assetcatalog", "xcprivacy": "text.xml"}[p.rsplit(".", 1)[1]]
+    return {"swift": "sourcecode.swift", "plist": "text.plist.xml", "bin": "file", "xcassets": "folder.assetcatalog", "xcprivacy": "text.xml", "png": "image.png"}[p.rsplit(".", 1)[1]]
 
 
 # File references grouped by folder
