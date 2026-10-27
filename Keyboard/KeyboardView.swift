@@ -311,6 +311,8 @@ final class KeyboardView: UIView {
         let began = CACurrentMediaTime()
         var repeatCount = 0
         var preview: KeyPreview?
+        /// Finished (emitted or abandoned): never finished again.
+        var finished = false
         init(keyIndex: Int, start: CGPoint) { self.keyIndex = keyIndex; self.start = start; self.location = start }
     }
     private var tracked: [ObjectIdentifier: Tracked] = [:]
@@ -350,6 +352,9 @@ final class KeyboardView: UIView {
     }
 
     private func rebuild() {
+        // a key that changes the layout (123, 中/英, 符号) was released while another finger still held a key:
+        // that keystroke counts — emit it before the keys are rebuilt, rather than dropping it
+        flushHeldKeys()
         cancelAllTouches()
         keyViews.forEach { $0.removeFromSuperview() }
         globeButton?.removeFromSuperview()
@@ -468,15 +473,9 @@ final class KeyboardView: UIView {
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         for t in touches {
-            // Roll-over: a new finger finalises any character key still held down.
-            for id in touchOrder {
-                if let tr = tracked[id], tr.keyIndex < keyViews.count, !tr.altShown,
-                   Self.rollsOver(keyViews[tr.keyIndex].spec.action) {
-                    finish(tr, emit: true)
-                    tracked[id] = nil
-                }
-            }
-            touchOrder.removeAll { tracked[$0] == nil }
+            // Roll-over: a new finger finalises any key still held down that types (characters, 九宫格 keys, a space
+            // tap, return), so fast two-thumb typing keeps the order the keys went down in.
+            flushHeldKeys()
             if hitRects.count != keyViews.count { layoutIfNeeded() }
             let p = t.location(in: self)
             guard let idx = keyIndex(at: p), idx < keyViews.count else { continue }
@@ -588,9 +587,26 @@ final class KeyboardView: UIView {
         }
     }
 
-    /// Keys a new finger finalises (characters and 九宫格 keys), so fast typing keeps the order it was typed in.
-    private static func rollsOver(_ a: KeyAction) -> Bool {
-        switch a { case .char, .t9: return true; default: return false }
+    /// Keys a new finger finalises, so fast typing keeps the order it was typed in: characters, 九宫格 keys, return,
+    /// and a space that is a tap (not a cursor drag).
+    private func rollsOver(_ tr: Tracked) -> Bool {
+        guard tr.keyIndex < keyViews.count, !tr.altShown, !tr.finished else { return false }
+        switch keyViews[tr.keyIndex].spec.action {
+        case .char, .t9, .ret: return true
+        case .space: return !tr.dragging
+        default: return false
+        }
+    }
+
+    /// Emit every held key that rolls over (in the order they went down).
+    private func flushHeldKeys() {
+        for id in touchOrder {
+            if let tr = tracked[id], rollsOver(tr) {
+                tracked[id] = nil
+                finish(tr, emit: true)
+            }
+        }
+        touchOrder.removeAll { tracked[$0] == nil }
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -616,7 +632,7 @@ final class KeyboardView: UIView {
     }
 
     private func cancelAllTouches() {
-        for (_, tr) in tracked { finish(tr, emit: false); stats.dropped += 1 }
+        for (_, tr) in tracked where !tr.finished { finish(tr, emit: false); stats.dropped += 1 }
         tracked.removeAll()
         touchOrder.removeAll()
     }
@@ -626,6 +642,8 @@ final class KeyboardView: UIView {
     }
 
     private func finish(_ tr: Tracked, emit: Bool) {
+        guard !tr.finished else { return }
+        tr.finished = true
         if tr.dragging { setCursorMode(false, except: -1) }
         tr.longPressTimer?.invalidate()
         tr.repeatTimer?.invalidate()

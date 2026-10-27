@@ -87,13 +87,19 @@ public final class UserDictionary {
         let k = Self.key(ids.map { lexicon.syllables[Int($0)] }, text)
         guard var it = items[k] else { return }
         it.c -= 1
-        if it.c <= 0 { items.removeValue(forKey: k); rebuildIndex() } else { items[k] = it }
+        if it.c <= 0 { remove(k, first: ids.first) } else { items[k] = it }
         dirty = true
     }
 
     public func forget(syllables ids: [UInt16], text: String) {
         let k = Self.key(ids.map { lexicon.syllables[Int($0)] }, text)
-        if items.removeValue(forKey: k) != nil { rebuildIndex(); dirty = true }
+        if items[k] != nil { remove(k, first: ids.first); dirty = true }
+    }
+
+    /// One entry out, and out of its first syllable's list (no rebuild of the whole index inside a keystroke).
+    private func remove(_ k: String, first: UInt16?) {
+        items.removeValue(forKey: k)
+        if let f = first { byFirst[f]?.removeAll { $0.key == k } }
     }
 
     public func reset() {

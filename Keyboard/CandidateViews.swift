@@ -364,7 +364,7 @@ final class SettingsPanelView: UIView {
             row("按键震动", feedbackSwitch),
             row("按键音", soundSwitch),
         ], footer: "震动与按键音在按下的一瞬间发出（与系统键盘一样）；按键音跟随静音开关。")
-        section("外观", rows: [row("外观", appearance)], footer: "自动：跟随系统的浅色 / 深色模式。夜灯：深夜蓝底色，Mosto 待在候选栏左边，尾巴尖亮起金光。")
+        section("外观", rows: [row("光线", appearance)], footer: "自动：跟随系统的浅色 / 深色模式。夜灯：深夜蓝底色，Mosto 待在候选栏左边，尾巴尖亮起金光。")
 
         learnedLabel.font = .systemFont(ofSize: 15)
         learnedLabel.textColor = Theme.secondaryText
@@ -617,25 +617,36 @@ final class SyllablePickerView: UIView {
     }
     required init?(coder: NSCoder) { fatalError() }
 
+    /// Buttons are kept and relabelled (this runs on every keypad key), never rebuilt.
     func show(_ choices: [String]) {
-        buttons.forEach { $0.removeFromSuperview() }
-        buttons = choices.enumerated().map { i, text in
+        while buttons.count < choices.count {
             let b = UIButton(type: .system)
-            b.setTitle(text, for: .normal)
             b.titleLabel?.font = .systemFont(ofSize: 17)
             b.titleLabel?.adjustsFontSizeToFitWidth = true
             b.titleLabel?.minimumScaleFactor = 0.6
             b.tintColor = Theme.keyText
             b.setTitleColor(Theme.keyText, for: .normal)
-            b.tag = i
-            b.accessibilityLabel = "拼音 \(text)"
+            b.tag = buttons.count
             b.addTarget(self, action: #selector(tapped(_:)), for: .touchUpInside)
             scroll.addSubview(b)
-            return b
+            buttons.append(b)
         }
+        for (i, b) in buttons.enumerated() {
+            let on = i < choices.count
+            b.isHidden = !on
+            if on {
+                UIView.performWithoutAnimation {
+                    b.setTitle(choices[i], for: .normal)
+                    b.layoutIfNeeded()
+                }
+                b.accessibilityLabel = "拼音 \(choices[i])"
+            }
+        }
+        shown = choices.count
         scroll.setContentOffset(.zero, animated: false)
         setNeedsLayout()
     }
+    private var shown = 0
 
     @objc private func tapped(_ b: UIButton) { onPick?(b.tag) }
 
@@ -646,6 +657,6 @@ final class SyllablePickerView: UIView {
         for (i, b) in buttons.enumerated() {
             b.frame = CGRect(x: 2, y: CGFloat(i) * h, width: bounds.width - 4, height: h)
         }
-        scroll.contentSize = CGSize(width: bounds.width, height: CGFloat(buttons.count) * h)
+        scroll.contentSize = CGSize(width: bounds.width, height: CGFloat(shown) * h)
     }
 }

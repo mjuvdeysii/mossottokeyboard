@@ -37,6 +37,12 @@ final class KeyboardViewController: UIInputViewController {
     private var isNight = false
     /// Pinyin currently written into the host field as marked text.
     private var hasMarkedText = false
+    /// The marked text last written, and how many times the host was seen to include it in the text before the
+    /// cursor (see reconcileWithHost).
+    private var markedString = ""
+    private var hostEchoesMarked = 0
+    private var lastEchoed = ""
+    private var markedHistory: [String] = []
 
     // English mode: the word being typed (its taps and the characters inserted), its suggestions and the
     // autocorrection space would apply; the last applied correction, which a delete right after takes back.
@@ -74,6 +80,10 @@ final class KeyboardViewController: UIInputViewController {
         }
         keyboard.onCursorMove = { [weak self] d in
             guard let self, self.taps.isEmpty else { return }
+            // the cursor leaves the word just typed: nothing to undo or autocorrect there any more
+            self.undoable = nil
+            self.enUndo = nil
+            self.endEnglishWord()
             // one visible character per step: an emoji or other surrogate pair is two UTF-16 units
             let proxy = self.textDocumentProxy
             let ch = d < 0 ? proxy.documentContextBeforeInput?.last : proxy.documentContextAfterInput?.first
@@ -196,17 +206,57 @@ final class KeyboardViewController: UIInputViewController {
 
     override func textDidChange(_ textInput: UITextInput?) {
         super.textDidChange(textInput)
+        reconcileWithHost()
         let id = textDocumentProxy.documentIdentifier
         if id != lastDocumentID {
             // Another field (or a host that reports a new identifier whenever its text changes — this arrives
             // late, after the next keys may already be typed): never throw those keys away; adapt the layout only
-            // when nothing is being composed.
+            // when nothing is being composed and the field is actually of another kind.
             lastDocumentID = id
-            if taps.isEmpty { adaptToField(); applyAppearance() }
+            if taps.isEmpty, fieldTraits() != lastFieldTraits { adaptToField(); applyAppearance() }
             return
         }
         if !chinese { updateAutoShift(); reconfigure() }
     }
+
+    override func selectionDidChange(_ textInput: UITextInput?) {
+        super.selectionDidChange(textInput)
+        reconcileWithHost()
+    }
+
+    /// The host took the letters being composed out of our hands — the user tapped elsewhere in the text, sent the
+    /// message, or the field was cleared: the field committed (or dropped) the marked text itself. The composition
+    /// then ends here without touching the field again, or the next key would write the letters a second time.
+    /// Only checked in hosts seen to include the marked text in the text before the cursor (confirmed twice), so a
+    /// host that does not is never mistaken for one that moved on.
+    private func reconcileWithHost() {
+        guard !taps.isEmpty, hasMarkedText, markedString.count >= 2,
+              let before = textDocumentProxy.documentContextBeforeInput else { return }
+        if before.hasSuffix(markedString) {
+            // the host shows our marked text in its context: confirmed once per distinct composition string
+            if markedString != lastEchoed { lastEchoed = markedString; hostEchoesMarked += 1 }
+            return
+        }
+        // a late notice about an earlier state of this composition (fast typing) is not the host moving on
+        guard hostEchoesMarked >= 2, !markedHistory.contains(where: { before.hasSuffix($0) }) else { return }
+        markedHistory.removeAll()
+        hasMarkedText = false
+        taps.removeAll()
+        result = nil
+        committedParts.removeAll()
+        syllablePicker.isHidden = true
+        keyboard.setSideColumnHidden(false)
+        candidateBar.update(preedit: "", candidates: [])
+        showGrid(false)
+        reconfigure()
+    }
+
+    /// What `adaptToField` looks at: a new identifier with the same traits is the same kind of field.
+    private func fieldTraits() -> [Int] {
+        let p = textDocumentProxy
+        return [p.keyboardType?.rawValue ?? -1, p.returnKeyType?.rawValue ?? -1, p.autocapitalizationType?.rawValue ?? -1]
+    }
+    private var lastFieldTraits: [Int] = []
 
     // MARK: - Engine
 
@@ -316,6 +366,7 @@ final class KeyboardViewController: UIInputViewController {
     // MARK: - Field adaptation
 
     private func adaptToField() {
+        lastFieldTraits = fieldTraits()
         let proxy = textDocumentProxy
         switch proxy.keyboardType ?? .default {
         case .numberPad, .decimalPad, .phonePad, .asciiCapableNumberPad:
@@ -461,7 +512,14 @@ final class KeyboardViewController: UIInputViewController {
             if [".", ",", "!", "?", ";", ":"].contains(s) { applyEnglishAutocorrection() }
             endEnglishWord()
         }
-        textDocumentProxy.insertText(s)
+        // Right after a digit, as the system Chinese keyboard: 。 is a decimal point and ： a time separator
+        // (3.14, 12:30), never 3。14 or 12：30.
+        var out = s
+        if chinese, s == "。" || s == "：", let prev = textDocumentProxy.documentContextBeforeInput?.last,
+           prev.isASCII, prev.isNumber {
+            out = s == "。" ? "." : ":"
+        }
+        textDocumentProxy.insertText(out)
         lastInsertedSpace = false
         if !chinese && [".", "!", "?"].contains(s) { updateAutoShift(); reconfigure() }
     }
@@ -529,10 +587,13 @@ final class KeyboardViewController: UIInputViewController {
             if !texts.contains(t) { texts.append(t) }
         }
         enSuggestions = Array(texts.prefix(8))
-        let cands = enSuggestions.enumerated().map { i, t in
+        candidateBar.update(preedit: "", candidates: englishCandidates())
+    }
+
+    private func englishCandidates() -> [Candidate] {
+        enSuggestions.enumerated().map { i, t in
             Candidate(text: t, tapCount: 0, syllables: [], corrected: i == 0 && enCorrection != nil, score: 0)
         }
-        candidateBar.update(preedit: "", candidates: cands)
     }
 
     /// Replace the word being typed (still in the field just before the cursor) with `text`.
@@ -644,6 +705,9 @@ final class KeyboardViewController: UIInputViewController {
         let marked = !taps.contains(where: { $0.group }) ? String(taps.map { $0.key }) : r.preedit
         textDocumentProxy.setMarkedText(marked, selectedRange: NSRange(location: (marked as NSString).length, length: 0))
         hasMarkedText = true
+        markedString = marked
+        markedHistory.append(marked)
+        if markedHistory.count > 12 { markedHistory.removeFirst() }
         candidateBar.update(preedit: r.preedit, candidates: r.candidates)
         if !grid.isHidden { grid.show(r.candidates) }
         updateSyllablePicker()
@@ -752,6 +816,7 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func clearComposition() {
+        markedHistory.removeAll()
         if hasMarkedText {
             textDocumentProxy.setMarkedText("", selectedRange: NSRange(location: 0, length: 0))
             textDocumentProxy.unmarkText()
@@ -785,7 +850,11 @@ final class KeyboardViewController: UIInputViewController {
     // MARK: - Panels
 
     private func showGrid(_ on: Bool) {
-        if on, let r = result { grid.show(r.candidates) }
+        if on {
+            // English mode lists its own suggestions (the same ones as the strip, in the same order)
+            if taps.isEmpty, !enSuggestions.isEmpty { grid.show(englishCandidates()) }
+            else if let r = result { grid.show(r.candidates) }
+        }
         grid.isHidden = !on
         // panels sit on the same system glass as the keys (no opaque sheet stacked on it): hide what is underneath
         keyboard.isHidden = on || !settingsPanel.isHidden || emojiShown

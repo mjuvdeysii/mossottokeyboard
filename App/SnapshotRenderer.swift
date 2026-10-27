@@ -141,7 +141,7 @@ enum SnapshotRenderer {
                     root.addSubview(panel)
                     kb.isHidden = true; bar.isHidden = true   // as in the keyboard: the panel replaces them
                     panel.setNight(night)
-                    panel.setLearned("词库 546858 条 · 已学习 0 个词")
+                    panel.setLearned("词库 1866491 条 · 已学习 0 个词")
                     panel.setNote("键盘不联网，词库与学习记录只存在本机。")
                 }
                 root.setNeedsLayout(); root.layoutIfNeeded()
