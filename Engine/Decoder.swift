@@ -491,9 +491,7 @@ public final class Decoder {
             }
         }
 
-        // The letters as typed are always the last choice (Gboard offers the raw input too).
         let raw = String(taps.map { $0.key })
-        add(Candidate(text: raw, tapCount: n, syllables: [], corrected: false, score: -.infinity), [])
 
         // Preedit: the top candidate's pinyin; abbreviations and a half-typed syllable shown as typed.
         var preedit = raw
@@ -514,6 +512,10 @@ public final class Decoder {
             if cursor < n { parts.append(String(taps[cursor...].map { $0.key })) }
             preedit = parts.joined(separator: " ")
         }
+        // The letters as typed are always the last choice (Gboard offers the raw input too); for 九宫格 keys, whose
+        // "letters" are digits, the pinyin read from them.
+        let rawText = taps.contains(where: { $0.group }) ? preedit.replacingOccurrences(of: " ", with: "") : raw
+        add(Candidate(text: rawText, tapCount: n, syllables: [], corrected: false, score: -.infinity), [])
         return Result(candidates: result, preedit: preedit)
     }
 

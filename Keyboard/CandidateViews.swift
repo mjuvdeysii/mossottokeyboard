@@ -17,6 +17,7 @@ final class CandidateBarView: UIView {
     private let expandButton = UIButton(type: .system)
     let mosto = MostoView()
     private var labels: [UILabel] = []
+    private var pool: [UILabel] = []
     private var isPrediction = false
     private var candidates: [Candidate] = []
     private(set) var visibleCount = 0
@@ -75,31 +76,42 @@ final class CandidateBarView: UIView {
         expandButton.frame = CGRect(x: bounds.width - 44, y: rowY, width: 44, height: rowH)
         row.frame = CGRect(x: 0, y: rowY, width: bounds.width - 44, height: rowH)
 
-        labels.forEach { $0.removeFromSuperview() }
-        labels.removeAll()
+        // labels are pooled and reused (this runs on every keystroke): only text and frames change
         var x: CGFloat = 6
         visibleCount = 0
         for (i, c) in candidates.enumerated() {
-            let w = ceil((c.text as NSString).size(withAttributes: [.font: Self.font]).width) + 22
+            // at least a 44 pt target, as Apple's guidelines ask (single characters were ~40 pt)
+            let w = max(44, ceil((c.text as NSString).size(withAttributes: [.font: Self.font]).width) + 22)
             if x + w > row.bounds.width && i > 0 { break }
-            let l = UILabel(frame: CGRect(x: x, y: 0, width: min(w, row.bounds.width - x), height: rowH))
-            l.font = Self.font
-            l.textAlignment = .center
-            l.lineBreakMode = .byTruncatingTail
+            if pool.count <= i {
+                let l = UILabel()
+                l.font = Self.font
+                l.textAlignment = .center
+                l.lineBreakMode = .byTruncatingTail
+                l.layer.cornerRadius = 8
+                l.clipsToBounds = true
+                row.addSubview(l)
+                pool.append(l)
+            }
+            let l = pool[i]
+            l.isHidden = false
+            l.frame = CGRect(x: x, y: 0, width: min(w, row.bounds.width - x), height: rowH)
             l.textColor = Theme.candidateText
             if i == 0 && !isPrediction && c.corrected {
                 // an auto-corrected first choice is underlined (the only mark the system bar does not have)
                 l.attributedText = NSAttributedString(string: c.text, attributes: [
-                    .underlineStyle: NSUnderlineStyle.single.rawValue, .underlineColor: Theme.correctedMark, .font: Self.font])
+                    .underlineStyle: NSUnderlineStyle.single.rawValue, .underlineColor: Theme.correctedMark,
+                    .font: Self.font, .foregroundColor: Theme.candidateText])
             } else {
+                l.attributedText = nil
                 l.text = c.text
             }
-            if i == pressedIndex { l.backgroundColor = Theme.functionKey; l.layer.cornerRadius = 8; l.clipsToBounds = true }
-            row.addSubview(l)
-            labels.append(l)
+            l.backgroundColor = i == pressedIndex ? Theme.functionKey : .clear
             x += w
             visibleCount += 1
         }
+        for l in pool.dropFirst(visibleCount) { l.isHidden = true }
+        labels = Array(pool.prefix(visibleCount))
         expandButton.isHidden = candidates.count <= visibleCount
     }
 
@@ -190,8 +202,10 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
             label.textAlignment = .center
             label.textColor = Theme.candidateText
             contentView.addSubview(label)
-            contentView.backgroundColor = Theme.key
-            contentView.layer.cornerRadius = 6
+            // as the system keyboard's expanded candidates: plain text on the glass, a soft highlight when pressed
+            contentView.backgroundColor = .clear
+            contentView.layer.cornerRadius = 8
+            contentView.layer.cornerCurve = .continuous
         }
         required init?(coder: NSCoder) { fatalError() }
         override func layoutSubviews() {
@@ -199,7 +213,7 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
             label.frame = contentView.bounds.insetBy(dx: 4, dy: 0)
         }
         override var isHighlighted: Bool {
-            didSet { contentView.backgroundColor = isHighlighted ? Theme.keyPressed : Theme.key }
+            didSet { contentView.backgroundColor = isHighlighted ? Theme.functionKey : .clear }
         }
     }
 

@@ -78,3 +78,9 @@ python3 Tools/gen_xcodeproj.py
 ## 许可
 
 词库数据来自 [雾凇拼音 rime-ice](https://github.com/iDvel/rime-ice)（GPL-3.0），因此本项目整体按 GPL-3.0 发布，见 `LICENSE`。
+
+英文词表（中英混输）来自 [wordfreq](https://github.com/rspeer/wordfreq)，数据按 CC BY-SA 4.0 使用，生成脚本见 `Tools/build_english.py`。App 内“关于 › 隐私与开源许可”列出全部来源。
+
+## 隐私
+
+键盘不联网，不含任何统计、广告或崩溃上报代码。打字内容、学过的词和触点习惯只保存在设备上的键盘扩展里。“允许完全访问”只用于震动和按键音。

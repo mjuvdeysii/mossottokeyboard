@@ -595,7 +595,11 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func commitRaw() {
-        insertCommitted(String(taps.map { $0.key }))
+        // 九宫格 keys are digits: what "the letters" means there is the pinyin read from them
+        let raw = taps.contains(where: { $0.group })
+            ? (result?.preedit ?? "").replacingOccurrences(of: " ", with: "")
+            : String(taps.map { $0.key })
+        insertCommitted(raw)
         clearComposition()
     }
 
