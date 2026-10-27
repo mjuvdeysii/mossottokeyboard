@@ -152,8 +152,9 @@ final class KeyboardViewController: UIInputViewController {
     override func textDidChange(_ textInput: UITextInput?) {
         super.textDidChange(textInput)
         let id = textDocumentProxy.documentIdentifier
-        if id != lastDocumentID {
-            // Switched to another field: drop stale composition and adapt to its type.
+        if id != lastDocumentID && !hasMarkedText {
+            // Switched to another field: drop stale composition and adapt to its type. (Never while our own marked
+            // text is in the field: some hosts report a new identifier for it, and the keys typed must not be lost.)
             lastDocumentID = id
             if !taps.isEmpty { clearComposition() }
             adaptToField()
@@ -424,12 +425,9 @@ final class KeyboardViewController: UIInputViewController {
         result = r
         let mode = KeyboardSettings.shared.inlineMode
         if mode != 2 {
-            // Written into the text field, underlined, until a candidate replaces it: the first candidate (what space
-            // will type, with any keys it does not cover still as letters) or, as the system keyboard, the pinyin.
-            var marked = r.preedit
-            if mode == 0, let c = r.candidates.first, c.tapCount > 0 {
-                marked = c.text + String(taps.dropFirst(min(c.tapCount, taps.count)).map { $0.key })
-            }
+            // Written into the text field, underlined, until a candidate replaces it: the letters as typed
+            // (九宫格 keys have no single letter, so their pinyin), or the pinyin.
+            let marked = mode == 0 && !taps.contains(where: { $0.group }) ? String(taps.map { $0.key }) : r.preedit
             textDocumentProxy.setMarkedText(marked, selectedRange: NSRange(location: (marked as NSString).length, length: 0))
             hasMarkedText = true
         } else if hasMarkedText {

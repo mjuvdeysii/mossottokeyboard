@@ -287,7 +287,7 @@ final class SettingsPanelView: UIView {
     private let layoutControl = UISegmentedControl(items: ["全键盘", "九宫格"])
     private let englishSwitch = UISwitch()
     private let predictionSwitch = UISwitch()
-    private let inlineControl = UISegmentedControl(items: ["首选", "拼音", "不显示"])
+    private let inlineControl = UISegmentedControl(items: ["字母", "拼音", "不显示"])
     private let correctionSwitch = UISwitch()
     private let strength = UISegmentedControl(items: ["保守", "标准", "积极"])
     private let numberControl = UISegmentedControl(items: ["九宫格", "全键盘"])
@@ -341,7 +341,7 @@ final class SettingsPanelView: UIView {
             row("中英混输", englishSwitch),
             row("联想", predictionSwitch),
             row("输入框中显示", inlineControl),
-        ], footer: "中文键盘：九宫格时每个键代表它上面的几个字母，小鹤双拼与全拼都能用（全拼更准）；分词键用来切开音节。中英混输：打 ok、ios 直接出 OK、iOS。输入框中显示：打字时把首选结果（或拼音）先写进输入框，带下划线，候选栏不再被拼音挤占；选“不显示”则拼音显示在候选栏上方。")
+        ], footer: "中文键盘：九宫格时每个键代表它上面的几个字母，小鹤双拼与全拼都能用（全拼更准）；分词键用来切开音节。中英混输：打 ok、ios 直接出 OK、iOS。输入框中显示：打字时把按下的字母（或拼音）写进输入框，带下划线，选了候选才替换成汉字；选“不显示”则显示在候选栏上方。")
         section("自动纠错", rows: [
             row("按触点位置纠错", correctionSwitch),
             row("强度", strength),
@@ -560,11 +560,11 @@ final class KeyboardSettings {
         get { d.object(forKey: "english") as? Bool ?? true }
         set { d.set(newValue, forKey: "english") }
     }
-    /// What is written into the text field while composing (underlined marked text):
-    /// 0 the first candidate (default), 1 the pinyin (as the system keyboard), 2 nothing (pinyin above the candidates).
+    /// What is written into the text field while composing (underlined marked text, replaced by the chosen
+    /// candidate): 0 the letters as typed (default), 1 the pinyin, 2 nothing (shown above the candidates instead).
     var inlineMode: Int {
-        get { d.object(forKey: "inlineMode") as? Int ?? 0 }
-        set { d.set(newValue, forKey: "inlineMode") }
+        get { d.object(forKey: "inlineText") as? Int ?? 0 }
+        set { d.set(newValue, forKey: "inlineText") }
     }
     /// Chinese typed on the 九宫格 pinyin keypad (on) or the full keyboard (off).
     var pinyinGrid: Bool {

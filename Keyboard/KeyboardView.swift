@@ -300,6 +300,7 @@ final class KeyboardView: UIView {
         var dragAccum: CGFloat = 0
         var dragging = false
         var lastMove = CACurrentMediaTime()
+        let began = CACurrentMediaTime()
         var repeatCount = 0
         var preview: KeyPreview?
         init(keyIndex: Int, start: CGPoint) { self.keyIndex = keyIndex; self.start = start; self.location = start }
@@ -471,7 +472,11 @@ final class KeyboardView: UIView {
                 let now = CACurrentMediaTime()
                 let speed = abs(dx) / CGFloat(max(now - tr.lastMove, 1.0 / 120))
                 tr.lastMove = now
-                if !tr.dragging && abs(p.x - tr.start.x) > 12 && (canMoveCursor?() ?? true) {
+                // a quick tap on space while typing fast may slide a little: only a clear drag (22 pt), or a shorter
+                // one after holding for a moment, moves the cursor — otherwise it is a space
+                let held = now - tr.began
+                let threshold: CGFloat = held > 0.3 ? 12 : 22
+                if !tr.dragging && abs(p.x - tr.start.x) > threshold && (canMoveCursor?() ?? true) {
                     tr.dragging = true
                     tr.dragAccum = 0
                     setCursorMode(true, except: tr.keyIndex)
