@@ -328,6 +328,10 @@ final class KeyboardView: UIView {
     /// row: a fast finger landing a little high types the key instead of hitting the strip and getting lost.
     var topReach: CGFloat = 0 { didSet { setNeedsLayout() } }
 
+    /// Touch accounting for this session, shown in settings (诊断) to find where keystrokes go missing.
+    struct Stats { var began = 0, emitted = 0, cancelKept = 0, dropped = 0 }
+    private(set) var stats = Stats()
+
     func configure(_ ctx: LayoutContext) {
         let newRows = Layouts.rows(ctx)
         let sameShape = newRows.count == rows.count && zip(newRows, rows).allSatisfy { a, b in
@@ -439,6 +443,7 @@ final class KeyboardView: UIView {
             guard let idx = keyIndex(at: p), idx < keyViews.count else { continue }
 
             let tr = Tracked(keyIndex: idx, start: p)
+            stats.began += 1
             let id = ObjectIdentifier(t)
             tracked[id] = tr
             touchOrder.append(id)
@@ -557,13 +562,14 @@ final class KeyboardView: UIView {
                 }
             }
             finish(tr, emit: keep)
+            if keep { stats.cancelKept += 1 } else { stats.dropped += 1 }
             tracked[id] = nil
             touchOrder.removeAll { $0 == id }
         }
     }
 
     private func cancelAllTouches() {
-        for (_, tr) in tracked { finish(tr, emit: false) }
+        for (_, tr) in tracked { finish(tr, emit: false); stats.dropped += 1 }
         tracked.removeAll()
         touchOrder.removeAll()
     }
@@ -585,6 +591,7 @@ final class KeyboardView: UIView {
         let kv = keyViews[tr.keyIndex]
         kv.pressed = false
         guard emit else { return }
+        stats.emitted += 1
         switch kv.spec.action {
         case .char(let s):
             if tr.altShown, chosen < tr.altOptions.count {

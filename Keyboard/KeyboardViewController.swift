@@ -100,6 +100,9 @@ final class KeyboardViewController: UIInputViewController {
         reconfigure()
     }
 
+    /// Ask iOS to let the keyboard have touches at the screen edges first (system edge gestures delay or cancel them).
+    override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge { .all }
+
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         if heightConstraint == nil {
@@ -154,17 +157,15 @@ final class KeyboardViewController: UIInputViewController {
     override func textDidChange(_ textInput: UITextInput?) {
         super.textDidChange(textInput)
         let id = textDocumentProxy.documentIdentifier
-        if id != lastDocumentID && !hasMarkedText {
-            // Switched to another field: drop stale composition and adapt to its type. (Never while our own marked
-            // text is in the field: some hosts report a new identifier for it, and the keys typed must not be lost.)
+        if id != lastDocumentID {
+            // Another field (or a host that reports a new identifier whenever its text changes — this arrives
+            // late, after the next keys may already be typed): never throw those keys away; adapt the layout only
+            // when nothing is being composed.
             lastDocumentID = id
-            if !taps.isEmpty { clearComposition() }
-            adaptToField()
-            applyAppearance()
-        } else {
-            if !chinese { updateAutoShift() }
-            reconfigure()
+            if taps.isEmpty { adaptToField(); applyAppearance() }
+            return
         }
+        if !chinese { updateAutoShift(); reconfigure() }
     }
 
     // MARK: - Engine
@@ -218,6 +219,9 @@ final class KeyboardViewController: UIInputViewController {
         decoder?.englishEnabled = s.english
         candidateBar.showsPreedit = s.inlineMode == 2
         settingsPanel.setLearned("词库 \(lexicon?.entryCount ?? 0) 条 · 已学习 \(userDict?.count ?? 0) 个词")
+        let d = keyboard.stats
+        settingsPanel.setDiagnostics("本次按键 \(d.began) 次：输入 \(d.emitted)，系统取消后保留 \(d.cancelKept)，丢弃 \(d.dropped)；"
+            + String(format: "每键处理 平均 %.1f ms、最长 %.0f ms", handleCount > 0 ? handleTotal / Double(handleCount) : 0, handleMax))
         settingsPanel.setNote((hasFullAccess ? "" : "震动与按键音需在 设置 › 通用 › 键盘 › 键盘 › Mosto键盘 中开启“允许完全访问”。")
             + "键盘不联网，词库与学习记录只存在本机。")
         reconfigure()
@@ -273,19 +277,32 @@ final class KeyboardViewController: UIInputViewController {
         return ((chinese ? zh[type] : en[type]), true)
     }
 
+    private var lastContext: LayoutContext?
+
     private func reconfigure() {
         let (label, accent) = returnLabel()
-        keyboard.configure(LayoutContext(page: page, chinese: chinese, showGlobe: needsInputModeSwitchKey,
+        let ctx = LayoutContext(page: page, chinese: chinese, showGlobe: needsInputModeSwitchKey,
                                          returnLabel: label, returnIsAccent: accent,
                                          shifted: shifted, capsLock: capsLock,
                                          keyBorders: KeyboardSettings.shared.keyBorders,
                                          numberGrid: KeyboardSettings.shared.numberGrid,
-                                         pinyinGrid: KeyboardSettings.shared.pinyinGrid, composing: !taps.isEmpty))
+                                         pinyinGrid: KeyboardSettings.shared.pinyinGrid, composing: !taps.isEmpty)
+        // most keystrokes change nothing on the keys: skip the work entirely (it ran twice per keystroke before)
+        if ctx == lastContext { return }
+        lastContext = ctx
+        keyboard.configure(ctx)
     }
 
     // MARK: - Key handling
 
+    private var handleTotal = 0.0, handleMax = 0.0, handleCount = 0
+
     private func handle(_ action: KeyAction, tap: Tap?) {
+        let t0 = CACurrentMediaTime()
+        defer {
+            let ms = (CACurrentMediaTime() - t0) * 1000
+            handleTotal += ms; handleCount += 1; handleMax = max(handleMax, ms)
+        }
         candidateBar.dismissForget()
         let undo = undoable
         undoable = nil

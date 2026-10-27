@@ -295,6 +295,7 @@ final class SettingsPanelView: UIView {
     private let feedbackSwitch = UISwitch()
     private let appearance = UISegmentedControl(items: ["自动", "日光", "夜灯"])
     private let learnedLabel = UILabel()
+    private let diagLabel = UILabel()
     private let note = UILabel()
     private var groups: [UIView] = []
 
@@ -363,6 +364,10 @@ final class SettingsPanelView: UIView {
         reset.contentHorizontalAlignment = .leading
         reset.addTarget(self, action: #selector(resetTapped), for: .touchUpInside)
         section("学习", rows: [learnedLabel, reset], footer: nil)
+        diagLabel.font = .monospacedDigitSystemFont(ofSize: 13, weight: .regular)
+        diagLabel.textColor = Theme.secondaryText
+        diagLabel.numberOfLines = 0
+        section("诊断", rows: [diagLabel], footer: "打一段字后打开这里：“丢弃”和“最长”能看出按键在哪一步丢了或卡了。")
 
         note.numberOfLines = 0
         note.font = .systemFont(ofSize: 12)
@@ -499,6 +504,7 @@ final class SettingsPanelView: UIView {
 
     func setNote(_ text: String) { note.text = text }
     func setLearned(_ text: String) { learnedLabel.text = text }
+    func setDiagnostics(_ text: String) { diagLabel.text = text }
 
     @objc private func changed() {
         let s = KeyboardSettings.shared

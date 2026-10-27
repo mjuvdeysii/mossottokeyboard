@@ -33,7 +33,7 @@ struct KeySpec {
     var moreAlts: [String] = []      // further long-press choices after `alt`, shown as a row
 }
 
-struct LayoutContext {
+struct LayoutContext: Equatable {
     var page: KeyboardPage
     var chinese: Bool
     var showGlobe: Bool
