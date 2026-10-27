@@ -1,8 +1,8 @@
 import UIKit
 
-/// Mosto, the keyboard's small demon (魔头), in the toolbar's idle corner (where Gboard shows its G): mostly still,
-/// no words, never in the way of typing — hidden while composing or suggesting. By day an occasional quick blink;
-/// at night eyes narrowed and the tail tip glowing red; with Reduce Motion, no blinking at all.
+/// Mosto, the keyboard's little demon king (小魔王, after 魔头), in the toolbar's idle corner (where Gboard shows its G):
+/// mostly still, no words, never in the way of typing — hidden while composing or suggesting. By day an occasional
+/// quick blink; at night a scheming squint, gold eyes and the spade on its tail glowing; with Reduce Motion, no blinking.
 final class MostoView: UIView {
     private let image = UIImageView()
     private var timer: Timer?

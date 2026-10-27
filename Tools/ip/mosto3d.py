@@ -1,19 +1,22 @@
-"""Mosto — the keyboard's companion. The name sounds like 魔头 (mótóu, "the demon"), so Mosto is a small, sly devil
-of its own: no longer a mix of Moss and Otto, and sharing only the studio's way of making figures (ip3d.py: matte
-soft vinyl, painted glossy eyes, product-photo light).
+"""Mosto — the keyboard's companion. The name sounds like 魔头 (mótóu, "the demon"), so Mosto is a little demon king
+(小魔王): bright, cute, a bit wicked. It shares only the studio's way of making figures with Moss and Otto
+(ip3d.py: soft vinyl, painted glossy eyes, product-photo light), rendered with the Standard view so the toy colours stay bright.
 
-  body    a soft keycap — it lives in a keyboard — in deep plum-violet, a touch narrower at the top
-  horns   two short ivory horns, angled outwards
-  tail    a thin plum tail curling up behind the right side, ending in a crimson spade (it glows at night)
-  eyes    mismatched on purpose: one round and wide, one heavy-lidded; crimson irises; a one-sided smirk
-  feet    two ink feet
-  manner  mischievous rather than menacing: never shouts, never grins wide; at night the eyes narrow and glow red
+  body    a chubby gumdrop, plumper at the bottom, in cherry red #FF3B4E
+  crown   a small gold crown worn at a rakish angle, five ball-tipped points and a teal gem
+  horns   two curled gold horns: out, then up and in
+  wings   two small scalloped bat wings behind the shoulders, wine red
+  eyes    big and round, gold irises, big glossy pupils — under two brows that slant down to the middle (cute eyes,
+          wicked intent); pink blush
+  mouth   a wide cat-mouth grin with a single fang
+  tail    a red tail curling up on the right, ending in a gold spade (it glows at night)
+  manner  mischievous, never menacing; at night a scheming squint, gold eyes and the spade glowing
 
 Usage (Blender as a Python module, bpy 5.x):
-  python Tools/ip/mosto3d.py sheet  out_dir      family line-up, Mosto states, day and night
+  python Tools/ip/mosto3d.py sheet  out_dir      hero shot and states, day and night
   python Tools/ip/mosto3d.py sprites out_dir     transparent keyboard sprites (day, blink, night)
   python Tools/ip/mosto3d.py icon   out.png      1024 px app icon
-Options: --samples N  --color #RRGGBB
+Options: --samples N  --palette cherry|violet|pink  --color #RRGGBB (body only)
 """
 import math, os, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -22,13 +25,24 @@ import bpy
 from mathutils import Euler
 import ip3d as B
 
-ARGS = sys.argv[1:]
-COLOR = B.arg("--color", "#3B2152")
-DEEP = "#24122F"
-CRIMSON = "#C8243C"
-IVORY = "#EFE5D3"
+_reset = B.reset
+def _bright_reset():
+    sc = _reset(); sc.view_settings.view_transform = "Standard"; sc.view_settings.look = "None"; return sc
+B.reset = _bright_reset
 
-MOSTO = dict(rx=0.5, ry=0.43, rz=0.43, cz=0.4, n=2.75, taper=0.1)
+ARGS = sys.argv[1:]
+# 小魔王: a bright cherry-red little demon king — gold crown and curled gold horns, bat wings, big glossy eyes with
+# gold irises under two scheming brows, one fang. Palettes: --palette cherry (default) | violet | pink
+PALETTES = {
+    "cherry": dict(body="#FF3B4E", deep="#8E1030", gold="#FFC22E", gem="#2FD3C4", blush="#FF97A6", feet="#5A0B22", glow="#FFB02E"),
+    "violet": dict(body="#8A4DFF", deep="#3A1A8C", gold="#FFD23F", gem="#FF4FA3", blush="#C9A2FF", feet="#2A1460", glow="#FFC23F"),
+    "pink":   dict(body="#FF4FA0", deep="#9A1260", gold="#FFD23F", gem="#7B4DFF", blush="#FFB3D4", feet="#5C0B3A", glow="#FFC23F"),
+}
+P = PALETTES[B.arg("--palette", "cherry")]
+COLOR = B.arg("--color", P["body"])
+
+# a gumdrop: round and soft, plumper at the bottom, a softer top
+MOSTO = dict(rx=0.52, ry=0.45, rz=0.45, cz=0.42, n=2.3, taper=0.17)
 
 def _norm(a, b, c):
     n = MOSTO["n"]
@@ -38,92 +52,178 @@ def _norm(a, b, c):
 def body_point(a, b, c):
     m = MOSTO
     a, b, c = _norm(a, b, c)
-    t = 1 - m["taper"] * c                       # a keycap: a touch narrower at the top
-    z = c * m["rz"] if c > 0 else c * m["rz"] * 0.82
+    t = 1 - m["taper"] * c                       # wider at the bottom: a sitting, chubby figure
+    z = c * m["rz"] if c > 0 else c * m["rz"] * 0.86
     return (a * m["rx"] * t, b * m["ry"] * t, m["cz"] + z)
 
 def surface_y(x, z):
     """The front surface (negative y) of the body at (x, z)."""
     m = MOSTO
-    c = (z - m["cz"]) / (m["rz"] if z >= m["cz"] else m["rz"] * 0.82)
-    t = 1 - m["taper"] * c
+    c = (z - m["cz"]) / (m["rz"] if z >= m["cz"] else m["rz"] * 0.86)
+    t = 1 - m["taper"] * max(-1, min(1, c))
     a = x / (m["rx"] * t)
     k = 1 - abs(a) ** m["n"] - abs(c) ** m["n"]
     return -m["ry"] * t * max(0.0, k) ** (1 / m["n"])
 
 def mosto_materials():
-    B.M["mosto"] = B.rubber("mosto", COLOR)
-    B.M["mostoDeep"] = B.rubber("mostoDeep", DEEP)
-    B.M["horn"] = B.mat("horn", IVORY, rough=0.38, sss=0.15, sss_rad=(0.4, 0.3, 0.2), coat=0.25)
-    B.M["crimson"] = B.mat("crimson", CRIMSON, rough=0.3, coat=0.5, emit=CRIMSON, emit_strength=0.0)
-    B.M["iris"] = B.mat("irisRed", CRIMSON, rough=0.15, coat=1.0, emit=CRIMSON, emit_strength=0.0)
+    B.M["mosto"] = B.rubber("mosto", COLOR, rough=0.5, sss=0.08)
+    B.M["mostoDeep"] = B.rubber("mostoDeep", P["deep"], rough=0.5)
+    B.M["gold"] = B.mat("gold", P["gold"], rough=0.28, coat=0.7, sss=0.1, sss_rad=(0.5, 0.35, 0.1))
+    B.M["gem"] = B.mat("gem", P["gem"], rough=0.05, coat=1.0, emit=P["gem"], emit_strength=0.3)
+    B.M["tip"] = B.mat("tip", P["gold"], rough=0.25, coat=0.7, emit=P["glow"], emit_strength=0.0)
+    B.M["iris"] = B.mat("irisGold", P["gold"], rough=0.12, coat=1.0, emit=P["glow"], emit_strength=0.0)
+    B.M["blush"] = B.mat("blush", P["blush"], rough=0.6, sss=0.3)
+    B.M["fang"] = B.mat("fang", "#FFFBF2", rough=0.3, coat=0.5)
+    B.M["foot"] = B.rubber("mostoFoot", P["feet"])
 
-def cone(name, base, tip, r0, r1, material):
-    """A horn: a cone from base to tip, smoothed."""
-    import mathutils
-    v = mathutils.Vector(tip) - mathutils.Vector(base)
-    bpy.ops.mesh.primitive_cone_add(vertices=40, radius1=r0, radius2=r1, depth=v.length,
-                                    location=(mathutils.Vector(base) + v / 2))
-    o = bpy.context.object; o.name = name
-    o.rotation_euler = v.to_track_quat("Z", "Y").to_euler()
+def _mesh(name, verts, faces, material, sub=2):
+    me = bpy.data.meshes.new(name); me.from_pydata(verts, [], faces); me.update()
+    o = bpy.data.objects.new(name, me); bpy.context.collection.objects.link(o)
     for poly in o.data.polygons: poly.use_smooth = True
-    B.smooth(o, 2)
+    if sub: B.smooth(o, sub)
     o.data.materials.append(material); return o
 
+def horn(name, p0, p1, p2, r0, material, rings=22, seg=20):
+    """A curled horn: a tapered tube along a quadratic bezier p0 → p1 → p2, closed at the tip."""
+    from mathutils import Vector
+    p0, p1, p2 = Vector(p0), Vector(p1), Vector(p2)
+    verts, faces = [], []
+    up = Vector((0, -1, 0))
+    for i in range(rings):
+        t = i / (rings - 1) * 0.97
+        pt = (1 - t) ** 2 * p0 + 2 * (1 - t) * t * p1 + t * t * p2
+        tg = (2 * (1 - t) * (p1 - p0) + 2 * t * (p2 - p1)).normalized()
+        nx = tg.cross(up).normalized(); ny = tg.cross(nx).normalized()
+        r = r0 * (1 - t) ** 0.85 + 0.004
+        for j in range(seg):
+            a = 2 * math.pi * j / seg
+            verts.append(tuple(pt + (nx * math.cos(a) + ny * math.sin(a)) * r))
+    verts.append(tuple(p2)); tip = len(verts) - 1
+    verts.append(tuple(p0 - (p1 - p0).normalized() * 0.01)); base = len(verts) - 1
+    for i in range(rings - 1):
+        for j in range(seg):
+            a, b = i * seg + j, i * seg + (j + 1) % seg
+            faces.append((a, b, b + seg, a + seg))
+    last = (rings - 1) * seg
+    for j in range(seg):
+        faces.append((last + j, last + (j + 1) % seg, tip))
+        faces.append(((j + 1) % seg, j, base))
+    return _mesh(name, verts, faces, material)
+
+def crown(top, tilt=-14, material=None):
+    """A small gold crown worn at a rakish angle between the horns: a band, five points with balls, a gem in front."""
+    parts = []
+    R, H = 0.13, 0.06
+    cx, cz = 0.02, top - 0.012
+    verts, faces = [], []
+    seg = 40
+    for k, (r, z) in enumerate(((R, 0), (R * 1.04, H))):
+        for j in range(seg):
+            a = 2 * math.pi * j / seg
+            verts.append((r * math.cos(a), r * 0.92 * math.sin(a), z))
+    for j in range(seg):
+        faces.append((j, (j + 1) % seg, seg + (j + 1) % seg, seg + j))
+    band = _mesh("mosto_crown", verts, faces, material, sub=0)
+    mod = band.modifiers.new("solid", "SOLIDIFY"); mod.thickness = 0.018; B.smooth(band, 2)
+    parts.append(band)
+    import mathutils
+    for j in range(5):
+        a = 2 * math.pi * j / 5 - math.pi / 2
+        bx, by = R * 1.02 * math.cos(a), R * 0.94 * math.sin(a)
+        bpy.ops.mesh.primitive_cone_add(vertices=24, radius1=0.045, radius2=0.004, depth=0.09, location=(bx, by, H + 0.038))
+        c = bpy.context.object; c.name = f"mosto_crown_pt{j}"; c.data.materials.append(material)
+        for poly in c.data.polygons: poly.use_smooth = True
+        parts.append(c)
+        parts.append(B.sphere(f"mosto_crown_ball{j}", (bx, by, H + 0.09), (0.022, 0.022, 0.022), material))
+    parts.append(B.sphere("mosto_gem", (0, -R * 0.95 - 0.014, H * 0.5), (0.03, 0.016, 0.034), B.M["gem"]))
+    root = bpy.data.objects.new("mosto_crown_root", None); bpy.context.collection.objects.link(root)
+    B.parent(parts, root)
+    root.location = (cx, 0.02, cz); root.rotation_euler = (math.radians(-6), math.radians(tilt), 0)
+    return [root, *parts]
+
+def wing(name, s, material):
+    """A small bat wing behind the shoulder: a scalloped outline, given thickness and rounded."""
+    outline = [(0, 0), (0.08, 0.1), (0.2, 0.17), (0.3, 0.16), (0.27, 0.09), (0.21, 0.1), (0.17, 0.03), (0.11, 0.05), (0.06, -0.02)]
+    verts = [(x, 0, z) for x, z in outline]
+    o = _mesh(name, verts, [tuple(range(len(verts)))], material, sub=0)
+    mod = o.modifiers.new("solid", "SOLIDIFY"); mod.thickness = 0.025; mod.offset = 0
+    B.smooth(o, 2)
+    o.scale = (s * 1.4, 1, 1.4)
+    o.location = (s * 0.38, 0.22, 0.5)
+    o.rotation_euler = (math.radians(-10), math.radians(-s * 12), math.radians(s * 28))
+    return o
+
 def build_mosto(x=0.0, moss_eye=None, otto_eye=None, shut=None, glow=0.0, lean=0.0, perk=0.5, droop=0.0, hop=0.0, evil=0.0):
-    """moss_eye / otto_eye: the left (wide) and right (heavy-lidded) eye — dicts of look, lid, pupil.
-    shut: 'day' (blink). evil: 0..1, how strongly the irises and the tail tip glow (night)."""
+    """moss_eye / otto_eye: the left and right eye — dicts of look, lid, pupil. shut: 'day' (blink).
+    evil: 0..1, how strongly the gold irises and the tail tip glow (night)."""
     M = B.M
     root = bpy.data.objects.new("Mosto", None); bpy.context.collection.objects.link(root)
-    body = B.shaped_sphere("mosto_body", body_point, M["mosto"], seg=72)
-    feet = [B.sphere(f"mosto_foot{i}", (s * 0.2, -0.1, 0.045), (0.078, 0.098, 0.055), M["foot"]) for i, s in enumerate((-1, 1))]
+    body = B.shaped_sphere("mosto_body", body_point, M["mosto"], seg=80)
+    feet = [B.sphere(f"mosto_foot{i}", (s * 0.21, -0.12, 0.045), (0.085, 0.1, 0.055), M["foot"]) for i, s in enumerate((-1, 1))]
     parts = [body, *feet]
     m = MOSTO
-    top = m["cz"] + m["rz"] - 0.01
-    ez = m["cz"] + 0.15
-    le = dict(look=(0.25, 0.2), lid=0.12, pupil=0.5); le.update(moss_eye or {})
-    re_ = dict(look=(-0.05, -0.1), lid=0.52, pupil=0.5); re_.update(otto_eye or {})
-    for k in ("iris", "crimson"):
-        M[k].node_tree.nodes["Principled BSDF"].inputs["Emission Strength"].default_value = 6.0 * evil
-    for s, er in ((-1, 0.105), (1, 0.115)):
-        ex = s * 0.165
+    top = m["cz"] + m["rz"]
+    ez = m["cz"] + 0.11
+    le = dict(look=(0.15, 0.1), lid=0.0, pupil=0.6); le.update(moss_eye or {})
+    re_ = dict(look=(0.15, 0.1), lid=0.18, pupil=0.6); re_.update(otto_eye or {})
+    for k in ("iris", "tip"):
+        M[k].node_tree.nodes["Principled BSDF"].inputs["Emission Strength"].default_value = 5.0 * evil
+    for s, er in ((-1, 0.128), (1, 0.128)):
+        ex = s * 0.175
         sy = surface_y(ex, ez)
+        # scheming brows: both slant down towards the middle — cute eyes, wicked intent
+        bx = ex
+        parts.append(B.tube(f"mosto_brow{s}", [(bx + s * 0.085, surface_y(bx + s * 0.085, ez + 0.17) - 0.006, ez + 0.19 + 0.02 * perk),
+                                               (bx + s * 0.01, surface_y(bx + s * 0.01, ez + 0.16) - 0.008, ez + 0.165),
+                                               (bx - s * 0.07, surface_y(bx - s * 0.07, ez + 0.13) - 0.006, ez + 0.125)], 0.016, M["mostoDeep"]))
+        parts.append(B.sphere(f"mosto_blush{s}", (s * 0.3, surface_y(s * 0.3, ez - 0.1) + 0.012, ez - 0.1), (0.06, 0.02, 0.035), M["blush"]))
         if shut:
-            dz = -0.006 if s < 0 else -0.03
-            parts.append(B.tube(f"mosto_shut{s}", [(ex - 0.07, sy, ez - 0.005), (ex, sy - 0.02, ez + dz), (ex + 0.07, sy, ez - 0.005)], 0.015, M["pupil"]))
+            parts.append(B.tube(f"mosto_shut{s}", [(ex - 0.075, sy - 0.004, ez + 0.0), (ex, sy - 0.02, ez - 0.035), (ex + 0.075, sy - 0.004, ez + 0.0)], 0.016, M["pupil"]))
             continue
         kw = le if s < 0 else re_
-        at = (ex, sy + 0.024, ez); sc = (0.9, 0.5, 1.0)
+        at = (ex, sy + 0.03, ez); sc = (0.92, 0.5, 1.05)
         parts += B.eye(f"mosto_eye{s}", at, er, kw["look"], scale=sc, lid=kw["lid"], skin=M["mosto"], pupil=kw["pupil"])
-        # a crimson iris ring behind the pupil
         lx, lz = kw["look"]; pr = er * kw["pupil"]
         px, py, pz = at[0] + lx * er * 0.42, at[1] - er * sc[1] * 0.78, at[2] + lz * er * 0.42
-        parts.append(B.sphere(f"mosto_iris{s}", (px, py + 0.0015, pz), (pr * 1.3, pr * 0.4, pr * 1.3), M["iris"]))
-        # a slanted brow line over the wide eye: the sly half of the face
-        if s < 0:
-            parts.append(B.tube("mosto_brow", [(ex - 0.08, surface_y(ex - 0.08, ez + 0.13) - 0.004, ez + 0.11),
-                                               (ex + 0.0, surface_y(ex, ez + 0.15) - 0.006, ez + 0.145),
-                                               (ex + 0.08, surface_y(ex + 0.08, ez + 0.13) - 0.004, ez + 0.125)], 0.012, M["mostoDeep"]))
-    # the smirk: one corner up
-    my = ez - 0.165
-    parts.append(B.tube("mosto_smirk", [(-0.09, surface_y(-0.09, my) - 0.003, my + 0.005), (0.02, surface_y(0.02, my) - 0.006, my - 0.008),
-                                        (0.1, surface_y(0.1, my + 0.03) - 0.004, my + 0.035)], 0.012, M["pupil"]))
-    # horns, angled outwards
+        parts.append(B.sphere(f"mosto_iris{s}", (px, py + 0.0015, pz), (pr * 1.32, pr * 0.4, pr * 1.32), M["iris"]))
+    # a wide cat-mouth grin with a single fang
+    my = ez - 0.15
+    pts = [(-0.085, my + 0.02), (-0.04, my - 0.012), (0.0, my + 0.004), (0.04, my - 0.012), (0.085, my + 0.02)]
+    parts.append(B.tube("mosto_grin", [(x_, surface_y(x_, z_) - 0.005, z_) for x_, z_ in pts], 0.011, M["pupil"]))
+    fx = 0.035; fz = my - 0.012
+    import mathutils
+    bpy.ops.mesh.primitive_cone_add(vertices=20, radius1=0.016, radius2=0.002, depth=0.04, location=(fx, surface_y(fx, fz) - 0.004, fz - 0.016))
+    fang = bpy.context.object; fang.name = "mosto_fang"; fang.rotation_euler = (math.radians(180), 0, 0)
+    fang.data.materials.append(M["fang"]); parts.append(fang)
+    # curled gold horns: out, then up and in
     for s in (-1, 1):
-        hx = s * 0.24
-        base = (hx, -0.02, top - 0.05)
-        tip = (hx + s * (0.11 + 0.03 * perk), -0.05, top + 0.2 + 0.03 * perk)
-        parts.append(cone(f"mosto_horn{s}", base, tip, 0.068, 0.012, M["horn"]))
-    # the tail: from behind the right flank, curling up, a crimson spade at the end (named bead: the glow follows it)
+        hx = s * 0.27
+        bz = m["cz"] + 0.32
+        p0 = (hx, surface_y(hx, bz) * 0.4, bz)
+        p1 = (hx + s * (0.2 + 0.03 * perk), -0.04, bz + 0.08)
+        p2 = (hx + s * (0.12 + 0.02 * perk), -0.07, bz + 0.27 + 0.03 * perk)
+        parts.append(horn(f"mosto_horn{s}", p0, p1, p2, 0.065, M["gold"]))
+    parts += crown(top, material=M["gold"])
+    parts += [wing("mosto_wingL", -1, M["mostoDeep"]), wing("mosto_wingR", 1, M["mostoDeep"])]
+    # the tail: from behind the right flank, a lively S, ending in a gold spade (named bead: the glow follows it)
     d = droop
-    tx, ty, tz = 0.66 - 0.03 * d, 0.06, 0.66 - 0.12 * d
-    parts.append(B.tube("mosto_tail", [(0.3, 0.32, 0.22), (0.58, 0.3, 0.26), (0.7, 0.18, 0.42), (tx, ty, tz - 0.06)], 0.02, M["mostoDeep"]))
-    parts.append(cone("mosto_bead", (tx, ty, tz - 0.07), (tx + 0.005, ty - 0.01, tz + 0.08), 0.06, 0.004, M["crimson"]))
+    tx, ty, tz = 0.7 - 0.03 * d, 0.08, 0.6 - 0.12 * d
+    parts.append(B.tube("mosto_tail", [(0.32, 0.3, 0.2), (0.62, 0.32, 0.18), (0.76, 0.2, 0.36), (tx, ty - 0.01, tz - 0.005)], 0.022, M["mosto"]))
+    bpy.ops.object.empty_add(location=(tx, ty, tz + 0.02)); bead = bpy.context.object; bead.name = "mosto_bead"; parts.append(bead)
+    # a spade: a point on top, two round lobes below, a notch where the tail joins
+    spade = [(0, 0.11), (0.035, 0.07), (0.068, 0.03), (0.075, -0.005), (0.055, -0.03), (0.025, -0.032), (0.0, -0.015),
+             (-0.025, -0.032), (-0.055, -0.03), (-0.075, -0.005), (-0.068, 0.03), (-0.035, 0.07)]
+    v = [(x_, 0, z_) for x_, z_ in spade]
+    sp = _mesh("mosto_spade", v, [tuple(range(len(v)))], M["tip"], sub=0)
+    mod = sp.modifiers.new("solid", "SOLIDIFY"); mod.thickness = 0.035; mod.offset = 0; B.smooth(sp, 2)
+    sp.location = (tx, ty - 0.01, tz + 0.01); sp.rotation_euler = (math.radians(4), 0, math.radians(-12)); sp.scale = (1.1, 1, 1.1)
+    parts.append(sp)
     if evil > 0:
-        bpy.ops.object.light_add(type="POINT", location=(tx, ty - 0.08, tz)); lamp = bpy.context.object
-        lamp.data.energy = 18 * evil; lamp.data.color = B.hexcol("#FF4D5E")[:3]; lamp.data.shadow_soft_size = 0.06
+        bpy.ops.object.light_add(type="POINT", location=(tx, ty - 0.1, tz)); lamp = bpy.context.object
+        lamp.data.energy = 16 * evil; lamp.data.color = B.hexcol(P["glow"])[:3]; lamp.data.shadow_soft_size = 0.06
         parts.append(lamp)
-    B.parent(parts, root)
+    for o in parts:
+        if o.parent is None: o.parent = root
     root.location = (x, 0, hop); root.rotation_euler = (0, math.radians(lean), 0)
     if hop > 0: root.scale = (1 - hop * 0.3, 1 - hop * 0.3, 1 + hop * 0.6)
     return root
@@ -132,9 +232,9 @@ STATES = {
     "day": dict(),
     "glance": dict(moss_eye=dict(look=(-0.9, 0.15)), otto_eye=dict(look=(-0.7, -0.1)), lean=4, perk=0.8),
     "blink": dict(shut="day"),
-    "type": dict(moss_eye=dict(look=(0.1, -0.6), lid=0.18), otto_eye=dict(look=(0.0, -0.6), lid=0.6), lean=-3, perk=0.7),
-    # night: awake, eyes narrowed, irises and tail tip glowing red
-    "night": dict(moss_eye=dict(look=(0.2, 0.0), lid=0.5, pupil=0.42), otto_eye=dict(look=(0.0, 0.0), lid=0.6, pupil=0.42), evil=1.0, perk=1.0),
+    "type": dict(moss_eye=dict(look=(0.1, -0.6), lid=0.15), otto_eye=dict(look=(0.0, -0.6), lid=0.3), lean=-3, perk=0.7),
+    # night: awake, eyes narrowed to a scheming squint, gold irises and the spade glowing
+    "night": dict(moss_eye=dict(look=(0.2, 0.0), lid=0.42, pupil=0.5), otto_eye=dict(look=(0.0, 0.0), lid=0.48, pupil=0.5), evil=1.0, perk=1.0),
 }
 
 def night_world():
@@ -172,7 +272,7 @@ def add_glow(path, at, radius=0.16, strength=0.75):
     d = ImageDraw.Draw(halo); cx, cy = at[0] * w, at[1] * h; r = radius * w
     for i in range(24, 0, -1):
         k = i / 24
-        d.ellipse([cx - r * k, cy - r * k, cx + r * k, cy + r * k], fill=(255, 77, 94, int(255 * strength * (1 - k) ** 1.6)))
+        d.ellipse([cx - r * k, cy - r * k, cx + r * k, cy + r * k], fill=(*[int(P['glow'][i:i+2],16) for i in (1,3,5)], int(255 * strength * (1 - k) ** 1.6)))
     halo = halo.filter(ImageFilter.GaussianBlur(w * 0.01))
     Image.alpha_composite(halo, im).save(path) if im.mode == "RGBA" else None
 
@@ -229,9 +329,9 @@ def icon(path):
     B.render(tmp, size, size)
     bg = Image.new("RGB", (size, size))
     d = ImageDraw.Draw(bg)
-    for y in range(size):                                   # a pale lilac that turns ember-pink at the bottom
+    for y in range(size):                                   # a night-indigo sky, lighter at the top: the cherry red pops
         t = y / size
-        d.line([(0, y), (size, y)], fill=(int(244 - 2 * t), int(236 - 40 * t), int(246 - 36 * t)))
+        d.line([(0, y), (size, y)], fill=(int(58 - 26 * t), int(52 - 22 * t), int(128 - 50 * t)))
     fg = Image.open(tmp).convert("RGBA")
     bg.paste(fg, (0, 0), fg)
     bg.save(path)

@@ -19,7 +19,7 @@ struct ContentView: View {
                             .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Mosto").font(.title2.weight(.semibold))
-                            Text("名字念快了像“魔头”：一只住在键盘里的小恶魔。白天一只眼圆睁、一只眼半垂地看你打字，夜里眯起眼，尾巴尖亮起红光。")
+                            Text("名字念快了像“魔头”：一只住在键盘里的樱桃红小魔王，歪戴金冠，一对金色卷角。白天瞪着大眼睛看你打字，夜里眯眼坏笑，金色的眼睛和桃心尾巴亮起来。")
                                 .font(.subheadline).foregroundStyle(.secondary)
                         }
                     }
