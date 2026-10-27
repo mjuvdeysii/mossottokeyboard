@@ -59,6 +59,30 @@ final class KeyView: UIView {
         }
         updateColors()
         setNeedsLayout()
+        isAccessibilityElement = true
+        accessibilityTraits = .keyboardKey
+        accessibilityLabel = Self.spokenName(spec)
+    }
+
+    /// What VoiceOver reads for a key (icons have no text of their own).
+    private static func spokenName(_ spec: KeySpec) -> String {
+        switch spec.action {
+        case .char(let s): return s
+        case .shift: return "上档"
+        case .delete: return "删除"
+        case .space: return "空格"
+        case .ret: return spec.label.isEmpty ? "换行" : spec.label
+        case .globe: return "下一个键盘"
+        case .settings: return "键盘设置"
+        case .toggleLanguage: return spec.label == "中" ? "中文，轻点切换到英文" : "英文，轻点切换到中文"
+        case .page(let p):
+            switch p {
+            case .letters: return "字母"
+            case .numbers: return "数字与符号"
+            case .symbols: return "更多符号"
+            case .numpad: return "数字键盘"
+            }
+        }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -249,7 +273,7 @@ final class KeyboardView: UIView {
     var onCursorMove: ((Int) -> Void)?
     /// Whether a drag on the space bar may move the cursor now (not while a pinyin is being composed).
     var canMoveCursor: (() -> Bool)?
-    var onKeyDown: (() -> Void)?
+    var onKeyDown: ((KeyAction) -> Void)?
     weak var inputController: UIInputViewController?
 
     let spatial: SpatialModel
@@ -404,7 +428,7 @@ final class KeyboardView: UIView {
             touchOrder.append(id)
             let kv = keyViews[idx]
             kv.pressed = true
-            onKeyDown?()
+            onKeyDown?(kv.spec.action)
             switch kv.spec.action {
             case .char:
                 showPreview(tr, text: kv.spec.label)
@@ -575,7 +599,7 @@ final class KeyboardView: UIView {
 
     private func showPreview(_ tr: Tracked, text: String) {
         let kv = keyViews[tr.keyIndex]
-        guard kv.spec.style == .normal || kv.spec.action == .char("，") || kv.spec.action == .char("。") else { return }
+        guard kv.spec.style == .normal || kv.spec.action == .char("，") || kv.spec.action == .char("。") || tr.altShown else { return }
         let p = tr.preview ?? KeyPreview(frame: .zero)
         p.label.text = text
         p.label.textColor = Theme.keyText
@@ -608,6 +632,6 @@ final class KeyboardView: UIView {
             addSubview(popup)
             tr.altPopup = popup
         }
-        onKeyDown?()
+        onKeyDown?(kv.spec.action)
     }
 }

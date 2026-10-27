@@ -1,6 +1,7 @@
 import UIKit
 
-enum KeyboardPage { case letters, numbers, symbols }
+/// numbers / symbols: Gboard's full-width 123 and #+= pages; numpad: the 九宫格 number pad.
+enum KeyboardPage { case letters, numbers, symbols, numpad }
 
 enum KeyAction: Equatable {
     case char(String)
@@ -38,6 +39,8 @@ struct LayoutContext {
     var shifted: Bool
     var capsLock: Bool
     var keyBorders: Bool
+    /// 123 opens the 九宫格 number pad (on) or Gboard's full 123 page (off).
+    var numberGrid: Bool = true
 }
 
 /// Geometry measured from Gboard iOS 2.3 on a 402 pt wide iPhone (1206 px screenshots):
@@ -71,6 +74,7 @@ enum Layouts {
         case .letters: return letters(ctx)
         case .numbers: return numbers(ctx)
         case .symbols: return symbols(ctx)
+        case .numpad: return numpad(ctx)
         }
     }
 
@@ -112,7 +116,7 @@ enum Layouts {
             }
             rows.append(specs)
         }
-        var bottom: [KeySpec] = [KeySpec(action: .page(.numbers), label: "123", width: 1.25, style: .function)]
+        var bottom: [KeySpec] = [KeySpec(action: .page(ctx.numberGrid ? .numpad : .numbers), label: "123", width: 1.25, style: .function)]
         bottom += middleKeys(ctx)
         bottom.append(KeySpec(action: .space, label: "", width: 0))
         bottom.append(ctx.chinese
@@ -146,6 +150,27 @@ enum Layouts {
             : charRow([".", ",", "?", "!", "'", "%"], width: sixth)
         row3.append(KeySpec(action: .delete, label: "", symbol: "delete.left", width: 1.5, style: .function))
         return [row1, row2, row3, bottomRow(ctx)]
+    }
+
+    /// 九宫格 number pad: a phone keypad in the middle (1–9, 0 below 8), common number punctuation on the left,
+    /// delete / space / return on the right. 符号 opens the full 123 page; 返回 goes back to the letters.
+    /// Half-width "." and ":" in both languages, as numbers, decimals and times are written.
+    private static func numpad(_ ctx: LayoutContext) -> [[KeySpec]] {
+        let side: CGFloat = 2, digit: CGFloat = 2
+        func d(_ s: String) -> KeySpec { KeySpec(action: .char(s), label: s, width: digit) }
+        func p(_ s: String, _ alt: String? = nil) -> KeySpec { KeySpec(action: .char(s), label: s, width: side, alt: alt, style: .function) }
+        let row1 = [p("+", "="), d("1"), d("2"), d("3"),
+                    KeySpec(action: .delete, label: "", symbol: "delete.left", width: side, style: .function)]
+        let row2 = [p("-", "_"), d("4"), d("5"), d("6"),
+                    KeySpec(action: .space, label: ctx.chinese ? "空格" : "space", width: side)]
+        let row3 = [p("/", "*"), d("7"), d("8"), d("9"), returnKey(ctx, width: side, wide: true)]
+        var row4: [KeySpec] = ctx.showGlobe
+            ? [KeySpec(action: .page(.letters), label: ctx.chinese ? "返回" : "ABC", width: 1, style: .function),
+               KeySpec(action: .globe, label: "", symbol: "globe", width: 1, style: .function)]
+            : [KeySpec(action: .page(.letters), label: ctx.chinese ? "返回" : "ABC", width: side, style: .function)]
+        row4 += [p(".", ","), d("0"), p(":", "%"),
+                 KeySpec(action: .page(.numbers), label: ctx.chinese ? "符号" : "#+=", width: side, style: .function)]
+        return [row1, row2, row3, row4]
     }
 
     private static func symbols(_ ctx: LayoutContext) -> [[KeySpec]] {

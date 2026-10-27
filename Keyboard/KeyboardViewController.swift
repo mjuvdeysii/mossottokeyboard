@@ -59,7 +59,7 @@ final class KeyboardViewController: UIInputViewController {
             proxy.adjustTextPosition(byCharacterOffset: d * (ch?.utf16.count ?? 1))
             if ch != nil, KeyboardSettings.shared.feedback, self.hasFullAccess { self.tick.selectionChanged() }
         }
-        keyboard.onKeyDown = { [weak self] in self?.playFeedback() }
+        keyboard.onKeyDown = { [weak self] action in self?.playFeedback(action) }
 
         candidateBar.onSelect = { [weak self] i in self?.candidateTapped(i) }
         candidateBar.onExpand = { [weak self] in self?.showGrid(true) }
@@ -209,10 +209,17 @@ final class KeyboardViewController: UIInputViewController {
         if !taps.isEmpty { refresh() }
     }
 
-    private func playFeedback() {
+    /// The system keyboard's three click sounds: letters and symbols, delete, and the other function keys.
+    private func playFeedback(_ action: KeyAction) {
         guard KeyboardSettings.shared.feedback, hasFullAccess else { return }
         haptic.impactOccurred()
-        AudioServicesPlaySystemSound(1104)
+        let sound: SystemSoundID
+        switch action {
+        case .char, .space: sound = 1104
+        case .delete: sound = 1155
+        default: sound = 1156
+        }
+        AudioServicesPlaySystemSound(sound)
         haptic.prepare()
     }
 
@@ -221,8 +228,10 @@ final class KeyboardViewController: UIInputViewController {
     private func adaptToField() {
         let proxy = textDocumentProxy
         switch proxy.keyboardType ?? .default {
-        case .numberPad, .decimalPad, .phonePad, .numbersAndPunctuation, .asciiCapableNumberPad:
-            page = .numbers
+        case .numberPad, .decimalPad, .phonePad, .asciiCapableNumberPad:
+            page = .numpad   // digits-only fields always get the 九宫格 pad
+        case .numbersAndPunctuation:
+            page = KeyboardSettings.shared.numberGrid ? .numpad : .numbers
         case .emailAddress, .URL, .webSearch:
             page = .letters
             if taps.isEmpty { chinese = false }
@@ -251,7 +260,8 @@ final class KeyboardViewController: UIInputViewController {
         keyboard.configure(LayoutContext(page: page, chinese: chinese, showGlobe: needsInputModeSwitchKey,
                                          returnLabel: label, returnIsAccent: accent,
                                          shifted: shifted, capsLock: capsLock,
-                                         keyBorders: KeyboardSettings.shared.keyBorders))
+                                         keyBorders: KeyboardSettings.shared.keyBorders,
+                                         numberGrid: KeyboardSettings.shared.numberGrid))
     }
 
     // MARK: - Key handling

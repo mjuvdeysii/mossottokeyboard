@@ -238,6 +238,7 @@ final class SettingsPanelView: UIView {
     private let bordersSwitch = UISwitch()
     private let predictionSwitch = UISwitch()
     private let appearance = UISegmentedControl(items: ["自动", "日光", "夜灯", "晚上"])
+    private let numberControl = UISegmentedControl(items: ["九宫格", "全键盘"])
     private let note = UILabel()
 
     override init(frame: CGRect) {
@@ -266,6 +267,7 @@ final class SettingsPanelView: UIView {
         stack.addArrangedSubview(row("自动纠错（按触点位置）", correctionSwitch))
         stack.addArrangedSubview(row("纠错强度", strength))
         stack.addArrangedSubview(row("按键震动与音效", feedbackSwitch))
+        stack.addArrangedSubview(row("数字键盘", numberControl))
         stack.addArrangedSubview(row("外观", appearance))
         let appearanceNote = UILabel()
         appearanceNote.text = "自动：跟随系统浅色 / 深色。晚上：19:00–6:00 自动开夜灯，其余时间跟随系统。与摸索台灯的日光、夜灯规则一致。"
@@ -296,6 +298,7 @@ final class SettingsPanelView: UIView {
         bordersSwitch.addTarget(self, action: #selector(changed), for: .valueChanged)
         predictionSwitch.addTarget(self, action: #selector(changed), for: .valueChanged)
         appearance.addTarget(self, action: #selector(changed), for: .valueChanged)
+        numberControl.addTarget(self, action: #selector(changed), for: .valueChanged)
         load()
     }
 
@@ -323,6 +326,7 @@ final class SettingsPanelView: UIView {
         bordersSwitch.isOn = s.keyBorders
         predictionSwitch.isOn = s.predictions
         appearance.selectedSegmentIndex = s.appearance
+        numberControl.selectedSegmentIndex = s.numberGrid ? 0 : 1
     }
 
     func setNote(_ text: String) { note.text = text }
@@ -336,6 +340,7 @@ final class SettingsPanelView: UIView {
         s.keyBorders = bordersSwitch.isOn
         s.predictions = predictionSwitch.isOn
         s.appearance = appearance.selectedSegmentIndex
+        s.numberGrid = numberControl.selectedSegmentIndex == 0
         strength.isEnabled = s.autocorrect
         onChange?()
     }
@@ -376,6 +381,11 @@ final class KeyboardSettings {
     var keyBorders: Bool {
         get { d.object(forKey: "keyCaps") as? Bool ?? true }
         set { d.set(newValue, forKey: "keyCaps") }
+    }
+    /// 123 opens the 九宫格 number pad (default) or the full 123 page.
+    var numberGrid: Bool {
+        get { d.object(forKey: "numberGrid") as? Bool ?? true }
+        set { d.set(newValue, forKey: "numberGrid") }
     }
     var predictions: Bool {
         get { d.object(forKey: "predictions") as? Bool ?? true }
