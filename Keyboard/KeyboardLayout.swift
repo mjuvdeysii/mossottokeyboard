@@ -25,6 +25,7 @@ struct KeySpec {
     var style: KeyStyle = .normal
     var isLetter: Bool = false
     var hint: String? = nil          // small corner label (top-row digits, like Gboard)
+    var moreAlts: [String] = []      // further long-press choices after `alt`, shown as a row
 }
 
 struct LayoutContext {
@@ -118,8 +119,8 @@ enum Layouts {
         bottom += middleKeys(ctx)
         bottom.append(KeySpec(action: .space, label: "", width: 0))
         bottom.append(ctx.chinese
-            ? KeySpec(action: .char("，"), label: "，", width: 1, alt: "。", style: .function)
-            : KeySpec(action: .char("."), label: ".", width: 1, alt: ",", style: .function))
+            ? KeySpec(action: .char("，"), label: "，", width: 1, alt: "。", style: .function, moreAlts: ["？", "！", "、", "…", "："])
+            : KeySpec(action: .char("."), label: ".", width: 1, alt: ",", style: .function, moreAlts: ["?", "!", "'", ":"]))
         bottom.append(returnKey(ctx, width: 1.5, wide: false))
         rows.append(bottom)
         return rows

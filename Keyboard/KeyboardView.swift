@@ -116,6 +116,50 @@ final class KeyPreview: UIView {
     }
 }
 
+/// Long-press row of alternates (Gboard style): slide to choose, release to type the highlighted one.
+final class AltPopup: UIView {
+    private var labels: [UILabel] = []
+    let cell: CGFloat
+    var selected = 0 { didSet { if selected != oldValue { refresh() } } }
+
+    init(options: [String], cell: CGFloat, height: CGFloat) {
+        self.cell = cell
+        super.init(frame: CGRect(x: 0, y: 0, width: cell * CGFloat(options.count) + 8, height: height))
+        isUserInteractionEnabled = false
+        backgroundColor = Theme.bubble
+        layer.cornerRadius = 10
+        layer.shadowColor = UIColor.black.cgColor
+        layer.shadowOpacity = 0.25
+        layer.shadowRadius = 3
+        layer.shadowOffset = CGSize(width: 0, height: 1)
+        for (i, o) in options.enumerated() {
+            let l = UILabel(frame: CGRect(x: 4 + CGFloat(i) * cell, y: 4, width: cell, height: height - 8))
+            l.text = o
+            l.textAlignment = .center
+            l.font = .systemFont(ofSize: 24, weight: .medium)
+            l.adjustsFontSizeToFitWidth = true
+            l.minimumScaleFactor = 0.5
+            l.layer.cornerRadius = 7
+            l.clipsToBounds = true
+            addSubview(l)
+            labels.append(l)
+        }
+        refresh()
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    private func refresh() {
+        for (i, l) in labels.enumerated() {
+            l.backgroundColor = i == selected ? Theme.accentKey : .clear
+            l.textColor = i == selected ? Theme.accentText : Theme.keyText
+        }
+    }
+
+    func index(at x: CGFloat) -> Int {
+        max(0, min(labels.count - 1, Int((x - frame.minX - 4) / cell)))
+    }
+}
+
 /// Draws the keys and handles every touch itself (no UIButton per key), so a key
 /// reacts on the first touch event, gaps between keys still hit the nearest key,
 /// and fast two-thumb typing rolls over instead of dropping letters.
@@ -137,6 +181,9 @@ final class KeyboardView: UIView {
         var start: CGPoint
         var location: CGPoint
         var altShown = false
+        var altOptions: [String] = []
+        var altPopup: AltPopup?
+        var altAnchorX: CGFloat = 0
         var longPressTimer: Timer?
         var repeatTimer: Timer?
         var dragAccum: CGFloat = 0
@@ -318,6 +365,9 @@ final class KeyboardView: UIView {
                         tr.dragAccum -= CGFloat(dir) * step
                     }
                 }
+            case .char where tr.altShown:
+                // the first choice stays selected until the finger actually slides
+                if let popup = tr.altPopup, abs(p.x - tr.altAnchorX) > 6 { popup.selected = popup.index(at: p.x) }
             case .char where !tr.altShown:
                 // Slide to a neighbouring character key before release.
                 if let idx = keyIndex(at: p), idx < keyViews.count, idx != tr.keyIndex, case .char = keyViews[idx].spec.action {
@@ -371,14 +421,17 @@ final class KeyboardView: UIView {
         tr.repeatTimer?.invalidate()
         tr.preview?.removeFromSuperview()
         tr.preview = nil
+        let chosen = tr.altPopup?.selected ?? 0
+        tr.altPopup?.removeFromSuperview()
+        tr.altPopup = nil
         guard tr.keyIndex < keyViews.count else { return }
         let kv = keyViews[tr.keyIndex]
         kv.pressed = false
         guard emit else { return }
         switch kv.spec.action {
         case .char(let s):
-            if tr.altShown, let alt = kv.spec.alt {
-                onAction?(.char(alt), nil)
+            if tr.altShown, chosen < tr.altOptions.count {
+                onAction?(.char(tr.altOptions[chosen]), nil)
             } else if kv.spec.isLetter, let c = s.first {
                 let tap = spatial.tap(x: Double(tr.location.x), y: Double(tr.location.y), hitKey: c)
                 onAction?(.char(s), tap)
@@ -426,8 +479,22 @@ final class KeyboardView: UIView {
         let kv = keyViews[tr.keyIndex]
         guard let alt = kv.spec.alt else { return }
         tr.altShown = true
-        showPreview(tr, text: alt)
-        tr.preview?.label.textColor = Theme.correctedMark
+        tr.altOptions = [alt] + kv.spec.moreAlts
+        if tr.altOptions.count == 1 {
+            showPreview(tr, text: alt)
+            tr.preview?.label.textColor = Theme.correctedMark
+        } else {
+            tr.preview?.removeFromSuperview(); tr.preview = nil
+            let f = kv.frame
+            let popup = AltPopup(options: tr.altOptions, cell: max(f.width, 34), height: f.height * 1.1)
+            var x = f.midX - popup.cell / 2 - 4      // first option sits over the key, the rest run to the right
+            x = min(max(2, x), bounds.width - popup.frame.width - 2)
+            popup.frame.origin = CGPoint(x: x, y: f.minY - popup.frame.height - 4)
+            popup.selected = 0
+            tr.altAnchorX = tr.location.x
+            addSubview(popup)
+            tr.altPopup = popup
+        }
         onKeyDown?()
     }
 }

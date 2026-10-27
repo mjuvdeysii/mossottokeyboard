@@ -41,6 +41,9 @@ jobs:
         timeout-minutes: 20
         run: |
           set -o pipefail
+          mkdir -p report
+          exec > >(tee report/snapshot-log.txt) 2>&1
+          xcrun simctl list devices available | grep -E "iPhone" | head -20
           DEV=$(xcrun simctl list devices available -j | python3 -c "
           import json,sys,re
           d=json.load(sys.stdin)['devices']
@@ -52,8 +55,11 @@ jobs:
             -destination "id=$DEV" -derivedDataPath build/dd CODE_SIGNING_ALLOWED=NO > snap-build.log 2>&1 || { tail -30 snap-build.log; exit 1; }
           APP=$(find build/dd/Build/Products -maxdepth 3 -name MossOttoKeyboard.app | head -1)
           xcrun simctl install "$DEV" "$APP"
-          timeout 180 xcrun simctl launch --console-pty "$DEV" app.mossling.keyboard -renderKeyboardSnapshots | tail -5 || true
+          echo "app: $APP"
+          xcrun simctl launch "$DEV" app.mossling.keyboard -renderKeyboardSnapshots
           DATA=$(xcrun simctl get_app_container "$DEV" app.mossling.keyboard data)
+          for i in $(seq 1 60); do ls "$DATA"/Documents/snapshots/night_settings.png >/dev/null 2>&1 && break; sleep 2; done
+          ls -la "$DATA"/Documents/snapshots || true
           mkdir -p report/snapshots && cp "$DATA"/Documents/snapshots/*.png report/snapshots/
           ls report/snapshots
       - name: Engine quality gate (blocks the release on regression)
