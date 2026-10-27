@@ -164,6 +164,7 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         super.init(frame: frame)
         backgroundColor = Theme.panel
         collection.backgroundColor = .clear
+        collection.contentInsetAdjustmentBehavior = .never
         collection.alwaysBounceHorizontal = false
         collection.showsHorizontalScrollIndicator = false
         collection.dataSource = self
@@ -245,6 +246,7 @@ final class SettingsPanelView: UIView {
         stack.spacing = 10
         scroll.addSubview(stack)
         scroll.alwaysBounceHorizontal = false
+        scroll.contentInsetAdjustmentBehavior = .never   // no safe-area inset: the panel starts at its top edge
         addSubview(scroll)
 
         let title = UILabel()

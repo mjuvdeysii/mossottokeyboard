@@ -183,7 +183,7 @@ enum Theme {
     /// Night forced while the system is light: the glass underneath is pale, so the tint must carry the night alone.
     static let forcedNightTint = hex(0x1B2245, 0.92)
     /// Opaque panels over the keys (candidate grid, settings).
-    static let panel = dyn(hex(0xF4F2EE, 0.97), hex(0x1B2245, 0.97))
+    static let panel = dyn(hex(0xF4F2EE), hex(0x1B2245))   // opaque: keys must not show through a panel
     // iOS 26 key caps: translucent, no hard shadow
     static let key = dyn(UIColor(white: 1, alpha: 0.93), UIColor(white: 1, alpha: 0.17))
     static let keyPressed = dyn(UIColor(white: 0.80, alpha: 0.95), UIColor(white: 1, alpha: 0.32))
