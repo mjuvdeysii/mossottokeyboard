@@ -12,7 +12,7 @@ public final class UserDictionary {
     private var items: [String: Item] = [:]
     /// Per first syllable: the learned items, with the lexicon's own score for the same word (nil for words the
     /// lexicon does not have — the user's own phrases).
-    private var byFirst: [UInt16: [(ids: [UInt16], key: String, lex: Int16?)]] = [:]
+    private var byFirst: [UInt16: [(ids: [UInt16], key: String, lex: Int16?)]] = [:]   // lex: see lexScores
     private let lexicon: Lexicon
     private let url: URL?
     private var dirty = false
@@ -36,15 +36,25 @@ public final class UserDictionary {
         for (k, it) in items {
             let ids = it.p.compactMap { idMap[$0] }
             guard ids.count == it.p.count, let f = ids.first else { continue }
-            byFirst[f, default: []].append((ids, k, lexicon.score(of: ids, text: it.t)))
+            byFirst[f, default: []].append((ids, k, nil))
         }
+        lexScores.removeAll()
+    }
+    /// The lexicon's score of each learned item, looked up the first time the decoder asks (never all at once at
+    /// launch or inside a keystroke). `Int16.min` marks "not in the lexicon".
+    private var lexScores: [String: Int16] = [:]
+    private func lexScore(_ key: String, _ ids: [UInt16], _ text: String) -> Int16? {
+        if let v = lexScores[key] { return v == Int16.min ? nil : v }
+        let v = lexicon.score(of: ids, text: text)
+        lexScores[key] = v ?? Int16.min
+        return v
     }
 
     public var count: Int { items.count }
 
     func candidates(first: UInt16) -> [(ids: [UInt16], text: String, count: Int, lex: Int16?)] {
         guard let list = byFirst[first] else { return [] }
-        return list.compactMap { e in items[e.key].map { (e.ids, $0.t, $0.c, e.lex) } }
+        return list.compactMap { e in items[e.key].map { (e.ids, $0.t, $0.c, lexScore(e.key, e.ids, $0.t)) } }
     }
 
     public func learn(syllables ids: [UInt16], text: String) {
@@ -58,7 +68,7 @@ public final class UserDictionary {
             items[k] = it
         } else {
             items[k] = Item(p: p, t: text, c: 1, u: now)
-            byFirst[ids[0], default: []].append((ids, k, lexicon.score(of: ids, text: text)))
+            byFirst[ids[0], default: []].append((ids, k, nil))
         }
         if items.count > maxItems { prune() }
         dirty = true

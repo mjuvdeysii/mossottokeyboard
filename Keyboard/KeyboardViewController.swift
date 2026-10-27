@@ -199,8 +199,9 @@ final class KeyboardViewController: UIInputViewController {
         root.frame = b
         tintView.frame = b
         candidateBar.frame = CGRect(x: 0, y: 0, width: b.width, height: barHeight)
-        // the keys reach 22 pt up into the strip: taps that land high while typing still type (see KeyboardView.hitTest)
-        let reach: CGFloat = 22
+        // the keys reach up into the strip — 8 pt always, a little more right after a key (see KeyboardView.hitTest) —
+        // never so far that a quick candidate pick lands on a key (the strip is shorter in landscape)
+        let reach: CGFloat = min(14, barHeight * 0.3)
         keyboard.frame = CGRect(x: 0, y: barHeight - reach, width: b.width, height: b.height - barHeight + reach)
         keyboard.topReach = reach
         grid.frame = CGRect(x: 0, y: barHeight, width: b.width, height: b.height - barHeight)
@@ -217,7 +218,11 @@ final class KeyboardViewController: UIInputViewController {
             // late, after the next keys may already be typed): never throw those keys away; adapt the layout only
             // when nothing is being composed and the field is actually of another kind.
             lastDocumentID = id
-            if taps.isEmpty, fieldTraits() != lastFieldTraits { adaptToField(); applyAppearance() }
+            if taps.isEmpty {
+                // a field of another kind gets its page and language; any field gets its shift and light
+                if fieldTraits() != lastFieldTraits { adaptToField() } else if !chinese { updateAutoShift(); reconfigure() }
+                applyAppearance()
+            }
             return
         }
         if !chinese { updateAutoShift(); reconfigure() }
@@ -242,7 +247,10 @@ final class KeyboardViewController: UIInputViewController {
             return
         }
         // a late notice about an earlier state of this composition (fast typing) is not the host moving on
-        guard hostEchoesMarked >= 2, !markedHistory.contains(where: { before.hasSuffix($0) }) else { return }
+        // and only once the host has caught up with the latest marked text (it echoed the current string): callbacks
+        // arrive in order, so a context without it after that is newer, never a stale one from before a commit
+        guard hostEchoesMarked >= 2, lastEchoed == markedString,
+              !markedHistory.contains(where: { before.hasSuffix($0) }) else { return }
         markedHistory.removeAll()
         hasMarkedText = false
         taps.removeAll()

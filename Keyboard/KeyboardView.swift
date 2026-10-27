@@ -458,9 +458,9 @@ final class KeyboardView: UIView {
         if let g = globeButton, g.frame.contains(point) { return g }
         guard bounds.contains(point) else { return nil }
         // The band above the top row overlaps the bottom of the candidate strip. Its lower 8 pt always types; the
-        // rest types while the user is typing (a key went down in the last 0.4 s — a fast finger landing high) or
+        // rest types while the user is typing (a key went down in the last 0.25 s — a fast finger landing high) or
         // when the strip has nothing to tap; otherwise the touch goes to the candidate under it.
-        if point.y < topReach - 8, CACurrentMediaTime() - lastKeyDown > 0.4, !(stripIsEmpty?() ?? true) { return nil }
+        if point.y < topReach - 8, CACurrentMediaTime() - lastKeyDown > 0.25, !(stripIsEmpty?() ?? true) { return nil }
         return self
     }
 
