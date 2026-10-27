@@ -66,7 +66,9 @@ final class KeyView: UIView {
             case .accent: bg = pressed ? Theme.functionKey : Theme.accentKey
             }
         } else {
-            bg = pressed ? Theme.keyHighlight : .clear
+            // borderless: an engaged shift still shows as a lit key
+            let engaged = spec.action == .shift && spec.style == .normal
+            bg = pressed || engaged ? Theme.keyHighlight : .clear
         }
         backgroundColor = bg
         layer.shadowOpacity = hasCap && !pressed ? 1 : 0
@@ -84,7 +86,8 @@ final class KeyView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        label.frame = bounds.insetBy(dx: 2, dy: 0)
+        let o = cjkPunctuationOffset(label.text, fontSize: label.font.pointSize)
+        label.frame = bounds.insetBy(dx: 2, dy: 0).offsetBy(dx: o.x, dy: o.y)
         icon.frame = bounds
         // Digit hint in the cap's top-right corner (Gboard's hint, kept inside the iOS key cap).
         hintLabel.frame = CGRect(x: bounds.width - 16, y: 2, width: 12, height: 13)
@@ -93,26 +96,86 @@ final class KeyView: UIView {
 }
 
 /// Key popup shown above a pressed character key.
+/// Optical centring for full-width CJK punctuation: 。，、 sit in the lower-left of their em box, so on a key
+/// they look dropped and off to the side. Returns the offset that moves the glyph to the visual centre.
+func cjkPunctuationOffset(_ text: String?, fontSize: CGFloat) -> CGPoint {
+    guard let t = text, ["。", "，", "、", "．"].contains(t) else { return .zero }
+    return CGPoint(x: fontSize * 0.22, y: -fontSize * 0.2)
+}
+
+/// The key-press balloon, shaped like the iOS keyboard's: a wider cap above the key that narrows through a
+/// short neck into the key itself, so the pressed key appears to grow upwards rather than a box floating over it.
 final class KeyPreview: UIView {
     let label = UILabel()
+    private let shape = CAShapeLayer()
+    private var capRect: CGRect = .zero
+
     override init(frame: CGRect) {
         super.init(frame: frame)
         isUserInteractionEnabled = false
-        backgroundColor = Theme.bubble
-        layer.cornerRadius = 10
-        layer.shadowColor = UIColor.black.cgColor
-        layer.shadowOpacity = 0.25
-        layer.shadowRadius = 3
-        layer.shadowOffset = CGSize(width: 0, height: 1)
+        backgroundColor = .clear
+        layer.addSublayer(shape)
+        shape.shadowColor = UIColor.black.cgColor
+        shape.shadowOpacity = 0.28
+        shape.shadowRadius = 2.5
+        shape.shadowOffset = CGSize(width: 0, height: 1)
         label.textAlignment = .center
-        label.font = .systemFont(ofSize: 30)
+        label.font = .systemFont(ofSize: 32, weight: .medium)
         label.textColor = Theme.keyText
+        label.adjustsFontSizeToFitWidth = true
+        label.minimumScaleFactor = 0.5
         addSubview(label)
     }
     required init?(coder: NSCoder) { fatalError() }
+
+    /// `key`: the key's frame; `limit`: the horizontal room available (container bounds), both in container space.
+    func place(over key: CGRect, within limit: CGRect) {
+        let capW = max(key.width + 26, 52), capH = key.height * 1.12, neck: CGFloat = 10
+        var capX = key.midX - capW / 2
+        capX = min(max(limit.minX + 1, capX), limit.maxX - capW - 1)
+        let top = key.minY - neck - capH
+        let minX = min(capX, key.minX), maxX = max(capX + capW, key.maxX)
+        frame = CGRect(x: minX, y: top, width: maxX - minX, height: key.maxY - top)
+        let cap = CGRect(x: capX - minX, y: 0, width: capW, height: capH)
+        let k = CGRect(x: key.minX - minX, y: capH + neck, width: key.width, height: key.height)
+        capRect = cap
+        let r: CGFloat = 11, kr = Metrics.cornerRadius
+        let p = UIBezierPath()
+        p.move(to: CGPoint(x: cap.minX, y: cap.minY + r))
+        p.addArc(withCenter: CGPoint(x: cap.minX + r, y: cap.minY + r), radius: r, startAngle: .pi, endAngle: 1.5 * .pi, clockwise: true)
+        p.addLine(to: CGPoint(x: cap.maxX - r, y: cap.minY))
+        p.addArc(withCenter: CGPoint(x: cap.maxX - r, y: cap.minY + r), radius: r, startAngle: 1.5 * .pi, endAngle: 0, clockwise: true)
+        p.addLine(to: CGPoint(x: cap.maxX, y: cap.maxY - 4))
+        p.addCurve(to: CGPoint(x: k.maxX, y: k.minY + 2),
+                   controlPoint1: CGPoint(x: cap.maxX, y: cap.maxY + neck * 0.55),
+                   controlPoint2: CGPoint(x: k.maxX, y: k.minY - neck * 0.45))
+        p.addLine(to: CGPoint(x: k.maxX, y: k.maxY - kr))
+        p.addArc(withCenter: CGPoint(x: k.maxX - kr, y: k.maxY - kr), radius: kr, startAngle: 0, endAngle: 0.5 * .pi, clockwise: true)
+        p.addLine(to: CGPoint(x: k.minX + kr, y: k.maxY))
+        p.addArc(withCenter: CGPoint(x: k.minX + kr, y: k.maxY - kr), radius: kr, startAngle: 0.5 * .pi, endAngle: .pi, clockwise: true)
+        p.addLine(to: CGPoint(x: k.minX, y: k.minY + 2))
+        p.addCurve(to: CGPoint(x: cap.minX, y: cap.maxY - 4),
+                   controlPoint1: CGPoint(x: k.minX, y: k.minY - neck * 0.45),
+                   controlPoint2: CGPoint(x: cap.minX, y: cap.maxY + neck * 0.55))
+        p.close()
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        shape.frame = bounds
+        shape.path = p.cgPath
+        shape.shadowPath = p.cgPath
+        shape.fillColor = Theme.bubble.resolvedColor(with: traitCollection).cgColor
+        CATransaction.commit()
+        setNeedsLayout()
+    }
+
     override func layoutSubviews() {
         super.layoutSubviews()
-        label.frame = bounds
+        let o = cjkPunctuationOffset(label.text, fontSize: label.font.pointSize)
+        label.frame = capRect.insetBy(dx: 3, dy: 0).offsetBy(dx: o.x, dy: o.y - 1)
+    }
+
+    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+        super.traitCollectionDidChange(previous)
+        shape.fillColor = Theme.bubble.resolvedColor(with: traitCollection).cgColor
     }
 }
 
@@ -138,7 +201,9 @@ final class AltPopup: UIView {
         layer.shadowOffset = CGSize(width: 0, height: 1)
         for (i, o) in options.enumerated() {
             let slot = reversed ? options.count - 1 - i : i
+            let shift = cjkPunctuationOffset(o, fontSize: 24)
             let l = UILabel(frame: CGRect(x: 4 + CGFloat(slot) * cell, y: 4, width: cell, height: height - 8))
+            l.layer.sublayerTransform = CATransform3DMakeTranslation(shift.x, shift.y, 0)
             l.text = o
             l.textAlignment = .center
             l.font = .systemFont(ofSize: 24, weight: .medium)
@@ -463,21 +528,24 @@ final class KeyboardView: UIView {
         }
     }
 
+    /// Snapshot support: show the balloon for a character key as if it were held.
+    func demoPress(_ char: String) {
+        guard let idx = keyViews.firstIndex(where: { $0.spec.action == .char(char) }) else { return }
+        let tr = Tracked(keyIndex: idx, start: keyViews[idx].center)
+        keyViews[idx].pressed = true
+        showPreview(tr, text: keyViews[idx].spec.label)
+    }
+
     // MARK: - Popups
 
     private func showPreview(_ tr: Tracked, text: String) {
         let kv = keyViews[tr.keyIndex]
         guard kv.spec.style == .normal || kv.spec.action == .char("，") || kv.spec.action == .char("。") else { return }
-        let f = kv.frame
-        let w = max(f.width + 14, 46), h = f.height * 1.05
-        var x = f.midX - w / 2
-        x = min(max(2, x), bounds.width - w - 2)
-        let frame = CGRect(x: x, y: f.minY - h - 4, width: w, height: h)
-        let p = tr.preview ?? KeyPreview(frame: frame)
-        p.frame = frame
+        let p = tr.preview ?? KeyPreview(frame: .zero)
         p.label.text = text
         p.label.textColor = Theme.keyText
         if p.superview == nil { addSubview(p) }
+        p.place(over: kv.frame, within: bounds)
         tr.preview = p
     }
 

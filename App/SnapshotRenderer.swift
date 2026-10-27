@@ -39,6 +39,9 @@ enum SnapshotRenderer {
             Shot(name: "grid", page: .letters, state: "composing", borders: true, panel: "grid"),
             Shot(name: "settings", page: .letters, state: "idle", borders: true, panel: "settings"),
             Shot(name: "longpress_comma", page: .letters, state: "idle", borders: true, panel: "longpress"),
+            Shot(name: "press_g", page: .letters, state: "composing", borders: true, panel: "press:g"),
+            Shot(name: "press_q", page: .letters, state: "composing", borders: true, panel: "press:q"),
+            Shot(name: "press_comma_numbers", page: .numbers, state: "idle", borders: true, panel: "press:，"),
         ]
         for night in [false, true] {
             for shot in shots {
@@ -46,8 +49,8 @@ enum SnapshotRenderer {
                 root.overrideUserInterfaceStyle = night ? .dark : .light
                 root.backgroundColor = night ? UIColor(white: 0.13, alpha: 1) : UIColor(red: 0.90, green: 0.91, blue: 0.93, alpha: 1)
                 window.addSubview(root)
-                let tint = UIView(frame: root.bounds)
-                tint.backgroundColor = Theme.glassTint
+                let tint = AmbientLightView(frame: root.bounds)
+                tint.night = night
                 root.addSubview(tint)
 
                 let bar = CandidateBarView(frame: CGRect(x: 0, y: 0, width: width, height: Metrics.toolbarHeight))
@@ -67,7 +70,10 @@ enum SnapshotRenderer {
                         Candidate(text: $0, tapCount: 0, syllables: [], corrected: false, score: 0) }, prediction: true)
                 default: bar.update(preedit: "", candidates: [])
                 }
-                if shot.panel == "grid" {
+                if let panel = shot.panel, panel.hasPrefix("press:") {
+                    kb.layoutIfNeeded()
+                    kb.demoPress(String(panel.dropFirst(6)))
+                } else if shot.panel == "grid" {
                     let grid = CandidateGridView(frame: kb.frame)
                     root.addSubview(grid)
                     grid.show(composing + candidates(["倪", "霓", "匿", "妮", "昵", "溺", "睨", "鲵", "旎", "怩"]))

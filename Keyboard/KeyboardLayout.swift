@@ -110,7 +110,9 @@ enum Layouts {
             }
             if r == 2 {
                 let shiftSymbol = ctx.capsLock ? "capslock.fill" : (ctx.shifted ? "shift.fill" : "shift")
-                specs.insert(KeySpec(action: .shift, label: "", symbol: shiftSymbol, width: 1.5, style: .function), at: 0)
+                // engaged shift reads as a white cap with a solid arrow, as on the iOS keyboard
+                let engaged = ctx.shifted || ctx.capsLock
+                specs.insert(KeySpec(action: .shift, label: "", symbol: shiftSymbol, width: 1.5, style: engaged ? .normal : .function), at: 0)
                 specs.append(KeySpec(action: .delete, label: "", symbol: "delete.left", width: 1.5, style: .function))
             }
             rows.append(specs)

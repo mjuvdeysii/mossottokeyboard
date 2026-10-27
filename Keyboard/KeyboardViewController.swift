@@ -10,7 +10,7 @@ final class KeyboardViewController: UIInputViewController {
     private let spatial = SpatialModel.standard()
 
     // Views
-    private let tintView = UIView()
+    private let tintView = AmbientLightView()
     private let candidateBar = CandidateBarView()
     private lazy var keyboard = KeyboardView(spatial: spatial)
     private let grid = CandidateGridView()
@@ -180,7 +180,8 @@ final class KeyboardViewController: UIInputViewController {
         isNight = night
         view.overrideUserInterfaceStyle = night ? .dark : .light
         // a forced night over light glass needs a denser tint to read as night
-        tintView.backgroundColor = night && !systemIsDark ? Theme.forcedNightTint : Theme.glassTint
+        tintView.night = night
+        tintView.forcedNight = night && !systemIsDark
         candidateBar.mosto.setNight(night)
     }
 
