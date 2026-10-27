@@ -17,6 +17,8 @@ enum KeyAction: Equatable {
     case t9(Character)
     /// 重输: drop what is being composed.
     case clearInput
+    /// Held delete, after a while: a word at a time (two Chinese characters, or a Latin word with its space).
+    case deleteWord
 }
 
 enum KeyStyle { case normal, function, accent }

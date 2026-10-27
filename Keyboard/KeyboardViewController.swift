@@ -103,6 +103,25 @@ final class KeyboardViewController: UIInputViewController {
     /// Ask iOS to let the keyboard have touches at the screen edges first (system edge gestures delay or cancel them).
     override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge { .all }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        releaseSystemGestureDelays()
+    }
+
+    /// iOS puts a system gesture gate (_UISystemGestureGateGestureRecognizer) on the keyboard's window that holds
+    /// touches near the screen edges back until it decides they are not a system swipe — so q, a, shift, 123 and the
+    /// space bar press late, and in fast typing those taps arrive out of order or are lost. Turning off its
+    /// delaysTouchesBegan (on every recognizer above our view, each time the keyboard lands in a window) makes every
+    /// key press immediately; the system gestures themselves still work.
+    private func releaseSystemGestureDelays() {
+        var v: UIView? = view
+        while let cur = v {
+            cur.gestureRecognizers?.forEach { $0.delaysTouchesBegan = false; $0.delaysTouchesEnded = false }
+            v = cur.superview
+        }
+        view.window?.gestureRecognizers?.forEach { $0.delaysTouchesBegan = false; $0.delaysTouchesEnded = false }
+    }
+
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         if heightConstraint == nil {
@@ -143,6 +162,7 @@ final class KeyboardViewController: UIInputViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         let b = view.bounds
+        if view.window != nil { releaseSystemGestureDelays() }   // the window can change (rotation, app switch)
         root.frame = b
         tintView.frame = b
         candidateBar.frame = CGRect(x: 0, y: 0, width: b.width, height: barHeight)
@@ -347,6 +367,8 @@ final class KeyboardViewController: UIInputViewController {
             refresh()
         case .clearInput:
             if !taps.isEmpty { clearComposition() }
+        case .deleteWord:
+            deleteWord()
         }
     }
 
@@ -411,6 +433,31 @@ final class KeyboardViewController: UIInputViewController {
         if !chinese { updateAutoShift(); reconfigure() }
     }
 
+    /// Held delete: the whole composition, else back over one word — two Chinese characters, or a Latin word with
+    /// the spaces before it, or a run of punctuation.
+    private func deleteWord() {
+        lastInsertedSpace = false
+        if !taps.isEmpty { clearComposition(); return }
+        let before = textDocumentProxy.documentContextBeforeInput ?? ""
+        guard let last = before.last else { textDocumentProxy.deleteBackward(); return }
+        var count = 0
+        var chars = Array(before)
+        func isHan(_ c: Character) -> Bool { c.unicodeScalars.first.map { (0x3400...0x9FFF).contains($0.value) } ?? false }
+        if isHan(last) {
+            count = min(2, chars.count)
+        } else {
+            while let c = chars.last, c == " " { chars.removeLast(); count += 1 }
+            let word: (Character) -> Bool = { $0.isLetter || $0.isNumber }
+            if let c = chars.last, word(c), !isHan(c) {
+                while let c = chars.last, word(c), !isHan(c) { chars.removeLast(); count += 1 }
+            } else if !chars.isEmpty {
+                chars.removeLast(); count += 1
+            }
+        }
+        for _ in 0..<max(count, 1) { textDocumentProxy.deleteBackward() }
+        if !chinese { updateAutoShift(); reconfigure() }
+    }
+
     private func shiftTapped() {
         let now = Date()
         if capsLock {
@@ -428,8 +475,11 @@ final class KeyboardViewController: UIInputViewController {
     private func updateAutoShift() {
         guard !capsLock else { return }
         let proxy = textDocumentProxy
-        guard (proxy.autocapitalizationType ?? .sentences) != .none else { shifted = false; return }
+        let type = proxy.autocapitalizationType ?? .sentences
+        guard type != .none else { shifted = false; return }
         let before = proxy.documentContextBeforeInput ?? ""
+        if type == .allCharacters { shifted = true; return }
+        if type == .words { shifted = before.isEmpty || before.last == " " || before.last == "\n"; return }
         let trimmed = before.trimmingCharacters(in: .whitespaces)
         shifted = before.isEmpty || trimmed.hasSuffix(".") && before.hasSuffix(" ")
             || trimmed.hasSuffix("!") && before.hasSuffix(" ") || trimmed.hasSuffix("?") && before.hasSuffix(" ")

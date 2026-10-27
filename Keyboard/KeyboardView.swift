@@ -84,6 +84,7 @@ final class KeyView: UIView {
         case .settings: return "键盘设置"
         case .toggleLanguage: return spec.label == "中" ? "中文，轻点切换到英文" : "英文，轻点切换到中文"
         case .t9(let d): return d == "'" ? "分词" : "\(d)，\(spec.label)"
+        case .deleteWord: return "删除词"
         case .clearInput: return "重输"
         case .page(let p):
             switch p {
@@ -611,14 +612,21 @@ final class KeyboardView: UIView {
         }
     }
 
+    /// As the system keyboard: a character every 70 ms, then after ~1.4 s a word at a time (slower ticks, so it
+    /// stays controllable). Timers run in the common run-loop modes so they keep firing while a finger moves.
     private func startDeleteRepeat(_ tr: Tracked) {
         tr.repeatCount = 0
-        tr.repeatTimer = Timer.scheduledTimer(withTimeInterval: 0.07, repeats: true) { [weak self, weak tr] _ in
-            guard let self, let tr else { return }
+        let t = Timer(timeInterval: 0.07, repeats: true) { [weak self, weak tr] timer in
+            guard let self, let tr else { timer.invalidate(); return }
             tr.repeatCount += 1
-            self.onAction?(.delete, nil)
-            if tr.repeatCount >= 25 { self.onAction?(.delete, nil) }   // accelerate after ~2s
+            if tr.repeatCount < 20 {
+                self.onAction?(.delete, nil)
+            } else if tr.repeatCount % 3 == 0 {
+                self.onAction?(.deleteWord, nil)
+            }
         }
+        RunLoop.main.add(t, forMode: .common)
+        tr.repeatTimer = t
     }
 
     /// Snapshot support: the space bar held and dragged — cursor mode, every other cap blank.
