@@ -185,7 +185,7 @@ case "bench", "gate":
             ("words.broken", 1.0, false),
             ("sentences.perfect", 72.0, true),
             ("sentences.on", 90.0, true),
-            ("sentences.ms", 8.0, false),
+            ("sentences.ms", 16.0, false),     // CI runners vary 2–5× (2.3 ms locally)
             ("t9.words.top1", 65.0, true),
             ("t9.sentences.top1", 50.0, true),
             ("t9.sentences.ms", 300.0, false),
