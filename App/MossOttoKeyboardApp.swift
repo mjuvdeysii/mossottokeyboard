@@ -122,6 +122,7 @@ struct MostoHero: View {
                 Text("Mosto键盘").font(.title2.weight(.bold))
                 Text("小鹤双拼 · 全拼 · 九宫格\n按触点位置自动纠错")
                     .font(.subheadline).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text("Mosto，念快了像“魔头”：住在键盘里的小魔王，歪戴小金冠。")
                     .font(.footnote).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
