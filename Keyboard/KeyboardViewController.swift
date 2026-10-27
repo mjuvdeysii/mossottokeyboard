@@ -708,10 +708,12 @@ final class KeyboardViewController: UIInputViewController {
     private func updateSyllablePicker() {
         guard let decoder, taps.contains(where: { $0.group }), let frame = keyboard.keypadSideColumn() else {
             syllablePicker.isHidden = true
+            keyboard.setSideColumnHidden(false)
             return
         }
         syllableChoices = decoder.t9SyllableChoices(taps)
-        guard !syllableChoices.choices.isEmpty else { syllablePicker.isHidden = true; return }
+        guard !syllableChoices.choices.isEmpty else { syllablePicker.isHidden = true; keyboard.setSideColumnHidden(false); return }
+        keyboard.setSideColumnHidden(true)
         syllablePicker.frame = frame
         syllablePicker.show(syllableChoices.choices.map { $0.text })
         syllablePicker.isHidden = false
@@ -750,6 +752,7 @@ final class KeyboardViewController: UIInputViewController {
         }
         taps.removeAll()
         syllablePicker.isHidden = true
+        keyboard.setSideColumnHidden(false)
         result = nil
         committedParts.removeAll()
         candidateBar.update(preedit: "", candidates: [])

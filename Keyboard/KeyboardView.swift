@@ -435,6 +435,16 @@ final class KeyboardView: UIView {
         return rect.isNull ? nil : rect
     }
 
+    /// Hide the keypad's ， 。 ？ while the syllable column covers them (so they never show through it).
+    func setSideColumnHidden(_ hidden: Bool) {
+        guard context?.pinyinGrid == true, rows.count >= 3 else { return }
+        var idx = 0
+        for r in 0..<3 {
+            if idx < keyViews.count { keyViews[idx].isHidden = hidden }
+            idx += rows[r].count
+        }
+    }
+
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         if let o = overlay, !o.isHidden, o.frame.contains(point) {
             return o.hitTest(convert(point, to: o), with: event)

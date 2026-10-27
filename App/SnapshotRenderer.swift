@@ -98,6 +98,7 @@ enum SnapshotRenderer {
                 if shot.name == "t9_composing" {
                     kb.layoutIfNeeded()
                     if let f = kb.keypadSideColumn() {
+                        kb.setSideColumnHidden(true)
                         let picker = SyllablePickerView(frame: f)
                         kb.addSubview(picker)
                         picker.show(["ni", "mi", "o"])
