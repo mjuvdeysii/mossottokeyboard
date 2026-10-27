@@ -1,22 +1,22 @@
 """Mosto — the keyboard's companion. The name sounds like 魔头 (mótóu, "the demon"), so Mosto is a little demon king
 (小魔王): bright, cute, a bit wicked. It shares only the studio's way of making figures with Moss and Otto
-(ip3d.py: soft vinyl, painted glossy eyes, product-photo light), rendered with the Standard view so the toy colours stay bright.
+(ip3d.py: matte soft vinyl, painted glossy eyes, product-photo light), coloured like a designer toy.
 
-  body    a chubby gumdrop, plumper at the bottom, in cherry red #FF3B4E
-  crown   a small gold crown worn at a rakish angle, five ball-tipped points and a teal gem
-  horns   two curled gold horns: out, then up and in
-  wings   two small scalloped bat wings behind the shoulders, wine red
-  eyes    big and round, gold irises, big glossy pupils — under two brows that slant down to the middle (cute eyes,
+  body    a chubby gumdrop, plumper at the bottom, in lavender #A88BEB (one clear body colour; the rest stays quiet)
+  crown   a small matte-gold crown worn at a rakish angle, three points
+  horns   two curled cream horns: out, then up and in
+  wings   two small scalloped bat wings behind the shoulders, deep violet
+  eyes    big and round, amber irises, big glossy pupils — under two brows that slant down to the middle (cute eyes,
           wicked intent); pink blush
   mouth   a wide cat-mouth grin with a single fang
-  tail    a red tail curling up on the right, ending in a gold spade (it glows at night)
-  manner  mischievous, never menacing; at night a scheming squint, gold eyes and the spade glowing
+  tail    a lavender tail curling up on the right, ending in a cream spade (it glows gold at night)
+  manner  mischievous, never menacing; at night a scheming squint, the eyes and the spade glowing gold
 
 Usage (Blender as a Python module, bpy 5.x):
   python Tools/ip/mosto3d.py sheet  out_dir      hero shot and states, day and night
   python Tools/ip/mosto3d.py sprites out_dir     transparent keyboard sprites (day, blink, night)
   python Tools/ip/mosto3d.py icon   out.png      1024 px app icon
-Options: --samples N  --palette cherry|violet|pink  --color #RRGGBB (body only)
+Options: --samples N  --palette lilac|vermilion|coral  --color #RRGGBB (body only)
 """
 import math, os, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -27,18 +27,19 @@ import ip3d as B
 
 _reset = B.reset
 def _bright_reset():
-    sc = _reset(); sc.view_settings.view_transform = "Standard"; sc.view_settings.look = "None"; return sc
+    sc = _reset(); sc.view_settings.look = "None"; return sc   # AgX without the punchy look: clear colour, soft highlights
 B.reset = _bright_reset
 
 ARGS = sys.argv[1:]
-# 小魔王: a bright cherry-red little demon king — gold crown and curled gold horns, bat wings, big glossy eyes with
-# gold irises under two scheming brows, one fang. Palettes: --palette cherry (default) | violet | pink
+# 小魔王: a lavender little demon king — matte-gold crown, curled cream horns, bat wings, big glossy eyes with
+# amber irises under two scheming brows, one fang. Palettes: --palette lilac (default) | vermilion | coral
 PALETTES = {
-    "cherry": dict(body="#FF3B4E", deep="#8E1030", gold="#FFC22E", gem="#2FD3C4", blush="#FF97A6", feet="#5A0B22", glow="#FFB02E"),
-    "violet": dict(body="#8A4DFF", deep="#3A1A8C", gold="#FFD23F", gem="#FF4FA3", blush="#C9A2FF", feet="#2A1460", glow="#FFC23F"),
-    "pink":   dict(body="#FF4FA0", deep="#9A1260", gold="#FFD23F", gem="#7B4DFF", blush="#FFB3D4", feet="#5C0B3A", glow="#FFC23F"),
+    # designer-toy colour: one clear body colour, everything else quiet (cream horns, a deeper shade for wings and feet)
+    "vermilion": dict(body="#E0503F", deep="#6A2228", horn="#F2DDB2", iris="#C98A2E", blush="#F2A08E", feet="#3E1518", glow="#FFB54A"),
+    "coral":     dict(body="#FF8A6B", deep="#8A3440", horn="#FFE6B8", iris="#5A3226", blush="#FFB7A4", feet="#4A2228", glow="#FFB54A"),
+    "lilac":     dict(body="#A88BEB", deep="#4E3790", horn="#FFE4A8", iris="#D69A34", blush="#F3B9DF", feet="#2F2257", glow="#FFC45A"),
 }
-P = PALETTES[B.arg("--palette", "cherry")]
+P = PALETTES[B.arg("--palette", "lilac")]
 COLOR = B.arg("--color", P["body"])
 
 # a gumdrop: round and soft, plumper at the bottom, a softer top
@@ -68,10 +69,10 @@ def surface_y(x, z):
 def mosto_materials():
     B.M["mosto"] = B.rubber("mosto", COLOR, rough=0.5, sss=0.08)
     B.M["mostoDeep"] = B.rubber("mostoDeep", P["deep"], rough=0.5)
-    B.M["gold"] = B.mat("gold", P["gold"], rough=0.28, coat=0.7, sss=0.1, sss_rad=(0.5, 0.35, 0.1))
-    B.M["gem"] = B.mat("gem", P["gem"], rough=0.05, coat=1.0, emit=P["gem"], emit_strength=0.3)
-    B.M["tip"] = B.mat("tip", P["gold"], rough=0.25, coat=0.7, emit=P["glow"], emit_strength=0.0)
-    B.M["iris"] = B.mat("irisGold", P["gold"], rough=0.12, coat=1.0, emit=P["glow"], emit_strength=0.0)
+    B.M["gold"] = B.mat("horn", P["horn"], rough=0.42, coat=0.2, sss=0.12, sss_rad=(0.5, 0.35, 0.1))
+    B.M["crown"] = B.mat("crown", P.get("crown", "#E3B24A"), rough=0.32, coat=0.35, sss=0.05)   # matte gold
+    B.M["tip"] = B.mat("tip", P["horn"], rough=0.4, coat=0.2, emit=P["glow"], emit_strength=0.0)
+    B.M["iris"] = B.mat("iris", P["iris"], rough=0.15, coat=1.0, emit=P["glow"], emit_strength=0.0)
     B.M["blush"] = B.mat("blush", P["blush"], rough=0.6, sss=0.3)
     B.M["fang"] = B.mat("fang", "#FFFBF2", rough=0.3, coat=0.5)
     B.M["foot"] = B.rubber("mostoFoot", P["feet"])
@@ -111,9 +112,9 @@ def horn(name, p0, p1, p2, r0, material, rings=22, seg=20):
     return _mesh(name, verts, faces, material)
 
 def crown(top, tilt=-14, material=None):
-    """A small gold crown worn at a rakish angle between the horns: a band, five points with balls, a gem in front."""
+    """A small crown worn at a rakish angle between the horns: a band and three points."""
     parts = []
-    R, H = 0.13, 0.06
+    R, H = 0.11, 0.05
     cx, cz = 0.02, top - 0.012
     verts, faces = [], []
     seg = 40
@@ -127,15 +128,13 @@ def crown(top, tilt=-14, material=None):
     mod = band.modifiers.new("solid", "SOLIDIFY"); mod.thickness = 0.018; B.smooth(band, 2)
     parts.append(band)
     import mathutils
-    for j in range(5):
-        a = 2 * math.pi * j / 5 - math.pi / 2
+    for j in range(3):
+        a = 2 * math.pi * j / 3 - math.pi / 2
         bx, by = R * 1.02 * math.cos(a), R * 0.94 * math.sin(a)
-        bpy.ops.mesh.primitive_cone_add(vertices=24, radius1=0.045, radius2=0.004, depth=0.09, location=(bx, by, H + 0.038))
+        bpy.ops.mesh.primitive_cone_add(vertices=24, radius1=0.046, radius2=0.006, depth=0.085, location=(bx, by, H + 0.036))
         c = bpy.context.object; c.name = f"mosto_crown_pt{j}"; c.data.materials.append(material)
         for poly in c.data.polygons: poly.use_smooth = True
         parts.append(c)
-        parts.append(B.sphere(f"mosto_crown_ball{j}", (bx, by, H + 0.09), (0.022, 0.022, 0.022), material))
-    parts.append(B.sphere("mosto_gem", (0, -R * 0.95 - 0.014, H * 0.5), (0.03, 0.016, 0.034), B.M["gem"]))
     root = bpy.data.objects.new("mosto_crown_root", None); bpy.context.collection.objects.link(root)
     B.parent(parts, root)
     root.location = (cx, 0.02, cz); root.rotation_euler = (math.radians(-6), math.radians(tilt), 0)
@@ -203,7 +202,7 @@ def build_mosto(x=0.0, moss_eye=None, otto_eye=None, shut=None, glow=0.0, lean=0
         p1 = (hx + s * (0.2 + 0.03 * perk), -0.04, bz + 0.08)
         p2 = (hx + s * (0.12 + 0.02 * perk), -0.07, bz + 0.27 + 0.03 * perk)
         parts.append(horn(f"mosto_horn{s}", p0, p1, p2, 0.065, M["gold"]))
-    parts += crown(top, material=M["gold"])
+    parts += crown(top, material=M["crown"])
     parts += [wing("mosto_wingL", -1, M["mostoDeep"]), wing("mosto_wingR", 1, M["mostoDeep"])]
     # the tail: from behind the right flank, a lively S, ending in a gold spade (named bead: the glow follows it)
     d = droop
@@ -245,7 +244,7 @@ def night_world():
         bpy.ops.object.light_add(type="AREA", location=loc, rotation=rot); l = bpy.context.object
         l.data.energy = energy; l.data.size = size; l.data.color = B.hexcol(color)[:3]
     # moonlight: a soft cool key and a blue rim, dimmer than the day set but the figure still reads
-    # night: a dim violet key and a magenta rim, so the plum body stays plum and the red glow carries the mood
+    # night: a dim violet key and a magenta rim; the gold glow of the eyes and the spade carries the mood
     area((-2.2, -3.0, 3.0), (math.radians(55), 0, math.radians(-35)), 420, 3.2, "#E2D4FF")
     area((2.8, -2.4, 1.4), (math.radians(75), 0, math.radians(50)), 140, 3.0, "#C9B6F0")
     area((1.5, 2.8, 2.8), (math.radians(-55), 0, math.radians(150)), 300, 1.5, "#FF8FB0")
@@ -324,14 +323,14 @@ def icon(path):
     size = 1024
     s.render.resolution_x = s.render.resolution_y = size
     build_mosto(moss_eye=dict(look=(0.2, 0.3)), otto_eye=dict(look=(-0.05, 0.1), lid=0.52))
-    ortho_camera(1.78, 0.68, cx=0.08)
+    ortho_camera(1.78, 0.58, cx=0.08)
     tmp = path.replace(".png", "_fg.png")
     B.render(tmp, size, size)
     bg = Image.new("RGB", (size, size))
     d = ImageDraw.Draw(bg)
-    for y in range(size):                                   # a night-indigo sky, lighter at the top: the cherry red pops
+    for y in range(size):                                   # warm paper at the top into a pale lilac haze
         t = y / size
-        d.line([(0, y), (size, y)], fill=(int(58 - 26 * t), int(52 - 22 * t), int(128 - 50 * t)))
+        d.line([(0, y), (size, y)], fill=(int(248 - 16 * t), int(242 - 18 * t), int(236 + 6 * t)))
     fg = Image.open(tmp).convert("RGBA")
     bg.paste(fg, (0, 0), fg)
     bg.save(path)

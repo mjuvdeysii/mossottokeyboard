@@ -38,7 +38,7 @@ final class AmbientLightView: UIView {
         glow.frame = bounds
         let w = bounds.width, h = bounds.height
         if night {
-            let c = Theme.hex(0xFFB02E)   // the glow of Mosto's gold spade
+            let c = Theme.hex(0xFFC45A)   // the gold glow of Mosto's spade
             glow.colors = [c.withAlphaComponent(0.22).cgColor, c.withAlphaComponent(0.07).cgColor, c.withAlphaComponent(0).cgColor]
             glow.locations = [0, 0.4, 1]
             glow.startPoint = CGPoint(x: lampPoint.x / w, y: lampPoint.y / h)
