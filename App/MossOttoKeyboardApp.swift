@@ -84,7 +84,7 @@ struct HomeContent: View {
                         Card(title: "Mosto 的两种光") {
                             HStack(alignment: .top, spacing: 12) {
                                 LightTile(image: "Mosto", title: "日光", text: "瞪大眼睛看你打字。住在键盘设置的顶部。")
-                                LightTile(image: "MostoNight", title: "夜灯", text: "眯眼坏笑，尾巴尖亮起金光，待在候选栏左边。")
+                                LightTile(image: "MostoNight", title: "夜灯", text: "眯眼坏笑，尾巴尖亮起灯珠的金光，待在候选栏左边；键盘闲下来，他会慢慢打个哈欠。")
                             }
                         }
                         Card(title: "关于") {
@@ -124,7 +124,7 @@ struct MostoHero: View {
                 Text("小鹤双拼 · 全拼 · 九宫格\n按触点位置自动纠错")
                     .font(.subheadline).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("Mosto，念快了像“魔头”：住在键盘里的小魔王，歪戴小金冠。")
+                Text("Mosto，念快了像“魔头”：Moss 与 Otto 共同的另一面，住在键盘里的小魔王，歪戴小金冠。")
                     .font(.footnote).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }

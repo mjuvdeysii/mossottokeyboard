@@ -52,6 +52,7 @@ enum SnapshotRenderer {
             Shot(name: "forget_word", page: .letters, state: "composing", borders: true, panel: "forget"),
             Shot(name: "press_comma_numbers", page: .numbers, state: "idle", borders: true, panel: "press:，"),
             Shot(name: "emoji", page: .letters, state: "idle", borders: true, panel: "emoji"),
+            Shot(name: "mosto_yawn", page: .letters, state: "idle", borders: true, panel: "yawn"),
         ]
         // 表情 opens on 常用 when something was used: a few, as after some use
         for e in ["👍", "😭", "❤️", "🙏", "😂"] { EmojiPanelView.remember(e) }
@@ -129,6 +130,9 @@ enum SnapshotRenderer {
                     popup.frame.origin = CGPoint(x: x, y: key.minY - popup.frame.height - 4)
                     popup.selected = 1
                     kb.addSubview(popup)
+                } else if shot.panel == "yawn" {
+                    bar.showsMosto = true          // (by day too, to review the sprite on both glasses)
+                    bar.mosto.demoYawn()
                 } else if shot.panel == "emoji" {
                     let panel = EmojiPanelView(frame: root.bounds)
                     root.addSubview(panel)

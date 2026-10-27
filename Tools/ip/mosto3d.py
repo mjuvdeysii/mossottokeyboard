@@ -140,7 +140,7 @@ def crown(top, tilt=-14, material=None):
     root.location = (cx, 0.02, cz); root.rotation_euler = (math.radians(-6), math.radians(tilt), 0)
     return [root, *parts]
 
-def wing(name, s, material):
+def wing(name, s, material, down=0.0):
     """A small bat wing behind the shoulder: a scalloped outline, given thickness and rounded."""
     outline = [(0, 0), (0.08, 0.1), (0.2, 0.17), (0.3, 0.16), (0.27, 0.09), (0.21, 0.1), (0.17, 0.03), (0.11, 0.05), (0.06, -0.02)]
     verts = [(x, 0, z) for x, z in outline]
@@ -149,12 +149,13 @@ def wing(name, s, material):
     B.smooth(o, 2)
     o.scale = (s * 1.4, 1, 1.4)
     o.location = (s * 0.38, 0.22, 0.5)
-    o.rotation_euler = (math.radians(-10), math.radians(-s * 12), math.radians(s * 28))
+    o.rotation_euler = (math.radians(-10), math.radians(-s * 12 - s * 30 * down), math.radians(s * 28))
     return o
 
-def build_mosto(x=0.0, moss_eye=None, otto_eye=None, shut=None, glow=0.0, lean=0.0, perk=0.5, droop=0.0, hop=0.0, evil=0.0):
+def build_mosto(x=0.0, moss_eye=None, otto_eye=None, shut=None, glow=0.0, lean=0.0, perk=0.5, droop=0.0, hop=0.0, evil=0.0, yawn=0.0):
     """moss_eye / otto_eye: the left and right eye — dicts of look, lid, pupil. shut: 'day' (blink).
-    evil: 0..1, how strongly the gold irises and the tail tip glow (night)."""
+    evil: 0..1, how strongly the gold irises and the tail tip glow (night).
+    yawn: 0..1, his one slow yawn (the canon's: the fang shows, the wings droop) — the half of him that wants to rest."""
     M = B.M
     root = bpy.data.objects.new("Mosto", None); bpy.context.collection.objects.link(root)
     body = B.shaped_sphere("mosto_body", body_point, M["mosto"], seg=80)
@@ -185,15 +186,31 @@ def build_mosto(x=0.0, moss_eye=None, otto_eye=None, shut=None, glow=0.0, lean=0
         lx, lz = kw["look"]; pr = er * kw["pupil"]
         px, py, pz = at[0] + lx * er * 0.42, at[1] - er * sc[1] * 0.78, at[2] + lz * er * 0.42
         parts.append(B.sphere(f"mosto_iris{s}", (px, py + 0.0015, pz), (pr * 1.32, pr * 0.4, pr * 1.32), M["iris"]))
-    # a wide cat-mouth grin with a single fang
+    # a wide cat-mouth grin with a single fang — or, yawning, a mouth opened tall with the fang at its top edge
     my = ez - 0.15
-    pts = [(-0.085, my + 0.02), (-0.04, my - 0.012), (0.0, my + 0.004), (0.04, my - 0.012), (0.085, my + 0.02)]
-    parts.append(B.tube("mosto_grin", [(x_, surface_y(x_, z_) - 0.005, z_) for x_, z_ in pts], 0.011, M["pupil"]))
-    fx = 0.035; fz = my - 0.012
+    if yawn > 0:
+        oh = 0.04 + 0.05 * yawn
+        parts.append(B.sphere("mosto_yawn", (0.0, surface_y(0.0, my - oh * 0.4) - 0.006, my - oh * 0.4), (0.085, 0.035, oh), M["pupil"]))
+        fx = 0.03; fz = my + 0.045 + oh * 0.1   # at the top edge of the open mouth, in front of it (see fy)
+    else:
+        pts = [(-0.085, my + 0.02), (-0.04, my - 0.012), (0.0, my + 0.004), (0.04, my - 0.012), (0.085, my + 0.02)]
+        parts.append(B.tube("mosto_grin", [(x_, surface_y(x_, z_) - 0.005, z_) for x_, z_ in pts], 0.011, M["pupil"]))
+        fx = 0.035; fz = my - 0.012
     import mathutils
-    bpy.ops.mesh.primitive_cone_add(vertices=20, radius1=0.016, radius2=0.002, depth=0.04, location=(fx, surface_y(fx, fz) - 0.004, fz - 0.016))
+    fy = surface_y(fx, fz) - (0.075 if yawn > 0 else 0.004)
+    bpy.ops.mesh.primitive_cone_add(vertices=20, radius1=0.016, radius2=0.002, depth=0.04, location=(fx, fy, fz - 0.016))
     fang = bpy.context.object; fang.name = "mosto_fang"; fang.rotation_euler = (math.radians(180), 0, 0)
-    fang.data.materials.append(M["fang"]); parts.append(fang)
+    if yawn > 0:
+        # against the dark of the open mouth the fang must carry its own light, or it reads as part of the hole
+        fm = M["fang"].copy(); fm.name = "fang_lit"
+        bsdf = fm.node_tree.nodes["Principled BSDF"]
+        bsdf.inputs["Emission Color"].default_value = B.hexcol("#FFF6E0")
+        bsdf.inputs["Emission Strength"].default_value = 0.6
+        fang.data.materials.append(fm)
+        fang.scale = (1.8, 1.8, 1.6)   # the open mouth makes the face read smaller: the fang is what says it is him
+    else:
+        fang.data.materials.append(M["fang"])
+    parts.append(fang)
     # curled gold horns: out, then up and in
     for s in (-1, 1):
         hx = s * 0.27
@@ -203,7 +220,7 @@ def build_mosto(x=0.0, moss_eye=None, otto_eye=None, shut=None, glow=0.0, lean=0
         p2 = (hx + s * (0.12 + 0.02 * perk), -0.07, bz + 0.27 + 0.03 * perk)
         parts.append(horn(f"mosto_horn{s}", p0, p1, p2, 0.065, M["gold"]))
     parts += crown(top, material=M["crown"])
-    parts += [wing("mosto_wingL", -1, M["mostoDeep"]), wing("mosto_wingR", 1, M["mostoDeep"])]
+    parts += [wing("mosto_wingL", -1, M["mostoDeep"], down=yawn), wing("mosto_wingR", 1, M["mostoDeep"], down=yawn)]
     # the tail: from behind the right flank, a lively S, ending in a gold spade (named bead: the glow follows it)
     d = droop
     tx, ty, tz = 0.7 - 0.03 * d, 0.08, 0.6 - 0.12 * d
@@ -234,6 +251,8 @@ STATES = {
     "type": dict(moss_eye=dict(look=(0.1, -0.6), lid=0.15), otto_eye=dict(look=(0.0, -0.6), lid=0.3), lean=-3, perk=0.7),
     # night: awake, eyes narrowed to a scheming squint, gold irises and the spade glowing
     "night": dict(moss_eye=dict(look=(0.2, 0.0), lid=0.42, pupil=0.5), otto_eye=dict(look=(0.0, 0.0), lid=0.48, pupil=0.5), evil=1.0, perk=1.0),
+    # night, left alone a while: his one slow yawn — eyes nearly shut, the fang showing, the wings drooping
+    "yawn": dict(shut="day", evil=0.7, perk=0.0, droop=0.6, yawn=1.0),
 }
 
 def night_world():
@@ -285,16 +304,18 @@ def ortho_camera(width, cz, tilt_deg=6, cx=0.0):
 def sprites(outdir):
     os.makedirs(outdir, exist_ok=True)
     size = B.arg("--size", 360)
+    only = B.arg("--only", "")
     for name, kw in STATES.items():
+        if only and name not in only.split(","): continue
         s = B.reset(); s.render.film_transparent = True; B.materials(); mosto_materials()
-        night_world() if name == "night" else B.sprite_lights()
+        night_world() if name in ("night", "yawn") else B.sprite_lights()
         s.render.resolution_x = s.render.resolution_y = size
         build_mosto(**kw)
         ortho_camera(1.62, 0.64, cx=0.08)   # wide enough for the horns and the tail
         out = os.path.join(outdir, f"mosto_{name}.png")
         at = bead_position()
         B.render(out, size, size)
-        if name == "night": add_glow(out, at)
+        if name in ("night", "yawn"): add_glow(out, at)
 
 def sheet(outdir):
     """Mosto's hero shot (a three-quarter turn, so the horns and the tail read), then its states."""
