@@ -375,15 +375,14 @@ public final class Decoder {
                 }
                 // Longer words only through the syllables that can start where this one ends (a half-typed syllable
                 // is always the last, so it starts no longer word).
-                let follow = first.kind != 1 && firstEnd < n ? lexicon.followers(of: first.id) : Lexicon.Followers()
                 for (sid, seconds) in first.kind != 1 && firstEnd < n ? spanAt[firstEnd] : [:] {
+                    let follow = lexicon.followers(first: first.id, second: sid)
                     // two-syllable words: each reading of the second syllable, the words best first
-                    if let list = follow.pairs[sid] {
+                    if !follow.pairs.isEmpty {
                         for s2 in seconds {
                             let sp = first.spatial + s2.spatial
                             let corr = first.corrected || s2.corrected
-                            for idx32 in list {
-                                let idx = Int(idx32)
+                            for idx in follow.pairs {
                                 let base = Double(lexicon.entry(idx).score) / 100 - wordPenalty
                                 guard accepts(i, s2.end, 2, base + sp) else { break }
                                 insert(Edge(start: i, end: s2.end, score: base + sp, corrected: corr, entry: idx, userText: nil,
@@ -391,13 +390,11 @@ public final class Decoder {
                             }
                         }
                     }
-                    // three syllables or more: walk the rest of the chain
-                    if let list = follow.longer[sid] {
-                        // where a third syllable could start; a word goes on only if its third can start at one of them
+                    // three syllables or more: walk the rest of the chain, from where a third syllable could start
+                    if !follow.longer.isEmpty {
                         let thirds = seconds.compactMap { $0.kind == 1 || $0.end >= n ? nil : $0.end }
                         if thirds.isEmpty { continue }
-                        for idx32 in list {
-                            let idx = Int(idx32)
+                        for idx in follow.longer {
                             let e = lexicon.entry(idx)
                             let third = Int(lexicon.syllable(e, 2))
                             guard thirds.contains(where: { has[$0][third] }) else { continue }

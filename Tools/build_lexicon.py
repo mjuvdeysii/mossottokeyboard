@@ -14,7 +14,9 @@ Binary layout (little endian):
   syllable names: sylCount * 8 bytes (ASCII, NUL padded)
   first-syllable index: sylCount * (start u32, end u32)   -> entry index range
   entries: entryCount * 12 bytes (textOff u32, sylOff u32, score i16, textLen u8, sylLen u8)
-           sorted by first syllable, then score desc
+           version 2: sorted by first syllable, then second syllable (single characters first), then two-syllable
+           words before longer ones, then score desc — so the words that start with a given pair of syllables are
+           one contiguous run, found by binary search (no index in memory)
   syllable blob: u16[sylBlobCount]
   text blob: UTF-8 bytes
 """
@@ -115,7 +117,9 @@ def main():
     for (text, syls), w in merged.items():
         score = int(round(math.log(w + 1) * 100))
         score = min(score, 32767)
-        entries.append((sid[syls[0]], -score, text, [sid[s] for s in syls], score))
+        ids = [sid[s] for s in syls]
+        second = ids[1] if len(ids) > 1 else -1
+        entries.append((sid[syls[0]], (second, 0 if len(ids) <= 2 else 1, -score), text, ids, score))
     entries.sort(key=lambda e: (e[0], e[1]))
 
     syl_blob = []
@@ -135,7 +139,7 @@ def main():
 
     with open(out_path, "wb") as f:
         f.write(b"XHLX")
-        f.write(struct.pack("<IIIII", 1, len(syllables), len(entries), len(syl_blob), len(text_blob)))
+        f.write(struct.pack("<IIIII", 2, len(syllables), len(entries), len(syl_blob), len(text_blob)))
         for s in syllables:
             f.write(s.encode("ascii").ljust(8, b"\0"))
         for a, b in index:

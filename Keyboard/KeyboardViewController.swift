@@ -218,13 +218,11 @@ final class KeyboardViewController: UIInputViewController {
         userDict = ud
         decoder = Decoder(lexicon: lex, user: ud)
         if let pp = Bundle.main.path(forResource: "predictions", ofType: "bin") { predictor = try? Predictor(path: pp) }
-        // The heavy parts — the decoder's word tables (half a million entries) and the English word list with its
-        // trie — are built off the main thread, so the keyboard appears at once and its first keys do not stall.
-        // Until they arrive, typing works: the tables build lazily, and English joins in a moment later.
+        // The lexicon needs no tables in memory (its file is sorted for direct lookup). The English word list and
+        // its trie are built off the main thread, so the keyboard appears at once and its first keys do not stall;
+        // English joins in a moment later.
         let ep = Bundle.main.path(forResource: "english", ofType: "txt")
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let indexes = lex.buildIndexes()
-            DispatchQueue.main.async { lex.install(indexes) }
             guard let ep, let en = try? EnglishLexicon(path: ep) else { return }
             let ed = EnglishDecoder(lexicon: en)
             DispatchQueue.main.async {

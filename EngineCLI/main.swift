@@ -115,6 +115,8 @@ case "bench", "gate":
             if (2...4).contains(e.sylCount) && e.score >= 900 { pool.append((lex.text(e), lex.syllableIDs(e))) }
         }
     }
+    // the same words whatever order the lexicon file keeps them in
+    pool.sort { $0.1 != $1.1 ? $0.1.lexicographicallyPrecedes($1.1) : $0.0 < $1.0 }
     for _ in 0..<1500 { items.append(pool[Int(rng.next() * Double(pool.count))]) }
     // Everyday sentences with pinyin (EngineCLI/sentences.tsv, generated with pypinyin and spot-checked).
     let tsv = (try? String(contentsOfFile: env["SENTENCES"] ?? "EngineCLI/sentences.tsv", encoding: .utf8)) ?? ""
@@ -216,23 +218,23 @@ case "bench", "gate":
         let floors: [(String, Double, Bool)] = decoder.scheme == .xiaohe ? [
             ("words.on", 96.0, true),          // σ=0.22 touch noise, correction on, top-1 (%)
             ("words.broken", 1.0, false),      // clean words changed by correction (%) — at most
-            ("sentences.perfect", 72.0, true), // perfect keys, top-1 equals the intended sentence (%)
-            ("sentences.on", 86.0, true),
+            ("sentences.perfect", 80.0, true), // perfect keys, top-1 equals the intended sentence (%)
+            ("sentences.on", 90.0, true),
             ("words.ms", 3.0, false),          // average decode time (ms) — at most
             ("en.kept", 99.0, true),            // English: correctly typed words left alone (%)
             ("en.on", 97.0, true),              // English: σ=0.22 touch noise, what space types is the word (%)
             ("en.top3", 98.0, true),            // English: the word among the first three suggestions (%)
-            ("t9.words.top1", 48.0, true),     // 九宫格 (each key = its 3–4 letters), perfect keys
-            ("t9.sentences.top3", 33.0, true),
+            ("t9.words.top1", 47.0, true),     // 九宫格 (each key = its 3–4 letters), perfect keys
+            ("t9.sentences.top3", 45.0, true),
             ("t9.sentences.ms", 20.0, false),
         ] : [
             ("words.on", 97.0, true),
             ("words.broken", 1.0, false),
-            ("sentences.perfect", 72.0, true),
-            ("sentences.on", 90.0, true),
-            ("sentences.ms", 16.0, false),     // CI runners vary 2–5× (2.3 ms locally)
-            ("t9.words.top1", 65.0, true),
-            ("t9.sentences.top1", 50.0, true),
+            ("sentences.perfect", 80.0, true),
+            ("sentences.on", 92.0, true),
+            ("sentences.ms", 16.0, false),     // CI runners vary 2–5× (1.2 ms locally)
+            ("t9.words.top1", 63.0, true),
+            ("t9.sentences.top1", 62.0, true),
             ("t9.sentences.ms", 150.0, false),
         ]
         print("scheme:", decoder.scheme == .xiaohe ? "小鹤双拼" : "全拼")

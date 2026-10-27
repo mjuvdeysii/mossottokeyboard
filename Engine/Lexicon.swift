@@ -46,9 +46,11 @@ public final class Lexicon {
         base = b
         length = size
 
+        // version 2: entries sorted by first syllable, second syllable, length, score (see followers)
         guard size > 24,
               b.load(fromByteOffset: 0, as: UInt8.self) == UInt8(ascii: "X"),
-              b.load(fromByteOffset: 3, as: UInt8.self) == UInt8(ascii: "X") else {
+              b.load(fromByteOffset: 3, as: UInt8.self) == UInt8(ascii: "X"),
+              b.loadUnaligned(fromByteOffset: 4, as: UInt32.self) >= 2 else {
             munmap(p, size)
             throw LoadError.format
         }
@@ -118,62 +120,54 @@ public final class Lexicon {
 
     public func syllableIDs(_ e: Entry) -> [UInt16] { (0..<e.sylCount).map { syllable(e, $0) } }
 
-    /// Entries of one syllable (single characters), per syllable, best first — built on first use.
-    private var singlesIndex: [[Int]]?
+    /// Single characters of a syllable, best first: the start of its run (the file sorts them first). Cached per
+    /// syllable on first use — a few entries each.
+    private var singlesCache: [[Int]?] = []
     public func singles(_ s: UInt16) -> [Int] {
-        if singlesIndex == nil { singlesIndex = buildSingles() }
-        return singlesIndex![Int(s)]
-    }
-
-    private func buildSingles() -> [[Int]] {
-        var idx = [[Int]](repeating: [], count: syllables.count)
-        for sid in 0..<syllables.count {
-            for i in range(firstSyllable: UInt16(sid)) where entry(i).sylCount == 1 { idx[sid].append(i) }
-        }
-        return idx
-    }
-
-    /// The decoder's lookup tables, built in one pass. Only reads the mapped file, so it can run off the main thread
-    /// while the keyboard comes up; `install` then hands them over (on the thread that decodes), and the first keys
-    /// typed never pay for building them.
-    public struct Indexes {
-        fileprivate let singles: [[Int]]
-        fileprivate let followers: [Followers]
-    }
-    public func buildIndexes() -> Indexes {
-        Indexes(singles: buildSingles(), followers: (0..<syllables.count).map { buildFollowers(UInt16($0)) })
-    }
-    public func install(_ x: Indexes) {
-        singlesIndex = x.singles
-        followIndex = x.followers.map { Optional($0) }
-    }
-
-    /// Words of two or more syllables starting with `first`, grouped by their second syllable, best first — two-syllable
-    /// words and longer ones apart. Built per first syllable on first use, so the decoder visits only words whose
-    /// second syllable can actually follow, and can stop at the first two-syllable word that no longer makes the cut
-    /// (the 九宫格 lattice has dozens of syllables per position; scanning every word of each was most of the time).
-    public struct Followers {
-        public var pairs: [UInt16: [Int32]] = [:]
-        public var longer: [UInt16: [Int32]] = [:]
-    }
-    private var followIndex: [Followers?] = []
-    public func followers(of s: UInt16) -> Followers {
-        if followIndex.isEmpty { followIndex = Array(repeating: nil, count: syllables.count) }
-        if let f = followIndex[Int(s)] { return f }
-        let f = buildFollowers(s)
-        followIndex[Int(s)] = f
-        return f
-    }
-
-    private func buildFollowers(_ s: UInt16) -> Followers {
-        var f = Followers()
+        if singlesCache.isEmpty { singlesCache = Array(repeating: nil, count: syllables.count) }
+        if let c = singlesCache[Int(s)] { return c }
+        var out: [Int] = []
         for i in range(firstSyllable: s) {
-            let e = entry(i)
-            if e.sylCount == 2 { f.pairs[syllable(e, 1), default: []].append(Int32(i)) }
-            else if e.sylCount > 2 { f.longer[syllable(e, 1), default: []].append(Int32(i)) }
+            guard entry(i).sylCount == 1 else { break }
+            out.append(i)
         }
-        return f
+        singlesCache[Int(s)] = out
+        return out
     }
+
+    /// The words that start with syllables `first`, `second`: the two-syllable ones, then the longer ones, each best
+    /// first. They are one run in the file (sorted by first syllable, second syllable, length, score), found by binary
+    /// search — so the decoder visits only words whose second syllable can actually follow, can stop at the first
+    /// two-syllable word that no longer makes the cut, and keeps no index in memory.
+    public func followers(first: UInt16, second: UInt16) -> (pairs: Range<Int>, longer: Range<Int>) {
+        let r = range(firstSyllable: first)
+        @inline(__always) func key(_ i: Int) -> Int {
+            let e = entry(i)
+            return e.sylCount == 1 ? -1 : Int(syllable(e, 1)) * 2 + (e.sylCount > 2 ? 1 : 0)
+        }
+        func lower(_ k: Int) -> Int {
+            var lo = r.lowerBound, hi = r.upperBound
+            while lo < hi {
+                let m = (lo + hi) >> 1
+                if key(m) < k { lo = m + 1 } else { hi = m }
+            }
+            return lo
+        }
+        // remembered per pair of syllables (a 2 MB table, filled as pairs come up): the decoder asks about the same
+        // pairs on every key
+        let S = syllables.count
+        if pairCache.isEmpty { pairCache = [Int32](repeating: -1, count: S * S * 3) }
+        let slot = (Int(first) * S + Int(second)) * 3
+        if pairCache[slot] >= 0 {
+            let a = Int(pairCache[slot]), b = Int(pairCache[slot + 1]), c = Int(pairCache[slot + 2])
+            return (a..<b, b..<c)
+        }
+        let k = Int(second) * 2
+        let a = lower(k), b = lower(k + 1), c = lower(k + 2)
+        pairCache[slot] = Int32(a); pairCache[slot + 1] = Int32(b); pairCache[slot + 2] = Int32(c)
+        return (a..<b, b..<c)
+    }
+    private var pairCache: [Int32] = []
 
     public func id(of syllable: String) -> UInt16? {
         syllables.firstIndex(of: syllable).map { UInt16($0) }

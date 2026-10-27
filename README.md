@@ -16,12 +16,13 @@
 | 外观 | 自动（跟随系统浅色 / 深色，以及要求深色键盘的输入框，如聚焦搜索）、日光（系统键盘原样）、夜灯（深夜蓝，Mosto 在候选栏左边亮起金光） |
 | 联想 | 默认关闭（纯净输入，同 Gboard）；可在设置里打开：上屏后推荐下一个词。最后一个候选始终是输入的字母原文 |
 | 输入方案 | 小鹤双拼与全拼（含简拼、半截音节），设置里切换；两种方案都按触点自动纠错 |
-| 九宫格 | 中文键盘可选九宫格（1 分词、2 ABC … 9 WXYZ；左列 ，。？——打字时换成拼音选择列，点一下即定下对应几个键；右列删除、重输、换行），小鹤双拼与全拼都能用；每个键代表它上面的几个字母，由词库判断。基准（键位全对时首选命中）：全拼 词 68%、句 55%；小鹤双拼 词 51%（双拼在九宫格上一键对应的音节多，歧义大） |
+| 词库 | 雾凇拼音 rime-ice 的基础、扩展与腾讯词库共 187 万条（含常用短语，如“收货地址”“打疫苗”）。基准（125 句日常短句，键位全对时首选整句命中）：74% → 85%；九宫格全拼整句 55% → 67%。词库文件按首音节、次音节排序，查词靠二分查找，不在内存里建索引 |
+| 九宫格 | 中文键盘可选九宫格（1 分词、2 ABC … 9 WXYZ；左列 ，。？——打字时换成拼音选择列，点一下即定下对应几个键；右列删除、重输、换行），小鹤双拼与全拼都能用；每个键代表它上面的几个字母，由词库判断。基准（键位全对时首选命中）：全拼 词 66%、句 67%；小鹤双拼 词 49%、句 40%（双拼在九宫格上一键对应的音节多，歧义大） |
 | 英文 | 英文模式按触点自动纠错并给出候选（3.9 万词）：错位、漏字母、多按一键、相邻两字母颠倒都能纠（teh → the、thnaks → thanks），dont → don't、im → I'm；空格或标点时替换，紧接着按删除可撤回。基准（σ=0.22 触点噪声）：照打原样 83.5% → 纠错后 99.1%，正确拼写的词 99.9% 不被改动 |
 | 中英混输 | 中文模式下直接打完整的英文词：ok → OK、ios → iOS、iphone → iPhone、github → GitHub（不做前缀补全）；按词频和中文读法比较排序，de、he、me 等仍然先出中文。英文词表来自 [wordfreq](https://github.com/rspeer/wordfreq)（CC BY-SA 4.0），约 3.9 万词 |
 | 输入框中显示 | 打字时把按下的字母（默认）或拼音写进输入框，带下划线，选了候选才替换成汉字，同系统键盘；候选栏只放候选 |
 | 表情 | 😊 打开表情页：常用 + 笑脸与人物、动物与自然、食物与饮料、活动、旅行与地点、物品、符号、旗帜，上下滑动，底栏一点跳到分类；只列出当前 iOS 能显示的表情；按住 😊 打开键盘设置。列表来自 [Emojibase](https://github.com/milesj/emojibase)（MIT） |
-| 速度 | 九宫格全拼一整句（27 键）解码从 70 ms 降到约 20 ms，全键盘每键 < 1 ms；词库索引和英文词表在键盘出现后于后台建好，首个按键不卡 |
+| 速度 | 九宫格全拼一整句（27 键）每键约 35 ms（词库扩大到 187 万条后；原 70 ms），全键盘每键 < 1 ms；英文词表在键盘出现后于后台建好，首个按键不卡 |
 | Mosto | 键盘里的薰衣草紫小魔王（谐音“魔头”）：白天在键盘设置的顶部，夜灯时待在候选栏左侧、尾巴尖亮起金光，点它打开设置；设定见 [docs/MOSTO.md](docs/MOSTO.md) |
 | 符号 | 中/英两套 123、#+= 页面，与 Gboard 同排布，每页 ≤10 键/行，全部可见 |
 | 数字 | `123` 默认打开九宫格数字键盘（左列 + − /，右列删除、空格、回车，0 两侧 . 和 :，长按出 = _ * , %）；“符号”进入完整数字符号页；设置里可改回全键盘；纯数字输入框自动用九宫格 |
@@ -73,8 +74,9 @@ swiftc -O Engine/*.swift EngineCLI/main.swift -o /tmp/engine
 ## 重新生成词库 / 工程
 
 ```sh
-# 词库：rime-ice cn_dicts 的 8105.dict.yaml 与 base.dict.yaml
-python3 Tools/build_lexicon.py 8105.dict.yaml base.dict.yaml -o Keyboard/Resources/lexicon.bin
+# 词库：rime-ice cn_dicts 的 8105、base、ext 与 tencent（tencent 只有文字，先用 pypinyin 注音）
+python3 Tools/tencent_pinyin.py tencent.dict.yaml tencent_py.dict.yaml     # 需 pip install pypinyin（MIT）
+python3 Tools/build_lexicon.py 8105.dict.yaml base.dict.yaml ext.dict.yaml tencent_py.dict.yaml -o Keyboard/Resources/lexicon.bin
 # 增删源文件后重新生成 Xcode 工程
 python3 Tools/gen_xcodeproj.py
 ```
