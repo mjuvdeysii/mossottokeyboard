@@ -290,7 +290,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         guard section < sections.count, !sections[section].items.isEmpty else { return }
         if section == 0 {
             collection.setContentOffset(.zero, animated: animated)
-        } else if let attr = collection.layoutAttributesForSupplementaryElement(ofKind: UICollectionView.elementKindSectionHeader,
+        } else if section < collection.numberOfSections, let attr = collection.layoutAttributesForSupplementaryElement(ofKind: UICollectionView.elementKindSectionHeader,
                                                                                   at: IndexPath(item: 0, section: section)) {
             let maxY = max(0, collection.contentSize.height - collection.bounds.height)
             collection.setContentOffset(CGPoint(x: 0, y: min(attr.frame.minY, maxY)), animated: animated)
@@ -302,7 +302,10 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     private func updateSelection() {
         let y = collection.contentOffset.y + 30
         var current = sections.firstIndex { !$0.items.isEmpty } ?? 1
-        for s in 1..<max(1, sections.count) where !sections[s].items.isEmpty {
+        // the collection may not have taken in the sections yet (a layout pass right after reloadData): only ask it
+        // about sections it already has, or UIKit throws
+        let known = min(sections.count, collection.numberOfSections)
+        for s in 1..<max(1, known) where !sections[s].items.isEmpty {
             if let attr = collection.layoutAttributesForSupplementaryElement(ofKind: UICollectionView.elementKindSectionHeader,
                                                                               at: IndexPath(item: 0, section: s)),
                attr.frame.minY <= y { current = s }
