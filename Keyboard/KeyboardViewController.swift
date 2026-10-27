@@ -27,6 +27,8 @@ final class KeyboardViewController: UIInputViewController {
     private var result: Decoder.Result?
     private var committedParts: [(text: String, ids: [UInt16])] = []
     private var lastInsertedSpace = false
+    /// The last auto-corrected commit made with the space bar, undone by an immediate delete (as on Gboard).
+    private var undoable: (text: String, taps: [Tap], syllables: [UInt16])?
     private var lastDocumentID: UUID?
     private var predictions: [String] = []
     private var isNight = false
@@ -267,6 +269,9 @@ final class KeyboardViewController: UIInputViewController {
     // MARK: - Key handling
 
     private func handle(_ action: KeyAction, tap: Tap?) {
+        let undo = undoable
+        undoable = nil
+        if action == .delete, let undo, undoCorrection(undo) { return }
         // any key ends the suggestions, as on Gboard
         if !predictions.isEmpty, action != .settings, action != .globe { clearPredictions() }
         switch action {
@@ -328,6 +333,12 @@ final class KeyboardViewController: UIInputViewController {
 
     private func space() {
         if !taps.isEmpty {
+            if let c = result?.candidates.first, c.corrected, c.tapCount == taps.count, committedParts.isEmpty {
+                let saved = taps
+                select(0)
+                if taps.isEmpty { undoable = (c.text, saved, c.syllables) }
+                return
+            }
             commitAll()
             return
         }
@@ -417,6 +428,21 @@ final class KeyboardViewController: UIInputViewController {
         } else {
             refresh()
         }
+    }
+
+    /// Delete right after an auto-corrected commit: take the word back out, put the typed keys back into the
+    /// composition and show them uncorrected, so the next space types what was actually pressed.
+    private func undoCorrection(_ u: (text: String, taps: [Tap], syllables: [UInt16])) -> Bool {
+        guard taps.isEmpty, let decoder, (textDocumentProxy.documentContextBeforeInput ?? "").hasSuffix(u.text) else { return false }
+        for _ in u.text { textDocumentProxy.deleteBackward() }
+        if !u.syllables.isEmpty { userDict?.unlearn(syllables: u.syllables, text: u.text) }
+        predictions = []
+        taps = u.taps
+        let was = decoder.correctionEnabled
+        decoder.correctionEnabled = false
+        refresh()
+        decoder.correctionEnabled = was
+        return true
     }
 
     private func commitAll() {

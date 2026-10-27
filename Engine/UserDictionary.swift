@@ -62,6 +62,15 @@ public final class UserDictionary {
         dirty = true
     }
 
+    /// Take back one commit (an undone auto-correction): the count drops by one, the entry goes at zero.
+    public func unlearn(syllables ids: [UInt16], text: String) {
+        let k = Self.key(ids.map { lexicon.syllables[Int($0)] }, text)
+        guard var it = items[k] else { return }
+        it.c -= 1
+        if it.c <= 0 { items.removeValue(forKey: k); rebuildIndex() } else { items[k] = it }
+        dirty = true
+    }
+
     public func forget(syllables ids: [UInt16], text: String) {
         let k = Self.key(ids.map { lexicon.syllables[Int($0)] }, text)
         if items.removeValue(forKey: k) != nil { rebuildIndex(); dirty = true }
