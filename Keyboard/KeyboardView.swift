@@ -8,6 +8,7 @@ final class KeyView: UIView {
     private let icon = UIImageView()
 
     var pressed = false { didSet { if pressed != oldValue { updateColors() } } }
+    private var hasApplied = false
     /// While the space bar drives the cursor the other caps go blank, as in the iOS trackpad mode.
     var blanked = false {
         didSet {
@@ -40,6 +41,11 @@ final class KeyView: UIView {
 
     /// Update label / icon / style without recreating the view (keeps touches alive).
     func apply(_ spec: KeySpec, borders: Bool) {
+        // nothing to redraw when the key is unchanged (this runs for every key on every keystroke)
+        if hasApplied, borders == self.borders, spec.label == self.spec.label, spec.symbol == self.spec.symbol,
+           spec.style == self.spec.style, spec.action == self.spec.action, spec.alt == self.spec.alt,
+           spec.width == self.spec.width { return }
+        hasApplied = true
         self.spec = spec
         self.borders = borders
         label.text = spec.label
@@ -318,6 +324,10 @@ final class KeyboardView: UIView {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    /// Extra height at the top (overlapping the bottom of the candidate strip) that still belongs to the top
+    /// row: a fast finger landing a little high types the key instead of hitting the strip and getting lost.
+    var topReach: CGFloat = 0 { didSet { setNeedsLayout() } }
+
     func configure(_ ctx: LayoutContext) {
         let newRows = Layouts.rows(ctx)
         let sameShape = newRows.count == rows.count && zip(newRows, rows).allSatisfy { a, b in
@@ -355,7 +365,7 @@ final class KeyboardView: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         guard !rows.isEmpty, bounds.width > 0 else { return }
-        let rowH = bounds.height / CGFloat(rows.count)
+        let rowH = (bounds.height - topReach) / CGFloat(rows.count)
         let unit = bounds.width / 10
         let gapX = Metrics.gapX
         let gapY = min(Metrics.gapY, rowH * 0.22)
@@ -370,11 +380,12 @@ final class KeyboardView: UIView {
             var x = (10 - total) / 2
             for (j, spec) in row.enumerated() {
                 let w = spec.width == 0 ? flexW : spec.width
-                let y = CGFloat(r) * rowH
+                let y = topReach + CGFloat(r) * rowH
                 let frame = CGRect(x: x * unit + gapX / 2, y: y + gapY / 2, width: w * unit - gapX, height: rowH - gapY)
                 keyViews[i].frame = frame
                 var hit = CGRect(x: x * unit, y: y, width: w * unit, height: rowH)
-                if j == 0 { hit = CGRect(x: 0, y: y, width: hit.maxX, height: rowH) }
+                if r == 0 { hit = CGRect(x: hit.minX, y: 0, width: hit.width, height: rowH + topReach) }
+                if j == 0 { hit = CGRect(x: 0, y: hit.minY, width: hit.maxX, height: hit.height) }
                 if j == row.count - 1 { hit.size.width = bounds.width - hit.minX }
                 hitRects.append(hit)
                 if spec.isLetter, case .char(let s) = spec.action, let c = s.first {
@@ -416,8 +427,8 @@ final class KeyboardView: UIView {
         for t in touches {
             // Roll-over: a new finger finalises any character key still held down.
             for id in touchOrder {
-                if let tr = tracked[id], tr.keyIndex < keyViews.count,
-                   case .char = keyViews[tr.keyIndex].spec.action, !tr.altShown {
+                if let tr = tracked[id], tr.keyIndex < keyViews.count, !tr.altShown,
+                   Self.rollsOver(keyViews[tr.keyIndex].spec.action) {
                     finish(tr, emit: true)
                     tracked[id] = nil
                 }
@@ -525,11 +536,27 @@ final class KeyboardView: UIView {
         }
     }
 
+    /// Keys a new finger finalises (characters and 九宫格 keys), so fast typing keeps the order it was typed in.
+    private static func rollsOver(_ a: KeyAction) -> Bool {
+        switch a { case .char, .t9: return true; default: return false }
+    }
+
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        // iOS cancels keyboard touches it suspects belong to a system gesture (screen edges, the bottom bar, a
+        // fast stroke). A press on a character key or a tap on space that was cancelled is still a keystroke:
+        // dropping it is what makes fast typing lose letters. Only a long-press menu or a cursor drag is abandoned.
         for t in touches {
             let id = ObjectIdentifier(t)
             guard let tr = tracked[id] else { continue }
-            finish(tr, emit: false)
+            var keep = false
+            if tr.keyIndex < keyViews.count {
+                switch keyViews[tr.keyIndex].spec.action {
+                case .char, .t9: keep = !tr.altShown
+                case .space: keep = !tr.dragging
+                default: keep = false
+                }
+            }
+            finish(tr, emit: keep)
             tracked[id] = nil
             touchOrder.removeAll { $0 == id }
         }

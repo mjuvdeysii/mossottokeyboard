@@ -143,8 +143,10 @@ final class KeyboardViewController: UIInputViewController {
         root.frame = b
         tintView.frame = b
         candidateBar.frame = CGRect(x: 0, y: 0, width: b.width, height: barHeight)
-        let keysFrame = CGRect(x: 0, y: barHeight, width: b.width, height: b.height - barHeight)
-        keyboard.frame = keysFrame
+        // the keys reach 10 pt up into the strip: taps that land a little high still type (see topReach)
+        let reach: CGFloat = 10
+        keyboard.frame = CGRect(x: 0, y: barHeight - reach, width: b.width, height: b.height - barHeight + reach)
+        keyboard.topReach = reach
         grid.frame = CGRect(x: 0, y: barHeight, width: b.width, height: b.height - barHeight)
         settingsPanel.frame = b
     }
