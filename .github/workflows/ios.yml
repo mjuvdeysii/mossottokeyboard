@@ -36,6 +36,31 @@ jobs:
           xcodebuild build -project MossOttoKeyboard.xcodeproj -scheme MossOttoKeyboard -configuration Debug \
             -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO 2>&1 | tee build.log | grep -E "error:|warning:|\*\* " || true
           grep -q "BUILD SUCCEEDED" build.log
+      - name: Render keyboard snapshots (simulator, real UIKit views)
+        continue-on-error: true
+        timeout-minutes: 20
+        run: |
+          set -o pipefail
+          DEV=$(xcrun simctl list devices available -j | python3 -c "
+          import json,sys,re
+          d=json.load(sys.stdin)['devices']
+          c=[(k,x) for k,v in d.items() if 'iOS' in k for x in v if re.fullmatch(r'iPhone \\d+ Pro', x['name'])]
+          c.sort(key=lambda t:(t[0],t[1]['name'])); print(c[-1][1]['udid'])")
+          echo "::notice title=Simulator::$DEV"
+          xcrun simctl boot "$DEV" || true
+          xcodebuild build -project MossOttoKeyboard.xcodeproj -scheme MossOttoKeyboard -configuration Debug \
+            -destination "id=$DEV" -derivedDataPath build/dd CODE_SIGNING_ALLOWED=NO > snap-build.log 2>&1 || { tail -30 snap-build.log; exit 1; }
+          APP=$(find build/dd/Build/Products -maxdepth 3 -name MossOttoKeyboard.app | head -1)
+          xcrun simctl install "$DEV" "$APP"
+          timeout 180 xcrun simctl launch --console-pty "$DEV" app.mossling.keyboard -renderKeyboardSnapshots | tail -5 || true
+          DATA=$(xcrun simctl get_app_container "$DEV" app.mossling.keyboard data)
+          mkdir -p report/snapshots && cp "$DATA"/Documents/snapshots/*.png report/snapshots/
+          ls report/snapshots
+      - name: Engine quality gate (blocks the release on regression)
+        run: |
+          set -o pipefail
+          mkdir -p report
+          /tmp/engine-cli Keyboard/Resources/lexicon.bin gate | grep -E "PASS|FAIL" | tee report/engine-gate.txt
       - name: Build report
         if: always()
         run: |
@@ -54,7 +79,7 @@ jobs:
           cp -r report /tmp/report
           git config user.name "github-actions"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -q --orphan logs-tmp && git rm -rqf --cached . && find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
-          cp /tmp/report/* . && git add -A && git commit -qm "ci report ${GITHUB_SHA}" && git push -qf origin logs-tmp:ci-logs
+          cp -r /tmp/report/. . && git add -A && git commit -qm "ci report ${GITHUB_SHA}" && git push -qf origin logs-tmp:ci-logs
 
   testflight:
     # Needs repository secrets ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8, APPLE_TEAM_ID (same values as the other app).

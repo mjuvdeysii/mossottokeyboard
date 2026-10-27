@@ -27,6 +27,7 @@ if let v = env["PEN"].flatMap(Double.init) { decoder.correctionPenalty = v }
 if let v = env["SIG"].flatMap(Double.init) { model.sigmaX = v; model.sigmaY = v * 0.9 }
 if let v = env["WP"].flatMap(Double.init) { decoder.wordPenalty = v }
 
+
 func codeLetters(_ ids: [UInt16]) -> String {
     ids.map { XiaoheScheme.code(for: lex.syllables[Int($0)])! }.joined()
 }
@@ -58,7 +59,8 @@ case "type":
         print(String(format: "%6.2f", c.score), c.text, "taps=\(c.tapCount)", c.corrected ? "[corrected]" : "")
     }
 
-case "bench":
+case "bench", "gate":
+    var metrics: [String: Double] = [:]
     // Test items: common 2–4 syllable words sampled from the lexicon + everyday sentences.
     var items: [(String, [UInt16])] = []
     var rng = RNG(s: 42)
@@ -70,40 +72,19 @@ case "bench":
         }
     }
     for _ in 0..<1500 { items.append(pool[Int(rng.next() * Double(pool.count))]) }
-    let sentences = [
-        ("我们明天去公园", "wo men ming tian qu gong yuan"),
-        ("今天天气很好", "jin tian tian qi hen hao"),
-        ("你吃饭了吗", "ni chi fan le ma"),
-        ("这个问题怎么解决", "zhe ge wen ti zen me jie jue"),
-        ("请把文件发给我", "qing ba wen jian fa gei wo"),
-        ("我马上就到", "wo ma shang jiu dao"),
-        ("谢谢你的帮助", "xie xie ni de bang zhu"),
-        ("会议改到下午三点", "hui yi gai dao xia wu san dian"),
-        ("这个价格有点贵", "zhe ge jia ge you dian gui"),
-        ("我们需要重新设计", "wo men xu yao chong xin she ji"),
-        ("客户已经收到退款", "ke hu yi jing shou dao tui kuan"),
-        ("请尽快回复邮件", "qing jin kuai hui fu you jian"),
-        ("周末一起去吃火锅", "zhou mo yi qi qu chi huo guo"),
-        ("这款产品卖得很好", "zhe kuan chan pin mai de hen hao"),
-        ("数据分析结果出来了", "shu ju fen xi jie guo chu lai le"),
-        ("我觉得没问题", "wo jue de mei wen ti"),
-        ("你现在在哪里", "ni xian zai zai na li"),
-        ("晚上早点休息", "wan shang zao dian xiu xi"),
-        ("输入法自动纠错", "shu ru fa zi dong jiu cuo"),
-        ("小鹤双拼很好用", "xiao he shuang pin hen hao yong"),
-        ("下周开始上线", "xia zhou kai shi shang xian"),
-        ("图片已经更新了", "tu pian yi jing geng xin le"),
-        ("麻烦帮我确认一下", "ma fan bang wo que ren yi xia"),
-        ("物流信息显示已签收", "wu liu xin xi xian shi yi qian shou"),
-        ("我们正在处理这个问题", "wo men zheng zai chu li zhe ge wen ti"),
-    ]
+    // Everyday sentences with pinyin (EngineCLI/sentences.tsv, generated with pypinyin and spot-checked).
+    let tsv = (try? String(contentsOfFile: env["SENTENCES"] ?? "EngineCLI/sentences.tsv", encoding: .utf8)) ?? ""
+    let sentences: [(String, String)] = tsv.split(separator: "\n").compactMap { line in
+        let parts = line.split(separator: "\t")
+        return parts.count == 2 ? (String(parts[0]), String(parts[1])) : nil
+    }
     var sentItems: [(String, [UInt16])] = []
     for (t, py) in sentences {
         let ids = py.split(separator: " ").map { lex.id(of: String($0))! }
         sentItems.append((t, ids))
     }
 
-    let sigmas: [Double] = args.count > 3 ? args[3...].compactMap(Double.init) : [0.20, 0.30, 0.40]
+    let sigmas: [Double] = args[2] == "gate" ? [0.22] : (args.count > 3 ? args[3...].compactMap(Double.init) : [0.20, 0.30, 0.40])
     for (name, set) in [("words", items), ("sentences", sentItems)] {
         // Reference: what perfect keystrokes give.
         decoder.correctionEnabled = false
@@ -117,6 +98,8 @@ case "bench":
         }
         let avgMs = Date().timeIntervalSince(t0) * 1000 / Double(set.count)
         print("\n== \(name): n=\(set.count)  perfect-keys top1 == intended text: \(refIsTarget)  avg decode \(String(format: "%.2f", avgMs)) ms")
+        metrics["\(name).perfect"] = 100 * Double(refIsTarget) / Double(set.count)
+        metrics["\(name).ms"] = avgMs
         for sg in sigmas {
             var rng2 = RNG(s: 7)
             var tapErr = 0, tapTotal = 0
@@ -138,10 +121,33 @@ case "bench":
                 else { noisyItems += 1; if on == refs[k] { fixed += 1 } }
             }
             let n = Double(set.count)
+            if abs(sg - 0.22) < 1e-9 {
+                metrics["\(name).on"] = 100 * Double(onOK) / n
+                metrics["\(name).broken"] = 100 * Double(harmed) / Double(max(cleanItems, 1))
+            }
             print(String(format: "touch σ=%.2f key | key error rate %.1f%% | top1 correction OFF %.1f%%  ON %.1f%% | ON top3 %.1f%% | items with mistyped keys recovered %d/%d | clean items broken by correction %d/%d",
                          sg, 100 * Double(tapErr) / Double(tapTotal), 100 * Double(offOK) / n, 100 * Double(onOK) / n,
                          100 * Double(onTop3) / n, fixed, noisyItems, harmed, cleanItems))
         }
+    }
+
+    if args[2] == "gate" {
+        // Regression gate for CI: the release does not go out if typing quality drops below these floors.
+        let floors: [(String, Double, Bool)] = [
+            ("words.on", 96.0, true),          // σ=0.22 touch noise, correction on, top-1 (%)
+            ("words.broken", 1.0, false),      // clean words changed by correction (%) — at most
+            ("sentences.perfect", 72.0, true), // perfect keys, top-1 equals the intended sentence (%)
+            ("sentences.on", 86.0, true),
+            ("words.ms", 3.0, false),          // average decode time (ms) — at most
+        ]
+        var failed = false
+        for (k, v, atLeast) in floors {
+            let m = metrics[k] ?? .nan
+            let ok = atLeast ? m >= v : m <= v
+            print(String(format: "%@ %@ %.2f (%@ %.2f)", ok ? "PASS" : "FAIL", k, m, atLeast ? "≥" : "≤", v))
+            if !ok { failed = true }
+        }
+        if failed { exit(1) }
     }
 
 default:

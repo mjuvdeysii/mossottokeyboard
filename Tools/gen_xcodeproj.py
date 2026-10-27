@@ -17,10 +17,11 @@ def oid(*parts):
     return hashlib.md5("/".join(parts).encode()).hexdigest()[:24].upper()
 
 
-app_sources = sorted(glob.glob("App/*.swift"))
+# The app also compiles the keyboard's views and engine, so CI can render them (App/SnapshotRenderer.swift)
+app_sources = sorted(glob.glob("App/*.swift")) + sorted(glob.glob("Keyboard/*.swift")) + sorted(glob.glob("Engine/*.swift"))
 ext_sources = sorted(glob.glob("Keyboard/*.swift")) + sorted(glob.glob("Engine/*.swift"))
 ext_resources = sorted(p for p in glob.glob("Keyboard/Resources/*") if not p.endswith(".DS_Store"))
-app_resources = ["App/Assets.xcassets", "App/PrivacyInfo.xcprivacy"]
+app_resources = ["App/Assets.xcassets", "App/PrivacyInfo.xcprivacy"] + sorted(glob.glob("Keyboard/Resources/mosto_*.png"))
 
 objs = {}  # id -> text
 
@@ -35,7 +36,7 @@ def file_type(p):
 
 # File references grouped by folder
 groups = {}
-for p in app_sources + app_resources + ext_sources + ext_resources + ["Keyboard/Info.plist"]:
+for p in sorted(set(app_sources + app_resources + ext_sources + ext_resources + ["Keyboard/Info.plist"])):
     d, name = os.path.split(p)
     groups.setdefault(d, []).append(p)
     add(oid("ref", p), f'{{isa = PBXFileReference; lastKnownFileType = {file_type(p)}; path = "{name}"; sourceTree = "<group>"; }}')

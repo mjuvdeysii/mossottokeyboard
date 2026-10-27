@@ -50,6 +50,13 @@ struct ContentView: View {
                 }
             }
             .navigationTitle("小鹤双拼键盘")
+            .task {
+                // CI only: render the keyboard's real views to PNGs, then exit (SnapshotRenderer.swift)
+                if SnapshotRenderer.requested,
+                   let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first {
+                    SnapshotRenderer.run(in: scene)
+                }
+            }
         }
     }
 }
