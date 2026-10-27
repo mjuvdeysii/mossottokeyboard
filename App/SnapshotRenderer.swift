@@ -1,4 +1,5 @@
 import UIKit
+import SwiftUI
 
 /// CI-only: launched with `-renderKeyboardSnapshots`, the container app renders the keyboard's real UIKit views
 /// (the same KeyboardView / CandidateBarView / MostoView / panels the extension uses) to PNGs in
@@ -48,6 +49,7 @@ enum SnapshotRenderer {
             Shot(name: "press_g", page: .letters, state: "composing", borders: true, panel: "press:g"),
             Shot(name: "press_q", page: .letters, state: "composing", borders: true, panel: "press:q"),
             Shot(name: "cursor_drag", page: .letters, state: "idle", borders: true, panel: "cursor"),
+            Shot(name: "forced_light", page: .letters, state: "composing", borders: true, panel: "forced"),
             Shot(name: "forget_word", page: .letters, state: "composing", borders: true, panel: "forget"),
             Shot(name: "press_comma_numbers", page: .numbers, state: "idle", borders: true, panel: "press:，"),
         ]
@@ -57,10 +59,16 @@ enum SnapshotRenderer {
                 let height = shot.panel == "settings_full" ? 820 : Metrics.toolbarHeight + 4 * Metrics.rowPitch
                 let root = UIView(frame: CGRect(x: 0, y: 0, width: width, height: height))
                 root.overrideUserInterfaceStyle = night ? .dark : .light
-                root.backgroundColor = night ? UIColor(white: 0.13, alpha: 1) : UIColor(red: 0.90, green: 0.91, blue: 0.93, alpha: 1)
+                // "forced": the light chosen in settings differs from the system glass underneath (日光 in a dark app,
+                // 夜灯 in a light one) — the keyboard must still read as its own light, neither glaring nor covered
+                let forced = shot.panel == "forced"
+                let darkGlass = night != forced
+                root.backgroundColor = darkGlass ? UIColor(white: 0.13, alpha: 1) : UIColor(red: 0.90, green: 0.91, blue: 0.93, alpha: 1)
                 window.addSubview(root)
                 let tint = AmbientLightView(frame: root.bounds)
                 tint.night = night
+                tint.forcedNight = forced && night
+                tint.forcedDay = forced && !night
                 root.addSubview(tint)
 
                 let bar = CandidateBarView(frame: CGRect(x: 0, y: 0, width: width, height: Metrics.toolbarHeight))
@@ -123,6 +131,20 @@ enum SnapshotRenderer {
                 let file = dir.appendingPathComponent("\(night ? "night" : "day")_\(shot.name).png")
                 try? img.pngData()?.write(to: file)
                 root.removeFromSuperview()
+            }
+        }
+        // the companion app's home screen (the same SwiftUI view, rendered off-screen)
+        for night in [false, true] {
+            let content = HomeContent(text: .constant(""), snapshot: true)
+                .frame(width: width)
+                .padding(.vertical, 12)
+                .background(Color(UIColor.systemGroupedBackground))
+                .tint(mostoTint)
+                .environment(\.colorScheme, night ? .dark : .light)
+            let r = ImageRenderer(content: content)
+            r.scale = 3
+            if let img = r.uiImage {
+                try? img.pngData()?.write(to: dir.appendingPathComponent("\(night ? "night" : "day")_app_home.png"))
             }
         }
         print("SNAPSHOTS \(dir.path)")

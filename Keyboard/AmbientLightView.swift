@@ -9,6 +9,9 @@ final class AmbientLightView: UIView {
     var night = false { didSet { refresh() } }
     /// Night chosen while the system is light: the glass below is pale, so the tint must be denser.
     var forcedNight = false { didSet { refresh() } }
+    /// Day chosen while the system (or the app) is dark: the glass below is dark, so without a light surface the
+    /// white keys would glare on it. A pale frosted sheet makes it read as the light keyboard.
+    var forcedDay = false { didSet { refresh() } }
     /// Where the lamp bead is (container coordinates), so the night glow centres on it.
     var lampPoint = CGPoint(x: 28, y: 26) { didSet { refresh() } }
 
@@ -32,7 +35,8 @@ final class AmbientLightView: UIView {
     }
 
     private func refresh() {
-        backgroundColor = night && forcedNight ? Theme.forcedNightTint : Theme.glassTint
+        backgroundColor = night && forcedNight ? Theme.forcedNightTint
+            : !night && forcedDay ? Theme.forcedDayTint : Theme.glassTint
         guard bounds.width > 0, bounds.height > 0 else { return }
         CATransaction.begin(); CATransaction.setDisableActions(true)
         glow.frame = bounds
@@ -47,5 +51,20 @@ final class AmbientLightView: UIView {
             glow.colors = nil   // 日光 is the system keyboard's own glass, untouched
         }
         CATransaction.commit()
+        // at night the spade's glow breathes, very slowly (5 s), like a lamp; never with Reduce Motion
+        if night && !UIAccessibility.isReduceMotionEnabled {
+            if glow.animation(forKey: "breathe") == nil {
+                let a = CABasicAnimation(keyPath: "opacity")
+                a.fromValue = 1.0
+                a.toValue = 0.72
+                a.duration = 2.5
+                a.autoreverses = true
+                a.repeatCount = .infinity
+                a.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                glow.add(a, forKey: "breathe")
+            }
+        } else {
+            glow.removeAnimation(forKey: "breathe")
+        }
     }
 }

@@ -210,18 +210,30 @@ final class KeyboardViewController: UIInputViewController {
         view.traitCollection.userInterfaceStyle == .dark || textDocumentProxy.keyboardAppearance == .dark
     }
 
+    /// 自动 leaves the light to the system (no override), so the keys, the glass and the app always change together —
+    /// nothing glares light on dark glass or sits dark on light glass while the system switches. Only a host that asks
+    /// for a dark keyboard while the system is light gets dark forced. 日光 / 夜灯 force their light and, when it
+    /// differs from the glass underneath, lay down a surface of their own so it still reads as that light.
     private func applyAppearance() {
-        let night: Bool
-        switch KeyboardSettings.shared.appearance {
-        case 1: night = false
-        case 2: night = true
-        default: night = systemIsDark
+        let sysDark = systemIsDark
+        let mode = KeyboardSettings.shared.appearance
+        let night = mode == 1 ? false : mode == 2 ? true : sysDark
+        let style: UIUserInterfaceStyle = mode == 0
+            ? (textDocumentProxy.keyboardAppearance == .dark && view.traitCollection.userInterfaceStyle != .dark ? .dark : .unspecified)
+            : (night ? .dark : .light)
+        let changed = night != isNight || root.overrideUserInterfaceStyle != style
+        if changed, root.window != nil {
+            // a short crossfade instead of a flash when the light changes under the keyboard
+            let fade = CATransition()
+            fade.type = .fade
+            fade.duration = 0.18
+            root.layer.add(fade, forKey: "light")
         }
         isNight = night
-        root.overrideUserInterfaceStyle = night ? .dark : .light
-        // a forced night over light glass needs a denser tint to read as night
+        root.overrideUserInterfaceStyle = style
         tintView.night = night
-        tintView.forcedNight = night && !systemIsDark
+        tintView.forcedNight = night && !sysDark
+        tintView.forcedDay = !night && sysDark
         candidateBar.mosto.setNight(night)
         candidateBar.showsMosto = night
         settingsPanel.setNight(night)

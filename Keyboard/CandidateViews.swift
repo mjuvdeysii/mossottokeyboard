@@ -279,6 +279,7 @@ final class SettingsPanelView: UIView {
     var onResetLearning: (() -> Void)?
 
     private let header = UIView()
+    private let statusLabel = UILabel()
     private let mostoImage = UIImageView()
     private let scroll = UIScrollView()
     private let stack = UIStackView()
@@ -310,15 +311,20 @@ final class SettingsPanelView: UIView {
         title.text = "Mosto键盘"
         title.font = .systemFont(ofSize: 17, weight: .semibold)
         title.textColor = Theme.keyText
+        statusLabel.font = .systemFont(ofSize: 12)
+        statusLabel.textColor = Theme.secondaryText
+        let titles = UIStackView(arrangedSubviews: [title, statusLabel])
+        titles.axis = .vertical
+        titles.spacing = 1
         let done = UIButton(type: .system)
         done.setTitle("完成", for: .normal)
         done.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
         done.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
-        let h = UIStackView(arrangedSubviews: [mostoImage, title, UIView(), done])
+        let h = UIStackView(arrangedSubviews: [mostoImage, titles, UIView(), done])
         h.alignment = .center
         h.spacing = 8
-        mostoImage.widthAnchor.constraint(equalToConstant: 34).isActive = true
-        mostoImage.heightAnchor.constraint(equalToConstant: 34).isActive = true
+        mostoImage.widthAnchor.constraint(equalToConstant: 40).isActive = true
+        mostoImage.heightAnchor.constraint(equalToConstant: 40).isActive = true
         header.addSubview(h)
         h.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
@@ -484,10 +490,19 @@ final class SettingsPanelView: UIView {
     /// Mosto in the header shows the light the keyboard is in.
     func setNight(_ night: Bool) {
         mostoImage.image = UIImage(named: night ? "mosto_night" : "mosto_day", in: Bundle(for: SettingsPanelView.self), with: nil)
+        updateStatus(night: night)
+    }
+
+    /// The line under the name: the light, the scheme and the layout in use, at a glance.
+    private func updateStatus(night: Bool? = nil) {
+        let s = KeyboardSettings.shared
+        let light = night.map { $0 ? "夜灯" : "日光" } ?? (["自动", "日光", "夜灯"][s.appearance])
+        statusLabel.text = "\(light) · \(s.scheme == 0 ? "小鹤双拼" : "全拼") · \(s.pinyinGrid ? "九宫格" : "全键盘")"
     }
 
     func load() {
         let s = KeyboardSettings.shared
+        updateStatus()
         schemeControl.selectedSegmentIndex = s.scheme
         layoutControl.selectedSegmentIndex = s.pinyinGrid ? 1 : 0
         englishSwitch.isOn = s.english
@@ -520,6 +535,7 @@ final class SettingsPanelView: UIView {
         s.feedback = feedbackSwitch.isOn
         s.appearance = appearance.selectedSegmentIndex
         strength.isEnabled = s.autocorrect
+        updateStatus()
         onChange?()
     }
 
