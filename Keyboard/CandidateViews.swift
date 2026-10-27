@@ -210,7 +210,7 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         layout.sectionInset = UIEdgeInsets(top: 6, left: 6, bottom: 6, right: 6)
         collection = UICollectionView(frame: .zero, collectionViewLayout: layout)
         super.init(frame: frame)
-        backgroundColor = Theme.panel
+        backgroundColor = .clear   // on the system glass, like the keys (the keys are hidden while it shows)
         collection.backgroundColor = .clear
         collection.contentInsetAdjustmentBehavior = .never
         collection.alwaysBounceHorizontal = false
@@ -299,7 +299,7 @@ final class SettingsPanelView: UIView {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        backgroundColor = Theme.settingsBackground
+        backgroundColor = .clear   // the system glass shows through, so the panel is one layer with the keyboard
 
         // Header: Mosto (day or night), the name, 完成 — fixed above the scrolling list
         mostoImage.contentMode = .scaleAspectFit

@@ -91,6 +91,7 @@ enum SnapshotRenderer {
                 } else if shot.panel == "grid" {
                     let grid = CandidateGridView(frame: kb.frame)
                     root.addSubview(grid)
+                    kb.isHidden = true
                     grid.show(composing + candidates(["倪", "霓", "匿", "妮", "昵", "溺", "睨", "鲵", "旎", "怩"]))
                 } else if shot.panel == "longpress" {
                     // the row a long press on ， opens (slot 7.5–8.5 of the bottom row), "？" highlighted
@@ -106,6 +107,7 @@ enum SnapshotRenderer {
                 } else if shot.panel == "settings" || shot.panel == "settings_full" {
                     let panel = SettingsPanelView(frame: root.bounds)
                     root.addSubview(panel)
+                    kb.isHidden = true; bar.isHidden = true   // as in the keyboard: the panel replaces them
                     panel.setNight(night)
                     panel.setLearned("词库 546858 条 · 已学习 0 个词")
                     panel.setNote("键盘不联网，词库与学习记录只存在本机。")

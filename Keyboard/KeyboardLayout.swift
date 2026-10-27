@@ -206,8 +206,7 @@ enum Theme {
     /// Opaque panels over the keys (candidate grid, settings).
     static let panel = dyn(hex(0xF2F2F7), hex(0x1B2245))   // opaque: keys must not show through a panel
     /// Settings, as iOS Settings draws them: grouped background, rounded white groups, hairline separators.
-    static let settingsBackground = dyn(hex(0xF2F2F7), hex(0x161C3A))
-    static let settingsGroup = dyn(.white, hex(0x252D57))
+    static let settingsGroup = dyn(UIColor(white: 1, alpha: 0.85), UIColor(white: 1, alpha: 0.10))
     static let separator = dyn(UIColor(white: 0, alpha: 0.12), UIColor(white: 1, alpha: 0.12))
     // iOS 26 key caps: translucent, no hard shadow
     static let key = dyn(UIColor(white: 1, alpha: 0.93), UIColor(white: 1, alpha: 0.17))

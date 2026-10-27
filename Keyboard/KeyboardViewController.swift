@@ -561,10 +561,14 @@ final class KeyboardViewController: UIInputViewController {
     private func showGrid(_ on: Bool) {
         if on, let r = result { grid.show(r.candidates) }
         grid.isHidden = !on
+        // panels sit on the same system glass as the keys (no opaque sheet stacked on it): hide what is underneath
+        keyboard.isHidden = on || !settingsPanel.isHidden
     }
 
     private func showSettings(_ on: Bool) {
         if on { settingsPanel.load(); applySettings() }
         settingsPanel.isHidden = !on
+        candidateBar.isHidden = on
+        keyboard.isHidden = on || !grid.isHidden
     }
 }
