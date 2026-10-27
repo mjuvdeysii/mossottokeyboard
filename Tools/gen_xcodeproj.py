@@ -125,7 +125,7 @@ common_target = {
     "GENERATE_INFOPLIST_FILE": "YES",
     "TARGETED_DEVICE_FAMILY": "1",
     "DEVELOPMENT_TEAM": '""',
-    "INFOPLIST_KEY_CFBundleDisplayName": '"小鹤双拼"',
+    "INFOPLIST_KEY_CFBundleDisplayName": '"Mosto键盘"',
 }
 app_settings = dict(common_target, **{
     "PRODUCT_BUNDLE_IDENTIFIER": BUNDLE,

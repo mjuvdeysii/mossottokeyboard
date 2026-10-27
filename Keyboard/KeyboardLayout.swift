@@ -42,7 +42,7 @@ struct LayoutContext {
 
 /// Geometry measured from Gboard iOS 2.3 on a 402 pt wide iPhone (1206 px screenshots):
 /// toolbar 65 pt, row pitch 53 pt, key gaps ~5.5 pt × 11 pt, space bar 42 pt tall with ~6 pt corners,
-/// borderless keys, letter glyphs ~24 pt, top-row digit hints ~10 pt.
+/// borderless keys, letter glyphs ~24 pt. (Gboard's top-row digit hints and letter long-press symbols are left out.)
 /// Bottom rows: letters 1.25 | 1.125 | 1.125 | space 4 | 1 | 1.5; symbol pages 1.25 | 1.125 | 1.125 | 4 | 2.5.
 /// Symbol third rows: 1.5 | 6 × 7/6 | 1.5. Every page fits on screen, nothing scrolls.
 enum Metrics {
@@ -64,10 +64,6 @@ enum Metrics {
 enum Layouts {
     static let letterRows = ["qwertyuiop", "asdfghjkl", "zxcvbnm"]
     static let topRowDigits = Array("1234567890").map(String.init)
-    static let longPressAlt: [Character: String] = [
-        "a": "@", "s": "*", "d": "+", "f": "-", "g": "=", "h": "/", "j": "#", "k": "(", "l": ")",
-        "z": "_", "x": "$", "c": "\"", "v": "'", "b": ":", "n": ";", "m": "!",
-    ]
     static let sixth: CGFloat = 7.0 / 6.0
 
     static func rows(_ ctx: LayoutContext) -> [[KeySpec]] {
@@ -101,12 +97,11 @@ enum Layouts {
         var rows: [[KeySpec]] = []
         for (r, row) in letterRows.enumerated() {
             var specs: [KeySpec] = []
-            for (i, c) in row.enumerated() {
+            for c in row {
                 let upper = ctx.shifted || ctx.capsLock
                 let label = upper ? String(c).uppercased() : String(c)
-                let alt = r == 0 ? topRowDigits[i] : longPressAlt[c]
-                specs.append(KeySpec(action: .char(String(c)), label: label, alt: alt, isLetter: true,
-                                     hint: r == 0 ? topRowDigits[i] : nil))
+                // letters are plain: no corner digits, no long-press symbols (digits and symbols live on 123 / #+=)
+                specs.append(KeySpec(action: .char(String(c)), label: label, isLetter: true))
             }
             if r == 2 {
                 let shiftSymbol = ctx.capsLock ? "capslock.fill" : (ctx.shifted ? "shift.fill" : "shift")

@@ -31,6 +31,7 @@ final class KeyboardViewController: UIInputViewController {
     private var predictions: [String] = []
     private var isNight = false
     private let haptic = UIImpactFeedbackGenerator(style: .light)
+    private let tick = UISelectionFeedbackGenerator()
 
     private var isLandscape: Bool { view.bounds.width > view.bounds.height && view.bounds.height > 0 }
     private var barHeight: CGFloat { isLandscape ? Metrics.toolbarHeightLandscape : Metrics.toolbarHeight }
@@ -48,9 +49,15 @@ final class KeyboardViewController: UIInputViewController {
 
         keyboard.inputController = self
         keyboard.onAction = { [weak self] action, tap in self?.handle(action, tap: tap) }
+        keyboard.canMoveCursor = { [weak self] in self?.taps.isEmpty ?? false }
         keyboard.onCursorMove = { [weak self] d in
             guard let self, self.taps.isEmpty else { return }
-            self.textDocumentProxy.adjustTextPosition(byCharacterOffset: d)
+            // one visible character per step: an emoji or other surrogate pair is two UTF-16 units
+            let proxy = self.textDocumentProxy
+            let ch = d < 0 ? proxy.documentContextBeforeInput?.last : proxy.documentContextAfterInput?.first
+            // some apps share no context: then step one unit and let the system clamp at the ends
+            proxy.adjustTextPosition(byCharacterOffset: d * (ch?.utf16.count ?? 1))
+            if ch != nil, KeyboardSettings.shared.feedback, self.hasFullAccess { self.tick.selectionChanged() }
         }
         keyboard.onKeyDown = { [weak self] in self?.playFeedback() }
 

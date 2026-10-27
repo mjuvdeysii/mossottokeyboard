@@ -8,6 +8,16 @@ final class KeyView: UIView {
     private let icon = UIImageView()
 
     var pressed = false { didSet { if pressed != oldValue { updateColors() } } }
+    /// While the space bar drives the cursor the other caps go blank, as in the iOS trackpad mode.
+    var blanked = false {
+        didSet {
+            guard blanked != oldValue else { return }
+            UIView.animate(withDuration: 0.15) {
+                let a: CGFloat = self.blanked ? 0 : 1
+                self.label.alpha = a; self.hintLabel.alpha = a; self.icon.alpha = a
+            }
+        }
+    }
 
     init(spec: KeySpec, borders: Bool) {
         self.spec = spec
@@ -237,6 +247,8 @@ final class AltPopup: UIView {
 final class KeyboardView: UIView {
     var onAction: ((KeyAction, Tap?) -> Void)?
     var onCursorMove: ((Int) -> Void)?
+    /// Whether a drag on the space bar may move the cursor now (not while a pinyin is being composed).
+    var canMoveCursor: (() -> Bool)?
     var onKeyDown: (() -> Void)?
     weak var inputController: UIInputViewController?
 
@@ -259,6 +271,7 @@ final class KeyboardView: UIView {
         var repeatTimer: Timer?
         var dragAccum: CGFloat = 0
         var dragging = false
+        var lastMove = CACurrentMediaTime()
         var repeatCount = 0
         var preview: KeyPreview?
         init(keyIndex: Int, start: CGPoint) { self.keyIndex = keyIndex; self.start = start; self.location = start }
@@ -424,12 +437,20 @@ final class KeyboardView: UIView {
             let kv = keyViews[tr.keyIndex]
             switch kv.spec.action {
             case .space:
-                // Drag on the space bar moves the cursor.
+                // Drag on the space bar moves the cursor (Gboard / iOS trackpad): the caps go blank, one character
+                // per ~9 pt when slow, finer steps when the finger moves fast, so a long jump needs no second swipe.
                 let dx = p.x - prev.x
-                if !tr.dragging && abs(p.x - tr.start.x) > 14 { tr.dragging = true }
+                let now = CACurrentMediaTime()
+                let speed = abs(dx) / CGFloat(max(now - tr.lastMove, 1.0 / 120))
+                tr.lastMove = now
+                if !tr.dragging && abs(p.x - tr.start.x) > 12 && (canMoveCursor?() ?? true) {
+                    tr.dragging = true
+                    tr.dragAccum = 0
+                    setCursorMode(true, except: tr.keyIndex)
+                }
                 if tr.dragging {
                     tr.dragAccum += dx
-                    let step: CGFloat = 9
+                    let step: CGFloat = speed > 900 ? 3.5 : speed > 450 ? 5.5 : 9
                     while abs(tr.dragAccum) >= step {
                         let dir = tr.dragAccum > 0 ? 1 : -1
                         onCursorMove?(dir)
@@ -487,7 +508,12 @@ final class KeyboardView: UIView {
         touchOrder.removeAll()
     }
 
+    private func setCursorMode(_ on: Bool, except index: Int) {
+        for (i, kv) in keyViews.enumerated() where i != index { kv.blanked = on }
+    }
+
     private func finish(_ tr: Tracked, emit: Bool) {
+        if tr.dragging { setCursorMode(false, except: -1) }
         tr.longPressTimer?.invalidate()
         tr.repeatTimer?.invalidate()
         tr.preview?.removeFromSuperview()
@@ -525,6 +551,15 @@ final class KeyboardView: UIView {
             tr.repeatCount += 1
             self.onAction?(.delete, nil)
             if tr.repeatCount >= 25 { self.onAction?(.delete, nil) }   // accelerate after ~2s
+        }
+    }
+
+    /// Snapshot support: the space bar held and dragged — cursor mode, every other cap blank.
+    func demoCursorMode() {
+        guard let idx = keyViews.firstIndex(where: { $0.spec.action == .space }) else { return }
+        UIView.performWithoutAnimation {
+            keyViews[idx].pressed = true
+            setCursorMode(true, except: idx)
         }
     }
 
