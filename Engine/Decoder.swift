@@ -520,6 +520,32 @@ public final class Decoder {
     }
 
     /// The keys that spell a syllable in the current scheme.
+    /// How common a syllable is: its most frequent single character's score (built on first use).
+    private lazy var syllableWeight: [Int] = (0..<lexicon.syllables.count).map { sid in
+        lexicon.singles(UInt16(sid)).map { Int(lexicon.entry($0).score) }.max() ?? Int(Int16.min)
+    }
+
+    /// 九宫格 拼音选择: the syllables the next keypad keys can spell (from the first keypad tap on), longest
+    /// spelling first, then the most common — as the left column of a phone keypad IME offers. Choosing one turns
+    /// those keys into its exact letters, so the rest of the input decodes around it.
+    public func t9SyllableChoices(_ taps: [Tap], limit: Int = 30) -> (start: Int, choices: [(text: String, keys: [Character])]) {
+        guard let start = taps.firstIndex(where: { $0.group }) else { return (0, []) }
+        var digits: [Character] = []
+        for t in taps[start...] { if t.group { digits.append(t.key) } else { break } }
+        var found: [(text: String, keys: [Character], len: Int, w: Int)] = []
+        for (i, syl) in lexicon.syllables.enumerated() {
+            let keys = Array(spelling(of: UInt16(i)))
+            guard !keys.isEmpty, keys.count <= digits.count else { continue }
+            if zip(keys, digits).allSatisfy({ Tap.t9Digit($0.0) == $0.1 }) {
+                found.append((XiaoheScheme.display(syl), keys, keys.count, syllableWeight[i]))
+            }
+        }
+        found.sort { $0.len != $1.len ? $0.len > $1.len : $0.w > $1.w }
+        var seen = Set<String>()
+        let list = found.filter { seen.insert($0.text).inserted }.prefix(limit).map { (text: $0.text, keys: $0.keys) }
+        return (start, Array(list))
+    }
+
     public func spelling(of id: UInt16) -> String {
         let s = lexicon.syllables[Int(id)]
         return scheme == .xiaohe ? (XiaoheScheme.code(for: s) ?? "") : s

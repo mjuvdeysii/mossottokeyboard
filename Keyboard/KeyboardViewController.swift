@@ -17,6 +17,8 @@ final class KeyboardViewController: UIInputViewController {
     private lazy var keyboard = KeyboardView(spatial: spatial)
     private let grid = CandidateGridView()
     private let settingsPanel = SettingsPanelView()
+    private let syllablePicker = SyllablePickerView()
+    private var syllableChoices: (start: Int, choices: [(text: String, keys: [Character])]) = (0, [])
     private var heightConstraint: NSLayoutConstraint?
 
     // State
@@ -70,6 +72,10 @@ final class KeyboardViewController: UIInputViewController {
         keyboard.onKeyDown = { [weak self] action in self?.playFeedback(action) }
 
         candidateBar.onSelect = { [weak self] i in self?.candidateTapped(i) }
+        syllablePicker.isHidden = true
+        keyboard.addSubview(syllablePicker)
+        keyboard.overlay = syllablePicker
+        syllablePicker.onPick = { [weak self] i in self?.pickSyllable(i) }
         candidateBar.onExpand = { [weak self] in self?.showGrid(true) }
         candidateBar.onLongPress = { [weak self] i in self?.offerForget(i) }
         candidateBar.onSettings = { [weak self] in self?.showSettings(true) }
@@ -163,6 +169,7 @@ final class KeyboardViewController: UIInputViewController {
         super.viewDidLayoutSubviews()
         let b = view.bounds
         if view.window != nil { releaseSystemGestureDelays() }   // the window can change (rotation, app switch)
+        if !syllablePicker.isHidden, let f = keyboard.keypadSideColumn() { syllablePicker.frame = f }
         root.frame = b
         tintView.frame = b
         candidateBar.frame = CGRect(x: 0, y: 0, width: b.width, height: barHeight)
@@ -518,6 +525,7 @@ final class KeyboardViewController: UIInputViewController {
         }
         candidateBar.update(preedit: r.preedit, candidates: r.candidates)
         if !grid.isHidden { grid.show(r.candidates) }
+        updateSyllablePicker()
         reconfigure()
     }
 
@@ -588,6 +596,29 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
+    /// 九宫格: show the syllable column while keypad keys are being composed (it covers ， 。 ？ meanwhile).
+    private func updateSyllablePicker() {
+        guard let decoder, taps.contains(where: { $0.group }), let frame = keyboard.keypadSideColumn() else {
+            syllablePicker.isHidden = true
+            return
+        }
+        syllableChoices = decoder.t9SyllableChoices(taps)
+        guard !syllableChoices.choices.isEmpty else { syllablePicker.isHidden = true; return }
+        syllablePicker.frame = frame
+        syllablePicker.show(syllableChoices.choices.map { $0.text })
+        syllablePicker.isHidden = false
+        keyboard.bringSubviewToFront(syllablePicker)
+    }
+
+    /// The keypad keys of the chosen syllable become its exact letters; the rest decodes around them.
+    private func pickSyllable(_ i: Int) {
+        let (start, choices) = syllableChoices
+        guard i < choices.count, start + choices[i].keys.count <= taps.count else { return }
+        playFeedback(.t9("2"))
+        taps.replaceSubrange(start..<(start + choices[i].keys.count), with: choices[i].keys.map { Tap.exact($0) })
+        refresh()
+    }
+
     /// Insert committed text; it replaces the marked pinyin when there is one.
     private func insertCommitted(_ text: String) {
         textDocumentProxy.insertText(text)
@@ -610,6 +641,7 @@ final class KeyboardViewController: UIInputViewController {
             hasMarkedText = false
         }
         taps.removeAll()
+        syllablePicker.isHidden = true
         result = nil
         committedParts.removeAll()
         candidateBar.update(preedit: "", candidates: [])

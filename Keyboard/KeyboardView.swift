@@ -421,7 +421,24 @@ final class KeyboardView: UIView {
         return best
     }
 
+    /// A view laid over some keys that takes its own touches (the 九宫格 syllable column).
+    var overlay: UIView?
+
+    /// The 九宫格 keypad's left column (the punctuation keys of its first three rows), in this view's coordinates.
+    func keypadSideColumn() -> CGRect? {
+        guard context?.pinyinGrid == true, context?.chinese == true, context?.page == .letters, rows.count >= 3 else { return nil }
+        var idx = 0, rect = CGRect.null
+        for r in 0..<3 {
+            if idx < keyViews.count { rect = rect.union(keyViews[idx].frame) }
+            idx += rows[r].count
+        }
+        return rect.isNull ? nil : rect
+    }
+
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        if let o = overlay, !o.isHidden, o.frame.contains(point) {
+            return o.hitTest(convert(point, to: o), with: event)
+        }
         if let g = globeButton, g.frame.contains(point) { return g }
         return bounds.contains(point) ? self : nil
     }

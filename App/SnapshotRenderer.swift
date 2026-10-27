@@ -90,6 +90,14 @@ enum SnapshotRenderer {
                         Candidate(text: $0, tapCount: 0, syllables: [], corrected: false, score: 0) }, prediction: true)
                 default: bar.update(preedit: "", candidates: [])
                 }
+                if shot.name == "t9_composing" {
+                    kb.layoutIfNeeded()
+                    if let f = kb.keypadSideColumn() {
+                        let picker = SyllablePickerView(frame: f)
+                        kb.addSubview(picker)
+                        picker.show(["ni", "mi", "o"])
+                    }
+                }
                 if let panel = shot.panel, panel.hasPrefix("press:") {
                     kb.layoutIfNeeded()
                     kb.demoPress(String(panel.dropFirst(6)))

@@ -62,6 +62,7 @@ case "type":
     let r = decoder.decode(letters.map { t9 ? Tap.t9($0) : Tap.exact($0) })
     let ms = Date().timeIntervalSince(t0) * 1000
     print("preedit: \(r.preedit)   (\(String(format: "%.1f", ms)) ms)")
+    if t9 { print("拼音:", decoder.t9SyllableChoices(letters.map { Tap.t9($0) }).choices.prefix(12).map { $0.text }.joined(separator: " ")) }
     for c in r.candidates.prefix(15) {
         print(String(format: "%6.2f", c.score), c.text, "taps=\(c.tapCount)", c.corrected ? "[corrected]" : "")
     }

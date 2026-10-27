@@ -71,7 +71,7 @@ struct HomeContent: View {
                         }
                         Card(title: "用法") {
                             Usage(icon: "keyboard", text: "两种输入方案，在键盘设置里切换：小鹤双拼（每个字两个键，纯双拼，无形码）与全拼（完整拼写，也可只打声母，如 nh → 你好）。")
-                            Usage(icon: "square.grid.3x3", text: "中文键盘可选全键盘或九宫格；九宫格两种方案都能用，“分词”切开音节。")
+                            Usage(icon: "square.grid.3x3", text: "中文键盘可选全键盘或九宫格；九宫格两种方案都能用：打字时左列列出可能的拼音，点一下就定下这几个键，“分词”切开音节。")
                             Usage(icon: "space", text: "空格：上屏首选　回车：上屏字母　删除：逐键回退，按住会加速，再久一点按词删除。")
                             Usage(icon: "wand.and.stars", text: "首选带下划线 = 已按触点位置自动纠错；第二个候选是未纠错的原文。上屏后立刻按删除可撤回纠错。")
                             Usage(icon: "textformat.abc", text: "中英混输：打 ok、ios、iphone 直接出 OK、iOS、iPhone。")

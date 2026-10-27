@@ -631,3 +631,57 @@ final class KeyboardSettings {
         set { d.set(newValue.0, forKey: "offsetX"); d.set(newValue.1, forKey: "offsetY") }
     }
 }
+
+/// 九宫格 拼音选择: while composing on the keypad, the left column lists the syllables the next keys can spell
+/// (longest first, then the most common). Tapping one fixes those keys to its letters. Scrolls vertically only.
+final class SyllablePickerView: UIView {
+    var onPick: ((Int) -> Void)?
+    private let scroll = UIScrollView()
+    private var buttons: [UIButton] = []
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = Theme.functionKey
+        layer.cornerRadius = Metrics.cornerRadius
+        layer.cornerCurve = .continuous
+        clipsToBounds = true
+        scroll.showsHorizontalScrollIndicator = false
+        scroll.alwaysBounceHorizontal = false
+        scroll.contentInsetAdjustmentBehavior = .never
+        addSubview(scroll)
+        isAccessibilityElement = false
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    func show(_ choices: [String]) {
+        buttons.forEach { $0.removeFromSuperview() }
+        buttons = choices.enumerated().map { i, text in
+            let b = UIButton(type: .system)
+            b.setTitle(text, for: .normal)
+            b.titleLabel?.font = .systemFont(ofSize: 17)
+            b.titleLabel?.adjustsFontSizeToFitWidth = true
+            b.titleLabel?.minimumScaleFactor = 0.6
+            b.tintColor = Theme.keyText
+            b.setTitleColor(Theme.keyText, for: .normal)
+            b.tag = i
+            b.accessibilityLabel = "拼音 \(text)"
+            b.addTarget(self, action: #selector(tapped(_:)), for: .touchUpInside)
+            scroll.addSubview(b)
+            return b
+        }
+        scroll.setContentOffset(.zero, animated: false)
+        setNeedsLayout()
+    }
+
+    @objc private func tapped(_ b: UIButton) { onPick?(b.tag) }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        scroll.frame = bounds
+        let h: CGFloat = 40
+        for (i, b) in buttons.enumerated() {
+            b.frame = CGRect(x: 2, y: CGFloat(i) * h, width: bounds.width - 4, height: h)
+        }
+        scroll.contentSize = CGSize(width: bounds.width, height: CGFloat(buttons.count) * h)
+    }
+}
