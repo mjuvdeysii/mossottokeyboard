@@ -17,7 +17,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     private let titleLabel = UILabel()
     private let bar = UIStackView()
     private var tabButtons: [UIButton] = []
-    private let backButton = UIButton(type: .system)
+    private let backButton = UIButton(type: .custom)   // custom: its title always draws (a .system title stayed blank)
     private let deleteButton = UIButton(type: .system)
     private var selected = -1
     private var deleteTimer: Timer?
@@ -104,6 +104,9 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         let cfg = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
         backButton.setTitle("ABC", for: .normal)
         backButton.titleLabel?.font = .systemFont(ofSize: 16)
+        backButton.setTitleColor(Theme.keyText, for: .normal)
+        backButton.setTitleColor(Theme.secondaryText, for: .highlighted)
+        backButton.accessibilityLabel = "返回键盘"
         backButton.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
         deleteButton.setImage(UIImage(systemName: "delete.left", withConfiguration: cfg), for: .normal)
         // delete repeats while held, as the delete key does
@@ -213,7 +216,10 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         scrollTo(recent.isEmpty ? 1 : 0, animated: false)
     }
 
-    func setChinese(_ chinese: Bool) { backButton.setTitle(chinese ? "中文" : "ABC", for: .normal) }
+    func setChinese(_ chinese: Bool) {
+        backButton.setTitle(chinese ? "中文" : "ABC", for: .normal)
+        backButton.setNeedsLayout()
+    }
 
     // MARK: - Layout
 
