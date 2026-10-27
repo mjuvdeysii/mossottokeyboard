@@ -15,15 +15,36 @@ public final class EnglishLexicon {
     public private(set) var words: [Word] = []
 
     public init(path: String) throws {
-        let text = try String(contentsOfFile: path, encoding: .utf8)
+        // Parsed from raw UTF-8 bytes (no per-line String splitting): the keyboard loads this on every launch.
+        let data = try Data(contentsOf: URL(fileURLWithPath: path))
         var list: [Word] = []
         list.reserveCapacity(40000)
-        for line in text.split(separator: "\n") {
-            let f = line.split(separator: "\t", omittingEmptySubsequences: false)
-            guard f.count >= 3, let z = Double(f[1]) else { continue }
-            list.append(Word(key: String(f[0]), display: String(f[2]), zipf: z))
+        data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
+            let b = raw.bindMemory(to: UInt8.self)
+            let n = b.count
+            var i = 0
+            while i < n {
+                var f: [Int] = [i]
+                var j = i
+                while j < n, b[j] != 10 { if b[j] == 9 { f.append(j + 1) }; j += 1 }
+                if f.count >= 3 {
+                    let key = String(decoding: UnsafeBufferPointer(rebasing: b[f[0]..<(f[1] - 1)]), as: UTF8.self)
+                    var z = 0.0, scale = 0.0
+                    for k in f[1]..<(f[2] - 1) {
+                        let c = b[k]
+                        if c == 46 { scale = 1 } else if c >= 48, c <= 57 {
+                            if scale > 0 { scale /= 10; z += Double(c - 48) * scale } else { z = z * 10 + Double(c - 48) }
+                        }
+                    }
+                    let shown = String(decoding: UnsafeBufferPointer(rebasing: b[f[2]..<j]), as: UTF8.self)
+                    list.append(Word(key: key, display: shown == key ? key : shown, zipf: z))
+                }
+                i = j + 1
+            }
         }
-        words = list.sorted { $0.key < $1.key }
+        // the file is written sorted (Tools/build_english.py); sort only if it is not
+        if zip(list, list.dropFirst()).contains(where: { $0.key > $1.key }) { list.sort { $0.key < $1.key } }
+        words = list
     }
 
     private func lowerBound(_ s: String) -> Int {

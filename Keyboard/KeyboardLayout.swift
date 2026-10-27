@@ -13,6 +13,10 @@ enum KeyAction: Equatable {
     case settings
     case page(KeyboardPage)
     case toggleLanguage
+    /// A 九宫格 pinyin key: its digit 2–9, or ' for 分词.
+    case t9(Character)
+    /// 重输: drop what is being composed.
+    case clearInput
 }
 
 enum KeyStyle { case normal, function, accent }
@@ -41,6 +45,10 @@ struct LayoutContext {
     var keyBorders: Bool
     /// 123 opens the 九宫格 number pad (on) or Gboard's full 123 page (off).
     var numberGrid: Bool = true
+    /// Chinese letters on the 九宫格 pinyin keypad instead of the full keyboard.
+    var pinyinGrid: Bool = false
+    /// Something is being composed (重输 and 分词 apply).
+    var composing: Bool = false
 }
 
 /// Geometry measured from Gboard iOS 2.3 on a 402 pt wide iPhone (1206 px screenshots):
@@ -72,7 +80,7 @@ enum Layouts {
 
     static func rows(_ ctx: LayoutContext) -> [[KeySpec]] {
         switch ctx.page {
-        case .letters: return letters(ctx)
+        case .letters: return ctx.pinyinGrid && ctx.chinese ? pinyinPad(ctx) : letters(ctx)
         case .numbers: return numbers(ctx)
         case .symbols: return symbols(ctx)
         case .numpad: return numpad(ctx)
@@ -149,6 +157,29 @@ enum Layouts {
             : charRow([".", ",", "?", "!", "'", "%"], width: sixth)
         row3.append(KeySpec(action: .delete, label: "", symbol: "delete.left", width: 1.5, style: .function))
         return [row1, row2, row3, bottomRow(ctx)]
+    }
+
+    /// 九宫格 pinyin keypad, as on the system keyboard: the phone keypad (1 分词, 2 ABC … 9 WXYZ) in the middle,
+    /// ， 。 ？ on the left, delete / 重输 / return on the right; 123, settings, 符号, space and 中/英 below.
+    /// Each key stands for all its letters; the decoder sorts out which were meant (小鹤双拼 and 全拼 alike).
+    private static func pinyinPad(_ ctx: LayoutContext) -> [[KeySpec]] {
+        let side: CGFloat = 1.6, mid: CGFloat = 6.8 / 3
+        func k(_ d: Character, _ label: String) -> KeySpec { KeySpec(action: .t9(d), label: label, width: mid) }
+        func p(_ s: String, _ alt: String?) -> KeySpec { KeySpec(action: .char(s), label: s, width: side, alt: alt, style: .function) }
+        let row1 = [p("，", "、"), k("'", "分词"), k("2", "ABC"), k("3", "DEF"),
+                    KeySpec(action: .delete, label: "", symbol: "delete.left", width: side, style: .function)]
+        let row2 = [p("。", "…"), k("4", "GHI"), k("5", "JKL"), k("6", "MNO"),
+                    KeySpec(action: .clearInput, label: "重输", width: side, style: .function)]
+        let row3 = [p("？", "！"), k("7", "PQRS"), k("8", "TUV"), k("9", "WXYZ"), returnKey(ctx, width: side, wide: true)]
+        let gear = ctx.showGlobe
+            ? KeySpec(action: .globe, label: "", symbol: "globe", width: 1, style: .function)
+            : KeySpec(action: .settings, label: "", symbol: "gearshape", width: 1, style: .function)
+        let row4 = [KeySpec(action: .page(ctx.numberGrid ? .numpad : .numbers), label: "123", width: side, style: .function),
+                    gear,
+                    KeySpec(action: .page(.symbols), label: "符号", width: mid - 1 + 0.27, style: .function),
+                    KeySpec(action: .space, label: "空格", width: 0),
+                    KeySpec(action: .toggleLanguage, label: "中", width: side, style: .function)]
+        return [row1, row2, row3, row4]
     }
 
     /// 九宫格 number pad: a phone keypad in the middle (1–9, 0 below 8), common number punctuation on the left,

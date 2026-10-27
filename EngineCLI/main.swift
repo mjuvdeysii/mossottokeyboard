@@ -58,7 +58,8 @@ case "codes":
 case "type":
     let letters = args.count > 3 ? args[3] : ""
     let t0 = Date()
-    let r = decoder.decode(letters.map { Tap.exact($0) })
+    let t9 = ProcessInfo.processInfo.environment["T9"] == "1"   // keys are 九宫格 digits (2–9, ' for 分词)
+    let r = decoder.decode(letters.map { t9 ? Tap.t9($0) : Tap.exact($0) })
     let ms = Date().timeIntervalSince(t0) * 1000
     print("preedit: \(r.preedit)   (\(String(format: "%.1f", ms)) ms)")
     for c in r.candidates.prefix(15) {
@@ -143,6 +144,25 @@ case "bench", "gate":
         }
     }
 
+    // 九宫格: the same items typed on the number keys (each key stands for its 3–4 letters), perfect keys
+    if ProcessInfo.processInfo.environment["T9"] != "0" {
+        for (name, set) in [("words", items), ("sentences", sentItems)] {
+            var top1 = 0, top3 = 0
+            let t0 = Date()
+            for (t, ids) in set {
+                let taps = codeLetters(ids).map { Tap.t9(Tap.t9Digit($0)) }
+                let c = decoder.decode(taps).candidates
+                if c.first?.text == t { top1 += 1 }
+                if c.prefix(3).contains(where: { $0.text == t }) { top3 += 1 }
+            }
+            let ms = Date().timeIntervalSince(t0) * 1000 / Double(set.count)
+            metrics["t9.\(name).top1"] = 100 * Double(top1) / Double(set.count)
+            metrics["t9.\(name).top3"] = 100 * Double(top3) / Double(set.count)
+            metrics["t9.\(name).ms"] = ms
+            print(String(format: "== 九宫格 %@: top1 %.1f%%  top3 %.1f%%  %.2f ms", name, metrics["t9.\(name).top1"]!, metrics["t9.\(name).top3"]!, ms))
+        }
+    }
+
     if args[2] == "gate" {
         // Regression gate for CI: the release does not go out if typing quality drops below these floors.
         // 小鹤双拼 and 全拼 each have their own floors (set a little under the measured values)
@@ -152,12 +172,18 @@ case "bench", "gate":
             ("sentences.perfect", 72.0, true), // perfect keys, top-1 equals the intended sentence (%)
             ("sentences.on", 86.0, true),
             ("words.ms", 3.0, false),          // average decode time (ms) — at most
+            ("t9.words.top1", 48.0, true),     // 九宫格 (each key = its 3–4 letters), perfect keys
+            ("t9.sentences.top3", 33.0, true),
+            ("t9.sentences.ms", 40.0, false),
         ] : [
             ("words.on", 97.0, true),
             ("words.broken", 1.0, false),
             ("sentences.perfect", 72.0, true),
             ("sentences.on", 90.0, true),
             ("sentences.ms", 8.0, false),
+            ("t9.words.top1", 65.0, true),
+            ("t9.sentences.top1", 50.0, true),
+            ("t9.sentences.ms", 250.0, false),
         ]
         print("scheme:", decoder.scheme == .xiaohe ? "小鹤双拼" : "全拼")
         var failed = false

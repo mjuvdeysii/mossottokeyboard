@@ -96,8 +96,13 @@ public final class Decoder {
     }
 
     private func alternatives(_ t: Tap) -> [(key: Character, logp: Double)] {
-        correctionEnabled ? t.alternatives : [(t.key, 0.0)]
+        t.group ? t.alternatives : correctionEnabled ? t.alternatives : [(t.key, 0.0)]
     }
+    /// Whether reading tap `t` as key `k` is a correction (never for a 九宫格 key: all its letters are meant).
+    @inline(__always) private func isCorrection(_ k: Character, _ t: Tap) -> Bool { !t.group && k != t.key }
+
+    /// 全拼 syllable boundaries set with 分词 ('): no syllable may run across one (positions in the filtered taps).
+    private var boundaries = Set<Int>()
 
     private func pruned(_ best: [UInt16: Span], limit: Int) -> [Span] {
         var list = best.values.sorted { $0.spatial > $1.spatial }
@@ -115,21 +120,22 @@ public final class Decoder {
             for (ka, la) in alternatives(a) {
                 for (kb, lb) in alternatives(b) {
                     guard let ids = lexicon.codeToSyllables[String([ka, kb])] else { continue }
-                    let corrected = ka != a.key || kb != b.key
+                    let corrected = isCorrection(ka, a) || isCorrection(kb, b)
                     let s = spatialWeight * (la + lb) - (corrected ? correctionPenalty : 0)
                     for id in ids where (best[id]?.spatial ?? -.infinity) < s {
                         best[id] = Span(end: i + 2, id: id, spatial: s, corrected: corrected, kind: 0)
                     }
                 }
             }
-            out[i] = pruned(best, limit: maxSyllableAlternatives)
+            // 九宫格: every syllable on the two keys is equally likely here; the words decide, so keep them all
+            out[i] = pruned(best, limit: a.group || b.group ? 96 : maxSyllableAlternatives)
             i += 2
         }
         if n % 2 == 1, let t = taps.last {
             // a dangling first key: any syllable whose code starts with it
             var best: [UInt16: Span] = [:]
             for (k, l) in alternatives(t) {
-                let corrected = k != t.key
+                let corrected = isCorrection(k, t)
                 let s = spatialWeight * l - (corrected ? correctionPenalty : 0)
                 for id in lexicon.firstKeyToSyllables[k] ?? [] where (best[id]?.spatial ?? -.infinity) < s {
                     best[id] = Span(end: n, id: id, spatial: s, corrected: corrected, kind: 1)
@@ -184,7 +190,7 @@ public final class Decoder {
                 for st in states {
                     for (k, l) in alternatives(t) {
                         guard let child = st.node.children[k] else { continue }
-                        next.append(State(node: child, score: st.score + spatialWeight * l, corrected: st.corrected || k != t.key))
+                        next.append(State(node: child, score: st.score + spatialWeight * l, corrected: st.corrected || isCorrection(k, t)))
                     }
                 }
                 if let top = next.map({ $0.score }).max() { next = next.filter { $0.score >= top - pruneMargin } }
@@ -203,20 +209,29 @@ public final class Decoder {
                     }
                 }
                 states = next
+                if boundaries.contains(pos) { break }   // 分词: the syllable must end here
             }
             // 简拼: an initial standing for a whole syllable (zh / ch / sh count as one initial); typed keys only, and
             // only when no vowel follows — "nh" is 你好, while in "ni" the n simply starts a spelled-out syllable
-            let k0 = taps[i].key
-            func vowel(_ j: Int) -> Bool { j < n && Self.vowels.contains(taps[j].key) }
-            if Self.initials.contains(k0), i + 1 < n {
+            // On a 九宫格 key every initial on it may be meant (and whether a vowel follows is unknown), at a little
+            // more cost; keys typed on the full keyboard abbreviate only as typed.
+            let t0 = taps[i]
+            let heads0: [Character] = t0.group ? t0.alternatives.map { $0.key }.filter { Self.initials.contains($0) }
+                                               : (Self.initials.contains(t0.key) ? [t0.key] : [])
+            func vowel(_ j: Int) -> Bool { j < n && !taps[j].group && Self.vowels.contains(taps[j].key) }
+            func hasH(_ j: Int) -> Bool { j < n && (taps[j].group ? taps[j].alternatives.contains { $0.key == "h" } : taps[j].key == "h") }
+            for k0 in heads0 where i + 1 < n {
                 var ends: [(end: Int, head: String)] = []
                 if !vowel(i + 1) { ends.append((end: i + 1, head: String(k0))) }
-                if "zcs".contains(k0), i + 2 < n, taps[i + 1].key == "h", !vowel(i + 2) { ends.append((end: i + 2, head: String(k0) + "h")) }
+                if "zcs".contains(k0), i + 2 < n, hasH(i + 1), !vowel(i + 2), !boundaries.contains(i + 1) {
+                    ends.append((end: i + 2, head: String(k0) + "h"))
+                }
+                let cost = abbreviationPenalty + (t0.group ? 1.0 : 0)
                 for (end, head) in ends {
                     for id in trie.children[k0]?.below ?? [] {
                         // a lone z / c / s also stands for zh / ch / sh, as people abbreviate both
                         guard lexicon.syllables[Int(id)].hasPrefix(head) else { continue }
-                        emit(Span(end: end, id: id, spatial: -abbreviationPenalty, corrected: false, kind: 2))
+                        emit(Span(end: end, id: id, spatial: -cost, corrected: false, kind: 2))
                     }
                 }
             }
@@ -228,6 +243,33 @@ public final class Decoder {
     // MARK: - Decode
 
     public func decode(_ taps: [Tap]) -> Result {
+        // 分词 (') taps only set syllable boundaries: decode the letters, then count the separators back into each
+        // candidate's tapCount so committing a candidate removes them too.
+        guard taps.contains(where: { $0.key == "'" }) else { boundaries = []; return decodeLetters(taps) }
+        var letters: [Tap] = []
+        var orig = [0]                // orig[k]: original taps consumed once k letters are (with separators right after)
+        boundaries = []
+        for (i, t) in taps.enumerated() where t.key != "'" {
+            if i > 0, taps[i - 1].key == "'", !letters.isEmpty { boundaries.insert(letters.count) }
+            letters.append(t)
+            var end = i + 1
+            while end < taps.count, taps[end].key == "'" { end += 1 }
+            orig.append(end)
+        }
+        guard !letters.isEmpty else { return Result(candidates: [], preedit: String(repeating: "'", count: taps.count)) }
+        let r = decodeLetters(letters)
+        boundaries = []
+        let cands = r.candidates.map { c -> Candidate in
+            var m = Candidate(text: c.text, tapCount: orig[min(c.tapCount, orig.count - 1)], syllables: c.syllables,
+                              corrected: c.corrected, score: c.score)
+            m.intendedKeys = c.intendedKeys
+            m.isEnglish = c.isEnglish
+            return m
+        }
+        return Result(candidates: cands, preedit: r.preedit)
+    }
+
+    private func decodeLetters(_ taps: [Tap]) -> Result {
         guard !taps.isEmpty else { return Result(candidates: [], preedit: "") }
         let n = taps.count
         let spansFrom = spans(taps)
@@ -238,7 +280,9 @@ public final class Decoder {
 
         // Edge buckets keyed by (start, end)
         var buckets: [Int: [Edge]] = [:]
-        func cap(_ e: Edge) -> Int { e.start == 0 ? (e.cuts.count == 1 ? 120 : 40) : 12 }
+        // 九宫格 input is far more ambiguous per key: keep more words per span
+        let wide = taps.contains { $0.group } ? (scheme == .xiaohe ? 4 : 1) : 1
+        func cap(_ e: Edge) -> Int { (e.start == 0 ? (e.cuts.count == 1 ? 120 : 40) : 12) * wide }
         func insert(_ e: Edge) {
             let key = e.start * 1024 + e.end
             var list = buckets[key] ?? []

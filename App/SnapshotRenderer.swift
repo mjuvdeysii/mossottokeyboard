@@ -36,6 +36,8 @@ enum SnapshotRenderer {
             Shot(name: "numbers", page: .numbers, state: "idle", borders: true, panel: nil),
             Shot(name: "symbols", page: .symbols, state: "idle", borders: true, panel: nil),
             Shot(name: "numpad", page: .numpad, state: "idle", borders: true, panel: nil),
+            Shot(name: "t9_idle", page: .letters, state: "idle", borders: true, panel: nil),
+            Shot(name: "t9_composing", page: .letters, state: "composing", borders: true, panel: nil),
             Shot(name: "numpad_press_5", page: .numpad, state: "idle", borders: true, panel: "press:5"),
             Shot(name: "letters_gboard_borderless", page: .letters, state: "composing", borders: false, panel: nil),
             Shot(name: "grid", page: .letters, state: "composing", borders: true, panel: "grid"),
@@ -70,7 +72,7 @@ enum SnapshotRenderer {
                 root.addSubview(kb)
                 kb.configure(LayoutContext(page: shot.page, chinese: true, showGlobe: false, returnLabel: nil,
                                            returnIsAccent: false, shifted: shot.state == "shift", capsLock: false,
-                                           keyBorders: shot.borders))
+                                           keyBorders: shot.borders, pinyinGrid: shot.name.hasPrefix("t9")))
                 let composing = candidates(["你好", "尼好", "泥好", "拟好", "你", "尼", "泥", "拟", "逆", "腻", "nihc"], correctedFirst: true)
                 switch shot.state {
                 case "composing": bar.update(preedit: "ni hao", candidates: composing)

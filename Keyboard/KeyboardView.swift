@@ -49,6 +49,7 @@ final class KeyView: UIView {
         // the system keyboard's type: regular weight throughout
         case .char where spec.isLetter: label.font = .systemFont(ofSize: Metrics.letterFont, weight: .regular)
         case .char: label.font = .systemFont(ofSize: Metrics.symbolFont, weight: .regular)
+        case .t9(let d): label.font = .systemFont(ofSize: d == "'" ? Metrics.functionFont : 20, weight: .regular)
         default: label.font = .systemFont(ofSize: Metrics.functionFont, weight: .regular)
         }
         if let name = spec.symbol {
@@ -76,6 +77,8 @@ final class KeyView: UIView {
         case .globe: return "下一个键盘"
         case .settings: return "键盘设置"
         case .toggleLanguage: return spec.label == "中" ? "中文，轻点切换到英文" : "英文，轻点切换到中文"
+        case .t9(let d): return d == "'" ? "分词" : "\(d)，\(spec.label)"
+        case .clearInput: return "重输"
         case .page(let p):
             switch p {
             case .letters: return "字母"

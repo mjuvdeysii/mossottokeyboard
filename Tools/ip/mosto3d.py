@@ -2,7 +2,7 @@
 (小魔王): bright, cute, a bit wicked. It shares only the studio's way of making figures with Moss and Otto
 (ip3d.py: matte soft vinyl, painted glossy eyes, product-photo light), coloured like a designer toy.
 
-  body    a chubby gumdrop, plumper at the bottom, in lavender #A88BEB (one clear body colour; the rest stays quiet)
+  body    a chubby gumdrop, plumper at the bottom, in deep lavender #8A68DE (one clear body colour; the rest stays quiet)
   crown   a small matte-gold crown worn at a rakish angle, three points
   horns   two curled cream horns: out, then up and in
   wings   two small scalloped bat wings behind the shoulders, deep violet
@@ -37,7 +37,7 @@ PALETTES = {
     # designer-toy colour: one clear body colour, everything else quiet (cream horns, a deeper shade for wings and feet)
     "vermilion": dict(body="#E0503F", deep="#6A2228", horn="#F2DDB2", iris="#C98A2E", blush="#F2A08E", feet="#3E1518", glow="#FFB54A"),
     "coral":     dict(body="#FF8A6B", deep="#8A3440", horn="#FFE6B8", iris="#5A3226", blush="#FFB7A4", feet="#4A2228", glow="#FFB54A"),
-    "lilac":     dict(body="#A88BEB", deep="#4E3790", horn="#FFE4A8", iris="#D69A34", blush="#F3B9DF", feet="#2F2257", glow="#FFC45A"),
+    "lilac":     dict(body="#8A68DE", deep="#3B2580", horn="#FFE4A8", iris="#D69A34", blush="#F2A9D2", feet="#221650", glow="#FFC45A"),
 }
 P = PALETTES[B.arg("--palette", "lilac")]
 COLOR = B.arg("--color", P["body"])
@@ -328,9 +328,9 @@ def icon(path):
     B.render(tmp, size, size)
     bg = Image.new("RGB", (size, size))
     d = ImageDraw.Draw(bg)
-    for y in range(size):                                   # warm paper at the top into a pale lilac haze
+    for y in range(size):                                   # warm butter-cream: the complement of Mosto's violet, so it stands out
         t = y / size
-        d.line([(0, y), (size, y)], fill=(int(248 - 16 * t), int(242 - 18 * t), int(236 + 6 * t)))
+        d.line([(0, y), (size, y)], fill=(int(255 - 6 * t), int(244 - 26 * t), int(214 - 62 * t)))
     fg = Image.open(tmp).convert("RGBA")
     bg.paste(fg, (0, 0), fg)
     bg.save(path)

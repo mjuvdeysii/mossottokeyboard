@@ -9,6 +9,23 @@ public struct Tap {
     /// Raw touch point in keyboard coordinates (nil for synthetic taps).
     public var x: Double? = nil
     public var y: Double? = nil
+    /// A 九宫格 key: `key` is its digit and every letter in `alternatives` is meant equally (nothing is "corrected").
+    public var group = false
+
+    /// The 九宫格 keys: 2 abc … 9 wxyz.
+    public static let t9Letters: [Character: String] = ["2": "abc", "3": "def", "4": "ghi", "5": "jkl", "6": "mno",
+                                                        "7": "pqrs", "8": "tuv", "9": "wxyz"]
+    /// A tap on a 九宫格 key ("'" is the 分词 syllable separator).
+    public static func t9(_ digit: Character) -> Tap {
+        if digit == "'" { return Tap(key: "'", alternatives: []) }
+        var t = Tap(key: digit, alternatives: (t9Letters[digit] ?? "").map { ($0, 0.0) })
+        t.group = true
+        return t
+    }
+    /// The digit of the 九宫格 key a letter is on.
+    public static func t9Digit(_ c: Character) -> Character {
+        t9Letters.first { $0.value.contains(c) }?.key ?? c
+    }
 
     public init(key: Character, alternatives: [(key: Character, logp: Double)], x: Double? = nil, y: Double? = nil) {
         self.key = key

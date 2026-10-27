@@ -284,6 +284,7 @@ final class SettingsPanelView: UIView {
     private let stack = UIStackView()
 
     private let schemeControl = UISegmentedControl(items: ["小鹤双拼", "全拼"])
+    private let layoutControl = UISegmentedControl(items: ["全键盘", "九宫格"])
     private let englishSwitch = UISwitch()
     private let predictionSwitch = UISwitch()
     private let inlineControl = UISegmentedControl(items: ["首选", "拼音", "不显示"])
@@ -336,10 +337,11 @@ final class SettingsPanelView: UIView {
 
         section("输入", rows: [
             row("输入方案", schemeControl),
+            row("中文键盘", layoutControl),
             row("中英混输", englishSwitch),
             row("联想", predictionSwitch),
             row("输入框中显示", inlineControl),
-        ], footer: "中英混输：打 ok、ios 直接出 OK、iOS。输入框中显示：打字时把首选结果（或拼音）先写进输入框，带下划线，候选栏不再被拼音挤占；选“不显示”则拼音显示在候选栏上方。")
+        ], footer: "中文键盘：九宫格时每个键代表它上面的几个字母，小鹤双拼与全拼都能用（全拼更准）；分词键用来切开音节。中英混输：打 ok、ios 直接出 OK、iOS。输入框中显示：打字时把首选结果（或拼音）先写进输入框，带下划线，候选栏不再被拼音挤占；选“不显示”则拼音显示在候选栏上方。")
         section("自动纠错", rows: [
             row("按触点位置纠错", correctionSwitch),
             row("强度", strength),
@@ -367,7 +369,7 @@ final class SettingsPanelView: UIView {
         note.textColor = Theme.secondaryText
         stack.addArrangedSubview(inset(note))
 
-        for c in [schemeControl, inlineControl, strength, numberControl, appearance] {
+        for c in [schemeControl, layoutControl, inlineControl, strength, numberControl, appearance] {
             c.addTarget(self, action: #selector(changed), for: .valueChanged)
             c.setContentHuggingPriority(.required, for: .horizontal)
         }
@@ -482,6 +484,7 @@ final class SettingsPanelView: UIView {
     func load() {
         let s = KeyboardSettings.shared
         schemeControl.selectedSegmentIndex = s.scheme
+        layoutControl.selectedSegmentIndex = s.pinyinGrid ? 1 : 0
         englishSwitch.isOn = s.english
         predictionSwitch.isOn = s.predictions
         inlineControl.selectedSegmentIndex = s.inlineMode
@@ -500,6 +503,7 @@ final class SettingsPanelView: UIView {
     @objc private func changed() {
         let s = KeyboardSettings.shared
         s.scheme = schemeControl.selectedSegmentIndex
+        s.pinyinGrid = layoutControl.selectedSegmentIndex == 1
         s.english = englishSwitch.isOn
         s.predictions = predictionSwitch.isOn
         s.inlineMode = inlineControl.selectedSegmentIndex
@@ -561,6 +565,11 @@ final class KeyboardSettings {
     var inlineMode: Int {
         get { d.object(forKey: "inlineMode") as? Int ?? 0 }
         set { d.set(newValue, forKey: "inlineMode") }
+    }
+    /// Chinese typed on the 九宫格 pinyin keypad (on) or the full keyboard (off).
+    var pinyinGrid: Bool {
+        get { d.object(forKey: "pinyinGrid") as? Bool ?? false }
+        set { d.set(newValue, forKey: "pinyinGrid") }
     }
     /// 123 opens the 九宫格 number pad (default) or the full 123 page.
     var numberGrid: Bool {

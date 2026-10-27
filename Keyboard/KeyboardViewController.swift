@@ -229,7 +229,7 @@ final class KeyboardViewController: UIInputViewController {
         haptic.impactOccurred()
         let sound: SystemSoundID
         switch action {
-        case .char, .space: sound = 1104
+        case .char, .space, .t9: sound = 1104
         case .delete: sound = 1155
         default: sound = 1156
         }
@@ -276,7 +276,8 @@ final class KeyboardViewController: UIInputViewController {
                                          returnLabel: label, returnIsAccent: accent,
                                          shifted: shifted, capsLock: capsLock,
                                          keyBorders: KeyboardSettings.shared.keyBorders,
-                                         numberGrid: KeyboardSettings.shared.numberGrid))
+                                         numberGrid: KeyboardSettings.shared.numberGrid,
+                                         pinyinGrid: KeyboardSettings.shared.pinyinGrid, composing: !taps.isEmpty))
     }
 
     // MARK: - Key handling
@@ -318,6 +319,14 @@ final class KeyboardViewController: UIInputViewController {
             showSettings(true)
         case .globe:
             break
+        case .t9(let d):
+            // 九宫格: each key stands for its letters; 分词 only splits syllables inside a composition
+            guard decoder != nil, d != "'" || !taps.isEmpty else { return }
+            lastInsertedSpace = false
+            taps.append(Tap.t9(d))
+            refresh()
+        case .clearInput:
+            if !taps.isEmpty { clearComposition() }
         }
     }
 
