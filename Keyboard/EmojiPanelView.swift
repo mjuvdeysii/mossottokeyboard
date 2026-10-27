@@ -206,7 +206,9 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         sections = [Category(name: "常用", symbol: "clock", items: recent)] + Self.categories()
         selected = -1
         collection.reloadData()
+        guard bounds.width > 100, bounds.height > 100 else { return }   // shown with a frame later: load() runs again
         layoutIfNeeded()
+        collection.layoutIfNeeded()
         // open on 常用 when there is something in it, else on the faces
         scrollTo(recent.isEmpty ? 1 : 0, animated: false)
     }
@@ -218,6 +220,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     private var cellSide: CGFloat {
         // 8 across in portrait (as the iOS emoji keyboard), more in landscape
         let w = collection.bounds.width - 8
+        guard w > 100 else { return 40 }      // not laid out yet: never a zero or negative item size
         let across = max(8, Int(w / 46))
         return floor(w / CGFloat(across))
     }
@@ -225,6 +228,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     override func layoutSubviews() {
         super.layoutSubviews()
         let b = bounds
+        guard b.width > 100, b.height > 100 else { return }   // before the panel has its real frame
         let barH: CGFloat = 40
         titleLabel.frame = CGRect(x: 12, y: 0, width: b.width - 24, height: 24)
         collection.frame = CGRect(x: 0, y: 24, width: b.width, height: b.height - 24 - barH - 4)
@@ -261,7 +265,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
 
     func collectionView(_ collectionView: UICollectionView, layout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
         if isKaomoji(indexPath.section) {
-            return CGSize(width: floor((collectionView.bounds.width - 8) / 3), height: 44)
+            return CGSize(width: max(60, floor((collectionView.bounds.width - 8) / 3)), height: 44)
         }
         return CGSize(width: cellSide, height: cellSide)
     }
