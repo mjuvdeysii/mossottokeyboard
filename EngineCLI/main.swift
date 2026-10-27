@@ -47,7 +47,43 @@ func noisyTaps(_ letters: String, sigmaX: Double, sigmaY: Double, rng: inout RNG
     }
 }
 
+/// English: what space would type for these taps (the autocorrection, or the letters as typed).
+func englishOutput(_ ed: EnglishDecoder, _ taps: [Tap]) -> String {
+    let lit = String(taps.map { $0.key })
+    return (ed.autocorrection(taps)?.text ?? lit).lowercased()
+}
+
+func englishBench(_ ed: EnglishDecoder) -> [String: Double] {
+    var rng = RNG(s: 42)
+    let pool = ed.lexicon.words.filter { $0.zipf >= 4.0 && (3...10).contains($0.key.count) && $0.display == $0.key }
+    var words: [String] = []
+    for _ in 0..<1500 { words.append(pool[Int(rng.next() * Double(pool.count))].key) }
+    var kept = 0, on = 0, off = 0, top3 = 0, noisy = 0, fixed = 0
+    let t0 = Date()
+    for w in words {
+        if englishOutput(ed, w.map { Tap.exact($0) }) == w { kept += 1 }
+        let taps = noisyTaps(w, sigmaX: 0.22, sigmaY: 0.198, rng: &rng)
+        let lit = String(taps.map { $0.key })
+        if lit == w { off += 1 } else { noisy += 1 }
+        let out = englishOutput(ed, taps)
+        if out == w { on += 1; if lit != w { fixed += 1 } }
+        if ed.suggestions(taps).prefix(3).contains(where: { $0.text.lowercased() == w }) { top3 += 1 }
+    }
+    let ms = Date().timeIntervalSince(t0) * 1000 / Double(words.count * 3)
+    let n = Double(words.count)
+    print(String(format: "== English: clean words kept %.1f%% | touch σ=0.22: as typed %.1f%%, with autocorrect %.1f%% (fixed %d/%d), suggestions top3 %.1f%% | %.2f ms",
+                 100 * Double(kept) / n, 100 * Double(off) / n, 100 * Double(on) / n, fixed, noisy, 100 * Double(top3) / n, ms))
+    return ["en.kept": 100 * Double(kept) / n, "en.on": 100 * Double(on) / n, "en.top3": 100 * Double(top3) / n, "en.ms": ms]
+}
+
 switch args[2] {
+case "entype":
+    guard let en = decoder.english else { print("no english.txt"); exit(1) }
+    let ed = EnglishDecoder(lexicon: en)
+    let taps = (args.count > 3 ? args[3] : "").map { Tap.exact($0) }
+    print("autocorrect:", ed.autocorrection(taps)?.text ?? "-")
+    for s in ed.suggestions(taps) { print(String(format: "%7.2f", s.score), s.text, s.corrected ? "[corrected]" : "", s.completion ? "[completion]" : "") }
+
 case "predict":
     let pr = try Predictor(path: args[1].replacingOccurrences(of: "lexicon.bin", with: "predictions.bin"))
     for w in args[3...] { print(w, "→", pr.predict(after: w)) }
@@ -169,6 +205,11 @@ case "bench", "gate":
         }
     }
 
+    if let en = decoder.english, decoder.scheme == .xiaohe {
+        let m = englishBench(EnglishDecoder(lexicon: en))
+        for (k, v) in m { metrics[k] = v }
+    }
+
     if args[2] == "gate" {
         // Regression gate for CI: the release does not go out if typing quality drops below these floors.
         // 小鹤双拼 and 全拼 each have their own floors (set a little under the measured values)
@@ -178,6 +219,9 @@ case "bench", "gate":
             ("sentences.perfect", 72.0, true), // perfect keys, top-1 equals the intended sentence (%)
             ("sentences.on", 86.0, true),
             ("words.ms", 3.0, false),          // average decode time (ms) — at most
+            ("en.kept", 99.0, true),            // English: correctly typed words left alone (%)
+            ("en.on", 97.0, true),              // English: σ=0.22 touch noise, what space types is the word (%)
+            ("en.top3", 98.0, true),            // English: the word among the first three suggestions (%)
             ("t9.words.top1", 48.0, true),     // 九宫格 (each key = its 3–4 letters), perfect keys
             ("t9.sentences.top3", 33.0, true),
             ("t9.sentences.ms", 40.0, false),

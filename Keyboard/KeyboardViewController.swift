@@ -38,6 +38,15 @@ final class KeyboardViewController: UIInputViewController {
     private var isNight = false
     /// Pinyin currently written into the host field as marked text.
     private var hasMarkedText = false
+
+    // English mode: the word being typed (its taps and the characters inserted), its suggestions and the
+    // autocorrection space would apply; the last applied correction, which a delete right after takes back.
+    private var english: EnglishDecoder?
+    private var enTaps: [Tap] = []
+    private var enTyped = ""
+    private var enSuggestions: [String] = []
+    private var enCorrection: String?
+    private var enUndo: (typed: String, taps: [Tap], corrected: String)?
     private let haptic = UIImpactFeedbackGenerator(style: .light)
     private let tick = UISelectionFeedbackGenerator()
 
@@ -206,7 +215,10 @@ final class KeyboardViewController: UIInputViewController {
         userDict = ud
         decoder = Decoder(lexicon: lex, user: ud)
         if let pp = Bundle.main.path(forResource: "predictions", ofType: "bin") { predictor = try? Predictor(path: pp) }
-        if let ep = Bundle.main.path(forResource: "english", ofType: "txt") { decoder?.english = try? EnglishLexicon(path: ep) }
+        if let ep = Bundle.main.path(forResource: "english", ofType: "txt"), let en = try? EnglishLexicon(path: ep) {
+            decoder?.english = en
+            english = EnglishDecoder(lexicon: en)
+        }
     }
 
     // MARK: - 日光 / 夜灯
@@ -346,6 +358,14 @@ final class KeyboardViewController: UIInputViewController {
         let undo = undoable
         undoable = nil
         if action == .delete, let undo, undoCorrection(undo) { return }
+        let enUndoNow = enUndo
+        enUndo = nil
+        if action == .delete, let u = enUndoNow, undoEnglishCorrection(u) { return }
+        // English word state ends with anything that is not part of typing a word
+        switch action {
+        case .char, .space, .delete, .shift: break
+        default: endEnglishWord()
+        }
         // any key ends the suggestions, as on Gboard
         if !predictions.isEmpty, action != .settings, action != .globe { clearPredictions() }
         switch action {
@@ -401,7 +421,13 @@ final class KeyboardViewController: UIInputViewController {
         }
         // English, or Shift held in Chinese mode: direct letter.
         if !taps.isEmpty { commitAll() }
-        textDocumentProxy.insertText((shifted || capsLock) ? s.uppercased() : s)
+        let typed = (shifted || capsLock) ? s.uppercased() : s
+        textDocumentProxy.insertText(typed)
+        if !chinese, english != nil {
+            enTaps.append(tap)
+            enTyped += typed
+            updateEnglishSuggestions()
+        }
         if shifted && !capsLock {
             shifted = false
             reconfigure()
@@ -410,12 +436,21 @@ final class KeyboardViewController: UIInputViewController {
 
     private func symbol(_ s: String) {
         if !taps.isEmpty { commitAll() }
+        // English: a sentence or clause mark ends the word, applying its autocorrection first (as space does)
+        if !chinese, !enTaps.isEmpty {
+            if [".", ",", "!", "?", ";", ":"].contains(s) { applyEnglishAutocorrection() }
+            endEnglishWord()
+        }
         textDocumentProxy.insertText(s)
         lastInsertedSpace = false
         if !chinese && [".", "!", "?"].contains(s) { updateAutoShift(); reconfigure() }
     }
 
     private func space() {
+        if !chinese, !enTaps.isEmpty {
+            applyEnglishAutocorrection()
+            endEnglishWord()
+        }
         if !taps.isEmpty {
             if let c = result?.candidates.first, c.corrected, c.tapCount == taps.count, committedParts.isEmpty {
                 let saved = taps
@@ -449,7 +484,79 @@ final class KeyboardViewController: UIInputViewController {
             return
         }
         textDocumentProxy.deleteBackward()
+        if !enTaps.isEmpty {
+            enTaps.removeLast()
+            if !enTyped.isEmpty { enTyped.removeLast() }
+            if enTaps.isEmpty { endEnglishWord() } else { updateEnglishSuggestions() }
+        }
         if !chinese { updateAutoShift(); reconfigure() }
+    }
+
+    // MARK: - English autocorrect
+
+    /// The suggestions for the word being typed, shown in the strip: the autocorrection first (underlined, it is
+    /// what space will type), then the word exactly as typed, then the other readings — written in the word's case.
+    private func updateEnglishSuggestions() {
+        guard let english, !enTaps.isEmpty else { endEnglishWord(); return }
+        let list = english.suggestions(enTaps)
+        let fix = KeyboardSettings.shared.autocorrect ? english.autocorrection(enTaps, suggestions: list) : nil
+        enCorrection = fix.map { EnglishDecoder.cased($0.text, like: enTyped) }
+        var texts: [String] = []
+        if let c = enCorrection { texts.append(c) }
+        texts.append(enTyped)
+        for s in list where !s.text.isEmpty {
+            let t = EnglishDecoder.cased(s.text, like: enTyped)
+            if !texts.contains(t) { texts.append(t) }
+        }
+        enSuggestions = Array(texts.prefix(8))
+        let cands = enSuggestions.enumerated().map { i, t in
+            Candidate(text: t, tapCount: 0, syllables: [], corrected: i == 0 && enCorrection != nil, score: 0)
+        }
+        candidateBar.update(preedit: "", candidates: cands)
+    }
+
+    /// Replace the word being typed (still in the field just before the cursor) with `text`.
+    private func replaceEnglishWord(with text: String) {
+        let before = textDocumentProxy.documentContextBeforeInput ?? ""
+        guard !enTyped.isEmpty, before.hasSuffix(enTyped) else { return }
+        for _ in enTyped { textDocumentProxy.deleteBackward() }
+        textDocumentProxy.insertText(text)
+    }
+
+    /// Space or a punctuation mark: put in the autocorrection, remembering it so a delete right after undoes it.
+    private func applyEnglishAutocorrection() {
+        guard let c = enCorrection, c != enTyped else { return }
+        let before = textDocumentProxy.documentContextBeforeInput ?? ""
+        guard before.hasSuffix(enTyped) else { return }
+        let saved = (typed: enTyped, taps: enTaps, corrected: c)
+        replaceEnglishWord(with: c)
+        enUndo = saved
+    }
+
+    /// Delete right after an autocorrection (and the space or mark that applied it): the typed word comes back.
+    private func undoEnglishCorrection(_ u: (typed: String, taps: [Tap], corrected: String)) -> Bool {
+        let before = textDocumentProxy.documentContextBeforeInput ?? ""
+        guard !before.isEmpty, before.dropLast().hasSuffix(u.corrected) else { return false }
+        textDocumentProxy.deleteBackward()                       // the space / mark
+        for _ in u.corrected { textDocumentProxy.deleteBackward() }
+        textDocumentProxy.insertText(u.typed)
+        enTaps = u.taps
+        enTyped = u.typed
+        enCorrection = nil
+        // shown again, but this word is now left as typed
+        updateEnglishSuggestions()
+        enCorrection = nil
+        lastInsertedSpace = false
+        return true
+    }
+
+    private func endEnglishWord() {
+        guard !enTaps.isEmpty || !enSuggestions.isEmpty else { return }
+        enTaps = []
+        enTyped = ""
+        enSuggestions = []
+        enCorrection = nil
+        if taps.isEmpty && predictions.isEmpty { candidateBar.update(preedit: "", candidates: []) }
     }
 
     /// Held delete: the whole composition, else back over one word — two Chinese characters, or a Latin word with
@@ -457,6 +564,7 @@ final class KeyboardViewController: UIInputViewController {
     private func deleteWord() {
         lastInsertedSpace = false
         if !taps.isEmpty { clearComposition(); return }
+        endEnglishWord()
         let before = textDocumentProxy.documentContextBeforeInput ?? ""
         guard let last = before.last else { textDocumentProxy.deleteBackward(); return }
         var count = 0
@@ -652,6 +760,15 @@ final class KeyboardViewController: UIInputViewController {
     // MARK: - Predictions (联想)
 
     private func candidateTapped(_ i: Int) {
+        if taps.isEmpty, !enTaps.isEmpty, i < enSuggestions.count {
+            // an English suggestion replaces the word being typed, followed by a space
+            replaceEnglishWord(with: enSuggestions[i])
+            textDocumentProxy.insertText(" ")
+            lastInsertedSpace = true
+            endEnglishWord()
+            updateAutoShift(); reconfigure()
+            return
+        }
         if taps.isEmpty, i < predictions.count {
             let text = predictions[i]
             textDocumentProxy.insertText(text)

@@ -45,6 +45,7 @@ enum SnapshotRenderer {
             Shot(name: "settings", page: .letters, state: "idle", borders: true, panel: "settings"),
             Shot(name: "settings_full", page: .letters, state: "idle", borders: true, panel: "settings_full"),
             Shot(name: "letters_english", page: .letters, state: "english", borders: true, panel: nil),
+            Shot(name: "en_autocorrect", page: .letters, state: "en_typing", borders: true, panel: nil),
             Shot(name: "longpress_comma", page: .letters, state: "idle", borders: true, panel: "longpress"),
             Shot(name: "press_g", page: .letters, state: "composing", borders: true, panel: "press:g"),
             Shot(name: "press_q", page: .letters, state: "composing", borders: true, panel: "press:q"),
@@ -78,12 +79,16 @@ enum SnapshotRenderer {
                 let kb = KeyboardView(spatial: SpatialModel.standard(width: Double(width)))
                 kb.frame = CGRect(x: 0, y: Metrics.toolbarHeight, width: width, height: 4 * Metrics.rowPitch)
                 root.addSubview(kb)
-                kb.configure(LayoutContext(page: shot.page, chinese: true, showGlobe: false, returnLabel: nil,
+                kb.configure(LayoutContext(page: shot.page, chinese: !shot.name.hasPrefix("en_"), showGlobe: false, returnLabel: nil,
                                            returnIsAccent: false, shifted: shot.state == "shift", capsLock: false,
                                            keyBorders: shot.borders, pinyinGrid: shot.name.hasPrefix("t9")))
                 let composing = candidates(["你好", "尼好", "泥好", "拟好", "你", "尼", "泥", "拟", "逆", "腻", "nihc"], correctedFirst: true)
                 switch shot.state {
                 case "composing": bar.update(preedit: "ni hao", candidates: composing)
+                case "en_typing": bar.update(preedit: "", candidates: [
+                    Candidate(text: "the", tapCount: 0, syllables: [], corrected: true, score: 0),
+                    Candidate(text: "teh", tapCount: 0, syllables: [], corrected: false, score: 0),
+                    Candidate(text: "tech", tapCount: 0, syllables: [], corrected: false, score: 0)])
                 case "english": bar.update(preedit: "ios", candidates: candidates(["iOS", "戳死", "戳所", "戳三", "ios"], correctedFirst: false))
                 case "predict":
                     bar.update(preedit: "", candidates: ["吗", "啊", "呀", "坏", "毒", "漂亮"].map {

@@ -366,7 +366,7 @@ final class SettingsPanelView: UIView {
         section("自动纠错", rows: [
             row("按触点位置纠错", correctionSwitch),
             row("强度", strength),
-        ], footer: "首选带下划线 = 已纠错；上屏后立刻按删除可撤回这次纠错。")
+        ], footer: "首选带下划线 = 已纠错；上屏后立刻按删除可撤回这次纠错。英文模式同样按触点纠错：teh → the、dont → don't、im → I'm，空格时替换，删除可撤回。")
         section("键盘", rows: [
             row("数字键盘", numberControl),
             row("显示键帽", bordersSwitch),
