@@ -590,6 +590,11 @@ final class KeyboardSettings {
         get { d.object(forKey: "keySound") as? Bool ?? feedback }
         set { d.set(newValue, forKey: "keySound") }
     }
+    /// Learned per-key touch offsets (SpatialModel.keyOffsetsList).
+    var keyOffsets: [String: [Double]] {
+        get { d.dictionary(forKey: "keyOffsets") as? [String: [Double]] ?? [:] }
+        set { d.set(newValue, forKey: "keyOffsets") }
+    }
     var touchOffset: (Double, Double) {
         get { (d.double(forKey: "offsetX"), d.double(forKey: "offsetY")) }
         set { d.set(newValue.0, forKey: "offsetX"); d.set(newValue.1, forKey: "offsetY") }

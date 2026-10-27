@@ -60,6 +60,9 @@ public final class SpatialModel {
     /// consistently off-centre, so the model shifts its key centres to match.
     public var offsetX: Double = 0
     public var offsetY: Double = 0
+    /// Learned offset of each key on top of the overall one (fraction of key size): a thumb reaches the keys at the
+    /// edges and the top row differently from those under it, so each key's centre moves where this user hits it.
+    public var keyOffsets: [Character: (x: Double, y: Double)] = [:]
     /// Alternatives below this probability are dropped.
     public var minProbability: Double = 0.015
     public var maxAlternatives = 4
@@ -100,7 +103,8 @@ public final class SpatialModel {
         logits.reserveCapacity(keys.count)
         var maxL = -Double.infinity
         for k in keys {
-            let dx = (px - k.cx) / sx, dy = (py - k.cy) / sy
+            let ko = keyOffsets[k.char] ?? (0, 0)
+            let dx = (px - k.cx - ko.x * keyWidth) / sx, dy = (py - k.cy - ko.y * keyHeight) / sy
             let l = -0.5 * (dx * dx + dy * dy)
             logits.append((k.char, l))
             maxL = max(maxL, l)
@@ -108,7 +112,14 @@ public final class SpatialModel {
         var sum = 0.0
         for (_, l) in logits { sum += exp(l - maxL) }
         let lse = maxL + log(sum)
-        let literal = hitKey ?? nearestKey(x: x, y: y)
+        // The key typed: the one under the finger — unless what this user's touches have taught says clearly
+        // (over 60 %) that a touch here means a neighbouring key (adaptive hit areas, as Gboard).
+        var literal = hitKey ?? nearestKey(x: x, y: y)
+        // Never for a touch near the middle of the key under the finger: learning can shift the edges, not the key.
+        if adaptiveHits, let best = logits.max(by: { $0.1 < $1.1 }), best.0 != literal, exp(best.1 - lse) > 0.6,
+           let hit = center(of: literal), abs(x - hit.0) > 0.2 * keyWidth || abs(y - hit.1) > 0.2 * keyHeight {
+            literal = best.0
+        }
         let floor = log(minProbability)
         var alts = logits.map { ($0.0, $0.1 - lse) }
             .filter { $0.1 >= floor || $0.0 == literal }
@@ -127,6 +138,26 @@ public final class SpatialModel {
         guard abs(rx) < 0.8, abs(ry) < 0.8 else { return }   // ignore outliers
         offsetX = min(0.3, max(-0.3, offsetX * (1 - rate) + rx * rate))
         offsetY = min(0.3, max(-0.3, offsetY * (1 - rate) + ry * rate))
+        // what is left after the overall offset belongs to this key (learned more slowly per key: fewer samples)
+        let ko = keyOffsets[intended] ?? (0, 0)
+        let kr = rate * keyRate
+        keyOffsets[intended] = (min(0.35, max(-0.35, ko.x * (1 - kr) + (rx - offsetX) * kr)),
+                                min(0.35, max(-0.35, ko.y * (1 - kr) + (ry - offsetY) * kr)))
+    }
+    /// Let learned offsets move which key a touch types (see tap).
+    public var adaptiveHits = true
+    /// Per-key learning speed relative to the overall offset's.
+    public var keyRate = 2.0
+
+    /// Per-key offsets as plain numbers, to store and restore.
+    public var keyOffsetsList: [String: [Double]] {
+        get { Dictionary(uniqueKeysWithValues: keyOffsets.map { (String($0.key), [$0.value.x, $0.value.y]) }) }
+        set {
+            keyOffsets = [:]
+            for (k, v) in newValue where v.count == 2 {
+                if let c = k.first { keyOffsets[c] = (min(0.35, max(-0.35, v[0])), min(0.35, max(-0.35, v[1]))) }
+            }
+        }
     }
 
     /// Standard iPhone portrait QWERTY geometry in points (used by tests / CLI).

@@ -207,6 +207,48 @@ case "bench", "gate":
         }
     }
 
+    // Touch adaptation: a user whose thumbs land off-centre in a pattern (keys on the left hit to their right, on the
+    // right to their left, the top row low), σ=0.22 noise on top. Words typed with corrections learned from what was
+    // committed; then fresh words measured with what was learned.
+    //   adapt.before / adapt.after — top-1 on unseen words before and after 1000 words of use (%)
+    do {
+        decoder.correctionEnabled = true
+        let user = SpatialModel.standard()
+        let kw = user.keyWidth, kh = user.keyHeight
+        func biased(_ letters: String, _ m: SpatialModel, _ r: inout RNG) -> [Tap] {
+            letters.map { c in
+                let (cx, cy) = m.center(of: c) ?? (0, 0)
+                let left = cx < 5 * kw
+                let row0 = cy < kh
+                let x = cx + (left ? 0.22 : -0.22) * kw + r.gauss() * 0.22 * kw
+                let y = cy + (row0 ? 0.25 : 0.05) * kh + r.gauss() * 0.198 * kh
+                return m.tap(x: x, y: y)
+            }
+        }
+        func accuracy(_ m: SpatialModel, _ set: ArraySlice<(String, [UInt16])>, seed: UInt64) -> Double {
+            var r = RNG(s: seed), ok = 0
+            for (t, ids) in set where decoder.decode(biased(codeLetters(ids), m, &r)).candidates.first?.text == t { ok += 1 }
+            return 100 * Double(ok) / Double(set.count)
+        }
+        let learnSet = items[..<1000], testSet = items[1000...]
+        let fresh = SpatialModel.standard()
+        metrics["adapt.before"] = accuracy(fresh, testSet, seed: 7)
+        let m = SpatialModel.standard()
+        if let v = env["KR"].flatMap(Double.init) { m.keyRate = v }
+        if env["AH"] == "0" { m.adaptiveHits = false }
+        var r = RNG(s: 3)
+        for (t, ids) in learnSet {
+            let letters = codeLetters(ids)
+            let taps = biased(letters, m, &r)
+            // committed as intended (the user picks it if it is not first); learn from the keys it stands for
+            guard decoder.decode(taps).candidates.prefix(5).contains(where: { $0.text == t }) else { continue }
+            for (tap, key) in zip(taps, letters) { m.observe(tap: tap, intended: key) }
+        }
+        metrics["adapt.after"] = accuracy(m, testSet, seed: 7)
+        print(String(format: "== touch adaptation (thumbs off-centre): unseen words %.1f%% → %.1f%% after 1000 words (offset %.2f, %.2f)",
+                     metrics["adapt.before"]!, metrics["adapt.after"]!, m.offsetX, m.offsetY))
+    }
+
     // Learning, as a user would teach it: type each sentence; when the first candidate is not what was meant, pick the
     // longest candidate that is (as the keyboard learns from picks), repeating until the sentence is in.
     //   learn.picks  — candidate picks per sentence on the first pass (1.0 = space was enough every time)
@@ -278,6 +320,7 @@ case "bench", "gate":
             ("t9.sentences.top3", 45.0, true),
             ("t9.sentences.ms", 20.0, false),
             ("learn.same", 95.0, true),        // sentences typed again after picking them once (%)
+            ("adapt.after", 78.0, true),       // off-centre thumbs, unseen words after 1000 words of use (%)
             ("learn.harm", 1.0, false),        // unseen sentences made worse by what was learned (points) — at most
         ] : [
             ("words.on", 97.0, true),

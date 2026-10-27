@@ -114,7 +114,9 @@ final class KeyboardViewController: UIInputViewController {
             self?.userDict?.reset()
             self?.spatial.offsetX = 0
             self?.spatial.offsetY = 0
+            self?.spatial.keyOffsets = [:]
             KeyboardSettings.shared.touchOffset = (0, 0)
+            KeyboardSettings.shared.keyOffsets = [:]
             self?.settingsPanel.setLearned("已清空。")
         }
 
@@ -125,6 +127,7 @@ final class KeyboardViewController: UIInputViewController {
         let off = KeyboardSettings.shared.touchOffset
         spatial.offsetX = off.0
         spatial.offsetY = off.1
+        spatial.keyOffsetsList = KeyboardSettings.shared.keyOffsets
         reconfigure()
     }
 
@@ -174,6 +177,7 @@ final class KeyboardViewController: UIInputViewController {
         if !taps.isEmpty { commitRaw() }
         userDict?.save()
         KeyboardSettings.shared.touchOffset = (spatial.offsetX, spatial.offsetY)
+        KeyboardSettings.shared.keyOffsets = spatial.keyOffsetsList
     }
 
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
