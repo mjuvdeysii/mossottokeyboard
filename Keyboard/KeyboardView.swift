@@ -122,8 +122,12 @@ final class AltPopup: UIView {
     let cell: CGFloat
     var selected = 0 { didSet { if selected != oldValue { refresh() } } }
 
-    init(options: [String], cell: CGFloat, height: CGFloat) {
+    /// `reversed`: near the right edge the row runs leftwards, so the first choice still sits over the key.
+    let reversed: Bool
+
+    init(options: [String], cell: CGFloat, height: CGFloat, reversed: Bool = false) {
         self.cell = cell
+        self.reversed = reversed
         super.init(frame: CGRect(x: 0, y: 0, width: cell * CGFloat(options.count) + 8, height: height))
         isUserInteractionEnabled = false
         backgroundColor = Theme.bubble
@@ -133,7 +137,8 @@ final class AltPopup: UIView {
         layer.shadowRadius = 3
         layer.shadowOffset = CGSize(width: 0, height: 1)
         for (i, o) in options.enumerated() {
-            let l = UILabel(frame: CGRect(x: 4 + CGFloat(i) * cell, y: 4, width: cell, height: height - 8))
+            let slot = reversed ? options.count - 1 - i : i
+            let l = UILabel(frame: CGRect(x: 4 + CGFloat(slot) * cell, y: 4, width: cell, height: height - 8))
             l.text = o
             l.textAlignment = .center
             l.font = .systemFont(ofSize: 24, weight: .medium)
@@ -156,7 +161,8 @@ final class AltPopup: UIView {
     }
 
     func index(at x: CGFloat) -> Int {
-        max(0, min(labels.count - 1, Int((x - frame.minX - 4) / cell)))
+        let slot = max(0, min(labels.count - 1, Int((x - frame.minX - 4) / cell)))
+        return reversed ? labels.count - 1 - slot : slot
     }
 }
 
@@ -486,8 +492,12 @@ final class KeyboardView: UIView {
         } else {
             tr.preview?.removeFromSuperview(); tr.preview = nil
             let f = kv.frame
-            let popup = AltPopup(options: tr.altOptions, cell: max(f.width, 34), height: f.height * 1.1)
-            var x = f.midX - popup.cell / 2 - 4      // first option sits over the key, the rest run to the right
+            let cell = max(f.width, 34)
+            let rowWidth = cell * CGFloat(tr.altOptions.count) + 8
+            // the first option sits over the key; the rest run right, or left when the key is near the right edge
+            let reversed = f.midX - cell / 2 - 4 + rowWidth > bounds.width - 2
+            let popup = AltPopup(options: tr.altOptions, cell: cell, height: f.height * 1.1, reversed: reversed)
+            var x = reversed ? f.midX + cell / 2 + 4 - rowWidth : f.midX - cell / 2 - 4
             x = min(max(2, x), bounds.width - popup.frame.width - 2)
             popup.frame.origin = CGPoint(x: x, y: f.minY - popup.frame.height - 4)
             popup.selected = 0

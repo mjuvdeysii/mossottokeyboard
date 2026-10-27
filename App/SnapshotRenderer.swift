@@ -76,8 +76,8 @@ enum SnapshotRenderer {
                     let unit = width / 10
                     let key = CGRect(x: 7.5 * unit + Metrics.gapX / 2, y: 3 * Metrics.rowPitch + Metrics.gapY / 2,
                                      width: unit - Metrics.gapX, height: Metrics.rowPitch - Metrics.gapY)
-                    let popup = AltPopup(options: ["。", "？", "！", "、", "…", "："], cell: max(key.width, 34), height: key.height * 1.1)
-                    var x = key.midX - popup.cell / 2 - 4
+                    let popup = AltPopup(options: ["。", "？", "！", "、", "…", "："], cell: max(key.width, 34), height: key.height * 1.1, reversed: true)
+                    var x = key.midX + popup.cell / 2 + 4 - popup.frame.width
                     x = min(max(2, x), width - popup.frame.width - 2)
                     popup.frame.origin = CGPoint(x: x, y: key.minY - popup.frame.height - 4)
                     popup.selected = 1
