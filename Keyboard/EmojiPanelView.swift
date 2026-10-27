@@ -27,6 +27,20 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         ("旅行与地点", "car"), ("物品", "lightbulb"), ("符号", "heart"), ("旗帜", "flag"),
     ]
 
+    /// Mosto 的颜文字: the last tab, under Mosto's own face — the little devil's ψ(｀∇´)ψ first, then the everyday ones.
+    /// Text, so they go into any field; three to a row.
+    static let kaomojiName = "Mosto 颜文字"
+    static let kaomoji: [String] = [
+        "ψ(｀∇´)ψ", "(｀∀´)Ψ", "Ψ(￣∀￣)Ψ", "ψ(._. )>", "(¬‿¬)", "(￣y▽￣)╭",
+        "(＾▽＾)", "(๑•̀ㅂ•́)و✧", "(｡•̀ᴗ-)✧", "ヾ(≧▽≦*)o", "(*/ω＼*)", "(⁄ ⁄•⁄ω⁄•⁄ ⁄)",
+        "(╯°□°）╯︵ ┻━┻", "┬─┬ノ( º _ ºノ)", "¯\\_(ツ)_/¯", "(ಥ_ಥ)", "(T_T)", "QAQ",
+        "(・ω・)", "(｡･ω･｡)", "(=^･ω･^=)", "ʕ•ᴥ•ʔ", "(≧∇≦)ﾉ", "(●'◡'●)",
+        "(✿◠‿◠)", "o(*￣▽￣*)ブ", "(っ´▽`)っ", "(づ｡◕‿‿◕｡)づ", "(ง •_•)ง", "ᕦ(ò_óˇ)ᕤ",
+        "( •̀ ω •́ )✧", "(⊙ˍ⊙)", "Σ(っ °Д °;)っ", "(╬▔皿▔)╯", "(ノへ￣、)", "(´▽`ʃ♡ƪ)",
+        "♪(´▽｀)", "(～﹃～)~zZ", "(￣︶￣)↗", "(^_−)☆", "(´･ω･`)", "_(:з」∠)_",
+        "(～￣▽￣)～", "щ(ﾟДﾟщ)", "(×_×)", "(〃＾▽＾〃)", "(´∀｀)♡", "(๑•́ ₃ •̀๑)",
+    ]
+
     final class Cell: UICollectionViewCell {
         let label = UILabel()
         override init(frame: CGRect) {
@@ -119,6 +133,19 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             bar.addArrangedSubview(b)
             tabButtons.append(b)
         }
+        // the last tab: Mosto's face (his 颜文字)
+        let mosto = UIButton(type: .custom)
+        let face = UIImage(named: "mosto_day", in: Bundle(for: EmojiPanelView.self), with: nil)
+        mosto.setImage(face, for: .normal)
+        mosto.imageView?.contentMode = .scaleAspectFit
+        mosto.imageEdgeInsets = UIEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)
+        mosto.tag = Self.categoryNames.count + 1
+        mosto.accessibilityLabel = Self.kaomojiName
+        mosto.layer.cornerRadius = 7
+        mosto.layer.cornerCurve = .continuous
+        mosto.addTarget(self, action: #selector(tabTapped(_:)), for: .touchUpInside)
+        bar.addArrangedSubview(mosto)
+        tabButtons.append(mosto)
         // settings stay one long press away from here too (the 表情 key's long press opens them as well)
         let gear = UIButton(type: .system)
         gear.setImage(UIImage(systemName: "gearshape", withConfiguration: tabCfg), for: .normal)
@@ -159,6 +186,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
                 cats[c].items.append(String(f[2]))
             }
         }
+        cats.append(Category(name: kaomojiName, symbol: "", items: kaomoji))
         cached = cats
         return cats
     }
@@ -217,6 +245,8 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         let c = collectionView.dequeueReusableCell(withReuseIdentifier: "e", for: indexPath) as! Cell
         let e = sections[indexPath.section].items[indexPath.item]
         c.label.text = e
+        c.label.font = isKaomoji(indexPath.section) ? .systemFont(ofSize: 17) : .systemFont(ofSize: 30)
+        c.label.textColor = Theme.keyText
         c.accessibilityLabel = e
         return c
     }
@@ -227,8 +257,13 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         return h
     }
 
+    private func isKaomoji(_ section: Int) -> Bool { sections[section].name == Self.kaomojiName }
+
     func collectionView(_ collectionView: UICollectionView, layout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
-        CGSize(width: cellSide, height: cellSide)
+        if isKaomoji(indexPath.section) {
+            return CGSize(width: floor((collectionView.bounds.width - 8) / 3), height: 44)
+        }
+        return CGSize(width: cellSide, height: cellSide)
     }
 
     func collectionView(_ collectionView: UICollectionView, layout: UICollectionViewLayout, referenceSizeForHeaderInSection section: Int) -> CGSize {
@@ -238,7 +273,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         let e = sections[indexPath.section].items[indexPath.item]
-        Self.remember(e)
+        if !isKaomoji(indexPath.section) { Self.remember(e) }   // 常用 holds emoji (its cells are emoji-sized)
         onEmoji?(e)
         collectionView.deselectItem(at: indexPath, animated: false)
     }
