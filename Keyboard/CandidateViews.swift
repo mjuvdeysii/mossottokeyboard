@@ -576,9 +576,10 @@ final class KeyboardSettings {
         get { d.object(forKey: "numberGrid") as? Bool ?? true }
         set { d.set(newValue, forKey: "numberGrid") }
     }
+    /// 联想 (next-word suggestions after a commit): off by default — a plain input method, as Gboard.
     var predictions: Bool {
-        get { d.object(forKey: "predictions") as? Bool ?? true }
-        set { d.set(newValue, forKey: "predictions") }
+        get { d.object(forKey: "suggestNext") as? Bool ?? false }
+        set { d.set(newValue, forKey: "suggestNext") }
     }
     /// 0 自动 (follows the system's light / dark mode), 1 日光, 2 夜灯. (The old 3 "晚上" reads as 自动.)
     var appearance: Int {

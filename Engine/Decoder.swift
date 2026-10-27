@@ -47,6 +47,8 @@ public final class Decoder {
     public var englishPenalty = 3.0
     /// Extra cost of a completion (the word is longer than what was typed).
     public var englishCompletionPenalty = 3.0
+    /// Offer a longer word for a prefix (iph → iPhone). Off: a plain input method shows only what was typed.
+    public var englishCompletions = false
     /// Words usually written with capitals in Chinese text (iOS, iPhone, OK…) are typed on purpose: a bonus.
     public var englishCasedBonus = 3.0
     public var maxSyllableAlternatives = 6
@@ -243,6 +245,23 @@ public final class Decoder {
     // MARK: - Decode
 
     public func decode(_ taps: [Tap]) -> Result {
+        // 小鹤双拼, plain: with an odd number of keys the last one is simply not finished yet. The candidates are those
+        // of the complete pairs typed so far; the dangling key waits (no guessing the next syllable from it).
+        if scheme == .xiaohe, taps.count >= 3, taps.count % 2 == 1, !taps.contains(where: { $0.key == "'" }) {
+            boundaries = []
+            let r = decodeLetters(Array(taps.dropLast()))
+            let raw = String(taps.map { $0.key })
+            var cands = r.candidates.filter { $0.tapCount > 0 && $0.score > -.infinity && !$0.isEnglish }
+            // English words cover every key typed (ios → iOS): first when they lead the full reading, else second
+            if englishEnabled, english != nil {
+                let full = decodeLetters(taps).candidates
+                for (k, c) in full.enumerated() where c.isEnglish && !cands.contains(where: { $0.text == c.text }) {
+                    cands.insert(c, at: min(k == 0 ? 0 : 1, cands.count))
+                }
+            }
+            cands.append(Candidate(text: raw, tapCount: taps.count, syllables: [], corrected: false, score: -.infinity))
+            return Result(candidates: cands, preedit: r.preedit + " " + String(taps.last!.key))
+        }
         // 分词 (') taps only set syllable boundaries: decode the letters, then count the separators back into each
         // candidate's tapCount so committing a candidate removes them too.
         guard taps.contains(where: { $0.key == "'" }) else { boundaries = []; return decodeLetters(taps) }
@@ -440,12 +459,13 @@ public final class Decoder {
             func score(_ w: EnglishLexicon.Word) -> Double {
                 w.display != w.key ? w.logp - englishPenalty + englishCasedBonus : w.logp - englishPenalty - short
             }
-            if let w = english.exact(typed) {
+            // rare plain words (nih, hon…) are more likely pinyin being typed: only common ones, or ones written cased
+            if let w = english.exact(typed), w.display != w.key || w.zipf >= 3.6 {
                 var c = Candidate(text: w.display, tapCount: n, syllables: [], corrected: false, score: score(w))
                 c.isEnglish = true
                 extra.append(c)
             }
-            if n >= 3, let w = english.completion(typed) {
+            if englishCompletions, n >= 3, let w = english.completion(typed) {
                 var c = Candidate(text: w.display, tapCount: n, syllables: [], corrected: false,
                                   score: score(w) - englishCompletionPenalty)
                 c.isEnglish = true

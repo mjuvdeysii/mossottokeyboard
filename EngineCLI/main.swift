@@ -190,7 +190,7 @@ case "bench", "gate":
         // 中英混输: English words people type in Chinese chat lead; Chinese syllables keep their Chinese first.
         if decoder.english != nil {
             decoder.correctionEnabled = true
-            let mixed: [(String, String)] = [("ok", "OK"), ("ios", "iOS"), ("iph", "iPhone"), ("github", "GitHub"),
+            let mixed: [(String, String)] = [("ok", "OK"), ("ios", "iOS"), ("iphone", "iPhone"), ("github", "GitHub"),
                                              ("wifi", "Wi-Fi"), ("hello", "hello"),
                                              ("de", "的"), ("he", "和"), ("wo", "我"), ("me", "么")]
             var bad: [String] = []
