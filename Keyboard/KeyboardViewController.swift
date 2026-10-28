@@ -714,7 +714,7 @@ final class KeyboardViewController: UIInputViewController {
         let asked = CACurrentMediaTime()
         if !taps.contains(where: { $0.group }) { setMarked(String(taps.map { $0.key })) }
         reconfigure()
-        engine.decode(taps, literal: literal) { [weak self] out in
+        engine.decode(taps, literal: literal, generation: gen) { [weak self] out in
             guard let self, gen == self.generation, let out else { return }
             let ms = (CACurrentMediaTime() - asked) * 1000
             self.candTotal += ms; self.candCount += 1; self.candMax = max(self.candMax, ms)
@@ -738,7 +738,7 @@ final class KeyboardViewController: UIInputViewController {
         // 九宫格 keys have no single letter: the field shows the pinyin read from them
         if taps.contains(where: { $0.group }) {
             let py = r.preedit.replacingOccurrences(of: " ", with: "")
-            if py != markedString { setMarked(py) }
+            if !hasMarkedText || py != markedString { setMarked(py) }
         }
         candidateBar.update(preedit: r.preedit, candidates: r.candidates)
         if !grid.isHidden { grid.show(r.candidates) }
@@ -774,7 +774,6 @@ final class KeyboardViewController: UIInputViewController {
             for (tap, key) in zip(taps.prefix(c.tapCount), c.intendedKeys) { spatial.observe(tap: tap, intended: key) }
         }
         taps.removeFirst(min(c.tapCount, taps.count))
-        result = nil
         if taps.isEmpty {
             engine.learn(parts: committedParts)
             clearComposition()
@@ -847,12 +846,14 @@ final class KeyboardViewController: UIInputViewController {
     private func insertCommitted(_ text: String) {
         textDocumentProxy.insertText(text)
         hasMarkedText = false
+        markedString = ""
     }
 
     private func commitRaw() {
         // 九宫格 keys are digits: what "the letters" means there is the pinyin read from them
+        // (with no engine — it failed to load — the keys themselves, so nothing typed is ever lost)
         let raw = taps.contains(where: { $0.group })
-            ? (currentResult()?.preedit ?? "").replacingOccurrences(of: " ", with: "")
+            ? (currentResult()?.preedit ?? String(taps.map { $0.key })).replacingOccurrences(of: " ", with: "")
             : String(taps.map { $0.key })
         insertCommitted(raw)
         clearComposition()

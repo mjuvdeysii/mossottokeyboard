@@ -50,13 +50,20 @@ final class EngineHost {
         return Output(result: r, choices: choices)
     }
 
-    /// Decode in the background; `done` runs on the main thread (nil until the engine has loaded).
-    func decode(_ taps: [Tap], literal: Bool = false, done: @escaping (Output?) -> Void) {
+    /// Decode in the background; `done` runs on the main thread (nil until the engine has loaded). A request that a
+    /// newer one has replaced before its turn comes is skipped (fast typing queues one decode per key; only the
+    /// latest is ever shown), so the queue never builds a backlog.
+    func decode(_ taps: [Tap], literal: Bool = false, generation: Int, done: @escaping (Output?) -> Void) {
+        lock.lock(); latest = max(latest, generation); lock.unlock()
         queue.async {
+            self.lock.lock(); let superseded = generation < self.latest; self.lock.unlock()
+            if superseded { return }
             let out = self.run(taps, literal: literal)
             DispatchQueue.main.async { done(out) }
         }
     }
+    private let lock = NSLock()
+    private var latest = 0
 
     /// Decode now, waiting for whatever is queued before it (used only when a commit needs the exact candidates).
     func decodeNow(_ taps: [Tap], literal: Bool = false) -> Output? {
