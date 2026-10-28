@@ -339,6 +339,7 @@ final class SettingsPanelView: UIView {
 
     private let schemeControl = UISegmentedControl(items: ["小鹤双拼", "全拼"])
     private let layoutControl = UISegmentedControl(items: ["全键盘", "九宫格"])
+    private let numberControl = UISegmentedControl(items: ["全键盘", "九宫格"])
     private let englishSwitch = UISwitch()
     private let correctionSwitch = UISwitch()
     private let feedbackSwitch = UISwitch()
@@ -355,7 +356,7 @@ final class SettingsPanelView: UIView {
         // Mosto's colours on every control: violet by day, crown gold at night
         tintColor = Theme.selection
         for sw in [englishSwitch, correctionSwitch, feedbackSwitch, soundSwitch] { sw.onTintColor = Theme.selection }
-        for sc in [schemeControl, layoutControl, appearance] {
+        for sc in [schemeControl, layoutControl, numberControl, appearance] {
             sc.selectedSegmentTintColor = Theme.selection
             sc.setTitleTextAttributes([.foregroundColor: Theme.selectionText, .font: Theme.font(14, .semibold)], for: .selected)
             sc.setTitleTextAttributes([.foregroundColor: Theme.keyText, .font: Theme.font(14, .medium)], for: .normal)
@@ -402,8 +403,9 @@ final class SettingsPanelView: UIView {
         section("输入", rows: [
             row("输入方案", schemeControl),
             row("中文键盘", layoutControl),
+            row("数字键盘", numberControl),
             row("中英混输", englishSwitch),
-        ], footer: "中文键盘：九宫格时每个键代表它上面的几个字母，小鹤双拼与全拼都能用（全拼更准）；分词键用来切开音节。打字时按下的字母写进输入框，带下划线，选了候选才替换成汉字。中英混输：打 ok、ios 直接出 OK、iOS。")
+        ], footer: "中文键盘：九宫格时每个键代表它上面的几个字母，小鹤双拼与全拼都能用（全拼更准）；分词键用来切开音节。数字键盘：123 打开的是完整的数字符号页，还是九宫格数字键盘（符号键可去完整页）；没设过时跟随中文键盘，用九宫格打字就默认九宫格数字。打字时按下的字母写进输入框，带下划线，选了候选才替换成汉字。中英混输：打 ok、ios 直接出 OK、iOS。")
         section("自动纠错", rows: [
             row("按触点位置纠错", correctionSwitch),
         ], footer: "首选带下划线 = 已纠错；上屏后立刻按删除可撤回这次纠错。英文模式同样按触点纠错：teh → the、dont → don't、im → I'm，空格时替换，删除可撤回。")
@@ -437,6 +439,8 @@ final class SettingsPanelView: UIView {
             c.addTarget(self, action: #selector(changed), for: .valueChanged)
             c.setContentHuggingPriority(.required, for: .horizontal)
         }
+        numberControl.addTarget(self, action: #selector(numberChanged), for: .valueChanged)
+        numberControl.setContentHuggingPriority(.required, for: .horizontal)
         for sw in [englishSwitch, correctionSwitch, feedbackSwitch, soundSwitch] {
             sw.addTarget(self, action: #selector(changed), for: .valueChanged)
         }
@@ -558,6 +562,7 @@ final class SettingsPanelView: UIView {
         updateStatus()
         schemeControl.selectedSegmentIndex = s.scheme
         layoutControl.selectedSegmentIndex = s.pinyinGrid ? 1 : 0
+        numberControl.selectedSegmentIndex = s.numberPad ? 1 : 0
         englishSwitch.isOn = s.english
         correctionSwitch.isOn = s.autocorrect
         feedbackSwitch.isOn = s.feedback
@@ -578,7 +583,14 @@ final class SettingsPanelView: UIView {
         s.feedback = feedbackSwitch.isOn
         s.keySound = soundSwitch.isOn
         s.appearance = appearance.selectedSegmentIndex
+        // until chosen here, the number pad follows the Chinese layout (shown at once when that changes)
+        numberControl.selectedSegmentIndex = s.numberPad ? 1 : 0
         updateStatus()
+        onChange?()
+    }
+
+    @objc private func numberChanged() {
+        KeyboardSettings.shared.numberPad = numberControl.selectedSegmentIndex == 1
         onChange?()
     }
 
@@ -620,6 +632,12 @@ final class KeyboardSettings {
     var pinyinGrid: Bool {
         get { d.object(forKey: "pinyinGrid") as? Bool ?? false }
         set { d.set(newValue, forKey: "pinyinGrid") }
+    }
+    /// 123 opens the 九宫格 number pad (on) or the full numbers-and-symbols page (off). Until chosen in settings it
+    /// follows the Chinese layout: typing on the 九宫格 means numbers on the keypad too.
+    var numberPad: Bool {
+        get { d.object(forKey: "numberPad") as? Bool ?? pinyinGrid }
+        set { d.set(newValue, forKey: "numberPad") }
     }
     /// 0 自动 (follows the system's light / dark mode), 1 日光, 2 夜灯. (The old 3 "晚上" reads as 自动.)
     var appearance: Int {

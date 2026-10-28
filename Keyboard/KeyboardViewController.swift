@@ -435,7 +435,7 @@ final class KeyboardViewController: UIInputViewController {
                                          returnLabel: label, returnIsAccent: accent,
                                          shifted: shifted, capsLock: capsLock,
                                          keyBorders: true,
-                                         numberGrid: false,   // 123 opens the full 123 page (digits and symbols)
+                                         numberGrid: KeyboardSettings.shared.numberPad,   // 123: the 九宫格 pad or the full page
                                          pinyinGrid: KeyboardSettings.shared.pinyinGrid, composing: !taps.isEmpty)
         // most keystrokes change nothing on the keys: skip the work entirely (it ran twice per keystroke before)
         if ctx == lastContext { return }
