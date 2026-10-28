@@ -170,6 +170,24 @@ enum KeyboardTests {
             log(h.string.hasSuffix("3.1"), "numbers.。 after a digit is a decimal point", "text=\(h.string)")
         } else { log(false, "quanpin.setup", "engine did not load") }
 
+        // The cursor moved away from the word just typed: a delete there is a delete, not an undo
+        if let kb = makeKeyboard(scheme: 1, in: window) {
+            let (vc, h) = kb
+            vc.handle(.toggleLanguage, tap: nil)
+            type(vc, "teh"); vc.handle(.space, tap: nil)
+            type(vc, "teh"); vc.handle(.space, tap: nil)
+            h.adjustTextPosition(byCharacterOffset: -4)
+            vc.selectionDidChange(nil)
+            vc.handle(.delete, tap: nil)
+            log(h.string.lowercased() == "thethe ", "moved.delete after moving the cursor deletes one character", "text=\(h.string)")
+            vc.handle(.toggleLanguage, tap: nil)
+            h.adjustTextPosition(byCharacterOffset: 10)
+            vc.selectionDidChange(nil)
+            type(vc, "ni")
+            vc.candidateBarForTests.onMostoTap?()
+            log(h.marked == nil && !vc.testState.composing && !h.string.contains("ni"), "mosto.tap mid-word commits the word first", "text=\(h.string) marked=\(h.markedString ?? "nil")")
+        } else { log(false, "moved.setup", "engine did not load") }
+
         // 九宫格
         if let kb = makeKeyboard(scheme: 1, grid: true, in: window) {
             let (vc, h) = kb
@@ -215,7 +233,11 @@ enum KeyboardTests {
                 }
                 // 九宫格 keys have no letter of their own: the field shows the pinyin once the decode for them is
                 // back (a few ms on a phone), so the grid's rules are checked after it has had that time
-                if grid { drain(0.05) } else if r(4) == 0 { drain(0.005) }
+                if grid {
+                    // a 九宫格 decode takes a few ms on a phone and far longer on a shared CI simulator
+                    let until = Date().addingTimeInterval(2)
+                    repeat { drain(0.01) } while !vc.testSettled && Date() < until
+                } else if r(4) == 0 { drain(0.005) }
                 // the rules
                 let st = vc.testState
                 if !st.composing && h.marked != nil { violations.append("marked text left after the composition ended (\(h.markedString ?? ""))") }

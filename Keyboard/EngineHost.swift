@@ -43,6 +43,7 @@ final class EngineHost {
             if !safe, let ep = englishPath { d.english = try? EnglishLexicon(path: ep) }
             if !safe, let gp = grammarPath { d.grammar = try? Grammar(path: gp) }
             self.decoder = d
+            self.lock.lock(); self.loaded = true; self.lock.unlock()
         }
     }
 
@@ -84,15 +85,27 @@ final class EngineHost {
             self.lock.lock(); let superseded = generation < self.latest; self.lock.unlock()
             if superseded { return }
             let out = self.run(taps, literal: literal)
+            self.lastOut = (generation, literal, out)
             DispatchQueue.main.async { done(out) }
         }
     }
     private let lock = NSLock()
     private var latest = 0
+    private var loaded = false
+    /// The engine has loaded (the lexicon at least).
+    var isLoaded: Bool { lock.lock(); defer { lock.unlock() }; return loaded }
+    // engine-queue state: the last background decode, so a commit that needs it right away does not decode again
+    private var lastOut: (generation: Int, literal: Bool, out: Output?)?
 
     /// Decode now, waiting for whatever is queued before it (used only when a commit needs the exact candidates).
-    func decodeNow(_ taps: [Tap], literal: Bool = false) -> Output? {
-        queue.sync { run(taps, literal: literal) }
+    /// With `generation`, the background decode already queued for that generation is used when it has run.
+    func decodeNow(_ taps: [Tap], literal: Bool = false, generation: Int? = nil) -> Output? {
+        queue.sync {
+            if let g = generation, let last = lastOut, last.generation == g, last.literal == literal, last.out != nil {
+                return last.out
+            }
+            return run(taps, literal: literal)
+        }
     }
 
     // MARK: learned words

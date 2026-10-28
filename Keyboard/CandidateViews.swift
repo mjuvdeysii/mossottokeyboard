@@ -28,6 +28,7 @@ final class CandidateBarView: UIView {
     /// Mosto in the idle corner, by day and at night alike (only his light changes with the keyboard's).
     var showsMosto = false { didSet { update(preedit: preedit.text ?? "", candidates: candidates, prediction: isPrediction) } }
     private var mostoWanted = false
+    private var pressedText: String?
     private var mostoTimer: Timer?
     /// Pinyin above the candidates (when it is not written into the text field).
     var showsPreedit = false { didSet { setNeedsLayout() } }
@@ -72,7 +73,7 @@ final class CandidateBarView: UIView {
         self.candidates = candidates
         isPrediction = prediction
         let busy = !candidates.isEmpty
-        setMosto(!busy && showsMosto)
+        setMosto(!busy && !typing && showsMosto)
         preedit.isHidden = !busy || prediction || !showsPreedit
         setNeedsLayout()
         layoutIfNeeded()
@@ -80,6 +81,11 @@ final class CandidateBarView: UIView {
 
     /// Mosto steps aside the moment typing starts (the strip is for candidates) and comes back only when the
     /// keyboard has been idle a moment, fading in rather than popping up — never flickering between words.
+    /// Keys are being composed (the candidates may not have arrived yet): Mosto stays out of the way.
+    var typing = false {
+        didSet { if typing != oldValue { setMosto(!typing && candidates.isEmpty && showsMosto) } }
+    }
+
     private func setMosto(_ on: Bool) {
         guard on != mostoWanted else { return }
         mostoWanted = on
@@ -163,6 +169,7 @@ final class CandidateBarView: UIView {
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let t = touches.first else { return }
         pressedIndex = candidateIndex(at: t.location(in: self))
+        pressedText = pressedIndex.flatMap { $0 < candidates.count ? candidates[$0].text : nil }
         longPressed = false
         longPressTimer?.invalidate()
         if let idx = pressedIndex, !isPrediction {
@@ -184,7 +191,9 @@ final class CandidateBarView: UIView {
         let was = pressedIndex
         pressedIndex = nil
         setNeedsLayout()
-        if let idx, idx == was { onSelect?(idx) }
+        // the word under the finger must still be the one it pressed: candidates that arrived meanwhile
+        // (a decode finishing mid-tap) never get committed unseen
+        if let idx, idx == was, idx < candidates.count, candidates[idx].text == pressedText { onSelect?(idx) }
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {

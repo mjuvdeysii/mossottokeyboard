@@ -54,6 +54,11 @@ final class KeyboardViewController: UIInputViewController {
     /// The last auto-corrected commit made with the space bar, undone by an immediate delete (as on Gboard).
     private var undoable: (text: String, taps: [Tap], syllables: [UInt16])?
     private var lastDocumentID: UUID?
+    /// The text around the cursor as the last key left it: a change notice that finds something else means the user
+    /// moved the cursor or the field changed under us, and what a delete would undo is no longer just before it.
+    private var afterLastKey = ""
+    /// The language last chosen for ordinary text (address, e-mail and search fields switch to English on their own).
+    private var preferredChinese = true
     private var isNight = false
     /// Pinyin currently written into the host field as marked text.
     private var hasMarkedText = false
@@ -95,6 +100,9 @@ final class KeyboardViewController: UIInputViewController {
         return false
     }
     var syllableChoiceCount: Int { syllableChoices.choices.count }
+    /// The candidates shown are for the keys typed now (no decode still under way for them).
+    var candidateBarForTests: CandidateBarView { candidateBar }
+    var testSettled: Bool { taps.isEmpty || resultGeneration == generation }
 
     // MARK: - Lifecycle
 
@@ -117,7 +125,8 @@ final class KeyboardViewController: UIInputViewController {
             return self.taps.isEmpty && self.enSuggestions.isEmpty
         }
         keyboard.reservedTop = { [weak self] in
-            guard let self, !self.candidateBar.isHidden else { return nil }
+            // while keys are being composed the strip belongs to the candidates: Mosto takes no touches from q / w
+            guard let self, !self.candidateBar.isHidden, self.taps.isEmpty else { return nil }
             let m = self.candidateBar.mosto
             guard !m.isHidden, m.alpha > 0.5 else { return nil }
             return self.candidateBar.convert(m.frame.insetBy(dx: -6, dy: 0), to: self.keyboard)
@@ -145,7 +154,12 @@ final class KeyboardViewController: UIInputViewController {
         candidateBar.onExpand = { [weak self] in self?.showGrid(true) }
         candidateBar.onLongPress = { [weak self] i in self?.offerForget(i) }
         candidateBar.onSettings = { [weak self] in self?.showSettings(true) }
-        candidateBar.onMostoTap = { [weak self] in self?.playFeedback(.emoji); self?.showEmoji(true, kaomoji: true) }
+        candidateBar.onMostoTap = { [weak self] in
+            guard let self else { return }
+            self.playFeedback(.emoji)
+            if !self.taps.isEmpty { self.commitAll() }   // as the emoji key does: nothing typed is left half-marked
+            self.showEmoji(true, kaomoji: true)
+        }
         candidateBar.onMostoDoubleTap = { [weak self] in
             // 日光 ⇄ 夜灯, from whatever light is showing now (自动 included); the settings page shows the choice
             guard let self else { return }
@@ -214,6 +228,10 @@ final class KeyboardViewController: UIInputViewController {
             heightConstraint = c
         }
         lastDocumentID = host.documentIdentifier
+        hostEchoesMarked = 0
+        lastEchoed = ""
+        forgetLastWord()
+        afterLastKey = contextSnapshot()
         adaptToField()
         applyAppearance()
         haptic.prepare()
@@ -228,7 +246,18 @@ final class KeyboardViewController: UIInputViewController {
         super.viewWillDisappear(animated)
         LaunchGuard.succeeded()   // put away normally: not a launch that failed
         peakFootprint = max(peakFootprint, memoryFootprintMB())
-        if !taps.isEmpty { commitRaw() }
+        if !taps.isEmpty {
+            // put away mid-word: the letters stay in the field. Where the host already kept them itself (it
+            // finalised the marked text as the field lost focus) they are only unmarked, never written twice.
+            // (the marked text is the letters, or the 九宫格 pinyin — exactly what a commit would write)
+            if hasMarkedText, !markedString.isEmpty, (host.documentContextBeforeInput ?? "").hasSuffix(markedString) {
+                host.unmarkText()
+                hasMarkedText = false
+                clearComposition()
+            } else {
+                commitRaw()
+            }
+        }
         engine.save()
         KeyboardSettings.shared.touchOffset = (spatial.offsetX, spatial.offsetY)
         KeyboardSettings.shared.keyOffsets = spatial.keyOffsetsList
@@ -271,8 +300,13 @@ final class KeyboardViewController: UIInputViewController {
     override func textDidChange(_ textInput: UITextInput?) {
         super.textDidChange(textInput)
         reconcileWithHost()
+        leaveWordIfMoved()
         let id = host.documentIdentifier
         if id != lastDocumentID {
+            // what was learned about the last field's echo of marked text says nothing about this one
+            hostEchoesMarked = 0
+            lastEchoed = ""
+            if taps.isEmpty { forgetLastWord() }
             // Another field (or a host that reports a new identifier whenever its text changes — this arrives
             // late, after the next keys may already be typed): never throw those keys away; adapt the layout only
             // when nothing is being composed and the field is actually of another kind.
@@ -290,6 +324,25 @@ final class KeyboardViewController: UIInputViewController {
     override func selectionDidChange(_ textInput: UITextInput?) {
         super.selectionDidChange(textInput)
         reconcileWithHost()
+        leaveWordIfMoved()
+    }
+
+    private func contextSnapshot() -> String {
+        (host.documentContextBeforeInput ?? "") + "\u{1}" + (host.documentContextAfterInput ?? "")
+    }
+
+    /// The cursor is no longer where the last key left it (tapped elsewhere, text replaced, another field): the
+    /// word just typed is behind us — no undoing its correction, no suggestions for it, no ". " from its space.
+    private func leaveWordIfMoved() {
+        guard taps.isEmpty, contextSnapshot() != afterLastKey else { return }
+        forgetLastWord()
+    }
+
+    private func forgetLastWord() {
+        undoable = nil
+        enUndo = nil
+        lastInsertedSpace = false
+        endEnglishWord()
     }
 
     /// The host took the letters being composed out of our hands — the user tapped elsewhere in the text, sent the
@@ -471,6 +524,8 @@ final class KeyboardViewController: UIInputViewController {
             if taps.isEmpty { chinese = false }
         default:
             page = .letters
+            // back in ordinary text: the language the user last chose there (an address bar switched to English)
+            if taps.isEmpty { chinese = preferredChinese }
         }
         if !chinese { updateAutoShift() }
         reconfigure()
@@ -493,6 +548,7 @@ final class KeyboardViewController: UIInputViewController {
     private var lastContext: LayoutContext?
 
     private func reconfigure() {
+        candidateBar.typing = !taps.isEmpty
         let (label, accent) = returnLabel()
         let ctx = LayoutContext(page: page, chinese: chinese, showGlobe: needsInputModeSwitchKey,
                                          returnLabel: label, returnIsAccent: accent,
@@ -515,6 +571,7 @@ final class KeyboardViewController: UIInputViewController {
     func handle(_ action: KeyAction, tap: Tap?) {
         let t0 = CACurrentMediaTime()
         defer {
+            afterLastKey = contextSnapshot()
             let ms = (CACurrentMediaTime() - t0) * 1000
             handleTotal += ms; handleCount += 1; handleMax = max(handleMax, ms)
             if handleCount % 40 == 0 { peakFootprint = max(peakFootprint, memoryFootprintMB()) }   // a few µs
@@ -553,6 +610,10 @@ final class KeyboardViewController: UIInputViewController {
         case .toggleLanguage:
             if !taps.isEmpty { commitRaw() }
             chinese.toggle()
+            switch host.keyboardType ?? .default {
+            case .emailAddress, .URL, .webSearch: break
+            default: preferredChinese = chinese
+            }
             shifted = false
             capsLock = false
             if !chinese { updateAutoShift() }
@@ -802,6 +863,11 @@ final class KeyboardViewController: UIInputViewController {
         let gen = generation
         let asked = CACurrentMediaTime()
         if !taps.contains(where: { $0.group }) { setMarked(String(taps.map { $0.key })) }
+        else if !engine.isLoaded {
+            // 九宫格 before any pinyin has been read (engine still loading, or it failed): the digits, so a key
+            // press is never invisible; the pinyin replaces them as soon as it is known
+            setMarked(String(taps.map { $0.key }))
+        }
         reconfigure()
         engine.decode(taps, literal: literal, generation: gen) { [weak self] out in
             guard let self, gen == self.generation, let out else { return }
@@ -838,7 +904,7 @@ final class KeyboardViewController: UIInputViewController {
     /// current, else decoded at once — this waits only for a decode already under way.
     private func currentResult() -> Decoder.Result? {
         if resultGeneration == generation, let r = result { return r }
-        guard !taps.isEmpty, let out = engine.decodeNow(taps, literal: literalGeneration) else { return result }
+        guard !taps.isEmpty, let out = engine.decodeNow(taps, literal: literalGeneration, generation: generation) else { return result }
         show(out, generation: generation)
         return out.result
     }
@@ -912,6 +978,7 @@ final class KeyboardViewController: UIInputViewController {
                 commitRaw()
             }
         }
+        if !taps.isEmpty { commitRaw() }   // a very long run: whatever is left goes in as typed, never lost
     }
 
     /// 九宫格: show the syllable column while keypad keys are being composed (it covers ， 。 ？ meanwhile).

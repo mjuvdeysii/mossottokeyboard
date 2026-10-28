@@ -400,6 +400,13 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         deleteTimer = t
     }
 
+    // hidden or taken off screen with the delete key still held (a second finger on 拼音): the repeat stops
+    override var isHidden: Bool { didSet { if isHidden { deleteUp() } } }
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil { deleteUp() }
+    }
+
     @objc private func deleteUp() {
         deleteTimer?.invalidate()
         deleteTimer = nil
