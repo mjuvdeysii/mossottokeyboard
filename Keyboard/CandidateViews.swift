@@ -64,6 +64,35 @@ final class CandidateBarView: UIView {
     required init?(coder: NSCoder) { fatalError() }
 
     @objc private func expandTapped() { onExpand?() }
+
+    // MARK: VoiceOver: each visible candidate is a button (the strip draws plain labels and reads raw touches)
+
+    private final class CandidateElement: UIAccessibilityElement {
+        var activate: (() -> Void)?
+        override func accessibilityActivate() -> Bool { activate?(); return true }
+    }
+
+    override var accessibilityElements: [Any]? {
+        get {
+            var out: [Any] = []
+            if !mosto.isHidden { out.append(mosto) }
+            for (i, l) in labels.enumerated() where !l.isHidden {
+                let e = CandidateElement(accessibilityContainer: self)
+                e.accessibilityLabel = l.attributedText?.string ?? l.text
+                e.accessibilityTraits = .button
+                if i == 0, !isPrediction { e.accessibilityHint = "首选，空格上屏" }
+                e.accessibilityFrameInContainerSpace = row.convert(l.frame, to: self)
+                e.activate = { [weak self] in self?.onSelect?(i) }
+                out.append(e)
+            }
+            if !expandButton.isHidden {
+                expandButton.accessibilityLabel = "全部候选"
+                out.append(expandButton)
+            }
+            return out
+        }
+        set { }
+    }
     @objc private func mostoTapped() { onMostoTap?() }
     @objc private func mostoDoubleTapped() { mosto.hop(); onMostoDoubleTap?() }
 
@@ -258,8 +287,11 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
             contentView.backgroundColor = .clear
             contentView.layer.cornerRadius = 8
             contentView.layer.cornerCurve = .continuous
+            isAccessibilityElement = true
+            accessibilityTraits = .button
         }
         required init?(coder: NSCoder) { fatalError() }
+        override var accessibilityLabel: String? { get { label.text } set { } }
         override func layoutSubviews() {
             super.layoutSubviews()
             label.frame = contentView.bounds.insetBy(dx: 4, dy: 0)
@@ -300,6 +332,8 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
             b.layer.shadowColor = Theme.functionLip.resolvedColor(with: traitCollection).cgColor
             addSubview(b)
         }
+        closeButton.accessibilityLabel = "收起候选"
+        deleteButton.accessibilityLabel = "删除"
         closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
 
         deleteButton.addTarget(self, action: #selector(deleteTapped), for: .touchUpInside)
