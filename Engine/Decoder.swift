@@ -524,6 +524,7 @@ public final class Decoder {
         let keypad = taps.contains { $0.group }
         // per-context normalisation of the language model: on the full keyboard (九宫格 measured no better with it)
         grammar?.massWeight = keypad ? 0 : contextNormalisation
+        grammar?.resetMassBudget()
         /// The language-model score of word `ei` after the words of `prev` (or after the text in the field).
         func link(_ prev: [Int], _ ei: Int) -> Double {
             guard let grammar else { return 0 }

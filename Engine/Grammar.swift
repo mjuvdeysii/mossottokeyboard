@@ -193,8 +193,15 @@ public final class Grammar {
     /// ln of everything the model counts right after a context node (its one-character continuations): what
     /// a joint count is divided by to read it as "how likely after this context". Cached per node.
     private var massCache: [Int: Double] = [:]
+    /// New contexts measured per decode at most (each is a scan of its node; right after launch none are cached,
+    /// and measuring them all held the first decodes up to a quarter second): the rest count as average.
+    public var massBudget = 24
+    private var massSpent = 0
+    public func resetMassBudget() { massSpent = 0 }
     func logMass(_ node: Int) -> Double {
         if let m = massCache[node] { return m }
+        guard massSpent < massBudget else { return massCenter }
+        massSpent += 1
         var vals: [Double] = []
         for (_, _, v) in children(of: node) { if let v { vals.append(Double(v) / 10_000) } }
         let top = vals.max() ?? 0
