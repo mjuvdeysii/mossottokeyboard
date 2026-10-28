@@ -85,6 +85,8 @@ final class CandidateBarView: UIView {
             UIView.animate(withDuration: 0.35, delay: 0, options: [.curveEaseOut, .allowUserInteraction]) {
                 self.mosto.alpha = 1
                 self.mosto.transform = .identity
+            } completion: { done in
+                if done, self.mostoWanted { self.mosto.greet() }
             }
         }
     }

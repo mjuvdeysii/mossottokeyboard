@@ -73,6 +73,18 @@ final class MostoView: UIView {
         }
     }
 
+    /// Back beside the strip after a commit: by day one quick blink, as if he read what was just written (nothing at
+    /// night, where he keeps his squint; nothing with Reduce Motion).
+    func greet() {
+        guard !night, !isHidden, !UIAccessibility.isReduceMotionEnabled, let blink else { return }
+        image.image = blink
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.11) { [weak self] in
+            guard let self, !self.night else { return }
+            self.image.image = self.day
+            self.schedule()
+        }
+    }
+
     /// Snapshot support: the yawn, at once.
     func demoYawn() { image.image = yawn }
 
