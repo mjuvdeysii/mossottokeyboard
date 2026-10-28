@@ -199,7 +199,8 @@ enum KeyboardTests {
                 let before = h.string
                 switch k {
                 case 0..<55:
-                    if grid { vc.handle(.t9(Array("23456789'")[r(9)]), tap: nil) }
+                    // the 九宫格 shows only in Chinese; English always has the full keyboard
+                    if grid && !vc.testState.english { vc.handle(.t9(Array("23456789'")[r(9)]), tap: nil) }
                     else { let c = letters[r(26)]; vc.handle(.char(String(c)), tap: Tap.exact(c)) }
                 case 55..<67: vc.handle(.space, tap: nil)
                 case 67..<79: vc.handle(.delete, tap: nil)
@@ -218,7 +219,7 @@ enum KeyboardTests {
                 // the rules
                 let st = vc.testState
                 if !st.composing && h.marked != nil { violations.append("marked text left after the composition ended (\(h.markedString ?? ""))") }
-                if st.composing && h.marked == nil && !st.keys.isEmpty { violations.append("composing \(st.keys) but nothing marked in the field") }
+                if st.composing && h.marked == nil && !st.keys.isEmpty { violations.append("composing \(st.keys) but nothing marked in the field (english \(st.english), \(st.candidates.count) candidates, page \(st.page))") }
                 if st.composing && !grid && !st.english, let m = h.markedString, m != st.keys {
                     violations.append("field shows \(m) while the keys are \(st.keys)")
                 }

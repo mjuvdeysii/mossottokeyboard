@@ -36,6 +36,7 @@ if let v = env["T9ABBR"].flatMap(Double.init) { decoder.t9AbbreviationExtra = v 
 if let v = env["BEAM"].flatMap(Int.init) { decoder.beam = v }
 if let v = env["UGD"].flatMap(Double.init) { decoder.unigramDiscount = v }
 if let v = env["UGC"].flatMap(Double.init) { decoder.unigramCenter = v }
+if let v = env["CP"].flatMap(Double.init) { decoder.fullCompletionPenalty = v }
 if let v = env["T9PFX"].flatMap(Double.init) { decoder.t9PrefixExtra = v }
 if let v = env["T9MIN"].flatMap(Double.init) { decoder.t9MinWordScore = v }
 if let v = env["UW"].flatMap(Double.init) { decoder.userWeight = v }
@@ -339,7 +340,7 @@ case "bench", "gate":
         let floors: [(String, Double, Bool)] = decoder.scheme == .xiaohe ? [
             ("words.on", 96.0, true),          // σ=0.22 touch noise, correction on, top-1 (%)
             ("words.broken", 1.0, false),      // clean words changed by correction (%) — at most
-            ("sentences.perfect", 83.0, true), // perfect keys, top-1 equals the intended sentence (%)
+            ("sentences.perfect", 86.0, true), // perfect keys, top-1 equals the intended sentence (%)
             ("sentences.on", 90.0, true),
             ("sentences.true", 78.0, true),    // σ=0.22 touch noise, correction on, top-1 equals the intended sentence (%)
             ("words.ms", 3.0, false),          // average decode time (ms) — at most
@@ -357,12 +358,12 @@ case "bench", "gate":
         ] : [
             ("words.on", 97.0, true),
             ("words.broken", 1.0, false),
-            ("sentences.perfect", 83.0, true),
+            ("sentences.perfect", 86.0, true),
             ("sentences.on", 92.0, true),
             ("sentences.true", 80.0, true),
             ("sentences.ms", 16.0, false),     // CI runners vary 2–5× (1.2 ms locally)
-            ("t9.words.top1", 63.0, true),
-            ("t9.sentences.top1", 66.0, true),
+            ("t9.words.top1", 66.0, true),
+            ("t9.sentences.top1", 68.0, true),
             ("t9.sentences.ms", 150.0, false),
             ("learn.same", 95.0, true),
             ("learn.harm", 1.0, false),

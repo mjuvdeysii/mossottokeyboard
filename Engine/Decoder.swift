@@ -201,6 +201,9 @@ public final class Decoder {
     private static let vowels: Set<Character> = Set("aeiouv")
     /// 全拼: extra cost of growing a fully spelled syllable into a longer one (xian → xiang).
     public var completionPenalty = 2.5
+    /// On the full keyboard the keys spell exactly what was meant: when they already end on a whole syllable, a
+    /// word that needs a longer one (药店买 for yaodianma) comes after every reading of the keys as typed.
+    public var fullCompletionPenalty = 15.0
 
     private func quanpinSpans(_ taps: [Tap]) -> [[Span]] {
         let n = taps.count
@@ -233,8 +236,8 @@ public final class Decoder {
                     if pos == n {
                         // still typing the last syllable: anything it can grow into — but when the keys already spell
                         // a whole syllable (xian), that syllable comes first and the longer ones (xiang) after
-                        let extra = (st.node.ids.isEmpty ? prefixPenalty : prefixPenalty + completionPenalty)
-                            + (taps[i].group ? t9PrefixExtra : 0)
+                        let extra = st.node.ids.isEmpty ? prefixPenalty + (taps[i].group ? t9PrefixExtra : 0)
+                            : prefixPenalty + (taps[i].group ? completionPenalty + t9PrefixExtra : fullCompletionPenalty)
                         for id in st.node.below where !st.node.ids.contains(id) {
                             emit(Span(end: pos, id: id, spatial: cost - extra, corrected: st.corrected, kind: 1))
                         }
