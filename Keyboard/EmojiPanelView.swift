@@ -70,16 +70,23 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
 
     final class Header: UICollectionReusableView {
         let label = UILabel()
+        /// Mosto himself beside the name of his own 颜文字.
+        let mosto = UIImageView(image: UIImage(named: "mosto_day", in: Bundle(for: EmojiPanelView.self), with: nil))
         override init(frame: CGRect) {
             super.init(frame: frame)
             label.font = Theme.font(12, .bold)
             label.textColor = Theme.secondaryText
             addSubview(label)
+            mosto.contentMode = .scaleAspectFit
+            mosto.isHidden = true
+            addSubview(mosto)
         }
         required init?(coder: NSCoder) { fatalError() }
         override func layoutSubviews() {
             super.layoutSubviews()
-            label.frame = bounds.insetBy(dx: 10, dy: 0)
+            let m: CGFloat = mosto.isHidden ? 0 : 26
+            mosto.frame = CGRect(x: 6, y: (bounds.height - 26) / 2, width: 26, height: 26)
+            label.frame = bounds.insetBy(dx: 10, dy: 0).offsetBy(dx: m, dy: 0)
         }
     }
 
@@ -309,6 +316,8 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     func collectionView(_ collectionView: UICollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> UICollectionReusableView {
         let h = collectionView.dequeueReusableSupplementaryView(ofKind: kind, withReuseIdentifier: "h", for: indexPath) as! Header
         h.label.text = sections[indexPath.section].name
+        h.mosto.isHidden = !isKaomoji(indexPath.section)
+        h.setNeedsLayout()
         return h
     }
 
