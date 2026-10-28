@@ -107,8 +107,9 @@ final class CandidateBarView: UIView {
         let h = bounds.height
         let preH: CGFloat = showsPreedit ? min(20, h * 0.3) : 0
         preedit.frame = CGRect(x: 10, y: 2, width: bounds.width - 20, height: preH)
-        let ms = min(h - 4, 52)
-        mosto.frame = CGRect(x: 8, y: (h - ms) / 2 + 2, width: ms, height: ms)
+        // high in the strip, clear of the q key below (the keys' reach band gives way to him: see reservedTop)
+        let ms = min(h - 8, 44)
+        mosto.frame = CGRect(x: 8, y: 1, width: ms, height: ms)
         let rowY = preH
         let rowH = h - preH
         expandButton.frame = CGRect(x: bounds.width - 44, y: rowY, width: 44, height: rowH)

@@ -83,6 +83,12 @@ final class KeyboardViewController: UIInputViewController {
             guard let self else { return true }
             return self.taps.isEmpty && self.enSuggestions.isEmpty
         }
+        keyboard.reservedTop = { [weak self] in
+            guard let self, !self.candidateBar.isHidden else { return nil }
+            let m = self.candidateBar.mosto
+            guard !m.isHidden, m.alpha > 0.5 else { return nil }
+            return self.candidateBar.convert(m.frame.insetBy(dx: -6, dy: 0), to: self.keyboard)
+        }
         keyboard.onCursorMove = { [weak self] d in
             guard let self, self.taps.isEmpty else { return }
             // the cursor leaves the word just typed: nothing to undo or autocorrect there any more

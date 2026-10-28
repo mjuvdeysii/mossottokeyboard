@@ -578,6 +578,9 @@ final class KeyboardView: UIView {
         }
         if let g = globeButton, g.frame.contains(point) { return g }
         guard bounds.contains(point) else { return nil }
+        // Mosto sits in the strip right above q: the band over the top row gives way to him where he stands, so a
+        // tap or double tap on him never types a q
+        if point.y < topReach, let r = reservedTop?(), r.contains(point) { return nil }
         // The band above the top row overlaps the bottom of the candidate strip. Its lower 8 pt always types; the
         // rest types while the user is typing (a key went down in the last 0.25 s — a fast finger landing high) or
         // when the strip has nothing to tap; otherwise the touch goes to the candidate under it.
@@ -589,6 +592,8 @@ final class KeyboardView: UIView {
     private var lastKeyDown: CFTimeInterval = 0
     /// Whether the candidate strip above has nothing to tap.
     var stripIsEmpty: (() -> Bool)?
+    /// Part of the band above the top row that belongs to the strip (Mosto, when he is there), in this view's space.
+    var reservedTop: (() -> CGRect?)?
 
     // MARK: - Touches
 
