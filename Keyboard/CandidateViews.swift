@@ -340,6 +340,14 @@ final class SettingsPanelView: UIView {
     override init(frame: CGRect) {
         super.init(frame: frame)
         backgroundColor = Theme.touchable   // the system glass shows through (never fully clear: see Theme.touchable)
+        // Mosto's colours on every control: violet by day, crown gold at night
+        tintColor = Theme.selection
+        for sw in [englishSwitch, correctionSwitch, feedbackSwitch, soundSwitch] { sw.onTintColor = Theme.selection }
+        for sc in [schemeControl, layoutControl, appearance] {
+            sc.selectedSegmentTintColor = Theme.selection
+            sc.setTitleTextAttributes([.foregroundColor: Theme.selectionText, .font: Theme.font(14, .semibold)], for: .selected)
+            sc.setTitleTextAttributes([.foregroundColor: Theme.keyText, .font: Theme.font(14, .medium)], for: .normal)
+        }
 
         // Header: Mosto (day or night), the name, 完成 — fixed above the scrolling list
         mostoImage.contentMode = .scaleAspectFit
@@ -355,7 +363,7 @@ final class SettingsPanelView: UIView {
         titles.spacing = 1
         let done = UIButton(type: .system)
         done.setTitle("完成", for: .normal)
-        done.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
+        done.titleLabel?.font = Theme.font(17, .bold)
         done.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
         let h = UIStackView(arrangedSubviews: [mostoImage, titles, UIView(), done])
         h.alignment = .center
@@ -391,7 +399,7 @@ final class SettingsPanelView: UIView {
             row("按键震动", feedbackSwitch),
             row("按键音", soundSwitch),
         ], footer: "震动与按键音在按下的一瞬间发出（与系统键盘一样）；按键音跟随静音开关。")
-        section("外观", rows: [row("光线", appearance)], footer: "自动：跟随系统的浅色 / 深色模式。Mosto 不打字时待在候选栏左边：日光下睁大眼睛、偶尔眨眼；夜灯下深夜蓝底色，尾巴尖亮起灯珠的金光。")
+        section("外观", rows: [row("光线", appearance)], footer: "自动：跟随系统的浅色 / 深色模式。Mosto 不打字时待在候选栏左边：日光下睁大眼睛、偶尔眨眼；夜灯下深紫底色，尾巴尖亮起金光。按键是他的软胶：空格上是他的翅膀，中 / 英 键戴着他的歪王冠，换行键是王冠的金色。")
 
         learnedLabel.font = .systemFont(ofSize: 15)
         learnedLabel.textColor = Theme.secondaryText
