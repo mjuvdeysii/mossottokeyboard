@@ -470,6 +470,19 @@ case "bench", "gate":
             if !ok { failed = true }
             try? FileManager.default.removeItem(at: dir)
         }
+        // 联想: the model's suggestions, and what this user wrote after the same words before
+        do {
+            let ud = UserDictionary(lexicon: lex, url: nil)
+            let d2 = Decoder(lexicon: lex, user: ud)
+            d2.grammar = decoder.grammar
+            func ids(_ py: String) -> [UInt16] { py.split(separator: " ").map { lex.id(of: String($0))! } }
+            ud.learn(parts: [("魔头", ids("mo tou")), ("小金冠", ids("xiao jin guan"))])
+            let model = d2.predictions(after: Array("我们"))
+            let mine = d2.predictions(after: Array("今天的魔头"))
+            let ok = model.count >= 4 && model.contains("可以") && mine.first == "小金冠"
+            print(ok ? "PASS predict.model+user" : "FAIL predict.model+user 我们→\(model) 魔头→\(mine)")
+            if !ok { failed = true }
+        }
         // Fuzz: random keys, separators, 九宫格 mixes and long runs. Every decode must give candidates that each
         // use 1…n keys and have text, committing the first candidate over and over must use up all keys, and the
         // slowest decode must stay quick enough to keep up with typing.

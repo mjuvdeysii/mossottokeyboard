@@ -736,6 +736,7 @@ public final class Decoder {
     /// predbench (word boundaries of the sentence sets): the next word among the first six about one time in five.
     public func predictions(after context: [Character], limit: Int = 8) -> [String] {
         guard let grammar, let last = context.last, Grammar.isHan(last) else { return [] }
+        _ = grammar
         var scored: [(String, Double)] = []
         for (t, v) in grammar.continuations(after: context, limit: 40) {
             let chars = Array(t)
@@ -751,7 +752,10 @@ public final class Decoder {
             }
             scored.append((t, score))
         }
-        return scored.sorted { $0.1 > $1.1 }.prefix(limit).map { $0.0 }
+        // what this user wrote after the same words before comes first
+        var out = user?.continuations(after: context) ?? []
+        for (t, _) in scored.sorted(by: { $0.1 > $1.1 }) where !out.contains(t) { out.append(t) }
+        return Array(out.prefix(limit))
     }
     public var predictionSplitWord = 11.0
     public var predictionSplitPenalty = 3.0

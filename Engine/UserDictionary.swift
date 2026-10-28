@@ -99,6 +99,24 @@ public final class UserDictionary {
         }
     }
 
+    /// 联想 from what this user has written before: learned phrases that begin with the end of `context` (你好 →
+    /// 世界, after 你好世界 was typed), the rest of each — most used, then most recent, first.
+    public func continuations(after context: [Character], limit: Int = 3) -> [String] {
+        var found: [String: (c: Int, u: Double)] = [:]
+        for it in items.values {
+            let t = Array(it.t)
+            guard t.count >= 3 else { continue }
+            for k in stride(from: min(t.count - 1, context.count), through: 2, by: -1) where context.suffix(k).elementsEqual(t.prefix(k)) {
+                let rest = String(t[k...].prefix(4))
+                let old = found[rest]
+                if old == nil || old!.c < it.c || (old!.c == it.c && old!.u < it.u) { found[rest] = (it.c, it.u) }
+                break
+            }
+        }
+        return found.sorted { $0.value.c != $1.value.c ? $0.value.c > $1.value.c : $0.value.u > $1.value.u }
+            .prefix(limit).map { $0.key }
+    }
+
     public func contains(syllables ids: [UInt16], text: String) -> Bool {
         items[Self.key(ids.map { lexicon.syllables[Int($0)] }, text)] != nil
     }

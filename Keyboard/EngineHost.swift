@@ -111,7 +111,7 @@ final class EngineHost {
 
     /// 联想: what may come next after the text before the cursor; `done` on the main thread.
     func predict(after context: String, done: @escaping ([String]) -> Void) {
-        let ctx = Array(context.suffix(3))
+        let ctx = Array(context.suffix(8))   // the model reads three; the user's own phrases may match more
         queue.async {
             let p = self.decoder?.predictions(after: ctx) ?? []
             DispatchQueue.main.async { done(p) }
