@@ -34,6 +34,7 @@ if env["SCHEME"] == "quanpin" { decoder.scheme = .quanpin }
 if let v = env["ABBR"].flatMap(Double.init) { decoder.abbreviationPenalty = v }
 if let v = env["T9ABBR"].flatMap(Double.init) { decoder.t9AbbreviationExtra = v }
 if let v = env["BEAM"].flatMap(Int.init) { decoder.beam = v }
+if let v = env["T9MIN"].flatMap(Double.init) { decoder.t9MinWordScore = v }
 if let v = env["UW"].flatMap(Double.init) { decoder.userWeight = v }
 // language model: grammar.gram next to the lexicon (GRAMMAR=path overrides, GRAMMAR=0 turns it off; GW weight)
 if env["GRAMMAR"] != "0" {
@@ -215,7 +216,7 @@ case "bench", "gate":
             let all = set.map { ($0.0, codeLetters($0.1).map { Tap.t9(Tap.t9Digit($0)) }) }
             for (t, taps) in all {
                 let c = decoder.decode(taps).candidates
-                if c.first?.text == t { top1 += 1 }
+                if c.first?.text == t { top1 += 1 } else if env["T9_DEBUG"] != nil, name == "sentences" { print("  ✗", t, "→", c.first?.text ?? "-") }
                 if c.prefix(3).contains(where: { $0.text == t }) { top3 += 1 }
             }
             // timing: best of two warm passes (a busy shared CI runner must not fail the gate on noise)

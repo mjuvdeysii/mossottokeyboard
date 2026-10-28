@@ -78,6 +78,8 @@ public final class Decoder {
     /// 九宫格: extra cost of reading a keypad key as a whole syllable's initial (every key holds several initials,
     /// so abbreviations there are far more often a misreading than on the full keyboard).
     public var t9AbbreviationExtra = 3.4
+    /// 九宫格: the least lexicon score (ln of its frequency) a word of two or more syllables needs to be offered.
+    public var t9MinWordScore = -Double.infinity
 
     public init(lexicon: Lexicon, user: UserDictionary? = nil) {
         self.lexicon = lexicon
@@ -338,6 +340,9 @@ public final class Decoder {
         var floor: [Int: Double] = [:]
         // 九宫格 input is far more ambiguous per key: keep more words per span
         let wide = taps.contains { $0.group } ? (scheme == .xiaohe ? 4 : 1) : 1
+        // 九宫格: every key is 3–4 letters, so a weak word (one the lexicon only lists, with no frequency of its own)
+        // fits the keys far more often by accident than it is meant; there words need a little real weight
+        let minWord = taps.contains { $0.group } ? t9MinWordScore : -Double.infinity
         @inline(__always) func cap(_ start: Int, _ syllables: Int) -> Int { (start == 0 ? (syllables == 1 ? 120 : 40) : 12) * wide }
         // a one-syllable word at the start may join a bucket while it holds fewer than 120; any other word, fewer than
         // its own cap — so each bucket has two bars, by the cap of the word asking
@@ -418,7 +423,9 @@ public final class Decoder {
                             let sp = first.spatial + s2.spatial
                             let corr = first.corrected || s2.corrected
                             for idx in follow.pairs {
-                                let base = Double(lexicon.entry(idx).score) / 100 - wordPenalty
+                                let score = Double(lexicon.entry(idx).score) / 100
+                                if score < minWord { break }   // best first: the rest are weaker still
+                                let base = score - wordPenalty
                                 guard accepts(i, s2.end, 2, base + sp) else { break }
                                 insert(Edge(start: i, end: s2.end, score: base + sp, corrected: corr, entry: idx, userText: nil,
                                             ids: [], cuts: [firstEnd, s2.end], kinds: [first.kind, s2.kind]))
@@ -431,6 +438,7 @@ public final class Decoder {
                         if thirds.isEmpty { continue }
                         for idx in follow.longer {
                             let e = lexicon.entry(idx)
+                            if Double(e.score) / 100 < minWord { break }
                             let third = Int(lexicon.syllable(e, 2))
                             guard thirds.contains(where: { has[$0][third] }) else { continue }
                             let base = Double(e.score) / 100 - wordPenalty
