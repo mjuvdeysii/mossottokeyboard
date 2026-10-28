@@ -46,7 +46,7 @@ if env["GRAMMAR"] != "0" {
     decoder.grammar = try? Grammar(path: gp)
 }
 if let v = env["GW"].flatMap(Double.init) { decoder.grammarWeight = v }
-if let v = env["MW"].flatMap(Double.init) { decoder.grammar?.massWeight = v }
+if let v = env["MW"].flatMap(Double.init) { decoder.contextNormalisation = v }
 if let v = env["MC"].flatMap(Double.init) { decoder.grammar?.massCenter = v }
 if let v = env["GCF"].flatMap(Double.init) { decoder.grammarCorrectedFactor = v }
 if let v = env["UC"].flatMap(Double.init) { decoder.userCap = v }
@@ -481,7 +481,7 @@ case "bench", "gate":
             ud.learn(parts: [("魔头", ids("mo tou")), ("小金冠", ids("xiao jin guan"))])
             let model = d2.predictions(after: Array("我们"))
             let mine = d2.predictions(after: Array("今天的魔头"))
-            let ok = model.count >= 4 && model.contains("可以") && mine.first == "小金冠"
+            let ok = model.count >= 4 && model.contains("在") && mine.first == "小金冠"
             print(ok ? "PASS predict.model+user" : "FAIL predict.model+user 我们→\(model) 魔头→\(mine)")
             if !ok { failed = true }
         }

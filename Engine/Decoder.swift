@@ -86,6 +86,9 @@ public final class Decoder {
     /// How much of a word's own frequency the language model takes back when it scores the word in context.
     public var unigramDiscount = 0.5
     public var unigramCenter = 10.0
+    /// The model's counts are read against how much it has seen after the context (P(word | context) rather than
+    /// a joint count): a common context no longer lends its own frequency to whatever follows it.
+    public var contextNormalisation = 0.6
 
     public init(lexicon: Lexicon, user: UserDictionary? = nil) {
         self.lexicon = lexicon
@@ -519,6 +522,8 @@ public final class Decoder {
             return c
         }
         let keypad = taps.contains { $0.group }
+        // per-context normalisation of the language model: on the full keyboard (九宫格 measured no better with it)
+        grammar?.massWeight = keypad ? 0 : contextNormalisation
         /// The language-model score of word `ei` after the words of `prev` (or after the text in the field).
         func link(_ prev: [Int], _ ei: Int) -> Double {
             guard let grammar else { return 0 }
