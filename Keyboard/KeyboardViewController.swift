@@ -249,6 +249,7 @@ final class KeyboardViewController: UIInputViewController {
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         LaunchGuard.succeeded()   // put away normally: not a launch that failed
+        keyboard.cancelAllTouches()   // a key held as the keyboard goes: no repeat into the next field
         peakFootprint = max(peakFootprint, memoryFootprintMB())
         if !taps.isEmpty {
             // put away mid-word: the letters stay in the field. Where the host already kept them itself (it

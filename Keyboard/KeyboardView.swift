@@ -472,6 +472,9 @@ final class KeyboardView: UIView {
 
     func configure(_ ctx: LayoutContext) {
         let newRows = Layouts.rows(ctx)
+        // a held key that rolls over is emitted while the keys it belongs to are still the ones laid out (emitting
+        // it can lay the view out again; with the new rows and the old key views that read past the end)
+        if !(newRows.count == rows.count && zip(newRows, rows).allSatisfy({ $0.count == $1.count })) { flushHeldKeys() }
         let sameShape = newRows.count == rows.count && zip(newRows, rows).allSatisfy { a, b in
             a.count == b.count && zip(a, b).allSatisfy { $0.width == $1.width && $0.action == $1.action }
         }
@@ -509,7 +512,7 @@ final class KeyboardView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        guard !rows.isEmpty, bounds.width > 0 else { return }
+        guard !rows.isEmpty, bounds.width > 0, keyViews.count == rows.reduce(0, { $0 + $1.count }) else { return }
         let rowH = (bounds.height - topReach) / CGFloat(rows.count)
         let unit = bounds.width / 10
         let gapX = Metrics.gapX
@@ -544,16 +547,20 @@ final class KeyboardView: UIView {
         if spatialKeys.count == 26 {
             spatial.update(keys: spatialKeys, keyWidth: Double(unit), keyHeight: Double(rowH))
         }
+        // the 九宫格 syllable column follows the keys it covers (rotation lays them out anew)
+        if let o = overlay, !o.isHidden, let f = keypadSideColumn() { o.frame = f }
     }
 
     // MARK: - Hit testing
 
     private func keyIndex(at p: CGPoint) -> Int? {
-        if let i = hitRects.firstIndex(where: { $0.contains(p) }) { return i }
+        // keys hidden under the syllable column type nothing, however close the touch lands
+        func usable(_ i: Int) -> Bool { i >= keyViews.count || !keyViews[i].isHidden }
+        if let i = hitRects.indices.first(where: { hitRects[$0].contains(p) }) { return usable(i) ? i : nil }
         // Outside every row band (e.g. dragged off the edge): nearest key.
         var best: Int?
         var bestD = CGFloat.infinity
-        for (i, r) in hitRects.enumerated() {
+        for (i, r) in hitRects.enumerated() where usable(i) {
             let dx = max(r.minX - p.x, 0, p.x - r.maxX), dy = max(r.minY - p.y, 0, p.y - r.maxY)
             let d = dx * dx + dy * dy
             if d < bestD { bestD = d; best = i }
@@ -653,6 +660,8 @@ final class KeyboardView: UIView {
                 }
             case .delete:
                 onAction?(.delete, nil)
+                // a second finger on a delete already held deletes once; one repeat at a time
+                if tracked.values.contains(where: { $0 !== tr && $0.keyIndex == idx && !$0.finished }) { break }
                 tr.repeatTimer = Timer.scheduledTimer(withTimeInterval: 0.42, repeats: false) { [weak self, weak tr] _ in
                     guard let self, let tr else { return }
                     self.startDeleteRepeat(tr)
@@ -715,6 +724,7 @@ final class KeyboardView: UIView {
                     tr.longPressTimer?.invalidate()
                     tr.keyIndex = idx
                     keyViews[idx].pressed = true
+                    tr.preview?.removeFromSuperview(); tr.preview = nil   // never the old key's balloon over the new key
                     showPreview(tr, text: keyViews[idx].spec.label)
                     if keyViews[idx].spec.alt != nil {
                         tr.longPressTimer = Timer.scheduledTimer(withTimeInterval: 0.38, repeats: false) { [weak self, weak tr] _ in
@@ -730,7 +740,11 @@ final class KeyboardView: UIView {
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        for t in touches {
+        // in the order the keys went down (a Set has none): two keys lifted together come out as typed
+        let ordered = touches.sorted { a, b in
+            (touchOrder.firstIndex(of: ObjectIdentifier(a)) ?? .max) < (touchOrder.firstIndex(of: ObjectIdentifier(b)) ?? .max)
+        }
+        for t in ordered {
             let id = ObjectIdentifier(t)
             guard let tr = tracked[id] else { continue }
             tr.location = t.location(in: self)
@@ -785,7 +799,14 @@ final class KeyboardView: UIView {
         }
     }
 
-    private func cancelAllTouches() {
+    override var isHidden: Bool { didSet { if isHidden && !oldValue { cancelAllTouches() } } }
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil { cancelAllTouches() }
+    }
+
+    /// Put away (a panel over the keys, the keyboard dismissed): held keys let go, repeats stop, caps redrawn.
+    func cancelAllTouches() {
         for (_, tr) in tracked where !tr.finished { finish(tr, emit: false); if !tr.typedOnDown { stats.dropped += 1 } }
         tracked.removeAll()
         touchOrder.removeAll()
@@ -808,7 +829,8 @@ final class KeyboardView: UIView {
         tr.altPopup = nil
         guard tr.keyIndex < keyViews.count else { return }
         let kv = keyViews[tr.keyIndex]
-        kv.pressed = false
+        // still held by another finger: it stays down
+        if !tracked.values.contains(where: { $0 !== tr && $0.keyIndex == tr.keyIndex && !$0.finished }) { kv.pressed = false }
         guard emit, !tr.typedOnDown else { return }
         stats.emitted += 1
         switch kv.spec.action {

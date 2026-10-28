@@ -24,6 +24,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     private let returnButton = UIButton(type: .system)
     private var selected = -1
     private var deleteTimer: Timer?
+    private let gear = UIButton(type: .system)
 
     static let categoryNames: [(String, String)] = [
         ("笑脸与人物", "face.smiling"), ("动物与自然", "pawprint"), ("食物与饮料", "fork.knife"), ("活动", "soccerball"),
@@ -174,7 +175,6 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         bar.addArrangedSubview(mosto)
         tabButtons.append(mosto)
         // settings stay one long press away from here too (the 表情 key's long press opens them as well)
-        let gear = UIButton(type: .system)
         gear.setImage(UIImage(systemName: "gearshape", withConfiguration: tabCfg), for: .normal)
         gear.tintColor = Theme.secondaryText
         gear.accessibilityLabel = "设置"
@@ -293,6 +293,8 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         backButton.frame = CGRect(x: 4, y: b.height - barH - 2, width: side, height: barH - 4)
         deleteButton.frame = CGRect(x: b.width - side - 4, y: b.height - barH - 2, width: side, height: barH - 4)
         returnButton.frame = deleteButton.frame
+        // narrow phones: the gear gives its room to the tabs (settings stay a long press on the 表情 key away)
+        gear.isHidden = b.width - 2 * side - 16 < 230
         bar.frame = CGRect(x: side + 8, y: b.height - barH, width: b.width - 2 * side - 16, height: barH - 4)
         collection.collectionViewLayout.invalidateLayout()
         updateSelection()
