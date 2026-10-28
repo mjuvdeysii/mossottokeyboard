@@ -19,6 +19,9 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     private var tabButtons: [UIButton] = []
     private let backButton = UIButton(type: .custom)   // custom: its title always draws (a .system title stayed blank)
     private let deleteButton = UIButton(type: .system)
+    /// Opened from Mosto (颜文字): the delete key's place holds 返回, in the return key's crown gold, so a pick and a
+    /// tap bring the keys straight back under the thumb.
+    private let returnButton = UIButton(type: .system)
     private var selected = -1
     private var deleteTimer: Timer?
 
@@ -112,7 +115,12 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         // delete repeats while held, as the delete key does
         deleteButton.addTarget(self, action: #selector(deleteDown), for: .touchDown)
         deleteButton.addTarget(self, action: #selector(deleteUp), for: [.touchUpInside, .touchUpOutside, .touchCancel])
-        for b in [backButton, deleteButton] {
+        returnButton.setTitle("返回", for: .normal)
+        returnButton.titleLabel?.font = Theme.font(16, .bold)
+        returnButton.accessibilityLabel = "返回键盘"
+        returnButton.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
+        returnButton.isHidden = true
+        for b in [backButton, deleteButton, returnButton] {
             b.tintColor = Theme.keyText
             b.setTitleColor(Theme.keyText, for: .normal)
             b.backgroundColor = Theme.functionKey
@@ -120,6 +128,8 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             b.layer.cornerCurve = .continuous
             addSubview(b)
         }
+        returnButton.backgroundColor = Theme.accentKey
+        returnButton.setTitleColor(Theme.accentText, for: .normal)
         bar.axis = .horizontal
         bar.distribution = .fillEqually
         addSubview(bar)
@@ -215,6 +225,8 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         let recent = Self.recents()
         sections = [Category(name: "常用", symbol: "clock", items: recent)] + Self.categories()
         selected = -1
+        returnButton.isHidden = !kaomoji
+        deleteButton.isHidden = kaomoji
         collection.reloadData()
         guard bounds.width > 100, bounds.height > 100 else { return }   // shown with a frame later: load() runs again
         layoutIfNeeded()
@@ -252,6 +264,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         let side: CGFloat = 56
         backButton.frame = CGRect(x: 4, y: b.height - barH, width: side, height: barH - 4)
         deleteButton.frame = CGRect(x: b.width - side - 4, y: b.height - barH, width: side, height: barH - 4)
+        returnButton.frame = deleteButton.frame
         bar.frame = CGRect(x: side + 8, y: b.height - barH, width: b.width - 2 * side - 16, height: barH - 4)
         collection.collectionViewLayout.invalidateLayout()
         updateSelection()

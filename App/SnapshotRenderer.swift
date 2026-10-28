@@ -53,6 +53,7 @@ enum SnapshotRenderer {
             Shot(name: "press_comma_numbers", page: .numbers, state: "idle", borders: true, panel: "press:，"),
             Shot(name: "emoji", page: .letters, state: "idle", borders: true, panel: "emoji"),
             Shot(name: "mosto_yawn", page: .letters, state: "idle", borders: true, panel: "yawn"),
+            Shot(name: "mosto_kaomoji", page: .letters, state: "idle", borders: true, panel: "kaomoji"),
             // Home-button devices: the globe joins the bottom row, 表情 stays
             Shot(name: "globe_letters", page: .letters, state: "composing", borders: true, panel: nil, globe: true),
             Shot(name: "globe_t9", page: .letters, state: "idle", borders: true, panel: nil, globe: true),
@@ -148,13 +149,13 @@ enum SnapshotRenderer {
                 } else if shot.panel == "yawn" {
                     bar.showsMosto = true          // (by day too, to review the sprite on both glasses)
                     bar.mosto.demoYawn()
-                } else if shot.panel == "emoji" {
+                } else if shot.panel == "emoji" || shot.panel == "kaomoji" {
                     let panel = EmojiPanelView(frame: root.bounds)
                     root.addSubview(panel)
                     kb.isHidden = true; bar.isHidden = true   // as in the keyboard: the emoji page covers both
                     panel.setChinese(true)
                     panel.layoutIfNeeded()
-                    panel.load()
+                    panel.load(kaomoji: shot.panel == "kaomoji")
                 } else if shot.panel == "settings" || shot.panel == "settings_full" {
                     let panel = SettingsPanelView(frame: root.bounds)
                     root.addSubview(panel)
