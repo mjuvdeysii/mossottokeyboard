@@ -32,6 +32,7 @@ enum SnapshotRenderer {
         let shots: [Shot] = [
             Shot(name: "letters_idle", page: .letters, state: "idle", borders: true, panel: nil),
             Shot(name: "letters_composing", page: .letters, state: "composing", borders: true, panel: nil),
+            Shot(name: "letters_predict", page: .letters, state: "predict", borders: true, panel: nil),
             Shot(name: "letters_shift", page: .letters, state: "shift", borders: true, panel: nil),
             Shot(name: "numbers", page: .numbers, state: "idle", borders: true, panel: nil),
             Shot(name: "symbols", page: .symbols, state: "idle", borders: true, panel: nil),
@@ -110,7 +111,7 @@ enum SnapshotRenderer {
                     Candidate(text: "tech", tapCount: 0, syllables: [], corrected: false, score: 0)])
                 case "english": bar.update(preedit: "ios", candidates: candidates(["iOS", "戳死", "戳所", "戳三", "ios"], correctedFirst: false))
                 case "predict":
-                    bar.update(preedit: "", candidates: ["吗", "啊", "呀", "坏", "毒", "漂亮"].map {
+                    bar.update(preedit: "", candidates: ["我", "不", "在", "一起", "可以", "也", "要", "会"].map {
                         Candidate(text: $0, tapCount: 0, syllables: [], corrected: false, score: 0) }, prediction: true)
                 default: bar.update(preedit: "", candidates: [])
                 }
