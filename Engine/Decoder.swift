@@ -73,7 +73,7 @@ public final class Decoder {
     public var pruneMargin = 7.0
     public var beam = 4
     /// 全拼: cost of a syllable typed as its initial only (简拼), and of a half-typed last syllable.
-    public var abbreviationPenalty = 2.6
+    public var abbreviationPenalty = 6.0
     public var prefixPenalty = 0.4
     /// 九宫格: extra cost of reading a keypad key as a whole syllable's initial (every key holds several initials,
     /// so abbreviations there are far more often a misreading than on the full keyboard).
