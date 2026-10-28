@@ -380,10 +380,16 @@ public final class Decoder {
             let c = cap(e.start, e.cuts.count)
             if list.count < c {
                 list.append(e)
-            } else if let minIdx = list.indices.min(by: { list[$0].score < list[$1].score }), list[minIdx].score < e.score {
-                list[minIdx] = e
+            } else {
+                var minIdx = 0
+                for j in 1..<list.count where list[j].score < list[minIdx].score { minIdx = j }
+                if list[minIdx].score < e.score { list[minIdx] = e }
             }
-            let low = list.count >= cap(e.start, 2) || list.count >= cap(e.start, 1) ? (list.map { $0.score }.min() ?? -.infinity) : -.infinity
+            var low = -Double.infinity
+            if list.count >= cap(e.start, 2) || list.count >= cap(e.start, 1) {
+                low = .infinity
+                for x in list where x.score < low { low = x.score }
+            }
             if list.count >= cap(e.start, 2) { floorArr[fkey(e.start, e.end, 2)] = low }
             if list.count >= cap(e.start, 1) { floorArr[fkey(e.start, e.end, 1)] = low }
             bucketList[key] = list

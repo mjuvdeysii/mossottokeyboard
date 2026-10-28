@@ -93,6 +93,13 @@ enum KeyboardTests {
 
     static func drain(_ s: Double = 0.03) { RunLoop.main.run(until: Date().addingTimeInterval(s)) }
 
+    /// Until the candidates shown are for the keys typed (a decode can take 100 ms on a busy CI simulator).
+    static func settle(_ vc: KeyboardViewController) {
+        let until = Date().addingTimeInterval(3)
+        repeat { drain(0.01) } while !vc.testSettled && Date() < until
+        drain(0.01)
+    }
+
     /// Type letters (exact taps), then the given action.
     static func type(_ vc: KeyboardViewController, _ letters: String) {
         for c in letters {
@@ -141,7 +148,7 @@ enum KeyboardTests {
             log(h.string == "你好可以", "xiaohe.delete then deletes text", "text=\(h.string)")
             type(vc, "nihc"); vc.handle(.ret, tap: nil)
             log(h.string == "你好可以nihc" && h.marked == nil, "xiaohe.return commits the letters", "text=\(h.string)")
-            type(vc, "nihc"); drain(0.2)
+            type(vc, "nihc"); settle(vc)
             let c = vc.testState.candidates
             if c.count > 1 { vc.candidateTapped(1) }
             log(c.count > 1 && h.string == "你好可以nihc" + c[1], "xiaohe.tap the second candidate", "text=\(h.string) cands=\(c.prefix(3))")
@@ -191,7 +198,7 @@ enum KeyboardTests {
         // 九宫格
         if let kb = makeKeyboard(scheme: 1, grid: true, in: window) {
             let (vc, h) = kb
-            type(vc, "64426"); drain(0.3)
+            type(vc, "64426"); settle(vc)
             log(vc.testState.composing && h.marked != nil, "t9.keys compose with the pinyin shown", "marked=\(h.markedString ?? "nil")")
             vc.handle(.space, tap: nil)
             log(h.string == "你好" && h.marked == nil, "t9.64426 → 你好", "text=\(h.string)")
@@ -235,8 +242,7 @@ enum KeyboardTests {
                 // back (a few ms on a phone), so the grid's rules are checked after it has had that time
                 if grid {
                     // a 九宫格 decode takes a few ms on a phone and far longer on a shared CI simulator
-                    let until = Date().addingTimeInterval(2)
-                    repeat { drain(0.01) } while !vc.testSettled && Date() < until
+                    settle(vc)
                 } else if r(4) == 0 { drain(0.005) }
                 // the rules
                 let st = vc.testState
