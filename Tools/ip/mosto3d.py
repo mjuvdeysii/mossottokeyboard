@@ -374,9 +374,31 @@ def toy_key(name, x, y, rot, face, lip, size=1.0, z=0.0):
     keycap(name + "_face", 0.86 * s, 0.86 * s, 0.26 * s, 0.12 * s, face, (x, y - 0.02 * s, z + 0.42 * s), rot)
     return z + 0.55 * s     # the top of the face
 
+def legend(text, x, y, z, rot, size, material, font_path):
+    """A key's legend: raised a hair above the face, centred, turned with the key."""
+    bpy.ops.object.text_add(location=(x, y, z + 0.002)); t = bpy.context.object
+    t.data.body = text
+    try: t.data.font = bpy.data.fonts.load(font_path)
+    except Exception: pass
+    t.data.align_x = "CENTER"; t.data.align_y = "CENTER"; t.data.size = size; t.data.extrude = 0.012
+    t.rotation_euler = (0, 0, math.radians(rot))
+    t.data.materials.append(material)
+    # fonts differ in how much of the em a glyph fills (a CJK face draws 中 at a third of it): scale to the height
+    bpy.context.view_layer.update()
+    h = max(t.dimensions.x, t.dimensions.y)
+    if h > 0: t.scale = (size / h, size / h, 1.0)
+    # a font's "centre" is its line box, not the glyph: move the glyph's own box onto the key's centre
+    bpy.context.view_layer.update()
+    from mathutils import Vector
+    corners = [t.matrix_world @ Vector(c) for c in t.bound_box]
+    cx = sum(c.x for c in corners) / 8; cy = sum(c.y for c in corners) / 8
+    t.location.x += x - cx; t.location.y += y - cy
+    return t
+
 def toy_icon(path):
-    """The app icon as a designer toy: Mosto standing on a big cream keycap (the keyboard's own vinyl key, face over
-    a lavender lip), a crown-gold key and a lavender key behind him, on butter cream."""
+    """The app icon as a designer toy: Mosto, large, standing on a big cream keycap (the keyboard's own vinyl key, face
+    over a lavender lip), with a crown-gold 中 key and a lavender A key in front of him (中/英 at a glance), seen from
+    a little above so the legends read, on butter cream. --samples 160 for the shipped 1024 px icon."""
     from PIL import Image, ImageDraw
     s = B.reset(); s.render.film_transparent = True; B.materials(); mosto_materials(); B.sprite_lights()
     s.view_settings.look = "None"
@@ -388,14 +410,22 @@ def toy_icon(path):
     gold = B.mat("keyGold", "#FFC23A", rough=0.42, coat=0.15, sss=0.02)
     goldDeep = B.mat("keyGoldDeep", "#C9851A", rough=0.4, coat=0.15)
     top = toy_key("key_main", 0.0, 0.0, -18, cream, lav, size=1.22)
-    toy_key("key_gold", 1.0, 0.7, -6, gold, goldDeep, size=0.86)
-    toy_key("key_lav", -1.05, 0.55, -30, lav, lavDeep, size=0.78)
+    gx, gy, gr, gs = B.arg("--gx", 0.92), B.arg("--gy", -0.5), B.arg("--gr", -10), B.arg("--gs", 0.74)
+    lx, ly, lr, ls = B.arg("--lx", -0.95), B.arg("--ly", -0.4), B.arg("--lr", 16), B.arg("--ls", 0.66)
+    gtop = toy_key("key_gold", gx, gy, gr, gold, goldDeep, size=gs)
+    ltop = toy_key("key_lav", lx, ly, lr, lav, lavDeep, size=ls)
+    # legends printed on the keys, as on the keyboard: 中 on the crown-gold key, A on the lavender one — the blocks
+    # read as keys at a glance, and the icon says "Chinese keyboard" before anyone reads its name
+    ink = B.mat("keyInk", "#2B1961", rough=0.5)
+    inkLight = B.mat("keyInkLight", "#FFF9EE", rough=0.5)
+    legend("中", gx, gy - 0.02 * gs, gtop, gr, 0.56 * gs, ink, "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc")
+    legend("A", lx, ly - 0.02 * ls, ltop, lr, 0.56 * ls, ink, "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc")
     m = build_mosto(moss_eye=dict(look=(0.1, 0.25)), otto_eye=dict(look=(-0.08, 0.1), lid=0.5))
-    m.location = (0.02, -0.05, top - 0.02); m.scale = (B.arg("--ms", 1.25),) * 3
+    m.location = (0.02, -0.05, top - 0.02); m.scale = (B.arg("--ms", 1.55),) * 3
     m.rotation_euler = (0, 0, math.radians(-8))
     # a shadow catcher under the keys: they sit on something
     bpy.ops.mesh.primitive_plane_add(size=12, location=(0, 0, 0)); g = bpy.context.object; g.is_shadow_catcher = True
-    B.camera(target=(0.1, 0.15, B.arg("--ty", 0.8)), dist=B.arg("--dist", 4.4), height=B.arg("--ch", 2.2), lens=B.arg("--lens", 52), fstop=22)
+    B.camera(target=(0.1, 0.15, B.arg("--ty", 0.82)), dist=B.arg("--dist", 4.4), height=B.arg("--ch", 3.4), lens=B.arg("--lens", 52), fstop=22)
     tmp = path.replace(".png", "_fg.png")
     B.render(tmp, size, size)
     bg = Image.new("RGB", (size, size))
