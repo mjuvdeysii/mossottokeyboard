@@ -203,13 +203,17 @@ final class KeyboardViewController: UIInputViewController {
         if !syllablePicker.isHidden, let f = keyboard.keypadSideColumn() { syllablePicker.frame = f }
         root.frame = b
         tintView.frame = b
-        candidateBar.frame = CGRect(x: 0, y: 0, width: b.width, height: barHeight)
+        // landscape on a phone with rounded corners / the Dynamic Island: keys and candidates stay inside the safe
+        // area (as on the system keyboard), the glass and tint still run edge to edge
+        let insetL = view.safeAreaInsets.left, insetR = view.safeAreaInsets.right
+        let w = b.width - insetL - insetR
+        candidateBar.frame = CGRect(x: insetL, y: 0, width: w, height: barHeight)
         // the keys reach up into the strip — 8 pt always, a little more right after a key (see KeyboardView.hitTest) —
         // never so far that a quick candidate pick lands on a key (the strip is shorter in landscape)
         let reach: CGFloat = min(14, barHeight * 0.3)
-        keyboard.frame = CGRect(x: 0, y: barHeight - reach, width: b.width, height: b.height - barHeight + reach)
+        keyboard.frame = CGRect(x: insetL, y: barHeight - reach, width: w, height: b.height - barHeight + reach)
         keyboard.topReach = reach
-        grid.frame = CGRect(x: 0, y: barHeight, width: b.width, height: b.height - barHeight)
+        grid.frame = CGRect(x: insetL, y: barHeight, width: w, height: b.height - barHeight)
         settingsPanel.frame = b
         if emojiShown { emojiPanel.frame = b }
     }

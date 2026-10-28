@@ -96,11 +96,12 @@ enum Layouts {
 
     /// Second and third keys of every bottom row: 表情 (or the system globe when the device needs it) and the 中/英
     /// switch, where the iOS and Gboard keyboards have them.
+    /// On a device that needs the globe (Home button), the globe comes first and 表情 stays beside it: emoji and the
+    /// settings (long press) are never lost to the system key.
     private static func middleKeys(_ ctx: LayoutContext) -> [KeySpec] {
-        let first = ctx.showGlobe
-            ? KeySpec(action: .globe, label: "", symbol: "globe", width: 1, style: .function)
-            : emojiKey
-        return [first, KeySpec(action: .toggleLanguage, label: ctx.chinese ? "中" : "英", width: 1, style: .function)]
+        let globe = KeySpec(action: .globe, label: "", symbol: "globe", width: 1, style: .function)
+        let lang = KeySpec(action: .toggleLanguage, label: ctx.chinese ? "中" : "英", width: 1, style: .function)
+        return ctx.showGlobe ? [globe, emojiKey, lang] : [emojiKey, lang]
     }
 
     /// As on the system keyboard: 换行 / return, the host's action (搜索, 发送…) in blue, 确认 while composing.
@@ -136,7 +137,7 @@ enum Layouts {
         bottom.append(ctx.chinese
             ? KeySpec(action: .char("，"), label: "，", width: 1, alt: "。", style: .function, moreAlts: ["？", "！", "、", "…", "："])
             : KeySpec(action: .char("."), label: ".", width: 1, alt: ",", style: .function, moreAlts: ["?", "!", "'", ":"]))
-        bottom.append(returnKey(ctx, width: 2, wide: false))
+        bottom.append(returnKey(ctx, width: ctx.showGlobe ? 1.75 : 2, wide: false))
         rows.append(bottom)
         return rows
     }
@@ -178,14 +179,14 @@ enum Layouts {
         let row2 = [p("。", "…"), k("4", "GHI"), k("5", "JKL"), k("6", "MNO"),
                     KeySpec(action: .clearInput, label: "重输", width: side, style: .function)]
         let row3 = [p("？", "！"), k("7", "PQRS"), k("8", "TUV"), k("9", "WXYZ"), returnKey(ctx, width: side, wide: true)]
-        let gear = ctx.showGlobe
-            ? KeySpec(action: .globe, label: "", symbol: "globe", width: 1, style: .function)
-            : emojiKey
-        let row4 = [KeySpec(action: .page(ctx.numberGrid ? .numpad : .numbers), label: "123", width: side, style: .function),
-                    gear,
-                    KeySpec(action: .page(.symbols), label: "符号", width: mid - 1 + 0.27, style: .function),
-                    KeySpec(action: .space, label: "空格", width: 0),
-                    KeySpec(action: .toggleLanguage, label: "中", width: side, style: .function)]
+        let gear: [KeySpec] = ctx.showGlobe
+            ? [KeySpec(action: .globe, label: "", symbol: "globe", width: 1, style: .function), emojiKey]
+            : [emojiKey]
+        let row4 = [KeySpec(action: .page(ctx.numberGrid ? .numpad : .numbers), label: "123", width: side, style: .function)]
+                    + gear
+                    + [KeySpec(action: .page(.symbols), label: "符号", width: mid - 1 + 0.27, style: .function),
+                       KeySpec(action: .space, label: "空格", width: 0),
+                       KeySpec(action: .toggleLanguage, label: "中", width: side, style: .function)]
         return [row1, row2, row3, row4]
     }
 

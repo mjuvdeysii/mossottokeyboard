@@ -28,7 +28,7 @@ enum SnapshotRenderer {
         window.frame = CGRect(x: 0, y: 0, width: width, height: 900)
         window.isHidden = false
 
-        struct Shot { let name: String; let page: KeyboardPage; let state: String; let borders: Bool; let panel: String? }
+        struct Shot { let name: String; let page: KeyboardPage; let state: String; let borders: Bool; let panel: String?; var globe = false; var land = false }
         let shots: [Shot] = [
             Shot(name: "letters_idle", page: .letters, state: "idle", borders: true, panel: nil),
             Shot(name: "letters_composing", page: .letters, state: "composing", borders: true, panel: nil),
@@ -53,14 +53,29 @@ enum SnapshotRenderer {
             Shot(name: "press_comma_numbers", page: .numbers, state: "idle", borders: true, panel: "press:，"),
             Shot(name: "emoji", page: .letters, state: "idle", borders: true, panel: "emoji"),
             Shot(name: "mosto_yawn", page: .letters, state: "idle", borders: true, panel: "yawn"),
+            // Home-button devices: the globe joins the bottom row, 表情 stays
+            Shot(name: "globe_letters", page: .letters, state: "composing", borders: true, panel: nil, globe: true),
+            Shot(name: "globe_t9", page: .letters, state: "idle", borders: true, panel: nil, globe: true),
+            Shot(name: "globe_numbers", page: .numbers, state: "idle", borders: true, panel: nil, globe: true),
+            Shot(name: "globe_numpad", page: .numpad, state: "idle", borders: true, panel: nil, globe: true),
+            // landscape (iPhone 17 Pro: 874 wide, keys inside the 62 pt safe areas)
+            Shot(name: "land_letters", page: .letters, state: "composing", borders: true, panel: nil, land: true),
+            Shot(name: "land_t9", page: .letters, state: "idle", borders: true, panel: nil, land: true),
+            Shot(name: "land_numbers", page: .numbers, state: "idle", borders: true, panel: nil, land: true),
+            Shot(name: "land_emoji", page: .letters, state: "idle", borders: true, panel: "emoji", land: true),
         ]
         // 表情 opens on 常用 when something was used: a few, as after some use
         for e in ["👍", "😭", "❤️", "🙏", "😂"] { EmojiPanelView.remember(e) }
         for night in [false, true] {
             for shot in shots {
                 // settings_full: the whole settings list at once (a tall frame), to review every section
-                let height = shot.panel == "settings_full" ? 820 : Metrics.toolbarHeight + 4 * Metrics.rowPitch
-                let root = UIView(frame: CGRect(x: 0, y: 0, width: width, height: height))
+                let barH = shot.land ? Metrics.toolbarHeightLandscape : Metrics.toolbarHeight
+                let pitch = shot.land ? Metrics.rowPitchLandscape : Metrics.rowPitch
+                let fullWidth: CGFloat = shot.land ? 874 : width
+                let inset: CGFloat = shot.land ? 62 : 0
+                let width = fullWidth - 2 * inset
+                let height = shot.panel == "settings_full" ? 820 : barH + 4 * pitch
+                let root = UIView(frame: CGRect(x: 0, y: 0, width: fullWidth, height: height))
                 root.overrideUserInterfaceStyle = night ? .dark : .light
                 // "forced": the light chosen in settings differs from the system glass underneath (日光 in a dark app,
                 // 夜灯 in a light one) — the keyboard must still read as its own light, neither glaring nor covered
@@ -74,16 +89,16 @@ enum SnapshotRenderer {
                 tint.forcedDay = forced && !night
                 root.addSubview(tint)
 
-                let bar = CandidateBarView(frame: CGRect(x: 0, y: 0, width: width, height: Metrics.toolbarHeight))
+                let bar = CandidateBarView(frame: CGRect(x: inset, y: 0, width: width, height: barH))
                 root.addSubview(bar)
                 bar.mosto.setNight(night)
                 bar.showsMosto = true
                 let kb = KeyboardView(spatial: SpatialModel.standard(width: Double(width)))
-                kb.frame = CGRect(x: 0, y: Metrics.toolbarHeight, width: width, height: 4 * Metrics.rowPitch)
+                kb.frame = CGRect(x: inset, y: barH, width: width, height: 4 * pitch)
                 root.addSubview(kb)
-                kb.configure(LayoutContext(page: shot.page, chinese: !shot.name.hasPrefix("en_"), showGlobe: false, returnLabel: nil,
+                kb.configure(LayoutContext(page: shot.page, chinese: !shot.name.hasPrefix("en_"), showGlobe: shot.globe, returnLabel: nil,
                                            returnIsAccent: false, shifted: shot.state == "shift", capsLock: false,
-                                           keyBorders: shot.borders, pinyinGrid: shot.name.hasPrefix("t9")))
+                                           keyBorders: shot.borders, pinyinGrid: shot.name.hasPrefix("t9") || shot.name.hasSuffix("_t9")))
                 let composing = candidates(["你好", "尼好", "泥好", "拟好", "你", "尼", "泥", "拟", "逆", "腻", "nihc"], correctedFirst: true)
                 switch shot.state {
                 case "composing": bar.update(preedit: "ni hao", candidates: composing)
