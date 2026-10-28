@@ -6,6 +6,20 @@ import UIKit
 /// Static (no motion), faint, and always under the keys, so it never competes with the legends.
 final class AmbientLightView: UIView {
     private let glow = CAGradientLayer()
+    /// Holds the glow: it fades with Mosto (the light is his; while candidates fill the strip he is away, so is it).
+    private let lamp = CALayer()
+    var lampLit = true {
+        didSet {
+            guard lampLit != oldValue else { return }
+            let to: Float = lampLit ? 1 : 0
+            let a = CABasicAnimation(keyPath: "opacity")
+            a.fromValue = lamp.presentation()?.opacity ?? lamp.opacity
+            a.toValue = to
+            a.duration = lampLit ? 0.5 : 0.15
+            lamp.opacity = to
+            lamp.add(a, forKey: "lit")
+        }
+    }
     /// The tint fades out at the top and bottom edges, so it melts into the system glass around the keyboard
     /// (the glass above the strip and the globe row below) instead of sitting on it as a box.
     private let edgeFade = CAGradientLayer()
@@ -22,7 +36,8 @@ final class AmbientLightView: UIView {
         super.init(frame: frame)
         isUserInteractionEnabled = false
         glow.type = .radial
-        layer.addSublayer(glow)
+        lamp.addSublayer(glow)
+        layer.addSublayer(lamp)
         edgeFade.colors = [UIColor.clear.cgColor, UIColor.black.cgColor, UIColor.black.cgColor, UIColor.clear.cgColor]
         layer.mask = edgeFade
         refresh()
@@ -44,6 +59,7 @@ final class AmbientLightView: UIView {
             : !night && forcedDay ? Theme.forcedDayTint : Theme.glassTint
         guard bounds.width > 0, bounds.height > 0 else { return }
         CATransaction.begin(); CATransaction.setDisableActions(true)
+        lamp.frame = bounds
         glow.frame = bounds
         edgeFade.frame = bounds
         edgeFade.locations = [0, NSNumber(value: Double(min(0.2, 22 / bounds.height))), NSNumber(value: Double(max(0.8, 1 - 16 / bounds.height))), 1]

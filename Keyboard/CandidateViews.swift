@@ -86,9 +86,13 @@ final class CandidateBarView: UIView {
         didSet { if typing != oldValue { setMosto(!typing && candidates.isEmpty && showsMosto) } }
     }
 
+    /// Mosto is (about to be) shown or put away — his night light follows him.
+    var onMostoShown: ((Bool) -> Void)?
+
     private func setMosto(_ on: Bool) {
         guard on != mostoWanted else { return }
         mostoWanted = on
+        onMostoShown?(on)
         mostoTimer?.invalidate(); mostoTimer = nil
         guard on else { mosto.layer.removeAllAnimations(); mosto.isHidden = true; return }
         // not on screen yet (the keyboard is being set up): simply there

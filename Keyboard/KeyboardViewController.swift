@@ -150,6 +150,7 @@ final class KeyboardViewController: UIInputViewController {
         keyboard.onKeyDown = { [weak self] action in self?.playFeedback(action) }
 
         candidateBar.onSelect = { [weak self] i in self?.candidateTapped(i) }
+        candidateBar.onMostoShown = { [weak self] on in self?.tintView.lampLit = on }
         syllablePicker.isHidden = true
         keyboard.addSubview(syllablePicker)
         keyboard.overlay = syllablePicker
