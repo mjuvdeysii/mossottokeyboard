@@ -16,7 +16,7 @@
 | 外观 | 自动（跟随系统浅色 / 深色，以及要求深色键盘的输入框，如聚焦搜索）、日光（系统键盘原样）、夜灯（深夜蓝，Mosto 在候选栏左边亮起金光） |
 | 纯净 | 不做联想、不做滑行输入：只出当前按键的候选，最后一个候选始终是输入的字母原文 |
 | 输入方案 | 小鹤双拼与全拼（含简拼、半截音节），设置里切换；两种方案都按触点自动纠错 |
-| 词库 | 雾凇拼音 rime-ice 的基础、扩展与腾讯词库共 187 万条（含常用短语，如“收货地址”“打疫苗”）。基准（125 句日常短句，键位全对时首选整句命中）：74% → 85%；九宫格全拼整句 55% → 67%。词库文件按首音节、次音节排序，查词靠二分查找，不在内存里建索引 |
+| 词库与语言模型 | 雾凇拼音 rime-ice 的基础、扩展与腾讯词库共 187 万条；加上 Rime 八股文语言模型（[rime-octagram-data](https://github.com/lotem/rime-octagram-data)，LGPL-3.0），按前后文判断哪些词常连在一起（收货地址、再便宜、打疫苗），句首的词也参考输入框里光标前的字。基准（305 句日常短句，其中 180 句只用于检验、不参与调参）：键位全对时整句首选命中 小鹤 85.9%、全拼 86.2%（不用语言模型时 79%）；带触点误差 σ=0.22 时整句命中 81–84%；九宫格全拼整句 66%、小鹤前三 59% |
 | 九宫格 | 中文键盘可选九宫格（1 分词、2 ABC … 9 WXYZ；左列 ，。？——打字时换成拼音选择列，点一下即定下对应几个键；右列删除、重输、换行），小鹤双拼与全拼都能用；每个键代表它上面的几个字母，由词库判断。基准（键位全对时首选命中）：全拼 词 66%、句 67%；小鹤双拼 词 49%、句 40%（双拼在九宫格上一键对应的音节多，歧义大） |
 | 英文 | 英文模式按触点自动纠错并给出候选（3.9 万词）：错位、漏字母、多按一键、相邻两字母颠倒都能纠（teh → the、thnaks → thanks），dont → don't、im → I'm；空格或标点时替换，紧接着按删除可撤回。基准（σ=0.22 触点噪声）：照打原样 83.5% → 纠错后 99.1%，正确拼写的词 99.9% 不被改动 |
 | 中英混输 | 中文模式下直接打完整的英文词：ok → OK、ios → iOS、iphone → iPhone、github → GitHub（不做前缀补全）；按词频和中文读法比较排序，de、he、me 等仍然先出中文。英文词表来自 [wordfreq](https://github.com/rspeer/wordfreq)（CC BY-SA 4.0），约 3.9 万词 |
@@ -77,6 +77,10 @@ swiftc -O Engine/*.swift EngineCLI/main.swift -o /tmp/engine
 # 词库：rime-ice cn_dicts 的 8105、base、ext 与 tencent（tencent 只有文字，先用 pypinyin 注音）
 python3 Tools/tencent_pinyin.py tencent.dict.yaml tencent_py.dict.yaml     # 需 pip install pypinyin（MIT）
 python3 Tools/build_lexicon.py 8105.dict.yaml base.dict.yaml ext.dict.yaml tencent_py.dict.yaml -o Keyboard/Resources/lexicon.bin
+# 语言模型：rime-octagram-data（hans 分支）的 zh-hans-t-essay-bgw.gram，原样复制
+cp zh-hans-t-essay-bgw.gram Keyboard/Resources/grammar.gram
+# 英文词表：Tools/data/english.txt（Tools/build_english.py 生成）→ 内存映射的二进制
+python3 Tools/build_english_bin.py
 # 增删源文件后重新生成 Xcode 工程
 python3 Tools/gen_xcodeproj.py
 ```

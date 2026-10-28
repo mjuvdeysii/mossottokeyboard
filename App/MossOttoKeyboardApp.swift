@@ -221,6 +221,8 @@ struct AboutView: View {
                 Card(title: "开源许可") {
                     License(name: "雾凇拼音 rime-ice（中文词库）", license: "GPL-3.0", url: "https://github.com/iDvel/rime-ice")
                     Divider()
+                    License(name: "八股文 rime-octagram-data（语言模型：哪些词常连在一起）", license: "LGPL-3.0", url: "https://github.com/lotem/rime-octagram-data")
+                    Divider()
                     License(name: "wordfreq（英文词频，中英混输）", license: "数据 CC BY-SA 4.0", url: "https://github.com/rspeer/wordfreq")
                     Divider()
                     License(name: "Emojibase（表情列表与分类）", license: "MIT", url: "https://github.com/milesj/emojibase")

@@ -33,6 +33,13 @@ if let v = env["WP"].flatMap(Double.init) { decoder.wordPenalty = v }
 if env["SCHEME"] == "quanpin" { decoder.scheme = .quanpin }
 if let v = env["ABBR"].flatMap(Double.init) { decoder.abbreviationPenalty = v }
 if let v = env["UW"].flatMap(Double.init) { decoder.userWeight = v }
+// language model: grammar.gram next to the lexicon (GRAMMAR=path overrides, GRAMMAR=0 turns it off; GW weight)
+if env["GRAMMAR"] != "0" {
+    let gp = env["GRAMMAR"] ?? (args[1] as NSString).deletingLastPathComponent + "/grammar.gram"
+    decoder.grammar = try? Grammar(path: gp)
+}
+if let v = env["GW"].flatMap(Double.init) { decoder.grammarWeight = v }
+if let v = env["GCF"].flatMap(Double.init) { decoder.grammarCorrectedFactor = v }
 if let v = env["UC"].flatMap(Double.init) { decoder.userCap = v }
 if let v = env["UP"].flatMap(Double.init) { decoder.userPhraseScore = v }
 if let v = env["UB"].flatMap(Double.init) { decoder.userWordBoost = v }
@@ -119,7 +126,10 @@ case "bench", "gate":
     pool.sort { $0.1 != $1.1 ? $0.1.lexicographicallyPrecedes($1.1) : $0.0 < $1.0 }
     for _ in 0..<1500 { items.append(pool[Int(rng.next() * Double(pool.count))]) }
     // Everyday sentences with pinyin (EngineCLI/sentences.tsv, generated with pypinyin and spot-checked).
-    let tsv = (try? String(contentsOfFile: env["SENTENCES"] ?? "EngineCLI/sentences.tsv", encoding: .utf8)) ?? ""
+    // two sets: the first written while tuning, the second (180 sentences of chat, work, shopping, children, travel)
+    // kept apart and only measured — together they are the gate's sentences
+    let files = (env["SENTENCES"] ?? "EngineCLI/sentences.tsv,EngineCLI/sentences2.tsv").split(separator: ",")
+    let tsv = files.compactMap { try? String(contentsOfFile: String($0), encoding: .utf8) }.joined(separator: "\n")
     let sentences: [(String, String)] = tsv.split(separator: "\n").compactMap { line in
         let parts = line.split(separator: "\t")
         return parts.count == 2 ? (String(parts[0]), String(parts[1])) : nil
@@ -155,8 +165,8 @@ case "bench", "gate":
         for sg in sigmas {
             var rng2 = RNG(s: 7)
             var tapErr = 0, tapTotal = 0
-            var offOK = 0, onOK = 0, onTop3 = 0, harmed = 0, cleanItems = 0, fixed = 0, noisyItems = 0
-            for (k, (_, ids)) in set.enumerated() {
+            var offOK = 0, onOK = 0, onTop3 = 0, harmed = 0, cleanItems = 0, fixed = 0, noisyItems = 0, onTrue = 0
+            for (k, (intended, ids)) in set.enumerated() {
                 let letters = codeLetters(ids)
                 let taps = noisyTaps(letters, sigmaX: sg, sigmaY: sg * 0.9, rng: &rng2)
                 let wrong = zip(taps, letters).filter { $0.0.key != $0.1 }.count
@@ -167,7 +177,10 @@ case "bench", "gate":
                 let onR = decoder.decode(taps).candidates
                 let on = onR.first?.text ?? ""
                 if off == refs[k] { offOK += 1 }
-                if on == refs[k] { onOK += 1 }
+                if on == intended { onTrue += 1 }
+                if on == refs[k] { onOK += 1 } else if env["NOISY_DEBUG"] != nil, name == "sentences" {
+                    print("   ", refs[k], "→", on, "| typed", String(taps.map { $0.key }), wrong > 0 ? "(\(wrong) wrong)" : "(clean)")
+                }
                 if onR.prefix(3).contains(where: { $0.text == refs[k] }) { onTop3 += 1 }
                 if wrong == 0 { cleanItems += 1; if on != refs[k] { harmed += 1 } }
                 else { noisyItems += 1; if on == refs[k] { fixed += 1 } }
@@ -175,6 +188,8 @@ case "bench", "gate":
             let n = Double(set.count)
             if abs(sg - 0.22) < 1e-9 {
                 metrics["\(name).on"] = 100 * Double(onOK) / n
+                metrics["\(name).true"] = 100 * Double(onTrue) / n
+                print(String(format: "   (σ=0.22, correction on, top1 == intended text: %.1f%%)", 100 * Double(onTrue) / n))
                 metrics["\(name).broken"] = 100 * Double(harmed) / Double(max(cleanItems, 1))
             }
             print(String(format: "touch σ=%.2f key | key error rate %.1f%% | top1 correction OFF %.1f%%  ON %.1f%% | ON top3 %.1f%% | items with mistyped keys recovered %d/%d | clean items broken by correction %d/%d",
@@ -310,14 +325,15 @@ case "bench", "gate":
         let floors: [(String, Double, Bool)] = decoder.scheme == .xiaohe ? [
             ("words.on", 96.0, true),          // σ=0.22 touch noise, correction on, top-1 (%)
             ("words.broken", 1.0, false),      // clean words changed by correction (%) — at most
-            ("sentences.perfect", 80.0, true), // perfect keys, top-1 equals the intended sentence (%)
+            ("sentences.perfect", 83.0, true), // perfect keys, top-1 equals the intended sentence (%)
             ("sentences.on", 90.0, true),
+            ("sentences.true", 78.0, true),    // σ=0.22 touch noise, correction on, top-1 equals the intended sentence (%)
             ("words.ms", 3.0, false),          // average decode time (ms) — at most
             ("en.kept", 99.0, true),            // English: correctly typed words left alone (%)
             ("en.on", 97.0, true),              // English: σ=0.22 touch noise, what space types is the word (%)
             ("en.top3", 98.0, true),            // English: the word among the first three suggestions (%)
             ("t9.words.top1", 47.0, true),     // 九宫格 (each key = its 3–4 letters), perfect keys
-            ("t9.sentences.top3", 45.0, true),
+            ("t9.sentences.top3", 55.0, true),
             ("t9.sentences.ms", 20.0, false),
             ("learn.same", 95.0, true),        // sentences typed again after picking them once (%)
             ("adapt.after", 78.0, true),       // off-centre thumbs, unseen words after 1000 words of use (%)
@@ -325,8 +341,9 @@ case "bench", "gate":
         ] : [
             ("words.on", 97.0, true),
             ("words.broken", 1.0, false),
-            ("sentences.perfect", 80.0, true),
+            ("sentences.perfect", 83.0, true),
             ("sentences.on", 92.0, true),
+            ("sentences.true", 80.0, true),
             ("sentences.ms", 16.0, false),     // CI runners vary 2–5× (1.2 ms locally)
             ("t9.words.top1", 63.0, true),
             ("t9.sentences.top1", 62.0, true),

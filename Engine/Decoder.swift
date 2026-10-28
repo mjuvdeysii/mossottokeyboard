@@ -38,7 +38,7 @@ public final class Decoder {
     public var correctionEnabled = true
     public var spatialWeight = 1.0
     public var correctionPenalty = 1.5
-    public var wordPenalty = 22.0
+    public var wordPenalty = 26.0   // with the language model (each word also pays its non-collocation cost)
     /// What learning adds. A word the lexicon has gets its own frequency plus  userWeight·ln(1 + times picked),
     /// at most `userCap` (a single character at most a quarter of it) — so picking 得 once in 过得 lifts 得 a little
     /// without pushing 的 out of every other sentence. A phrase of the user's own (not in the lexicon) starts from
@@ -52,6 +52,15 @@ public final class Decoder {
     /// 中英混输: English words for the typed letters, ranked against the Chinese readings by frequency.
     public var english: EnglishLexicon?
     public var englishEnabled = true
+    /// Which words go together (Rime octagram language model): each word of a sentence is scored against the text
+    /// before it — inside the sentence, and for its first word the text already in the field (`leftContext`).
+    public var grammar: Grammar?
+    public var grammarWeight = 1.0
+    /// The language model weighs less on a word whose keys were corrected: it chooses between words the keys spell,
+    /// it does not talk the keyboard into changing keys to make a likelier phrase.
+    public var grammarCorrectedFactor = 0.5
+    /// The text just before the cursor (a few characters), so the first word is also read in context.
+    public var leftContext: [Character] = []
     /// Cost of reading the letters as English in Chinese mode (English is the less likely intent there).
     public var englishPenalty = 3.0
     /// Extra cost of a completion (the word is longer than what was typed).
@@ -445,6 +454,27 @@ public final class Decoder {
 
         // K-best Viterbi over the word lattice (once unrestricted, once literal-only)
         struct Path { var score: Double; var edges: [Int]; var corrected: Bool }
+        // the characters of each edge's word, decoded once (the language model reads them for every transition)
+        var edgeChars = [[Character]?](repeating: nil, count: edges.count)
+        func chars(_ ei: Int) -> [Character] {
+            if let c = edgeChars[ei] { return c }
+            let e = edges[ei]
+            let c = Array(e.userText ?? lexicon.text(lexicon.entry(e.entry)))
+            edgeChars[ei] = c
+            return c
+        }
+        /// The language-model score of word `ei` after the words of `prev` (or after the text in the field).
+        func link(_ prev: [Int], _ ei: Int) -> Double {
+            guard let grammar else { return 0 }
+            var ctx: [Character] = []
+            var k = prev.count - 1
+            while ctx.count < 3 && k >= 0 { ctx.insert(contentsOf: chars(prev[k]), at: 0); k -= 1 }
+            if ctx.count < 3 { ctx.insert(contentsOf: leftContext.suffix(3 - ctx.count), at: 0) }
+            let q = grammar.query(context: Array(ctx.suffix(3)), word: chars(ei))
+            // a corrected word keeps the same baseline but only part of the lift above it
+            let base = grammar.nonCollocationPenalty
+            return grammarWeight * (edges[ei].corrected ? base + grammarCorrectedFactor * (q - base) : q)
+        }
         func bestPaths(literalOnly: Bool) -> [Path] {
             var paths = [[Path]](repeating: [], count: n + 1)
             paths[0] = [Path(score: 0, edges: [], corrected: false)]
@@ -454,7 +484,8 @@ public final class Decoder {
                     let e = edges[ei]
                     if literalOnly && e.corrected { continue }
                     for p in paths[e.start] {
-                        cands.append(Path(score: p.score + e.score, edges: p.edges + [ei], corrected: p.corrected || e.corrected))
+                        cands.append(Path(score: p.score + e.score + link(p.edges, ei), edges: p.edges + [ei],
+                                          corrected: p.corrected || e.corrected))
                     }
                 }
                 cands.sort { $0.score > $1.score }
@@ -486,7 +517,7 @@ public final class Decoder {
         let full = bestPaths(literalOnly: false)
         var fullCands = full.map { p in (p.edges.map { edges[$0] }, p.corrected, p.score) }
         for ei in ending[n] where edges[ei].start == 0 {
-            fullCands.append(([edges[ei]], edges[ei].corrected, edges[ei].score))
+            fullCands.append(([edges[ei]], edges[ei].corrected, edges[ei].score + link([], ei)))
         }
         fullCands.sort { $0.2 > $1.2 }
 

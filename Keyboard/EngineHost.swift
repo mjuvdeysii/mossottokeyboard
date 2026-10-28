@@ -18,7 +18,7 @@ final class EngineHost {
     private var userDict: UserDictionary?
 
     /// Load the lexicon, the learned words and the English list (memory-mapped files: quick, and off the main thread).
-    func load(lexiconPath: String?, englishPath: String?, userDictURL: URL?) {
+    func load(lexiconPath: String?, englishPath: String?, grammarPath: String?, userDictURL: URL?) {
         queue.async {
             guard let path = lexiconPath, let lex = try? Lexicon(path: path) else { return }
             self.lexicon = lex
@@ -26,8 +26,15 @@ final class EngineHost {
             self.userDict = ud
             let d = Decoder(lexicon: lex, user: ud)
             if let ep = englishPath { d.english = try? EnglishLexicon(path: ep) }
+            if let gp = grammarPath { d.grammar = try? Grammar(path: gp) }
             self.decoder = d
         }
+    }
+
+    /// The text just before the cursor (the language model reads the first word in its context).
+    func setContext(_ text: String) {
+        let ctx = Array(text.suffix(3))
+        queue.async { self.decoder?.leftContext = ctx }
     }
 
     /// Settings that change how keys are read (applied in order with the decodes).

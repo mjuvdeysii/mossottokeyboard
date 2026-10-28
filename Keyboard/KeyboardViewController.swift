@@ -284,6 +284,7 @@ final class KeyboardViewController: UIInputViewController {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
         let ep = Bundle.main.path(forResource: "english", ofType: "bin")
         engine.load(lexiconPath: Bundle.main.path(forResource: "lexicon", ofType: "bin"), englishPath: ep,
+                    grammarPath: Bundle.main.path(forResource: "grammar", ofType: "gram"),
                     userDictURL: dir?.appendingPathComponent("userdict.json"))
         // English mode reads the same file (read-only, safe to share between threads)
         if let ep, let en = try? EnglishLexicon(path: ep) { english = EnglishDecoder(lexicon: en) }
@@ -479,6 +480,7 @@ final class KeyboardViewController: UIInputViewController {
         case .t9(let d):
             // 九宫格: each key stands for its letters; 分词 only splits syllables inside a composition
             guard d != "'" || !taps.isEmpty else { return }
+            if taps.isEmpty { engine.setContext(textDocumentProxy.documentContextBeforeInput ?? "") }
             lastInsertedSpace = false
             taps.append(Tap.t9(d))
             refresh()
@@ -495,6 +497,8 @@ final class KeyboardViewController: UIInputViewController {
     private func letter(_ s: String, tap: Tap) {
         lastInsertedSpace = false
         if chinese && !(shifted || capsLock) {
+            // a new composition: the words are read in the context of the text before the cursor
+            if taps.isEmpty { engine.setContext(textDocumentProxy.documentContextBeforeInput ?? "") }
             taps.append(tap)
             refresh()
             return
@@ -774,6 +778,7 @@ final class KeyboardViewController: UIInputViewController {
             for (tap, key) in zip(taps.prefix(c.tapCount), c.intendedKeys) { spatial.observe(tap: tap, intended: key) }
         }
         taps.removeFirst(min(c.tapCount, taps.count))
+        if !taps.isEmpty { engine.setContext(committedParts.map { $0.text }.joined().isEmpty ? c.text : committedParts.map { $0.text }.joined()) }
         if taps.isEmpty {
             engine.learn(parts: committedParts)
             clearComposition()
