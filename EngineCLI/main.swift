@@ -340,6 +340,8 @@ case "bench", "gate":
             ("learn.same", 95.0, true),        // sentences typed again after picking them once (%)
             ("adapt.after", 78.0, true),       // off-centre thumbs, unseen words after 1000 words of use (%)
             ("learn.harm", 1.0, false),        // unseen sentences made worse by what was learned (points) — at most
+            ("fuzz.bad", 0.0, false),          // random input: candidates that use no keys, too many, or have no text
+            ("fuzz.worst.ms", 120.0, false),   // random input: the slowest single decode (ms) — at most
         ] : [
             ("words.on", 97.0, true),
             ("words.broken", 1.0, false),
@@ -352,6 +354,8 @@ case "bench", "gate":
             ("t9.sentences.ms", 150.0, false),
             ("learn.same", 95.0, true),
             ("learn.harm", 1.0, false),
+            ("fuzz.bad", 0.0, false),
+            ("fuzz.worst.ms", 300.0, false),
         ]
         print("scheme:", decoder.scheme == .xiaohe ? "小鹤双拼" : "全拼")
         var failed = false
@@ -372,6 +376,51 @@ case "bench", "gate":
             let ok = bad.isEmpty
             print(ok ? "PASS mixed.top1 \(mixed.count)/\(mixed.count)" : "FAIL mixed.top1 " + bad.joined(separator: " "))
             if !ok { failed = true }
+        }
+        // Fuzz: random keys, separators, 九宫格 mixes and long runs. Every decode must give candidates that each
+        // use 1…n keys and have text, committing the first candidate over and over must use up all keys, and the
+        // slowest decode must stay quick enough to keep up with typing.
+        do {
+            var rng = RNG(s: 7)
+            let letters = Array("abcdefghijklmnopqrstuvwxyz")
+            var bad: [String] = []
+            var worst = 0.0, worstInput = ""
+            decoder.correctionEnabled = true
+            for i in 0..<1500 {
+                let n = i < 1400 ? 1 + Int(rng.next() * 16) : 24 + Int(rng.next() * 17)
+                var taps: [Tap] = []
+                for _ in 0..<n {
+                    let r = rng.next()
+                    if r < 0.05 { taps.append(Tap(key: "'", alternatives: [])) }
+                    else if r < 0.25 { taps.append(Tap.t9(Character(String(2 + Int(rng.next() * 8))))) }
+                    else {
+                        let c = letters[Int(rng.next() * 26)]
+                        taps.append(r < 0.6 ? Tap.exact(c) : noisyTaps(String(c), sigmaX: 0.3, sigmaY: 0.27, rng: &rng)[0])
+                    }
+                }
+                let raw = String(taps.map { $0.key })
+                var rest = taps, rounds = 0
+                while !rest.isEmpty && rounds <= taps.count {
+                    let t0 = Date()
+                    let r = decoder.decode(rest)
+                    if rest.contains(where: { $0.group }) { _ = decoder.t9SyllableChoices(rest) }
+                    let ms = Date().timeIntervalSince(t0) * 1000
+                    if ms > worst { worst = ms; worstInput = String(rest.map { $0.key }) }
+                    if let c = r.candidates.first(where: { $0.tapCount < 1 || $0.tapCount > rest.count || $0.text.isEmpty }) {
+                        bad.append("\(raw): \(c.text)/\(c.tapCount)"); break
+                    }
+                    // what the keyboard commits: the first candidate, or the keys as typed when there is none
+                    guard let first = r.candidates.first else { break }
+                    rest.removeFirst(first.tapCount)
+                    rounds += 1
+                }
+                if !rest.isEmpty && rounds > taps.count { bad.append("\(raw): no progress") }
+                if bad.count >= 5 { break }
+            }
+            metrics["fuzz.bad"] = Double(bad.count)
+            metrics["fuzz.worst.ms"] = worst
+            print(String(format: "== fuzz: 1500 inputs, invalid %d, slowest decode %.1f ms (%@)", bad.count, worst, worstInput))
+            for b in bad { print("   ", b) }
         }
         for (k, v, atLeast) in floors {
             let m = metrics[k] ?? .nan
