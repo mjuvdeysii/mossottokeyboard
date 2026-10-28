@@ -96,8 +96,8 @@ final class CandidateBarView: UIView {
         let h = bounds.height
         let preH: CGFloat = showsPreedit ? min(20, h * 0.3) : 0
         preedit.frame = CGRect(x: 10, y: 2, width: bounds.width - 20, height: preH)
-        let ms = min(h - 12, 46)
-        mosto.frame = CGRect(x: 10, y: (h - ms) / 2 + 2, width: ms, height: ms)
+        let ms = min(h - 4, 52)
+        mosto.frame = CGRect(x: 8, y: (h - ms) / 2 + 2, width: ms, height: ms)
         let rowY = preH
         let rowH = h - preH
         expandButton.frame = CGRect(x: bounds.width - 44, y: rowY, width: 44, height: rowH)

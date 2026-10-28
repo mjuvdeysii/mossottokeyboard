@@ -108,10 +108,11 @@ enum Layouts {
 
     /// As on the system keyboard: 换行 / return, the host's action (搜索, 发送…) in blue, 确认 while composing.
     private static func returnKey(_ ctx: LayoutContext, width: CGFloat, wide: Bool) -> KeySpec {
+        // always Mosto's crown gold: the one key every message ends on
         if let l = ctx.returnLabel {
-            return KeySpec(action: .ret, label: l, width: width, style: ctx.returnIsAccent ? .accent : .function)
+            return KeySpec(action: .ret, label: l, width: width, style: .accent)
         }
-        return KeySpec(action: .ret, label: ctx.chinese ? "换行" : "return", width: width, style: .function)
+        return KeySpec(action: .ret, label: ctx.chinese ? "换行" : "return", width: width, style: .accent)
     }
 
     private static func letters(_ ctx: LayoutContext) -> [[KeySpec]] {

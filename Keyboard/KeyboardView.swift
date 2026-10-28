@@ -18,6 +18,7 @@ final class KeyView: UIView {
                 self.label.alpha = a; self.hintLabel.alpha = a; self.icon.alpha = a
             }
             wings.isHidden = blanked || spec.action != .space
+            crown.isHidden = blanked || spec.action != .toggleLanguage
         }
     }
 
@@ -25,6 +26,7 @@ final class KeyView: UIView {
     private let lip = CALayer()
     private let face = CAGradientLayer()
     private let wings = CAShapeLayer()
+    private let crown = CAShapeLayer()
 
     init(spec: KeySpec, borders: Bool) {
         self.spec = spec
@@ -37,6 +39,10 @@ final class KeyView: UIView {
         layer.addSublayer(lip)
         layer.addSublayer(face)
         layer.addSublayer(wings)
+        crown.path = Self.crownPath()
+        crown.lineJoin = .round
+        crown.lineWidth = 1
+        layer.addSublayer(crown)
         label.textAlignment = .center
         label.adjustsFontSizeToFitWidth = true
         label.minimumScaleFactor = 0.5
@@ -132,6 +138,8 @@ final class KeyView: UIView {
         face.colors = [top.resolvedColor(with: t).cgColor, bottom.resolvedColor(with: t).cgColor]
         lip.backgroundColor = under.resolvedColor(with: t).cgColor
         wings.fillColor = Theme.wing.resolvedColor(with: t).cgColor
+        crown.fillColor = Theme.accentKey.resolvedColor(with: t).cgColor
+        crown.strokeColor = Theme.accentLip.resolvedColor(with: t).cgColor
         CATransaction.commit()
         backgroundColor = .clear
         label.textColor = fg
@@ -165,6 +173,14 @@ final class KeyView: UIView {
         } else {
             wings.isHidden = true
         }
+        if spec.action == .toggleLanguage, !blanked {
+            crown.isHidden = false
+            crown.bounds = CGRect(x: 0, y: 0, width: 15, height: 9)
+            crown.position = CGPoint(x: f.maxX - 9, y: f.minY + 1)
+            crown.setAffineTransform(CGAffineTransform(rotationAngle: 0.30))
+        } else {
+            crown.isHidden = true
+        }
         CATransaction.commit()
         let o = cjkPunctuationOffset(label.text, fontSize: label.font.pointSize)
         label.frame = f.insetBy(dx: 2, dy: 0).offsetBy(dx: o.x, dy: o.y)
@@ -173,22 +189,39 @@ final class KeyView: UIView {
         hintLabel.frame = CGRect(x: f.maxX - 16, y: f.minY + 2, width: 12, height: 13)
     }
 
-    /// Mosto's two little bat wings at the ends of the space bar, tips outwards, scalloped below.
+    /// Mosto's two little bat wings at the ends of the space bar: a curved arm out to the tip, three scalloped
+    /// fingers below, tips outwards.
     static func wingsPath(in size: CGSize) -> CGPath {
-        let w: CGFloat = 20, h: CGFloat = 11, inset: CGFloat = 12
+        let w: CGFloat = 24, h: CGFloat = 13, inset: CGFloat = 12
         let y = (size.height - h) / 2 + 1
         let p = UIBezierPath()
         func wing(_ x0: CGFloat, _ dir: CGFloat) {
             func pt(_ x: CGFloat, _ yy: CGFloat) -> CGPoint { CGPoint(x: x0 + dir * x, y: y + yy) }
-            p.move(to: pt(0, 3))
-            p.addQuadCurve(to: pt(w, 0), controlPoint: pt(w * 0.5, -2.5))
-            p.addQuadCurve(to: pt(w * 0.68, h * 0.62), controlPoint: pt(w * 0.92, h * 0.66))
-            p.addQuadCurve(to: pt(w * 0.36, h * 0.72), controlPoint: pt(w * 0.52, h * 0.42))
-            p.addQuadCurve(to: pt(0, h), controlPoint: pt(w * 0.16, h * 0.52))
+            p.move(to: pt(0, 4))
+            p.addQuadCurve(to: pt(w, 0), controlPoint: pt(w * 0.45, -2))            // the arm
+            p.addQuadCurve(to: pt(w * 0.84, h * 0.80), controlPoint: pt(w * 0.98, h * 0.45))
+            p.addQuadCurve(to: pt(w * 0.52, h), controlPoint: pt(w * 0.70, h * 0.48))  // scallop, finger
+            p.addQuadCurve(to: pt(w * 0.22, h * 0.86), controlPoint: pt(w * 0.38, h * 0.50))
+            p.addQuadCurve(to: pt(0, h * 0.66), controlPoint: pt(w * 0.08, h * 0.56))
             p.close()
         }
         wing(size.width - inset - w, 1)   // right wing, tip to the right
         wing(inset + w, -1)               // left wing, tip to the left
+        return p.cgPath
+    }
+
+    /// Mosto's crown, worn askew on the 中 / 英 key: three points, matte gold, tilted, peeking over the top edge.
+    static func crownPath() -> CGPath {
+        let w: CGFloat = 15, h: CGFloat = 9
+        let p = UIBezierPath()
+        p.move(to: CGPoint(x: 0, y: h))
+        p.addLine(to: CGPoint(x: 0.5, y: 2.5))
+        p.addLine(to: CGPoint(x: w * 0.27, y: h * 0.55))
+        p.addLine(to: CGPoint(x: w * 0.5, y: 0))
+        p.addLine(to: CGPoint(x: w * 0.73, y: h * 0.55))
+        p.addLine(to: CGPoint(x: w - 0.5, y: 2.5))
+        p.addLine(to: CGPoint(x: w, y: h))
+        p.close()
         return p.cgPath
     }
 
@@ -211,13 +244,19 @@ func cjkPunctuationOffset(_ text: String?, fontSize: CGFloat) -> CGPoint {
 final class KeyPreview: UIView {
     let label = UILabel()
     private let shape = CAShapeLayer()
+    /// Mosto's two cream horns on the balloon's top corners.
+    private let horns = CAShapeLayer()
     private var capRect: CGRect = .zero
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         isUserInteractionEnabled = false
         backgroundColor = .clear
+        layer.addSublayer(horns)
         layer.addSublayer(shape)
+        horns.fillColor = Theme.cream.cgColor
+        horns.strokeColor = Theme.hex(0xC9A86A).cgColor
+        horns.lineWidth = 0.8
         shape.shadowColor = Theme.deepViolet.cgColor
         shape.shadowOpacity = 0.30
         shape.shadowRadius = 3
@@ -268,6 +307,8 @@ final class KeyPreview: UIView {
         shape.shadowPath = p.cgPath
         shape.fillColor = Theme.bubble.resolvedColor(with: traitCollection).cgColor
         shape.strokeColor = Theme.bubbleLip.resolvedColor(with: traitCollection).cgColor
+        horns.frame = bounds
+        horns.path = Self.hornsPath(cap)
         CATransaction.commit()
         setNeedsLayout()
     }
@@ -282,6 +323,24 @@ final class KeyPreview: UIView {
         super.traitCollectionDidChange(previous)
         shape.fillColor = Theme.bubble.resolvedColor(with: traitCollection).cgColor
         shape.strokeColor = Theme.bubbleLip.resolvedColor(with: traitCollection).cgColor
+    }
+
+    /// Two small curled horns rising from the balloon's shoulders, out then up (as on Mosto's head); their bases
+    /// tuck under the balloon.
+    static func hornsPath(_ cap: CGRect) -> CGPath {
+        let p = UIBezierPath()
+        let base: CGFloat = 8, rise: CGFloat = 9
+        for dir: CGFloat in [-1, 1] {
+            let cx = dir < 0 ? cap.minX + 13 : cap.maxX - 13
+            let b0 = CGPoint(x: cx - base / 2, y: cap.minY + 4), b1 = CGPoint(x: cx + base / 2, y: cap.minY + 4)
+            let tip = CGPoint(x: cx + dir * 5, y: cap.minY - rise)
+            let outer = dir < 0 ? b0 : b1, inner = dir < 0 ? b1 : b0
+            p.move(to: inner)
+            p.addQuadCurve(to: tip, controlPoint: CGPoint(x: inner.x + dir * 1, y: cap.minY - rise * 0.5))
+            p.addQuadCurve(to: outer, controlPoint: CGPoint(x: outer.x + dir * 4, y: cap.minY - rise * 0.2))
+            p.close()
+        }
+        return p.cgPath
     }
 }
 
