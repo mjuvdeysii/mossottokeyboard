@@ -28,13 +28,24 @@ final class EngineHost {
     private var lexicon: Lexicon?
     private var decoder: Decoder?
     private var userDict: UserDictionary?
+    /// 表情联想: words → emoji (Unicode CLDR's Chinese annotations; Tools/build_emoji_hints.py)
+    private var emojiHints: [String: [String]] = [:]
 
     /// Load the lexicon, the learned words and the English list (memory-mapped files: quick, and off the main thread).
     /// `safe`: after launches that ended early (a crash, or iOS ending the keyboard while it was starting), the
     /// keyboard starts with the lexicon and learned words only — no language model, no English — so it stays up
     /// rather than iOS falling back to the system keyboard again.
-    func load(lexiconPath: String?, englishPath: String?, grammarPath: String?, userDictURL: URL?, safe: Bool = false) {
+    func load(lexiconPath: String?, englishPath: String?, grammarPath: String?, userDictURL: URL?, safe: Bool = false,
+              emojiHintsPath: String? = nil) {
         queue.async {
+            if !safe, let hp = emojiHintsPath, let text = try? String(contentsOfFile: hp, encoding: .utf8) {
+                var t: [String: [String]] = [:]
+                for line in text.split(separator: "\n") {
+                    let parts = line.split(separator: "\t")
+                    if parts.count == 2 { t[String(parts[0])] = parts[1].split(separator: " ").map(String.init) }
+                }
+                self.emojiHints = t
+            }
             guard let path = lexiconPath, let lex = try? Lexicon(path: path) else { return }
             self.lexicon = lex
             let ud = UserDictionary(lexicon: lex, url: userDictURL)
@@ -74,8 +85,16 @@ final class EngineHost {
         guard let d = decoder else { return nil }
         let was = d.correctionEnabled
         if literal { d.correctionEnabled = false }
-        let r = d.decode(taps)
+        var r = d.decode(taps)
         d.correctionEnabled = was
+        // a word that has an emoji (哈哈 😂, 蛋糕 🎂): offered after the first few candidates, never before them
+        if let first = r.candidates.first, first.tapCount == taps.count, let emoji = emojiHints[first.text] {
+            let at = min(3, r.candidates.count)
+            let extra = emoji.prefix(2).filter { e in !r.candidates.contains { $0.text == e } }.map {
+                Candidate(text: $0, tapCount: taps.count, syllables: [], corrected: false, score: first.score - 50)
+            }
+            r.candidates.insert(contentsOf: extra, at: at)
+        }
         var choices: (start: Int, choices: [(text: String, keys: [Character])]) = (0, [])
         if taps.contains(where: { $0.group }) { choices = d.t9SyllableChoices(taps) }
         return Output(result: r, choices: choices)

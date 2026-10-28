@@ -15,11 +15,12 @@
 		14BED02A50EEB3479F677BB3 = {isa = PBXBuildFile; fileRef = 5AC773F4D41DE76A4D572DFA; };
 		161FE503B7B6A227049812B8 = {isa = PBXBuildFile; fileRef = C7E3C27A8E726FDA6A0F5BC3; };
 		16A8DF997238CE3DA25DE733 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "EmojiPanelView.swift"; sourceTree = "<group>"; };
-		16F9AABEA1E1377C58A86D85 = {isa = PBXGroup; children = (7AFFDA0E16053F30BC44234D, 75F67EB66930BCB3FB1A249F, B1EE2D80F7358D3B69125142, 445C11EBDBC39252A99B3288, DFFCB616A629E0972084D62E, 81F18BD972273929409DB21C, C6F260F04282FE1F36B3050A, D9427DACBBEC0B74D0A80A97, 21643F7FC6012F127BE7DB28, ); path = "Resources"; sourceTree = "<group>"; };
+		16F9AABEA1E1377C58A86D85 = {isa = PBXGroup; children = (7AFFDA0E16053F30BC44234D, 75F67EB66930BCB3FB1A249F, 44BB1B88092E823DB963B32E, B1EE2D80F7358D3B69125142, 445C11EBDBC39252A99B3288, DFFCB616A629E0972084D62E, 90F9407A04D8DF0714E17040, 81F18BD972273929409DB21C, C6F260F04282FE1F36B3050A, D9427DACBBEC0B74D0A80A97, 21643F7FC6012F127BE7DB28, ); path = "Resources"; sourceTree = "<group>"; };
 		1A5595723031139E01F888A2 = {isa = PBXBuildFile; fileRef = D9427DACBBEC0B74D0A80A97; };
 		1D4A911B448ED8AF3C8D8904 = {isa = PBXContainerItemProxy; containerPortal = 46F86FAA6BBF9AC94A7E4595; proxyType = 1; remoteGlobalIDString = 71EDE090D9247D062BC8C064; remoteInfo = MossOttoKeyboardExt; };
 		1ED3574EC8DB042626CA4287 = {isa = PBXBuildFile; fileRef = 75F67EB66930BCB3FB1A249F; };
 		21643F7FC6012F127BE7DB28 = {isa = PBXFileReference; lastKnownFileType = image.png; path = "mosto_yawn.png"; sourceTree = "<group>"; };
+		230DA91A1115AEDBB11593BF = {isa = PBXBuildFile; fileRef = 44BB1B88092E823DB963B32E; };
 		246D08A935D3EF6B1DCF9F67 = {isa = PBXBuildFile; fileRef = CC08DB8AB73FEB8EECE80D41; };
 		248718D446E0742E02D65478 = {isa = XCConfigurationList; buildConfigurations = (0F4107684C5B95D015C428F6, 0219A0C91BC6F9493976459A, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 		24BF028780D217956C84B765 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
@@ -41,6 +42,7 @@
 		42DB3D001088DBA8B9DB85B0 = {isa = PBXBuildFile; fileRef = 21643F7FC6012F127BE7DB28; };
 		440BA7ED2D08F54593EFCB06 = {isa = PBXNativeTarget; buildConfigurationList = 248718D446E0742E02D65478; buildPhases = (D6088BB051198BCF8761C1E2, 7262887A424483F951955927, 86D4BB9AB084F843F3F6A6D1, 9F735104FD616C53DFBFEAA1, ); buildRules = (); dependencies = (9CFD78B92F8F271ABB6D98B8, ); name = MossOttoKeyboard; productName = MossOttoKeyboard; productReference = 9C779F0661F5A8EDCDA35E5F; productType = "com.apple.product-type.application"; };
 		445C11EBDBC39252A99B3288 = {isa = PBXFileReference; lastKnownFileType = file; path = "grammar.gram"; sourceTree = "<group>"; };
+		44BB1B88092E823DB963B32E = {isa = PBXFileReference; lastKnownFileType = text; path = "emoji_hints.txt"; sourceTree = "<group>"; };
 		464217B54999223CF2A3F903 = {isa = PBXBuildFile; fileRef = 639A3FE9864C3ABFB22C08D4; };
 		46AA831B1EC041DC0178767D = {isa = PBXBuildFile; fileRef = 993B69DDFF9F5A88010FE99A; };
 		46F86FAA6BBF9AC94A7E4595 = {isa = PBXProject; attributes = {BuildIndependentTargetsInParallel = 1; LastSwiftUpdateCheck = 1500; LastUpgradeCheck = 1500; }; buildConfigurationList = A1806D8FE767B99D399E13F3; compatibilityVersion = "Xcode 14.0"; developmentRegion = "zh-Hans"; hasScannedForEncodings = 0; knownRegions = (en, Base, "zh-Hans", ); mainGroup = 4EAE695AD1F489F78EA3E1C6; productRefGroup = 2AC8BA37DAC32D5437812408; projectDirPath = ""; projectRoot = ""; targets = (440BA7ED2D08F54593EFCB06, 71EDE090D9247D062BC8C064, ); };
@@ -62,7 +64,7 @@
 		71EDE090D9247D062BC8C064 = {isa = PBXNativeTarget; buildConfigurationList = 3D66D6FFF76D7210944643C6; buildPhases = (BA3C91F9F1AB4D63F2B42498, 24BF028780D217956C84B765, 76F773109054BA79A73C194A, ); buildRules = (); dependencies = (); name = MossOttoKeyboardExt; productName = MossOttoKeyboardExt; productReference = 2E0F75C0B6FE1DED4E48D0E0; productType = "com.apple.product-type.app-extension"; };
 		7262887A424483F951955927 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		75F67EB66930BCB3FB1A249F = {isa = PBXFileReference; lastKnownFileType = text; path = "emoji.txt"; sourceTree = "<group>"; };
-		76F773109054BA79A73C194A = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (EA24C1D4DD486310062FB9D5, 4B0698C6F314FCD4BF249D84, C34E76F23F4ACE413514888D, F0A70EC534EF2762FF535B7E, AF6B25F8D01FF01ED3F856D3, FBE0A3E18FBBCB9E589FBE5D, C9D2B633CA89EB733562B7BD, 1A5595723031139E01F888A2, 42DB3D001088DBA8B9DB85B0, ); runOnlyForDeploymentPostprocessing = 0; };
+		76F773109054BA79A73C194A = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (EA24C1D4DD486310062FB9D5, 4B0698C6F314FCD4BF249D84, 230DA91A1115AEDBB11593BF, C34E76F23F4ACE413514888D, F0A70EC534EF2762FF535B7E, AF6B25F8D01FF01ED3F856D3, 8EDF458908D42159274E7542, FBE0A3E18FBBCB9E589FBE5D, C9D2B633CA89EB733562B7BD, 1A5595723031139E01F888A2, 42DB3D001088DBA8B9DB85B0, ); runOnlyForDeploymentPostprocessing = 0; };
 		7AFFDA0E16053F30BC44234D = {isa = PBXFileReference; lastKnownFileType = text.xml; path = "PrivacyInfo.xcprivacy"; sourceTree = "<group>"; };
 		7C7F4DA4291D0804CA154216 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KeyboardView.swift"; sourceTree = "<group>"; };
 		80B2A2AAAEFF769D339FB513 = {isa = PBXBuildFile; fileRef = F9DB6DF8DB7F9F813EFCE588; };
@@ -72,6 +74,8 @@
 		847A2A2BE83F963D210A65D5 = {isa = PBXBuildFile; fileRef = 71A59B20127428DD5EC27257; };
 		86D4BB9AB084F843F3F6A6D1 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (FA7C5BC8D51BC0AB77C5B181, 246D08A935D3EF6B1DCF9F67, 1ED3574EC8DB042626CA4287, ACBF928AE73DE69B4D033A9E, E7CE74605A614D0DAF9B0C85, C773CE61E43790F0DA317146, B0E9E1D5C3EBB32D33355553, ); runOnlyForDeploymentPostprocessing = 0; };
 		8C2D376DAC7F59A3854EDCAD = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KeyboardViewController.swift"; sourceTree = "<group>"; };
+		8EDF458908D42159274E7542 = {isa = PBXBuildFile; fileRef = 90F9407A04D8DF0714E17040; };
+		90F9407A04D8DF0714E17040 = {isa = PBXFileReference; lastKnownFileType = text; path = "lexicon.bin.codes.txt"; sourceTree = "<group>"; };
 		91AC71D133E8657395B2AE45 = {isa = PBXBuildFile; fileRef = D11D513B347BBDA43B2A957F; };
 		92CA543548CEA0E785C7B3A9 = {isa = PBXBuildFile; fileRef = E1E5172EE18F377834C5E58D; };
 		93FA23ABED00986EF3D39C0C = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MostoView.swift"; sourceTree = "<group>"; };
