@@ -15,7 +15,8 @@
 Usage (Blender as a Python module, bpy 5.x):
   python Tools/ip/mosto3d.py sheet  out_dir      hero shot and states, day and night
   python Tools/ip/mosto3d.py sprites out_dir     transparent keyboard sprites (day, blink, night)
-  python Tools/ip/mosto3d.py icon   out.png      1024 px app icon
+  python Tools/ip/mosto3d.py icon   out.png      1024 px app icon (Mosto alone)
+  python Tools/ip/mosto3d.py toyicon out.png     1024 px app icon: Mosto on the keyboard's vinyl keys
 Options: --samples N  --palette lilac|vermilion|coral  --color #RRGGBB (body only)
 """
 import math, os, sys
@@ -357,6 +358,56 @@ def icon(path):
     bg.save(path)
     os.remove(tmp)
 
+def keycap(name, w, d, h, r, material, loc, rot=0.0):
+    """A soft vinyl keycap block: a rounded box (bevelled edges, smooth corners)."""
+    bpy.ops.mesh.primitive_cube_add(size=1, location=loc); o = bpy.context.object; o.name = name
+    o.scale = (w, d, h); bpy.ops.object.transform_apply(scale=True)
+    bev = o.modifiers.new("bevel", "BEVEL"); bev.width = r; bev.segments = 8; bev.limit_method = "NONE"
+    for poly in o.data.polygons: poly.use_smooth = True
+    o.data.materials.append(material); o.rotation_euler = (0, 0, math.radians(rot))
+    return o
+
+def toy_key(name, x, y, rot, face, lip, size=1.0, z=0.0):
+    """One toy key, as on the keyboard: a darker lip and the face resting on it."""
+    s = size
+    keycap(name + "_lip", 1.0 * s, 1.0 * s, 0.40 * s, 0.12 * s, lip, (x, y, z + 0.20 * s), rot)
+    keycap(name + "_face", 0.86 * s, 0.86 * s, 0.26 * s, 0.12 * s, face, (x, y - 0.02 * s, z + 0.42 * s), rot)
+    return z + 0.55 * s     # the top of the face
+
+def toy_icon(path):
+    """The app icon as a designer toy: Mosto standing on a big cream keycap (the keyboard's own vinyl key, face over
+    a lavender lip), a crown-gold key and a lavender key behind him, on butter cream."""
+    from PIL import Image, ImageDraw
+    s = B.reset(); s.render.film_transparent = True; B.materials(); mosto_materials(); B.sprite_lights()
+    s.view_settings.look = "None"
+    size = B.arg("--size", 1024)
+    s.render.resolution_x = s.render.resolution_y = size
+    cream = B.rubber("keyCream", "#FFF9EE", rough=0.5, sss=0.06)
+    lav = B.rubber("keyLav", "#B3A0EC", rough=0.55)
+    lavDeep = B.rubber("keyLavDeep", "#7E68CF", rough=0.55)
+    gold = B.mat("keyGold", "#FFC23A", rough=0.42, coat=0.15, sss=0.02)
+    goldDeep = B.mat("keyGoldDeep", "#C9851A", rough=0.4, coat=0.15)
+    top = toy_key("key_main", 0.0, 0.0, -18, cream, lav, size=1.22)
+    toy_key("key_gold", 1.0, 0.7, -6, gold, goldDeep, size=0.86)
+    toy_key("key_lav", -1.05, 0.55, -30, lav, lavDeep, size=0.78)
+    m = build_mosto(moss_eye=dict(look=(0.1, 0.25)), otto_eye=dict(look=(-0.08, 0.1), lid=0.5))
+    m.location = (0.02, -0.05, top - 0.02); m.scale = (B.arg("--ms", 1.25),) * 3
+    m.rotation_euler = (0, 0, math.radians(-8))
+    # a shadow catcher under the keys: they sit on something
+    bpy.ops.mesh.primitive_plane_add(size=12, location=(0, 0, 0)); g = bpy.context.object; g.is_shadow_catcher = True
+    B.camera(target=(0.1, 0.15, B.arg("--ty", 0.8)), dist=B.arg("--dist", 4.4), height=B.arg("--ch", 2.2), lens=B.arg("--lens", 52), fstop=22)
+    tmp = path.replace(".png", "_fg.png")
+    B.render(tmp, size, size)
+    bg = Image.new("RGB", (size, size))
+    d = ImageDraw.Draw(bg)
+    for y in range(size):                                   # warm butter-cream: the complement of Mosto's violet
+        t = y / size
+        d.line([(0, y), (size, y)], fill=(int(255 - 6 * t), int(244 - 26 * t), int(214 - 62 * t)))
+    fg = Image.open(tmp).convert("RGBA")
+    bg.paste(fg, (0, 0), fg)
+    bg.save(path)
+    os.remove(tmp)
+
 if __name__ == "__main__":
     what, out = ARGS[0], ARGS[1]
-    {"sheet": sheet, "sprites": sprites, "icon": icon}[what](out)
+    {"sheet": sheet, "sprites": sprites, "icon": icon, "toyicon": toy_icon}[what](out)

@@ -112,13 +112,29 @@ struct MostoHero: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var blink = false
+    @State private var hop = false
 
     var body: some View {
         HStack(spacing: 14) {
-            Image(uiImage: mostoImage(scheme == .dark ? "MostoNight" : (blink ? "MostoBlink" : "Mosto")))
-                .resizable().scaledToFit()
-                .frame(width: 104, height: 104)
-                .accessibilityHidden(true)
+            // a designer toy on its base: Mosto standing on one of the keyboard's vinyl keys (face over lip)
+            VStack(spacing: -20) {
+                Image(uiImage: mostoImage(scheme == .dark ? "MostoNight" : (blink ? "MostoBlink" : "Mosto")))
+                    .resizable().scaledToFit()
+                    .frame(width: 104, height: 104)
+                    .scaleEffect(x: hop ? 1.08 : 1, y: hop ? 0.9 : 1, anchor: .bottom)
+                    .offset(y: hop ? -6 : 0)
+                    .zIndex(1)
+                ToyKey(night: scheme == .dark).frame(width: 84, height: 32)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard !reduceMotion else { return }
+                withAnimation(.spring(response: 0.18, dampingFraction: 0.45)) { hop = true }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) { hop = false }
+                }
+            }
+            .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 6) {
                 Text("Mosto键盘").font(.title2.weight(.bold))
                 Text("小鹤双拼 · 全拼 · 九宫格\n按触点位置自动纠错")
@@ -134,7 +150,7 @@ struct MostoHero: View {
         .background(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(scheme == .dark
-                      ? LinearGradient(colors: [Color(red: 0.16, green: 0.13, blue: 0.27), Color(red: 0.10, green: 0.11, blue: 0.22)], startPoint: .top, endPoint: .bottom)
+                      ? LinearGradient(colors: [Color(red: 0.19, green: 0.14, blue: 0.38), Color(red: 0.10, green: 0.08, blue: 0.24)], startPoint: .top, endPoint: .bottom)
                       : LinearGradient(colors: [Color(red: 1.0, green: 0.96, blue: 0.86), Color(red: 0.98, green: 0.88, blue: 0.66)], startPoint: .top, endPoint: .bottom))
         )
         .padding(.top, 8)
@@ -148,6 +164,23 @@ struct MostoHero: View {
                 blink = false
             }
         }
+    }
+}
+
+/// One of the keyboard's vinyl keys, as Mosto's base: a cream face resting on a lavender lip (violet at night).
+struct ToyKey: View {
+    let night: Bool
+    var body: some View {
+        let lip = night ? Color(red: 0.11, green: 0.07, blue: 0.28) : Color(red: 0.80, green: 0.75, blue: 0.92)
+        let top = night ? Color(red: 0.32, green: 0.26, blue: 0.62) : Color.white
+        let bottom = night ? Color(red: 0.27, green: 0.22, blue: 0.55) : Color(red: 1.0, green: 0.99, blue: 0.97)
+        ZStack(alignment: .top) {
+            RoundedRectangle(cornerRadius: 10, style: .continuous).fill(lip)
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(LinearGradient(colors: [top, bottom], startPoint: .top, endPoint: .bottom))
+                .padding(.bottom, 5)
+        }
+        .shadow(color: Color(red: 0.17, green: 0.10, blue: 0.38).opacity(0.18), radius: 6, y: 4)
     }
 }
 
