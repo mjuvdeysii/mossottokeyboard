@@ -46,6 +46,8 @@ if env["GRAMMAR"] != "0" {
     decoder.grammar = try? Grammar(path: gp)
 }
 if let v = env["GW"].flatMap(Double.init) { decoder.grammarWeight = v }
+if let v = env["MW"].flatMap(Double.init) { decoder.grammar?.massWeight = v }
+if let v = env["MC"].flatMap(Double.init) { decoder.grammar?.massCenter = v }
 if let v = env["GCF"].flatMap(Double.init) { decoder.grammarCorrectedFactor = v }
 if let v = env["UC"].flatMap(Double.init) { decoder.userCap = v }
 if let v = env["UP"].flatMap(Double.init) { decoder.userPhraseScore = v }

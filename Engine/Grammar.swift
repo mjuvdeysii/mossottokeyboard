@@ -100,13 +100,15 @@ public final class Grammar {
         // longest context first: a three-character context that the model knows says more than its last character
         for n in stride(from: min(3, context.count), through: 1, by: -1) {
             guard let node = traverse(Grammar.encode(context.suffix(n))[...]) else { continue }
-            let firsts = children(of: node)
-            for (bytes1, node1, v1) in firsts {
+            // the commonest first characters only are followed a level further: each costs a scan of its node
+            // (a context like 的 has thousands of continuations — all of them took seconds)
+            let firsts = children(of: node).sorted { ($0.2 ?? -1) > ($1.2 ?? -1) }
+            for (rank, (bytes1, node1, v1)) in firsts.enumerated() {
                 let c1 = Grammar.decode(bytes1)
                 guard let ch1 = c1, Grammar.isHan(ch1) else { continue }
                 if let v1 { out[String(ch1)] = max(out[String(ch1)] ?? -.infinity, Double(v1) / 10_000 + Double(n) * contextBonus) }
                 // two characters only after a context of one or two (the model holds four characters at most)
-                guard n <= 2 else { continue }
+                guard n <= 2, rank < 24 else { continue }
                 for (bytes2, _, v2) in children(of: node1) {
                     guard let v2, let ch2 = Grammar.decode(bytes2), Grammar.isHan(ch2) else { continue }
                     let t = String([ch1, ch2])
@@ -188,6 +190,22 @@ public final class Grammar {
         return n
     }
 
+    /// ln of everything the model counts right after a context node (its one-character continuations): what
+    /// a joint count is divided by to read it as "how likely after this context". Cached per node.
+    private var massCache: [Int: Double] = [:]
+    func logMass(_ node: Int) -> Double {
+        if let m = massCache[node] { return m }
+        var vals: [Double] = []
+        for (_, _, v) in children(of: node) { if let v { vals.append(Double(v) / 10_000) } }
+        let top = vals.max() ?? 0
+        let m = vals.isEmpty ? 0 : top + log(vals.reduce(0) { $0 + exp($1 - top) })
+        if massCache.count > 4096 { massCache.removeAll(keepingCapacity: true) }
+        massCache[node] = m
+        return m
+    }
+    public var massWeight = 0.0
+    public var massCenter = 15.0
+
     /// How well `word` follows `context` (the text before it): Rime's octagram score, in natural-log units.
     public func query(context: [Character], word: [Character]) -> Double {
         guard !context.isEmpty, !word.isEmpty else { return nonCollocationPenalty }
@@ -206,7 +224,9 @@ public final class Grammar {
                 for (bytes, v) in matches {
                     let collocation = ctxLen + Grammar.chars(w, bytes)
                     let strong = collocation >= collocationMinLength || (full && bytes == w.count)
-                    best = max(best, Double(v) / 10_000 + (strong ? collocationPenalty : weakCollocationPenalty))
+                    var sc = Double(v) / 10_000 + (strong ? collocationPenalty : weakCollocationPenalty)
+                    if massWeight > 0 { sc -= massWeight * (logMass(node) - massCenter) }
+                    best = max(best, sc)
                 }
             }
             c = ctx.index(after: c)
