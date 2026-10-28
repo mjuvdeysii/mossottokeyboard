@@ -377,6 +377,19 @@ case "bench", "gate":
             print(ok ? "PASS mixed.top1 \(mixed.count)/\(mixed.count)" : "FAIL mixed.top1 " + bad.joined(separator: " "))
             if !ok { failed = true }
         }
+        // 小鹤双拼 with an odd number of keys: the dangling key carries the reading on (可以 + l → 可以了)
+        if decoder.scheme == .xiaohe {
+            decoder.correctionEnabled = true
+            let odd: [(String, String)] = [("keyil", "可以了"), ("nihcm", "你好吗"), ("hcden", "好的呢"), ("wogg", "我")]
+            var bad: [String] = []
+            for (k, want) in odd {
+                let c = decoder.decode(k.map { Tap.exact($0) }).candidates.first
+                let ok = k.count % 2 == 1 ? c?.text == want && c?.tapCount == k.count : c?.text.hasPrefix(want) == true
+                if !ok { bad.append("\(k)→\(c?.text ?? "-")") }
+            }
+            print(bad.isEmpty ? "PASS odd.top1 \(odd.count)/\(odd.count)" : "FAIL odd.top1 " + bad.joined(separator: " "))
+            if !bad.isEmpty { failed = true }
+        }
         // Fuzz: random keys, separators, 九宫格 mixes and long runs. Every decode must give candidates that each
         // use 1…n keys and have text, committing the first candidate over and over must use up all keys, and the
         // slowest decode must stay quick enough to keep up with typing.

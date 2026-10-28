@@ -266,21 +266,35 @@ public final class Decoder {
     // MARK: - Decode
 
     public func decode(_ taps: [Tap]) -> Result {
-        // 小鹤双拼, plain: with an odd number of keys the last one is simply not finished yet. The candidates are those
-        // of the complete pairs typed so far; the dangling key waits (no guessing the next syllable from it).
+        // 小鹤双拼, plain: with an odd number of keys the last one is the initial of the next syllable, not yet finished.
+        // The candidates first carry the reading on through it — what was decoded so far plus the likeliest syllable
+        // that key starts (可以 + l → 可以了, 你好 + m → 你好吗), so a long sentence keeps flowing and space commits all
+        // of it — then the candidates of the complete pairs alone, then the keys as typed.
         if scheme == .xiaohe, taps.count >= 3, taps.count % 2 == 1, !taps.contains(where: { $0.key == "'" }) {
             boundaries = []
+            let n = taps.count
             let r = decodeLetters(Array(taps.dropLast()))
             let raw = String(taps.map { $0.key })
             var cands = r.candidates.filter { $0.tapCount > 0 && $0.score > -.infinity && !$0.isEnglish }
+            let full = decodeLetters(taps)
+            var ahead: [Candidate] = []
+            if !(taps.last!.group) {
+                let whole = full.candidates.filter { $0.tapCount == n && !$0.isEnglish && $0.score > -.infinity }
+                // keep what the complete pairs already read (the next key must not rewrite it), when it can be kept
+                if let lead = cands.first, lead.tapCount == n - 1 {
+                    ahead = Array(whole.filter { $0.text.hasPrefix(lead.text) && $0.text.count > lead.text.count }.prefix(2))
+                }
+                if ahead.isEmpty { ahead = Array(whole.prefix(1)) }
+            }
+            cands.removeAll { c in ahead.contains { $0.text == c.text } }
+            cands.insert(contentsOf: ahead, at: 0)
             // English words cover every key typed (ios → iOS): first when they lead the full reading, else second
             if englishEnabled, english != nil {
-                let full = decodeLetters(taps).candidates
-                for (k, c) in full.enumerated() where c.isEnglish && !cands.contains(where: { $0.text == c.text }) {
+                for (k, c) in full.candidates.enumerated() where c.isEnglish && !cands.contains(where: { $0.text == c.text }) {
                     cands.insert(c, at: min(k == 0 ? 0 : 1, cands.count))
                 }
             }
-            cands.append(Candidate(text: raw, tapCount: taps.count, syllables: [], corrected: false, score: -.infinity))
+            cands.append(Candidate(text: raw, tapCount: n, syllables: [], corrected: false, score: -.infinity))
             return Result(candidates: cands, preedit: r.preedit + " " + String(taps.last!.key))
         }
         // 分词 (') taps only set syllable boundaries: decode the letters, then count the separators back into each
