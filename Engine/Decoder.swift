@@ -336,8 +336,10 @@ public final class Decoder {
 
         // Edge buckets keyed by (start, end), each keeping its best `cap` words. `floor` is the score a new word must
         // beat once a bucket is full, checked before an edge is even built (most candidate words never get in).
-        var buckets: [Int: [Edge]] = [:]
-        var floor: [Int: Double] = [:]
+        // flat arrays indexed by (start, end): `accepts` runs for nearly every lexicon word looked at, so no hashing
+        let stride_ = n + 1
+        var bucketList = [[Edge]](repeating: [], count: stride_ * stride_)
+        var floorArr = [Double](repeating: -.infinity, count: stride_ * stride_ * 2)
         // 九宫格 input is far more ambiguous per key: keep more words per span
         let wide = taps.contains { $0.group } ? (scheme == .xiaohe ? 4 : 1) : 1
         // 九宫格: every key is 3–4 letters, so a weak word (one the lexicon only lists, with no frequency of its own)
@@ -347,14 +349,15 @@ public final class Decoder {
         // a one-syllable word at the start may join a bucket while it holds fewer than 120; any other word, fewer than
         // its own cap — so each bucket has two bars, by the cap of the word asking
         @inline(__always) func fkey(_ start: Int, _ end: Int, _ syllables: Int) -> Int {
-            (start * 1024 + end) * 2 + (start == 0 && syllables == 1 ? 1 : 0)
+            (start * stride_ + end) * 2 + (start == 0 && syllables == 1 ? 1 : 0)
         }
         @inline(__always) func accepts(_ start: Int, _ end: Int, _ syllables: Int, _ score: Double) -> Bool {
-            score > (floor[fkey(start, end, syllables)] ?? -.infinity)
+            score > floorArr[fkey(start, end, syllables)]
         }
         func insert(_ e: Edge) {
-            let key = e.start * 1024 + e.end
-            var list = buckets.removeValue(forKey: key) ?? []
+            let key = e.start * stride_ + e.end
+            var list = bucketList[key]
+            bucketList[key] = []
             let c = cap(e.start, e.cuts.count)
             if list.count < c {
                 list.append(e)
@@ -362,9 +365,9 @@ public final class Decoder {
                 list[minIdx] = e
             }
             let low = list.count >= cap(e.start, 2) || list.count >= cap(e.start, 1) ? (list.map { $0.score }.min() ?? -.infinity) : -.infinity
-            if list.count >= cap(e.start, 2) { floor[fkey(e.start, e.end, 2)] = low }
-            if list.count >= cap(e.start, 1) { floor[fkey(e.start, e.end, 1)] = low }
-            buckets[key] = list
+            if list.count >= cap(e.start, 2) { floorArr[fkey(e.start, e.end, 2)] = low }
+            if list.count >= cap(e.start, 1) { floorArr[fkey(e.start, e.end, 1)] = low }
+            bucketList[key] = list
         }
 
         // Match a syllable sequence (word) from a first span onwards; calls `found` for every complete chain.
@@ -470,7 +473,7 @@ public final class Decoder {
         // Flatten edges and index by end tap
         var edges: [Edge] = []
         var ending = [[Int]](repeating: [], count: n + 1)
-        for (_, list) in buckets {
+        for list in bucketList {
             for e in list {
                 ending[e.end].append(edges.count)
                 edges.append(e)
