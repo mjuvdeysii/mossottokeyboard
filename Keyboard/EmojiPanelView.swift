@@ -69,7 +69,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         let label = UILabel()
         override init(frame: CGRect) {
             super.init(frame: frame)
-            label.font = .systemFont(ofSize: 12, weight: .semibold)
+            label.font = Theme.font(12, .bold)
             label.textColor = Theme.secondaryText
             addSubview(label)
         }
@@ -103,7 +103,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
 
         let cfg = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
         backButton.setTitle("ABC", for: .normal)
-        backButton.titleLabel?.font = .systemFont(ofSize: 16)
+        backButton.titleLabel?.font = Theme.font(16, .semibold)
         backButton.setTitleColor(Theme.keyText, for: .normal)
         backButton.setTitleColor(Theme.secondaryText, for: .highlighted)
         backButton.accessibilityLabel = "返回键盘"
@@ -163,7 +163,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         gear.addTarget(self, action: #selector(settingsTapped), for: .touchUpInside)
         bar.addArrangedSubview(gear)
 
-        titleLabel.font = .systemFont(ofSize: 12, weight: .semibold)
+        titleLabel.font = Theme.font(12, .bold)
         titleLabel.textColor = Theme.secondaryText
         addSubview(titleLabel)
         load()

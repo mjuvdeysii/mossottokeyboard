@@ -29,12 +29,12 @@ final class CandidateBarView: UIView {
     /// Pinyin above the candidates (when it is not written into the text field).
     var showsPreedit = false { didSet { setNeedsLayout() } }
 
-    static let font = UIFont.systemFont(ofSize: 20)
+    static let font = Theme.font(20, .regular)
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         backgroundColor = Theme.touchable   // never fully clear: see Theme.touchable
-        preedit.font = .systemFont(ofSize: 14)
+        preedit.font = Theme.font(14, .medium)
         preedit.textColor = Theme.secondaryText
         addSubview(preedit)
         addSubview(row)
@@ -346,7 +346,7 @@ final class SettingsPanelView: UIView {
         mostoImage.image = UIImage(named: "mosto_day", in: Bundle(for: SettingsPanelView.self), with: nil)
         let title = UILabel()
         title.text = "Mosto键盘"
-        title.font = .systemFont(ofSize: 17, weight: .semibold)
+        title.font = Theme.font(17, .bold)
         title.textColor = Theme.keyText
         statusLabel.font = .systemFont(ofSize: 12)
         statusLabel.textColor = Theme.secondaryText
@@ -637,9 +637,11 @@ final class SyllablePickerView: UIView {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        backgroundColor = Theme.functionKey
+        backgroundColor = Theme.functionTop
         layer.cornerRadius = Metrics.cornerRadius
         layer.cornerCurve = .continuous
+        layer.borderWidth = 1.5
+        layer.borderColor = Theme.functionLip.resolvedColor(with: traitCollection).cgColor
         clipsToBounds = true
         scroll.showsHorizontalScrollIndicator = false
         scroll.alwaysBounceHorizontal = false
@@ -649,11 +651,16 @@ final class SyllablePickerView: UIView {
     }
     required init?(coder: NSCoder) { fatalError() }
 
+    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+        super.traitCollectionDidChange(previous)
+        layer.borderColor = Theme.functionLip.resolvedColor(with: traitCollection).cgColor
+    }
+
     /// Buttons are kept and relabelled (this runs on every keypad key), never rebuilt.
     func show(_ choices: [String]) {
         while buttons.count < choices.count {
             let b = UIButton(type: .system)
-            b.titleLabel?.font = .systemFont(ofSize: 17)
+            b.titleLabel?.font = Theme.font(17, .semibold)
             b.titleLabel?.adjustsFontSizeToFitWidth = true
             b.titleLabel?.minimumScaleFactor = 0.6
             b.tintColor = Theme.keyText

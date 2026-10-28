@@ -68,9 +68,11 @@ enum Metrics {
     static let toolbarHeightLandscape: CGFloat = 38
     static let gapX: CGFloat = 6
     static let gapY: CGFloat = 12
-    /// iOS 26 caps are rounder than Gboard's space bar (6 pt); 8.5 pt is an estimate pending a native screenshot.
-    static let cornerRadius: CGFloat = 8.5
-    static let letterFont: CGFloat = 23
+    /// The darker lip under each cap (the face sinks onto it when pressed).
+    static let lip: CGFloat = 3
+    /// Soft vinyl caps: rounder than the system keyboard's.
+    static let cornerRadius: CGFloat = 10
+    static let letterFont: CGFloat = 24
     static let symbolFont: CGFloat = 24
     static let functionFont: CGFloat = 16
     static let hintFont: CGFloat = 11
@@ -227,10 +229,12 @@ enum Layouts {
     }
 }
 
-/// Two lights, as in Moss & Otto: 日光 (day) and 夜灯 (night lamp). They map onto the light / dark trait, so every
+/// Mosto 潮玩: the keyboard is made of the same stuff as Mosto — matte soft vinyl in his colours. Every key is a
+/// little toy cap: a face over a darker lip (it sinks when pressed), rounded type, a matte-gold action key like his
+/// crown, his bat wings on the space bar. Two lights, as in Moss & Otto: 日光 (cream and lavender vinyl on a lavender
+/// tint) and 夜灯 (violet vinyl under the gold glow of his tail). They map onto the light / dark trait, so every
 /// colour below resolves by itself; the keyboard forces the trait when the user picks 日光 or 夜灯.
-/// The keyboard's own background is clear: on iOS 26 the system puts third-party keyboards on its Liquid Glass
-/// (an opaque background shows up as a grey band), so the light only tints that glass.
+/// The keyboard's own background is a tint over the system's Liquid Glass (an opaque one shows up as a band).
 enum Theme {
     static func dyn(_ day: UIColor, _ night: UIColor) -> UIColor {
         UIColor { $0.userInterfaceStyle == .dark ? night : day }
@@ -238,34 +242,59 @@ enum Theme {
     static func hex(_ v: UInt32, _ a: CGFloat = 1) -> UIColor {
         UIColor(red: CGFloat((v >> 16) & 0xFF) / 255, green: CGFloat((v >> 8) & 0xFF) / 255, blue: CGFloat(v & 0xFF) / 255, alpha: a)
     }
-    /// Tint laid over the system glass: none by day (the system keyboard's own glass), the deep lamp-lit blue at night.
-    static let glassTint = dyn(.clear, hex(0x1B2245, 0.62))
+    /// Mosto's colours (Tools/ip/mosto3d.py, palette lilac).
+    static let violet = hex(0x633EBF), deepViolet = hex(0x2B1961), cream = hex(0xFFE4A8), gold = hex(0xD69A34)
+    static let goldGlow = hex(0xFFC45A)
+
+    /// The toy's type: SF Rounded (Chinese falls back to the system face).
+    static func font(_ size: CGFloat, _ weight: UIFont.Weight = .medium) -> UIFont {
+        let f = UIFont.systemFont(ofSize: size, weight: weight)
+        guard let d = f.fontDescriptor.withDesign(.rounded) else { return f }
+        return UIFont(descriptor: d, size: size)
+    }
+
+    /// Tint laid over the system glass: lavender milk by day, deep violet at night.
+    static let glassTint = dyn(hex(0xD9CFF2, 0.62), hex(0x1D1442, 0.72))
     /// Night forced while the system is light: the glass underneath is pale, so the tint must carry the night alone.
-    static let forcedNightTint = hex(0x1B2245, 0.90)
-    /// Day forced while the system is dark: the light keyboard's frosted surface.
-    static let forcedDayTint = hex(0xD8DBE2, 0.86)
+    static let forcedNightTint = hex(0x1D1442, 0.93)
+    /// Day forced while the system is dark: the light keyboard's surface.
+    static let forcedDayTint = hex(0xE4DCF6, 0.92)
     /// The keyboard's own surfaces: almost invisible (2 % grey over the system glass) but never fully transparent —
     /// inside a keyboard extension iOS does not deliver a touch that lands on a fully transparent point, even in a
     /// view that would take it. With clear backgrounds, fast taps landing in the gaps between keys, above the top row
     /// or in the empty strip were simply lost ("打空").
     static let touchable = UIColor(white: 0.5, alpha: 0.02)
     /// Opaque panels over the keys (candidate grid, settings).
-    static let panel = dyn(hex(0xF2F2F7), hex(0x1B2245))   // opaque: keys must not show through a panel
-    /// Settings, as iOS Settings draws them: grouped background, rounded white groups, hairline separators.
-    static let settingsGroup = dyn(UIColor(white: 1, alpha: 0.85), UIColor(white: 1, alpha: 0.10))
-    static let separator = dyn(UIColor(white: 0, alpha: 0.12), UIColor(white: 1, alpha: 0.12))
-    // iOS 26 key caps: translucent, no hard shadow
-    static let key = dyn(UIColor(white: 1, alpha: 0.93), UIColor(white: 1, alpha: 0.17))
-    static let keyPressed = dyn(UIColor(white: 0.80, alpha: 0.95), UIColor(white: 1, alpha: 0.32))
-    static let functionKey = dyn(UIColor(white: 0, alpha: 0.11), UIColor(white: 1, alpha: 0.09))
+    static let panel = dyn(hex(0xEEE8F8), hex(0x1D1442))   // opaque: keys must not show through a panel
+    /// Settings: grouped background, rounded groups, hairline separators.
+    static let settingsGroup = dyn(UIColor(white: 1, alpha: 0.85), hex(0x3A2C7A, 0.55))
+    static let separator = dyn(hex(0x2B1961, 0.12), UIColor(white: 1, alpha: 0.12))
+
+    // Vinyl caps: face (top → bottom) over a darker lip.
+    static let key = dyn(hex(0xFFFDF8), hex(0x46378C))              // letter face
+    static let keyTop = dyn(hex(0xFFFFFF), hex(0x52429E))
+    static let keyLip = dyn(hex(0xCDBFEB), hex(0x1B1248))
+    static let keyPressed = dyn(hex(0xEDE6FA), hex(0x5A4AAE))
+    static let functionKey = dyn(hex(0xC7B8F0), hex(0x2D2168))      // function face (lavender / deep violet)
+    static let functionTop = dyn(hex(0xD3C6F6), hex(0x35286F))
+    static let functionLip = dyn(hex(0x9682D6), hex(0x120B33))
+    static let functionPressed = dyn(hex(0xFFFDF8), hex(0x46378C))
+    static let accentKey = dyn(hex(0xE7B85A), hex(0xE3B04F))         // the crown: matte gold
+    static let accentTop = dyn(hex(0xF0CA78), hex(0xEDC26C))
+    static let accentLip = dyn(hex(0xA9741F), hex(0x7C5112))
+    static let accentText = hex(0x2B1961)
     static let keyHighlight = dyn(UIColor(white: 1, alpha: 0.75), UIColor(white: 1, alpha: 0.18))
-    static let bubble = dyn(.white, hex(0x2C3766))
-    /// The system keyboard's action blue (return key with 搜索 / 发送…, selected alternates, the correction mark).
-    static let accentKey = UIColor.systemBlue
-    static let accentText = UIColor.white
-    static let keyText = dyn(hex(0x1C1D19), hex(0xF4EBDD))
-    static let keyShadow = dyn(UIColor(white: 0, alpha: 0.16), UIColor(white: 0, alpha: 0))
+    static let bubble = dyn(hex(0xFFFDF8), hex(0x52429E))
+    static let bubbleLip = dyn(hex(0xCDBFEB), hex(0x1B1248))
+    /// The wings on the space bar.
+    static let wing = dyn(hex(0xB7A6E6), hex(0x2A1E66))
+    static let keyText = dyn(hex(0x2B1961), hex(0xFFF3DC))
+    static let functionText = dyn(hex(0x2B1961), hex(0xD9CCFF))
+    static let keyShadow = dyn(UIColor(white: 0, alpha: 0), UIColor(white: 0, alpha: 0))
     static let candidateText = keyText
-    static let secondaryText = dyn(hex(0x5E5F66), hex(0xAEB4CC))
-    static let correctedMark = accentKey
+    static let secondaryText = dyn(hex(0x6A5C96), hex(0xB4A8DC))
+    /// The correction mark, selected alternates: Mosto's violet by day, his gold at night.
+    static let correctedMark = dyn(hex(0x633EBF), hex(0xFFC45A))
+    static let selection = dyn(hex(0x633EBF), hex(0xE3B04F))
+    static let selectionText = dyn(.white, hex(0x2B1961))
 }

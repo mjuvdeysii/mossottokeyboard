@@ -17,16 +17,26 @@ final class KeyView: UIView {
                 let a: CGFloat = self.blanked ? 0 : 1
                 self.label.alpha = a; self.hintLabel.alpha = a; self.icon.alpha = a
             }
+            wings.isHidden = blanked || spec.action != .space
         }
     }
+
+    /// The vinyl cap: a darker lip, the face over it (top-lit), and on the space bar Mosto's two wings.
+    private let lip = CALayer()
+    private let face = CAGradientLayer()
+    private let wings = CAShapeLayer()
 
     init(spec: KeySpec, borders: Bool) {
         self.spec = spec
         super.init(frame: .zero)
         isUserInteractionEnabled = false
-        layer.cornerRadius = Metrics.cornerRadius
-        layer.shadowOffset = CGSize(width: 0, height: 1)
-        layer.shadowRadius = 0
+        lip.cornerRadius = Metrics.cornerRadius
+        face.cornerRadius = Metrics.cornerRadius
+        face.startPoint = CGPoint(x: 0.5, y: 0)
+        face.endPoint = CGPoint(x: 0.5, y: 1)
+        layer.addSublayer(lip)
+        layer.addSublayer(face)
+        layer.addSublayer(wings)
         label.textAlignment = .center
         label.adjustsFontSizeToFitWidth = true
         label.minimumScaleFactor = 0.5
@@ -53,13 +63,13 @@ final class KeyView: UIView {
         hintLabel.isHidden = spec.hint == nil
         switch spec.action {
         // the system keyboard's type: regular weight throughout
-        case .char where spec.isLetter: label.font = .systemFont(ofSize: Metrics.letterFont, weight: .regular)
-        case .char: label.font = .systemFont(ofSize: Metrics.symbolFont, weight: .regular)
-        case .t9(let d): label.font = .systemFont(ofSize: d == "'" ? Metrics.functionFont : 20, weight: .regular)
-        default: label.font = .systemFont(ofSize: Metrics.functionFont, weight: .regular)
+        case .char where spec.isLetter: label.font = Theme.font(Metrics.letterFont, .medium)
+        case .char: label.font = Theme.font(Metrics.symbolFont, .medium)
+        case .t9(let d): label.font = Theme.font(d == "'" ? Metrics.functionFont : 20, .semibold)
+        default: label.font = Theme.font(Metrics.functionFont, .semibold)
         }
         if let name = spec.symbol {
-            icon.image = UIImage(systemName: name, withConfiguration: UIImage.SymbolConfiguration(pointSize: Metrics.iconSize, weight: .regular))
+            icon.image = UIImage(systemName: name, withConfiguration: UIImage.SymbolConfiguration(pointSize: Metrics.iconSize, weight: .semibold))
             icon.isHidden = false
         } else {
             icon.image = nil
@@ -99,30 +109,35 @@ final class KeyView: UIView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    /// Gboard draws keys borderless: only the space bar (and an action-coloured return key)
-    /// has a filled cap. With "按键边框" on, every key gets the classic iOS cap.
-    private var hasCap: Bool { borders || spec.action == .space || spec.style == .accent }
-
     private func updateColors() {
-        let bg: UIColor
-        if hasCap {
-            switch spec.style {
-            case .normal: bg = pressed ? Theme.keyPressed : Theme.key
-            case .function: bg = pressed ? Theme.key : Theme.functionKey
-            case .accent: bg = pressed ? Theme.functionKey : Theme.accentKey
-            }
-        } else {
-            // borderless: an engaged shift still shows as a lit key
-            let engaged = spec.action == .shift && spec.style == .normal
-            bg = pressed || engaged ? Theme.keyHighlight : .clear
+        let t = traitCollection
+        let top: UIColor, bottom: UIColor, under: UIColor, fg: UIColor
+        // an engaged shift reads as a letter cap (cream / violet vinyl) with a solid arrow
+        let style: KeyStyle = spec.action == .shift && spec.style == .normal ? .normal : spec.style
+        switch style {
+        case .normal:
+            top = pressed ? Theme.keyPressed : Theme.keyTop
+            bottom = pressed ? Theme.keyPressed : Theme.key
+            under = Theme.keyLip; fg = Theme.keyText
+        case .function:
+            top = pressed ? Theme.functionPressed : Theme.functionTop
+            bottom = pressed ? Theme.functionPressed : Theme.functionKey
+            under = Theme.functionLip; fg = pressed ? Theme.keyText : Theme.functionText
+        case .accent:
+            top = pressed ? Theme.accentKey : Theme.accentTop
+            bottom = Theme.accentKey
+            under = Theme.accentLip; fg = Theme.accentText
         }
-        backgroundColor = bg
-        layer.shadowOpacity = hasCap && !pressed ? 1 : 0
-        let fg: UIColor = spec.style == .accent && !pressed ? Theme.accentText : Theme.keyText
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        face.colors = [top.resolvedColor(with: t).cgColor, bottom.resolvedColor(with: t).cgColor]
+        lip.backgroundColor = under.resolvedColor(with: t).cgColor
+        wings.fillColor = Theme.wing.resolvedColor(with: t).cgColor
+        CATransaction.commit()
+        backgroundColor = .clear
         label.textColor = fg
         hintLabel.textColor = Theme.secondaryText
         icon.tintColor = fg
-        layer.shadowColor = Theme.keyShadow.resolvedColor(with: traitCollection).cgColor
+        if bounds.width > 0 { layoutCap() }
     }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
@@ -130,14 +145,56 @@ final class KeyView: UIView {
         updateColors()
     }
 
+    /// The face rests on the lip; pressed, it sinks onto it (the lip all but disappears), as a soft toy key would.
+    private var faceRect: CGRect {
+        let l = min(Metrics.lip, bounds.height * 0.1)
+        return pressed ? CGRect(x: 0, y: l - 0.5, width: bounds.width, height: bounds.height - l)
+                       : CGRect(x: 0, y: 0, width: bounds.width, height: bounds.height - l)
+    }
+
+    private func layoutCap() {
+        let l = min(Metrics.lip, bounds.height * 0.1)
+        let f = faceRect
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        lip.frame = CGRect(x: 0, y: l, width: bounds.width, height: bounds.height - l)
+        face.frame = f
+        if spec.action == .space, f.width > 120 {
+            wings.isHidden = blanked
+            wings.frame = f
+            wings.path = Self.wingsPath(in: f.size)
+        } else {
+            wings.isHidden = true
+        }
+        CATransaction.commit()
+        let o = cjkPunctuationOffset(label.text, fontSize: label.font.pointSize)
+        label.frame = f.insetBy(dx: 2, dy: 0).offsetBy(dx: o.x, dy: o.y)
+        icon.frame = f
+        // Digit hint in the cap's top-right corner.
+        hintLabel.frame = CGRect(x: f.maxX - 16, y: f.minY + 2, width: 12, height: 13)
+    }
+
+    /// Mosto's two little bat wings at the ends of the space bar, tips outwards, scalloped below.
+    static func wingsPath(in size: CGSize) -> CGPath {
+        let w: CGFloat = 20, h: CGFloat = 11, inset: CGFloat = 12
+        let y = (size.height - h) / 2 + 1
+        let p = UIBezierPath()
+        func wing(_ x0: CGFloat, _ dir: CGFloat) {
+            func pt(_ x: CGFloat, _ yy: CGFloat) -> CGPoint { CGPoint(x: x0 + dir * x, y: y + yy) }
+            p.move(to: pt(0, 3))
+            p.addQuadCurve(to: pt(w, 0), controlPoint: pt(w * 0.5, -2.5))
+            p.addQuadCurve(to: pt(w * 0.68, h * 0.62), controlPoint: pt(w * 0.92, h * 0.66))
+            p.addQuadCurve(to: pt(w * 0.36, h * 0.72), controlPoint: pt(w * 0.52, h * 0.42))
+            p.addQuadCurve(to: pt(0, h), controlPoint: pt(w * 0.16, h * 0.52))
+            p.close()
+        }
+        wing(size.width - inset - w, 1)   // right wing, tip to the right
+        wing(inset + w, -1)               // left wing, tip to the left
+        return p.cgPath
+    }
+
     override func layoutSubviews() {
         super.layoutSubviews()
-        let o = cjkPunctuationOffset(label.text, fontSize: label.font.pointSize)
-        label.frame = bounds.insetBy(dx: 2, dy: 0).offsetBy(dx: o.x, dy: o.y)
-        icon.frame = bounds
-        // Digit hint in the cap's top-right corner (Gboard's hint, kept inside the iOS key cap).
-        hintLabel.frame = CGRect(x: bounds.width - 16, y: 2, width: 12, height: 13)
-        layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: Metrics.cornerRadius).cgPath
+        layoutCap()
     }
 }
 
@@ -161,12 +218,13 @@ final class KeyPreview: UIView {
         isUserInteractionEnabled = false
         backgroundColor = .clear
         layer.addSublayer(shape)
-        shape.shadowColor = UIColor.black.cgColor
-        shape.shadowOpacity = 0.28
-        shape.shadowRadius = 2.5
-        shape.shadowOffset = CGSize(width: 0, height: 1)
+        shape.shadowColor = Theme.deepViolet.cgColor
+        shape.shadowOpacity = 0.30
+        shape.shadowRadius = 3
+        shape.shadowOffset = CGSize(width: 0, height: 2)
+        shape.lineWidth = 1
         label.textAlignment = .center
-        label.font = .systemFont(ofSize: 32, weight: .medium)
+        label.font = Theme.font(32, .medium)
         label.textColor = Theme.keyText
         label.adjustsFontSizeToFitWidth = true
         label.minimumScaleFactor = 0.5
@@ -209,6 +267,7 @@ final class KeyPreview: UIView {
         shape.path = p.cgPath
         shape.shadowPath = p.cgPath
         shape.fillColor = Theme.bubble.resolvedColor(with: traitCollection).cgColor
+        shape.strokeColor = Theme.bubbleLip.resolvedColor(with: traitCollection).cgColor
         CATransaction.commit()
         setNeedsLayout()
     }
@@ -222,6 +281,7 @@ final class KeyPreview: UIView {
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
         super.traitCollectionDidChange(previous)
         shape.fillColor = Theme.bubble.resolvedColor(with: traitCollection).cgColor
+        shape.strokeColor = Theme.bubbleLip.resolvedColor(with: traitCollection).cgColor
     }
 }
 
@@ -241,8 +301,8 @@ final class AltPopup: UIView {
         isUserInteractionEnabled = false
         backgroundColor = Theme.bubble
         layer.cornerRadius = 10
-        layer.shadowColor = UIColor.black.cgColor
-        layer.shadowOpacity = 0.25
+        layer.shadowColor = Theme.deepViolet.cgColor
+        layer.shadowOpacity = 0.30
         layer.shadowRadius = 3
         layer.shadowOffset = CGSize(width: 0, height: 1)
         for (i, o) in options.enumerated() {
@@ -252,7 +312,7 @@ final class AltPopup: UIView {
             l.layer.sublayerTransform = CATransform3DMakeTranslation(shift.x, shift.y, 0)
             l.text = o
             l.textAlignment = .center
-            l.font = .systemFont(ofSize: 24, weight: .medium)
+            l.font = Theme.font(24, .medium)
             l.adjustsFontSizeToFitWidth = true
             l.minimumScaleFactor = 0.5
             l.layer.cornerRadius = 7
@@ -266,8 +326,8 @@ final class AltPopup: UIView {
 
     private func refresh() {
         for (i, l) in labels.enumerated() {
-            l.backgroundColor = i == selected ? Theme.accentKey : .clear
-            l.textColor = i == selected ? Theme.accentText : Theme.keyText
+            l.backgroundColor = i == selected ? Theme.selection : .clear
+            l.textColor = i == selected ? Theme.selectionText : Theme.keyText
         }
     }
 

@@ -1,7 +1,7 @@
 import UIKit
 
 /// The light under the keys, in Moss & Otto's two lights. It sits on the system glass, below everything else:
-/// 日光 — nothing: the system keyboard's own glass, as on the built-in keyboard;
+/// 日光 — lavender milk with a soft studio light from the top left;
 /// 夜灯 — the deep night tint and the gold glow of Mosto's tail tip in the top-left corner.
 /// Static (no motion), faint, and always under the keys, so it never competes with the legends.
 final class AmbientLightView: UIView {
@@ -48,7 +48,12 @@ final class AmbientLightView: UIView {
             glow.startPoint = CGPoint(x: lampPoint.x / w, y: lampPoint.y / h)
             glow.endPoint = CGPoint(x: (lampPoint.x + 150) / w, y: (lampPoint.y + 120) / h)
         } else {
-            glow.colors = nil   // 日光 is the system keyboard's own glass, untouched
+            // 日光: the soft studio light of Mosto's product shot, from the top left
+            let c = UIColor.white
+            glow.colors = [c.withAlphaComponent(0.45).cgColor, c.withAlphaComponent(0.12).cgColor, c.withAlphaComponent(0).cgColor]
+            glow.locations = [0, 0.45, 1]
+            glow.startPoint = CGPoint(x: 0.15, y: 0)
+            glow.endPoint = CGPoint(x: 0.85, y: 1.1)
         }
         CATransaction.commit()
         // at night the spade's glow breathes, very slowly (5 s), like a lamp; never with Reduce Motion
