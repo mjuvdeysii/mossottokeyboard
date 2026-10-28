@@ -130,6 +130,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         }
         returnButton.backgroundColor = Theme.accentKey
         returnButton.setTitleColor(Theme.accentText, for: .normal)
+        applyLips()
         bar.axis = .horizontal
         bar.distribution = .fillEqually
         addSubview(bar)
@@ -175,11 +176,31 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
 
         titleLabel.font = Theme.font(12, .bold)
         titleLabel.textColor = Theme.secondaryText
-        addSubview(titleLabel)
+        // the category names are the headers in the list itself (as on the system emoji keyboard); a second, pinned
+        // name above them showed the same words twice
+        titleLabel.isHidden = true
         load()
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    /// The bar's keys are vinyl caps like the keyboard's: a darker lip under each (a hard, unblurred shadow).
+    private func applyLips() {
+        for (b, lip) in [(backButton, Theme.functionLip), (deleteButton, Theme.functionLip), (returnButton, Theme.accentLip)] {
+            b.layer.shadowColor = lip.resolvedColor(with: traitCollection).cgColor
+            b.layer.shadowOpacity = 1
+            b.layer.shadowRadius = 0
+            b.layer.shadowOffset = CGSize(width: 0, height: Metrics.lip)
+            b.layer.cornerRadius = Metrics.cornerRadius
+        }
+        backButton.backgroundColor = Theme.functionKey
+        deleteButton.backgroundColor = Theme.functionKey
+    }
+
+    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+        super.traitCollectionDidChange(previous)
+        applyLips()
+    }
 
     // MARK: - Data
 
@@ -260,10 +281,10 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         guard b.width > 100, b.height > 100 else { return }   // before the panel has its real frame
         let barH: CGFloat = 40
         titleLabel.frame = CGRect(x: 12, y: 0, width: b.width - 24, height: 24)
-        collection.frame = CGRect(x: 0, y: 24, width: b.width, height: b.height - 24 - barH - 4)
+        collection.frame = CGRect(x: 0, y: 2, width: b.width, height: b.height - 2 - barH - 4)
         let side: CGFloat = 56
-        backButton.frame = CGRect(x: 4, y: b.height - barH, width: side, height: barH - 4)
-        deleteButton.frame = CGRect(x: b.width - side - 4, y: b.height - barH, width: side, height: barH - 4)
+        backButton.frame = CGRect(x: 4, y: b.height - barH - 2, width: side, height: barH - 4)
+        deleteButton.frame = CGRect(x: b.width - side - 4, y: b.height - barH - 2, width: side, height: barH - 4)
         returnButton.frame = deleteButton.frame
         bar.frame = CGRect(x: side + 8, y: b.height - barH, width: b.width - 2 * side - 16, height: barH - 4)
         collection.collectionViewLayout.invalidateLayout()
@@ -302,7 +323,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
 
     func collectionView(_ collectionView: UICollectionView, layout: UICollectionViewLayout, referenceSizeForHeaderInSection section: Int) -> CGSize {
         // the first section's name is the panel title; later ones get a small header where they begin
-        sections[section].items.isEmpty || section == 0 ? .zero : CGSize(width: collectionView.bounds.width, height: 24)
+        sections[section].items.isEmpty ? .zero : CGSize(width: collectionView.bounds.width, height: 26)
     }
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {

@@ -254,12 +254,12 @@ enum Theme {
         return UIFont(descriptor: d, size: size)
     }
 
-    /// Tint laid over the system glass: lavender milk by day, deep violet at night.
-    static let glassTint = dyn(hex(0xD9CFF2, 0.62), hex(0x1D1442, 0.72))
-    /// Night forced while the system is light: the glass underneath is pale, so the tint must carry the night alone.
-    static let forcedNightTint = hex(0x1D1442, 0.93)
-    /// Day forced while the system is dark: the light keyboard's surface.
-    static let forcedDayTint = hex(0xE4DCF6, 0.92)
+    /// No tint over the system glass: the system draws its glass beyond the keyboard's view (the margin above the
+    /// strip, the globe row below), so any colour laid on it shows as a box inside a grey frame. The keys are the toy;
+    /// the glass stays the system's, by day and at night alike.
+    static let glassTint = UIColor.clear
+    static let forcedNightTint = UIColor.clear
+    static let forcedDayTint = UIColor.clear
     /// The keyboard's own surfaces: almost invisible (2 % grey over the system glass) but never fully transparent —
     /// inside a keyboard extension iOS does not deliver a touch that lands on a fully transparent point, even in a
     /// view that would take it. With clear backgrounds, fast taps landing in the gaps between keys, above the top row

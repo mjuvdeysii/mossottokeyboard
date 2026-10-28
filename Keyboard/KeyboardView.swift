@@ -69,7 +69,7 @@ final class KeyView: UIView {
         hintLabel.isHidden = spec.hint == nil
         switch spec.action {
         // the system keyboard's type: regular weight throughout
-        case .char where spec.isLetter: label.font = Theme.font(Metrics.letterFont, .medium)
+        case .char where spec.isLetter: label.font = Theme.font(Metrics.letterFont, .regular)
         case .char: label.font = Theme.font(Metrics.symbolFont, .medium)
         case .t9(let d): label.font = Theme.font(d == "'" ? Metrics.functionFont : 20, .semibold)
         default: label.font = Theme.font(Metrics.functionFont, .semibold)

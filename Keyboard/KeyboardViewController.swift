@@ -311,18 +311,19 @@ final class KeyboardViewController: UIInputViewController {
         view.traitCollection.userInterfaceStyle == .dark || textDocumentProxy.keyboardAppearance == .dark
     }
 
-    /// 自动 leaves the light to the system (no override), so the keys, the glass and the app always change together —
-    /// nothing glares light on dark glass or sits dark on light glass while the system switches. Only a host that asks
-    /// for a dark keyboard while the system is light gets dark forced. 日光 / 夜灯 force their light and, when it
-    /// differs from the glass underneath, lay down a surface of their own so it still reads as that light.
+    /// The glass under the keyboard is always the system's (light or dark, as the system or the host asks), and it
+    /// runs beyond the keyboard's view, so nothing can recolour it without leaving a box inside a grey frame. So the
+    /// light is split: everything that sits on the glass — the candidate strip, the emoji page, settings — follows the
+    /// glass and stays readable on it; the keys (and Mosto) follow the light chosen: 自动 the glass's, 日光 / 夜灯
+    /// their own. Night on a light system is violet vinyl keys on pale glass; day on a dark one, cream keys on dark.
     private func applyAppearance() {
         let sysDark = systemIsDark
         let mode = KeyboardSettings.shared.appearance
         let night = mode == 1 ? false : mode == 2 ? true : sysDark
-        let style: UIUserInterfaceStyle = mode == 0
-            ? (textDocumentProxy.keyboardAppearance == .dark && view.traitCollection.userInterfaceStyle != .dark ? .dark : .unspecified)
-            : (night ? .dark : .light)
-        let changed = night != isNight || root.overrideUserInterfaceStyle != style
+        // a host that asks for a dark keyboard while the system is light gets dark glass: follow it
+        let glass: UIUserInterfaceStyle = textDocumentProxy.keyboardAppearance == .dark && view.traitCollection.userInterfaceStyle != .dark ? .dark : .unspecified
+        let keys: UIUserInterfaceStyle = mode == 0 ? .unspecified : (night ? .dark : .light)
+        let changed = night != isNight || root.overrideUserInterfaceStyle != glass || keyboard.overrideUserInterfaceStyle != keys
         if changed, root.window != nil {
             // a short crossfade instead of a flash when the light changes under the keyboard
             let fade = CATransition()
@@ -331,10 +332,11 @@ final class KeyboardViewController: UIInputViewController {
             root.layer.add(fade, forKey: "light")
         }
         isNight = night
-        root.overrideUserInterfaceStyle = style
+        root.overrideUserInterfaceStyle = glass
+        keyboard.overrideUserInterfaceStyle = keys
         tintView.night = night
-        tintView.forcedNight = night && !sysDark
-        tintView.forcedDay = !night && sysDark
+        tintView.forcedNight = false
+        tintView.forcedDay = false
         candidateBar.mosto.setNight(night)
         candidateBar.showsMosto = true    // by day and at night: only his light follows the keyboard's
         settingsPanel.setNight(night)

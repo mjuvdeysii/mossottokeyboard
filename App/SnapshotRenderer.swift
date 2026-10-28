@@ -77,11 +77,11 @@ enum SnapshotRenderer {
                 let width = fullWidth - 2 * inset
                 let height = shot.panel == "settings_full" ? 820 : barH + 4 * pitch
                 let root = UIView(frame: CGRect(x: 0, y: 0, width: fullWidth, height: height))
-                root.overrideUserInterfaceStyle = night ? .dark : .light
                 // "forced": the light chosen in settings differs from the system glass underneath (日光 in a dark app,
-                // 夜灯 in a light one) — the keyboard must still read as its own light, neither glaring nor covered
+                // 夜灯 in a light one): the keys take the chosen light, everything on the glass follows the glass
                 let forced = shot.panel == "forced"
                 let darkGlass = night != forced
+                root.overrideUserInterfaceStyle = darkGlass ? .dark : .light
                 root.backgroundColor = darkGlass ? UIColor(white: 0.13, alpha: 1) : UIColor(red: 0.90, green: 0.91, blue: 0.93, alpha: 1)
                 window.addSubview(root)
                 let tint = AmbientLightView(frame: root.bounds)
@@ -96,6 +96,7 @@ enum SnapshotRenderer {
                 bar.showsMosto = true
                 let kb = KeyboardView(spatial: SpatialModel.standard(width: Double(width)))
                 kb.frame = CGRect(x: inset, y: barH, width: width, height: 4 * pitch)
+                kb.overrideUserInterfaceStyle = night ? .dark : .light
                 root.addSubview(kb)
                 kb.configure(LayoutContext(page: shot.page, chinese: !shot.name.hasPrefix("en_"), showGlobe: shot.globe, returnLabel: nil,
                                            returnIsAccent: false, shifted: shot.state == "shift", capsLock: false,
