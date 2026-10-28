@@ -343,7 +343,9 @@ final class KeyboardViewController: UIInputViewController {
     /// The system's own light: dark mode, or a host that asks for a dark keyboard (Spotlight, some search bars).
     /// Read from the controller's view, which is never overridden (only `root` is).
     private var systemIsDark: Bool {
-        view.traitCollection.userInterfaceStyle == .dark || textDocumentProxy.keyboardAppearance == .dark
+        // the glass iOS draws follows the keyboard's own traits; a host's keyboardAppearance does not change it on
+        // iOS 26 (a field asking for a dark keyboard still shows pale glass), so it is not read here
+        view.traitCollection.userInterfaceStyle == .dark
     }
 
     /// The glass under the keyboard is always the system's (light or dark, as the system or the host asks), and it
@@ -356,7 +358,7 @@ final class KeyboardViewController: UIInputViewController {
         let mode = KeyboardSettings.shared.appearance
         let night = mode == 1 ? false : mode == 2 ? true : sysDark
         // a host that asks for a dark keyboard while the system is light gets dark glass: follow it
-        let glass: UIUserInterfaceStyle = textDocumentProxy.keyboardAppearance == .dark && view.traitCollection.userInterfaceStyle != .dark ? .dark : .unspecified
+        let glass: UIUserInterfaceStyle = .unspecified   // the strip, emoji page and settings follow the glass itself
         let keys: UIUserInterfaceStyle = mode == 0 ? .unspecified : (night ? .dark : .light)
         let changed = night != isNight || root.overrideUserInterfaceStyle != glass || keyboard.overrideUserInterfaceStyle != keys
         if changed, root.window != nil {
