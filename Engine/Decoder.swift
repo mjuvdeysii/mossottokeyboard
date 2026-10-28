@@ -83,6 +83,9 @@ public final class Decoder {
     /// 九宫格: extra cost of reading the last keys as the start of a longer syllable (on the keypad a half-typed
     /// syllable matches far more spellings, so a reading that ends on whole syllables should usually win).
     public var t9PrefixExtra = 3.0
+    /// How much of a word's own frequency the language model takes back when it scores the word in context.
+    public var unigramDiscount = 0.5
+    public var unigramCenter = 10.0
 
     public init(lexicon: Lexicon, user: UserDictionary? = nil) {
         self.lexicon = lexicon
@@ -495,6 +498,7 @@ public final class Decoder {
             edgeChars[ei] = c
             return c
         }
+        let keypad = taps.contains { $0.group }
         /// The language-model score of word `ei` after the words of `prev` (or after the text in the field).
         func link(_ prev: [Int], _ ei: Int) -> Double {
             guard let grammar else { return 0 }
@@ -505,7 +509,14 @@ public final class Decoder {
             let q = grammar.query(context: Array(ctx.suffix(3)), word: chars(ei))
             // a corrected word keeps the same baseline but only part of the lift above it
             let base = grammar.nonCollocationPenalty
-            return grammarWeight * (edges[ei].corrected ? base + grammarCorrectedFactor * (q - base) : q)
+            var lift = grammarWeight * (edges[ei].corrected ? base + grammarCorrectedFactor * (q - base) : q)
+            // The model's counts are joint (how often context + word occur), so they already carry how common the
+            // word is; the lexicon's frequency added on top counts that twice and lets 在 outvote 再 after 可以.
+            // Where the model has the pair, part of the word's own frequency is taken back out.
+            if unigramDiscount > 0, !keypad, q > base, !edges[ei].corrected, edges[ei].entry >= 0 {
+                lift -= unigramDiscount * (Double(lexicon.entry(edges[ei].entry).score) / 100 - unigramCenter)
+            }
+            return lift
         }
         func bestPaths(literalOnly: Bool) -> [Path] {
             var paths = [[Path]](repeating: [], count: n + 1)

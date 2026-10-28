@@ -268,7 +268,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     }
 
     func setChinese(_ chinese: Bool) {
-        backButton.setTitle(chinese ? "中文" : "ABC", for: .normal)
+        backButton.setTitle(chinese ? "拼音" : "ABC", for: .normal)
         backButton.setNeedsLayout()
     }
 

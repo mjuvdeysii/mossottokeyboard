@@ -150,7 +150,7 @@ enum Layouts {
     }
 
     private static func bottomRow(_ ctx: LayoutContext) -> [KeySpec] {
-        var bottom: [KeySpec] = [KeySpec(action: .page(.letters), label: ctx.chinese ? "中文" : "ABC", width: 1.25, style: .function)]
+        var bottom: [KeySpec] = [KeySpec(action: .page(.letters), label: ctx.chinese ? "拼音" : "ABC", width: 1.25, style: .function)]
         bottom += middleKeys(ctx)
         bottom.append(KeySpec(action: .space, label: ctx.chinese ? "空格" : "space", width: 0))
         bottom.append(returnKey(ctx, width: 2.5, wide: true))
