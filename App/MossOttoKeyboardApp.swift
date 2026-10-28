@@ -89,12 +89,23 @@ struct HomeContent: View {
                             }
                         }
                         Card(title: "关于") {
-                            if snapshot {
-                                Label("隐私与开源许可", systemImage: "hand.raised")
-                            } else {
-                                NavigationLink { AboutView() } label: {
-                                    Label("隐私与开源许可", systemImage: "hand.raised").frame(maxWidth: .infinity, alignment: .leading)
+                            // privacy policy, terms and disclaimer, licences: each its own page (the same text as the
+                            // hosted pages, from Tools/build_legal.py), plus beta notes and where to give feedback
+                            ForEach(Array(LegalText.docs.enumerated()), id: \.offset) { i, doc in
+                                if i > 0 { Divider() }
+                                if snapshot {
+                                    Label(doc.title, systemImage: aboutIcon(doc.id))
+                                } else {
+                                    NavigationLink { LegalView(doc: doc) } label: {
+                                        Label(doc.title, systemImage: aboutIcon(doc.id)).frame(maxWidth: .infinity, alignment: .leading)
+                                    }
                                 }
+                            }
+                            Divider()
+                            Label("测试版：功能可能变动，发送重要内容前请核对上屏文字。在 TestFlight 中截图即可提交反馈。", systemImage: "testtube.2")
+                                .font(.footnote)
+                            if let u = URL(string: "https://github.com/mjuvdeysii/mossottokeyboard/issues") {
+                                Link(destination: u) { Label("问题与建议", systemImage: "bubble.left.and.text.bubble.right") }
                             }
                             Divider()
                             Text("键盘不联网。词库、你学过的词和触点习惯只存在这台设备上，不会上传。")
@@ -242,45 +253,56 @@ struct LightTile: View {
     }
 }
 
-/// Privacy and the licences of what the keyboard is built from (required for a release).
-struct AboutView: View {
+func aboutIcon(_ id: String) -> String {
+    switch id { case "privacy": return "hand.raised"; case "terms": return "doc.text"; default: return "shippingbox" }
+}
+
+/// One legal page (隐私政策 / 用户协议与免责声明 / 开源许可): the same text as the hosted page, readable offline.
+struct LegalView: View {
+    let doc: LegalText.Doc
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                Card(title: "隐私") {
-                    Text("Mosto键盘不联网，也没有任何统计或广告代码。你打的字、学过的词和触点习惯只保存在这台设备上的键盘里，不会被收集或上传。")
-                    Text("“允许完全访问”只用于震动和按键音；不开也能正常打字。")
-                        .font(.footnote).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 14) {
+                Text("生效日期：\(LegalText.effective)").font(.footnote).foregroundStyle(.secondary)
+                ForEach(Array(doc.sections.enumerated()), id: \.offset) { _, section in
+                    Card(title: section.0) {
+                        ForEach(Array(section.1.enumerated()), id: \.offset) { _, item in
+                            switch item {
+                            case .text(let t):
+                                Text(linked(t)).fixedSize(horizontal: false, vertical: true)
+                            case .bullets(let list):
+                                VStack(alignment: .leading, spacing: 6) {
+                                    ForEach(Array(list.enumerated()), id: \.offset) { _, b in
+                                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                            Text("•").foregroundStyle(.secondary)
+                                            Text(linked(b)).fixedSize(horizontal: false, vertical: true)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
-                Card(title: "开源许可") {
-                    License(name: "雾凇拼音 rime-ice（中文词库）", license: "GPL-3.0", url: "https://github.com/iDvel/rime-ice")
-                    Divider()
-                    License(name: "八股文 rime-octagram-data（语言模型：哪些词常连在一起）", license: "LGPL-3.0", url: "https://github.com/lotem/rime-octagram-data")
-                    Divider()
-                    License(name: "wordfreq（英文词频，中英混输）", license: "数据 CC BY-SA 4.0", url: "https://github.com/rspeer/wordfreq")
-                    Divider()
-                    License(name: "Emojibase（表情列表与分类）", license: "MIT", url: "https://github.com/milesj/emojibase")
-                    Divider()
-                    License(name: "Mosto键盘", license: "GPL-3.0", url: "https://github.com/mjuvdeysii/mossottokeyboard")
+                if let u = URL(string: LegalText.site + "/" + doc.id + ".html") {
+                    Link("网页版：" + u.absoluteString, destination: u).font(.footnote)
                 }
             }
             .padding(16)
         }
         .background(Color(UIColor.systemGroupedBackground))
-        .navigationTitle("隐私与开源许可")
+        .navigationTitle(doc.title)
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    /// Plain text with its web addresses made tappable.
+    private func linked(_ s: String) -> AttributedString {
+        var a = AttributedString(s)
+        guard let det = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else { return a }
+        for m in det.matches(in: s, range: NSRange(s.startIndex..., in: s)) {
+            guard let url = m.url, let r = Range(m.range, in: s), let ar = Range(r, in: a) else { continue }
+            a[ar].link = url
+        }
+        return a
     }
 }
 
-struct License: View {
-    let name: String
-    let license: String
-    let url: String
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(name).font(.subheadline.weight(.semibold))
-            Text(license).font(.footnote).foregroundStyle(.secondary)
-            if let u = URL(string: url) { Link(url, destination: u).font(.footnote) }
-        }
-    }
-}

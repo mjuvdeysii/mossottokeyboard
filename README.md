@@ -94,3 +94,11 @@ python3 Tools/gen_xcodeproj.py
 ## 隐私
 
 键盘不联网，不含任何统计、广告或崩溃上报代码。打字内容、学过的词和触点习惯只保存在设备上的键盘扩展里。“允许完全访问”只用于震动和按键音。
+
+
+## 合规与公开测试
+
+- 隐私政策、用户协议与免责声明、开源许可：一份文本 `Tools/build_legal.py`，生成 App 内页面（`App/LegalText.swift`）与网页版（`docs/*.html`）。改文字后运行 `python3 Tools/build_legal.py`。
+- 网页版由 GitHub Pages 发布（仓库 Settings › Pages › Branch: main，文件夹 /docs），隐私政策网址：https://mjuvdeysii.github.io/mossottokeyboard/privacy.html
+- 隐私清单：`App/PrivacyInfo.xcprivacy` 与 `Keyboard/Resources/PrivacyInfo.xcprivacy`（不追踪、不收集数据；UserDefaults CA92.1、文件时间戳 C617.1）。
+- 出口合规：`ITSAppUsesNonExemptEncryption = NO`（不使用加密）。
