@@ -235,10 +235,14 @@ enum KeyboardTests {
             let grid = round % 3 == 2
             guard let kb = makeKeyboard(scheme: round % 2, grid: grid, in: window) else { log(false, "fuzz.setup"); return }
             let (vc, h) = kb
+            var recent: [String] = []
             for _ in 0..<600 {
                 steps += 1
                 let k = r(100)
                 let before = h.string
+                let names = ["key", "space", "delete", "cand", "ret", "lang", "punct", "delword", "clear", "syl", "wait"]
+                let kind = k < 55 ? 0 : k < 67 ? 1 : k < 79 ? 2 : k < 84 ? 3 : k < 87 ? 4 : k < 90 ? 5 : k < 92 ? 6 : k < 94 ? 7 : k < 96 ? 8 : k < 98 ? 9 : 10
+                recent.append(names[kind]); if recent.count > 6 { recent.removeFirst() }
                 switch k {
                 case 0..<55:
                     // the 九宫格 shows only in Chinese; English always has the full keyboard
@@ -264,7 +268,7 @@ enum KeyboardTests {
                 // the rules
                 let st = vc.testState
                 if !st.composing && h.marked != nil { violations.append("marked text left after the composition ended (\(h.markedString ?? ""))") }
-                if st.composing && h.marked == nil && !st.keys.isEmpty { violations.append("composing \(st.keys) but nothing marked in the field (english \(st.english), \(st.candidates.count) candidates, page \(st.page))") }
+                if st.composing && h.marked == nil && !st.keys.isEmpty { violations.append("composing \(st.keys) but nothing marked in the field (english \(st.english), \(st.candidates.count) candidates, page \(st.page), settled \(vc.testSettled), after \(recent.joined(separator: ",")))") }
                 if st.composing && !grid && !st.english, let m = h.markedString, m != st.keys {
                     violations.append("field shows \(m) while the keys are \(st.keys)")
                 }
