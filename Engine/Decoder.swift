@@ -80,6 +80,9 @@ public final class Decoder {
     public var t9AbbreviationExtra = 3.4
     /// 九宫格: the least lexicon score (ln of its frequency) a word of two or more syllables needs to be offered.
     public var t9MinWordScore = -Double.infinity
+    /// 九宫格: extra cost of reading the last keys as the start of a longer syllable (on the keypad a half-typed
+    /// syllable matches far more spellings, so a reading that ends on whole syllables should usually win).
+    public var t9PrefixExtra = 3.0
 
     public init(lexicon: Lexicon, user: UserDictionary? = nil) {
         self.lexicon = lexicon
@@ -227,7 +230,8 @@ public final class Decoder {
                     if pos == n {
                         // still typing the last syllable: anything it can grow into — but when the keys already spell
                         // a whole syllable (xian), that syllable comes first and the longer ones (xiang) after
-                        let extra = st.node.ids.isEmpty ? prefixPenalty : prefixPenalty + completionPenalty
+                        let extra = (st.node.ids.isEmpty ? prefixPenalty : prefixPenalty + completionPenalty)
+                            + (taps[i].group ? t9PrefixExtra : 0)
                         for id in st.node.below where !st.node.ids.contains(id) {
                             emit(Span(end: pos, id: id, spatial: cost - extra, corrected: st.corrected, kind: 1))
                         }

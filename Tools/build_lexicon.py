@@ -96,6 +96,12 @@ def main():
     gram_path, bonus = None, 1.0
     if "--calibrate" in rest:
         i = rest.index("--calibrate"); gram_path = rest[i + 1]; del rest[i:i + 2]
+    demote = set()
+    if "--demote" in rest:
+        i = rest.index("--demote")
+        for ln in open(rest[i + 1], encoding="utf-8"):
+            if not ln.startswith("#"): demote.update(ln.split())
+        del rest[i:i + 2]
     if "--bonus" in rest:
         i = rest.index("--bonus"); bonus = float(rest[i + 1]); del rest[i:i + 2]
     inputs = rest
@@ -154,6 +160,8 @@ def main():
     entries = []
     for (text, syls), w in merged.items():
         score = override.get((text, syls), int(round(math.log(w + 1) * 100)))
+        if text in demote or any(c in demote for c in text):   # a listed single character: every word with it
+            score = min(score, -500)   # kept, but never the pick when anything else reads the same keys
         score = max(score, -32768)
         score = min(score, 32767)
         ids = [sid[s] for s in syls]

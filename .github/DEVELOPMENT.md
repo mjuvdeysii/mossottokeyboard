@@ -44,7 +44,7 @@ python3 Tools/tencent_pinyin.py tencent.dict.yaml tencent_py.dict.yaml     # 需
 python3 Tools/build_lexicon.py 8105.dict.yaml base.dict.yaml ext.dict.yaml tencent_py.dict.yaml -o /tmp/lex0.bin
 python3 -c "..."  # 列出 base/ext/tencent 中 2–4 字的词（每行一个）→ phrases.txt
 EngineCLI <lexicon.bin> gramcount < phrases.txt > gram_counts.tsv
-python3 Tools/build_lexicon.py 8105.dict.yaml base.dict.yaml ext.dict.yaml tencent_py.dict.yaml --calibrate gram_counts.tsv -o Keyboard/Resources/lexicon.bin
+python3 Tools/build_lexicon.py 8105.dict.yaml base.dict.yaml ext.dict.yaml tencent_py.dict.yaml --calibrate gram_counts.tsv --demote Tools/data/demote.txt -o Keyboard/Resources/lexicon.bin
 # 语言模型：rime-octagram-data（hans 分支）的 zh-hans-t-essay-bgw.gram，原样复制
 cp zh-hans-t-essay-bgw.gram Keyboard/Resources/grammar.gram
 # 英文词表：Tools/data/english.txt（Tools/build_english.py 生成）→ 内存映射的二进制
