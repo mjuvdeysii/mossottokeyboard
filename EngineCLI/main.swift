@@ -32,6 +32,8 @@ if let v = env["SIG"].flatMap(Double.init) { model.sigmaX = v; model.sigmaY = v 
 if let v = env["WP"].flatMap(Double.init) { decoder.wordPenalty = v }
 if env["SCHEME"] == "quanpin" { decoder.scheme = .quanpin }
 if let v = env["ABBR"].flatMap(Double.init) { decoder.abbreviationPenalty = v }
+if let v = env["T9ABBR"].flatMap(Double.init) { decoder.t9AbbreviationExtra = v }
+if let v = env["BEAM"].flatMap(Int.init) { decoder.beam = v }
 if let v = env["UW"].flatMap(Double.init) { decoder.userWeight = v }
 // language model: grammar.gram next to the lexicon (GRAMMAR=path overrides, GRAMMAR=0 turns it off; GW weight)
 if env["GRAMMAR"] != "0" {
@@ -346,7 +348,7 @@ case "bench", "gate":
             ("sentences.true", 80.0, true),
             ("sentences.ms", 16.0, false),     // CI runners vary 2–5× (1.2 ms locally)
             ("t9.words.top1", 63.0, true),
-            ("t9.sentences.top1", 62.0, true),
+            ("t9.sentences.top1", 66.0, true),
             ("t9.sentences.ms", 150.0, false),
             ("learn.same", 95.0, true),
             ("learn.harm", 1.0, false),

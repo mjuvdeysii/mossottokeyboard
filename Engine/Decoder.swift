@@ -75,6 +75,9 @@ public final class Decoder {
     /// 全拼: cost of a syllable typed as its initial only (简拼), and of a half-typed last syllable.
     public var abbreviationPenalty = 2.6
     public var prefixPenalty = 0.4
+    /// 九宫格: extra cost of reading a keypad key as a whole syllable's initial (every key holds several initials,
+    /// so abbreviations there are far more often a misreading than on the full keyboard).
+    public var t9AbbreviationExtra = 3.4
 
     public init(lexicon: Lexicon, user: UserDictionary? = nil) {
         self.lexicon = lexicon
@@ -246,7 +249,7 @@ public final class Decoder {
                 if "zcs".contains(k0), i + 2 < n, hasH(i + 1), !vowel(i + 2), !boundaries.contains(i + 1) {
                     ends.append((end: i + 2, head: String(k0) + "h"))
                 }
-                let cost = abbreviationPenalty + (t0.group ? 1.0 : 0)
+                let cost = abbreviationPenalty + (t0.group ? t9AbbreviationExtra : 0)
                 for (end, head) in ends {
                     for id in trie.children[k0]?.below ?? [] {
                         // a lone z / c / s also stands for zh / ch / sh, as people abbreviate both
