@@ -106,6 +106,14 @@ final class KeyboardViewController: UIInputViewController {
         candidateBar.onExpand = { [weak self] in self?.showGrid(true) }
         candidateBar.onLongPress = { [weak self] i in self?.offerForget(i) }
         candidateBar.onSettings = { [weak self] in self?.showSettings(true) }
+        candidateBar.onMostoTap = { [weak self] in self?.playFeedback(.emoji); self?.showEmoji(true, kaomoji: true) }
+        candidateBar.onMostoDoubleTap = { [weak self] in
+            // 日光 ⇄ 夜灯, from whatever light is showing now (自动 included); the settings page shows the choice
+            guard let self else { return }
+            self.playFeedback(.emoji)
+            KeyboardSettings.shared.appearance = self.isNight ? 1 : 2
+            self.applyAppearance()
+        }
         grid.onSelect = { [weak self] i in self?.showGrid(false); self?.candidateTapped(i) }
         grid.onClose = { [weak self] in self?.showGrid(false) }
         grid.onDelete = { [weak self] in
@@ -949,7 +957,7 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     /// The emoji page covers the keys and the candidate strip, as the system emoji keyboard does.
-    private func showEmoji(_ on: Bool) {
+    private func showEmoji(_ on: Bool, kaomoji: Bool = false) {
         guard on != emojiShown else { return }
         emojiShown = on
         if on {
@@ -957,7 +965,7 @@ final class KeyboardViewController: UIInputViewController {
             endEnglishWord()
             emojiPanel.setChinese(chinese)
             emojiPanel.frame = CGRect(x: view.safeAreaInsets.left, y: 0, width: view.bounds.width - view.safeAreaInsets.left - view.safeAreaInsets.right, height: view.bounds.height)
-            emojiPanel.load()
+            emojiPanel.load(kaomoji: kaomoji)
             root.bringSubviewToFront(emojiPanel)
         } else if !chinese {
             updateAutoShift()

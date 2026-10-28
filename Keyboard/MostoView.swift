@@ -23,13 +23,37 @@ final class MostoView: UIView {
     override init(frame: CGRect) {
         super.init(frame: frame)
         isAccessibilityElement = true
-        accessibilityLabel = "Mosto，键盘设置"
+        accessibilityLabel = "Mosto"
+        accessibilityHint = "轻点选颜文字，轻点两下切换日光与夜灯"
         accessibilityTraits = .button
+        accessibilityCustomActions = [UIAccessibilityCustomAction(name: "切换日光与夜灯") { [weak self] _ in
+            self?.onToggleLight?(); return true
+        }]
         image.contentMode = .scaleAspectFit
         addSubview(image)
         image.image = day
     }
     required init?(coder: NSCoder) { fatalError() }
+
+    /// VoiceOver: activating him opens his 颜文字; the custom action switches the light.
+    var onActivate: (() -> Void)?
+    var onToggleLight: (() -> Void)?
+    override func accessibilityActivate() -> Bool { onActivate?(); return true }
+
+    /// A little hop when he switches the light (a squash, up, down); none with Reduce Motion.
+    func hop() {
+        guard !UIAccessibility.isReduceMotionEnabled else { return }
+        image.layer.removeAnimation(forKey: "hop")
+        let a = CAKeyframeAnimation(keyPath: "transform")
+        a.values = [CATransform3DIdentity,
+                    CATransform3DMakeScale(1.12, 0.86, 1),
+                    CATransform3DConcat(CATransform3DMakeScale(0.94, 1.08, 1), CATransform3DMakeTranslation(0, -7, 0)),
+                    CATransform3DIdentity].map { NSValue(caTransform3D: $0) }
+        a.keyTimes = [0, 0.25, 0.6, 1]
+        a.duration = 0.42
+        a.timingFunctions = [CAMediaTimingFunction(name: .easeOut), CAMediaTimingFunction(name: .easeOut), CAMediaTimingFunction(name: .easeIn)]
+        image.layer.add(a, forKey: "hop")
+    }
 
     override func layoutSubviews() {
         super.layoutSubviews()

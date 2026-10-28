@@ -210,7 +210,8 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         UserDefaults.standard.set(Array(r.prefix(32)), forKey: recentKey)
     }
 
-    func load() {
+    /// `kaomoji`: open on Mosto 颜文字 (a tap on Mosto) instead of 常用.
+    func load(kaomoji: Bool = false) {
         let recent = Self.recents()
         sections = [Category(name: "常用", symbol: "clock", items: recent)] + Self.categories()
         selected = -1
@@ -218,6 +219,10 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         guard bounds.width > 100, bounds.height > 100 else { return }   // shown with a frame later: load() runs again
         layoutIfNeeded()
         collection.layoutIfNeeded()
+        if kaomoji, let k = sections.firstIndex(where: { $0.name == Self.kaomojiName }) {
+            scrollTo(k, animated: false)
+            return
+        }
         // open on 常用 when there is something in it, else on the faces
         scrollTo(recent.isEmpty ? 1 : 0, animated: false)
     }

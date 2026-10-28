@@ -7,6 +7,9 @@ final class CandidateBarView: UIView {
     var onSelect: ((Int) -> Void)?
     var onExpand: (() -> Void)?
     var onSettings: (() -> Void)?
+    /// Mosto: a tap opens his 颜文字, a double tap switches 日光 / 夜灯.
+    var onMostoTap: (() -> Void)?
+    var onMostoDoubleTap: (() -> Void)?
     /// Long press on a candidate (to offer removing a learned word).
     var onLongPress: ((Int) -> Void)?
 
@@ -46,14 +49,22 @@ final class CandidateBarView: UIView {
         expandButton.addTarget(self, action: #selector(expandTapped), for: .touchUpInside)
         // Mosto sits in the idle corner; a tap opens settings (also reachable from the ⚙︎ key)
         addSubview(mosto)
-        mosto.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(settingsTapped)))
+        let double = UITapGestureRecognizer(target: self, action: #selector(mostoDoubleTapped))
+        double.numberOfTapsRequired = 2
+        let single = UITapGestureRecognizer(target: self, action: #selector(mostoTapped))
+        single.require(toFail: double)
+        mosto.addGestureRecognizer(double)
+        mosto.addGestureRecognizer(single)
+        mosto.onActivate = { [weak self] in self?.onMostoTap?() }
+        mosto.onToggleLight = { [weak self] in self?.onMostoDoubleTap?() }
         update(preedit: "", candidates: [])
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
     @objc private func expandTapped() { onExpand?() }
-    @objc private func settingsTapped() { onSettings?() }
+    @objc private func mostoTapped() { onMostoTap?() }
+    @objc private func mostoDoubleTapped() { mosto.hop(); onMostoDoubleTap?() }
 
     /// `prediction`: the row shows next-word suggestions (联想) rather than candidates for typed keys.
     func update(preedit text: String, candidates: [Candidate], prediction: Bool = false) {
@@ -399,7 +410,7 @@ final class SettingsPanelView: UIView {
             row("按键震动", feedbackSwitch),
             row("按键音", soundSwitch),
         ], footer: "震动与按键音在按下的一瞬间发出（与系统键盘一样）；按键音跟随静音开关。")
-        section("外观", rows: [row("光线", appearance)], footer: "自动：跟随系统的浅色 / 深色模式。Mosto 不打字时待在候选栏左边：日光下睁大眼睛、偶尔眨眼；夜灯下深紫底色，尾巴尖亮起金光。按键是他的软胶：空格上是他的翅膀，中 / 英 键戴着他的歪王冠，换行键是王冠的金色。")
+        section("外观", rows: [row("光线", appearance)], footer: "自动：跟随系统的浅色 / 深色模式。Mosto 不打字时待在候选栏左边：轻点他选颜文字，轻点两下切换日光 / 夜灯。日光下睁大眼睛、偶尔眨眼；夜灯下深紫底色，尾巴尖亮起金光。按键是他的软胶：空格上是他的翅膀，中 / 英 键戴着他的歪王冠，换行键是王冠的金色。")
 
         learnedLabel.font = .systemFont(ofSize: 15)
         learnedLabel.textColor = Theme.secondaryText

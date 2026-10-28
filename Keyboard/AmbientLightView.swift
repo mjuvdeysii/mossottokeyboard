@@ -6,6 +6,9 @@ import UIKit
 /// Static (no motion), faint, and always under the keys, so it never competes with the legends.
 final class AmbientLightView: UIView {
     private let glow = CAGradientLayer()
+    /// The tint fades out at the top and bottom edges, so it melts into the system glass around the keyboard
+    /// (the glass above the strip and the globe row below) instead of sitting on it as a box.
+    private let edgeFade = CAGradientLayer()
     var night = false { didSet { refresh() } }
     /// Night chosen while the system is light: the glass below is pale, so the tint must be denser.
     var forcedNight = false { didSet { refresh() } }
@@ -20,6 +23,8 @@ final class AmbientLightView: UIView {
         isUserInteractionEnabled = false
         glow.type = .radial
         layer.addSublayer(glow)
+        edgeFade.colors = [UIColor.clear.cgColor, UIColor.black.cgColor, UIColor.black.cgColor, UIColor.clear.cgColor]
+        layer.mask = edgeFade
         refresh()
     }
     required init?(coder: NSCoder) { fatalError() }
@@ -40,6 +45,8 @@ final class AmbientLightView: UIView {
         guard bounds.width > 0, bounds.height > 0 else { return }
         CATransaction.begin(); CATransaction.setDisableActions(true)
         glow.frame = bounds
+        edgeFade.frame = bounds
+        edgeFade.locations = [0, NSNumber(value: Double(min(0.2, 22 / bounds.height))), NSNumber(value: Double(max(0.8, 1 - 16 / bounds.height))), 1]
         let w = bounds.width, h = bounds.height
         if night {
             let c = Theme.hex(0xFFC45A)   // the gold glow of Mosto's spade
