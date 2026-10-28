@@ -23,6 +23,7 @@ Binary layout (little endian):
   text blob: UTF-8 bytes
 """
 import math
+import os
 import struct
 import sys
 
@@ -91,11 +92,20 @@ def main():
         sys.exit(1)
     o = args.index("-o")
     out_path = args[o + 1]
-    inputs = args[:o] + args[o + 2:]
+    rest = args[:o] + args[o + 2:]
+    gram_path, bonus = None, 1.0
+    if "--calibrate" in rest:
+        i = rest.index("--calibrate"); gram_path = rest[i + 1]; del rest[i:i + 2]
+    if "--bonus" in rest:
+        i = rest.index("--bonus"); bonus = float(rest[i + 1]); del rest[i:i + 2]
+    inputs = rest
 
     merged = {}
+    override = {}         # calibrated scores (ln units × 100), may be below zero
+    flat = set()          # entries known only from a flat-weight list (tencent: every word weighs 100)
     skipped = 0
     for p in inputs:
+        is_flat = "tencent" in p
         for text, syls, w in read_dict(p):
             if len(syls) > 8 or len(syls) == 0:
                 skipped += 1
@@ -104,8 +114,34 @@ def main():
                 skipped += 1
                 continue
             key = (text, tuple(syls))
+            if is_flat:
+                if key not in merged:
+                    flat.add(key)
+            else:
+                flat.discard(key)
             if merged.get(key, -1) < w:
                 merged[key] = w
+
+    # Flat-weight words (tencent: all 100) carry no frequency, so as whole entries they beat any split into real
+    # words and tie with each other (已签收 = 一牵手). Calibrate each to what its parts already say: the best split
+    # into two weighted words, joined by the language model's count for the pair (the octagram bigram), plus a
+    # small bonus for being a known word — so it wins only where the split it stands for would be likely anyway.
+    if gram_path:
+        gram = {}
+        for ln in open(gram_path, encoding="utf-8"):
+            t, _, v = ln.rstrip("\n").partition("\t")
+            if v: gram[t] = float(v)
+        alpha = float(os.environ.get("CAL_ALPHA", "0.5"))
+        miss = float(os.environ.get("CAL_MISS", "1"))
+        mid = float(os.environ.get("CAL_MID", "8"))
+        calibrated = 0
+        for key in list(flat):
+            text, syls = key
+            base = math.log(merged[key] + 1)
+            v = base + alpha * (gram[text] - mid) if text in gram else base - miss
+            override[key] = int(round(v * 100))
+            calibrated += 1
+        print(f"calibrated {calibrated} of {len(flat)} flat-weight entries", file=sys.stderr)
 
     syllables = sorted({s for (_, syls) in merged for s in syls})
     sid = {s: i for i, s in enumerate(syllables)}
@@ -117,7 +153,8 @@ def main():
 
     entries = []
     for (text, syls), w in merged.items():
-        score = int(round(math.log(w + 1) * 100))
+        score = override.get((text, syls), int(round(math.log(w + 1) * 100)))
+        score = max(score, -32768)
         score = min(score, 32767)
         ids = [sid[s] for s in syls]
         second = ids[1] if len(ids) > 1 else -1

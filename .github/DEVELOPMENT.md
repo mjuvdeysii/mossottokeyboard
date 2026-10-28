@@ -40,7 +40,11 @@ swiftc -O Engine/*.swift EngineCLI/main.swift -o /tmp/engine
 ```sh
 # 词库：rime-ice cn_dicts 的 8105、base、ext 与 tencent（tencent 只有文字，先用 pypinyin 注音）
 python3 Tools/tencent_pinyin.py tencent.dict.yaml tencent_py.dict.yaml     # 需 pip install pypinyin（MIT）
-python3 Tools/build_lexicon.py 8105.dict.yaml base.dict.yaml ext.dict.yaml tencent_py.dict.yaml -o Keyboard/Resources/lexicon.bin
+# 腾讯词库每个词权重都是 100（没有词频）：用语言模型里该词作为相邻两词出现的次数微调（见 build_lexicon.py --calibrate）
+python3 Tools/build_lexicon.py 8105.dict.yaml base.dict.yaml ext.dict.yaml tencent_py.dict.yaml -o /tmp/lex0.bin
+python3 -c "..."  # 列出 base/ext/tencent 中 2–4 字的词（每行一个）→ phrases.txt
+EngineCLI <lexicon.bin> gramcount < phrases.txt > gram_counts.tsv
+python3 Tools/build_lexicon.py 8105.dict.yaml base.dict.yaml ext.dict.yaml tencent_py.dict.yaml --calibrate gram_counts.tsv -o Keyboard/Resources/lexicon.bin
 # 语言模型：rime-octagram-data（hans 分支）的 zh-hans-t-essay-bgw.gram，原样复制
 cp zh-hans-t-essay-bgw.gram Keyboard/Resources/grammar.gram
 # 英文词表：Tools/data/english.txt（Tools/build_english.py 生成）→ 内存映射的二进制
@@ -55,3 +59,8 @@ python3 Tools/gen_xcodeproj.py
 - 网页版由 GitHub Pages 发布（仓库 Settings › Pages › Branch: main，文件夹 /docs），隐私政策网址：https://mjuvdeysii.github.io/mossottokeyboard/privacy.html
 - 隐私清单：`App/PrivacyInfo.xcprivacy` 与 `Keyboard/Resources/PrivacyInfo.xcprivacy`（不追踪、不收集数据；UserDefaults CA92.1、文件时间戳 C617.1）。
 - 出口合规：`ITSAppUsesNonExemptEncryption = NO`（不使用加密）。
+
+## 留出测试集
+
+`EngineCLI/sentences3.tsv`（185 句）不参与任何调参，只用于验证改动是否真的变好：
+`SENTENCES=EngineCLI/sentences3.tsv EngineCLI <lexicon.bin> bench 0.22`（`PERFECT_DEBUG=1` 列出打错的句子）。
