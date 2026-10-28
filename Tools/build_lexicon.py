@@ -16,7 +16,9 @@ Binary layout (little endian):
   entries: entryCount * 12 bytes (textOff u32, sylOff u32, score i16, textLen u8, sylLen u8)
            version 2: sorted by first syllable, then second syllable (single characters first), then two-syllable
            words before longer ones, then score desc — so the words that start with a given pair of syllables are
-           one contiguous run, found by binary search (no index in memory)
+           one contiguous run
+  version 3 trailer: follower table, read into memory: sylCount * (start u32, count u32), then
+           pairCount * (second u16, pad u16, pairsStart u32, longerStart u32, end u32), then pairCount u32, 'PAIR'
   syllable blob: u16[sylBlobCount]
   text blob: UTF-8 bytes
 """
@@ -139,7 +141,7 @@ def main():
 
     with open(out_path, "wb") as f:
         f.write(b"XHLX")
-        f.write(struct.pack("<IIIII", 2, len(syllables), len(entries), len(syl_blob), len(text_blob)))
+        f.write(struct.pack("<IIIII", 3, len(syllables), len(entries), len(syl_blob), len(text_blob)))
         for s in syllables:
             f.write(s.encode("ascii").ljust(8, b"\0"))
         for a, b in index:
@@ -147,6 +149,33 @@ def main():
         f.write(recs)
         f.write(struct.pack("<%dH" % len(syl_blob), *syl_blob))
         f.write(text_blob)
+        # version 3 trailer: the follower table — for each first syllable, the second syllables its words go on to,
+        # with where each one's two-syllable words, then longer words, start and end. The keyboard reads this small
+        # table into memory once, so finding a pair's words never pages through the big entry table (a cold binary
+        # search over it cost hundreds of milliseconds on the first keys).
+        table = []
+        starts = []
+        for first, (a, b) in enumerate(index):
+            starts.append((len(table), 0))
+            i = a
+            while i < b and len(entries[i][3]) == 1:
+                i += 1
+            while i < b:
+                second = entries[i][3][1]
+                pairs_start = i
+                while i < b and entries[i][3][1] == second and len(entries[i][3]) == 2:
+                    i += 1
+                longer_start = i
+                while i < b and entries[i][3][1] == second:
+                    i += 1
+                table.append((second, pairs_start, longer_start, i))
+            starts[-1] = (starts[-1][0], len(table) - starts[-1][0])
+        for st, n in starts:
+            f.write(struct.pack("<II", st, n))
+        for second, a2, b2, c2 in table:
+            f.write(struct.pack("<HHIII", second, 0, a2, b2, c2))
+        f.write(struct.pack("<I", len(table)))
+        f.write(b"PAIR")
 
     print(f"syllables={len(syllables)} entries={len(entries)} skipped={skipped} "
           f"sylBlob={len(syl_blob)} textBlob={len(text_blob)}")

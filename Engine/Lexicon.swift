@@ -24,6 +24,9 @@ public final class Lexicon {
     private let entriesOff: Int
     private let sylBlobOff: Int
     private let textOff: Int
+    /// Version 3 trailer: the follower table (see followers).
+    private let pairStartsOff: Int
+    private let pairsOff: Int
 
     public struct Entry {
         public let textOffset: Int
@@ -46,11 +49,12 @@ public final class Lexicon {
         base = b
         length = size
 
-        // version 2: entries sorted by first syllable, second syllable, length, score (see followers)
+        // version 3: entries sorted by first syllable, second syllable, length, score, plus the follower table
         guard size > 24,
               b.load(fromByteOffset: 0, as: UInt8.self) == UInt8(ascii: "X"),
               b.load(fromByteOffset: 3, as: UInt8.self) == UInt8(ascii: "X"),
-              b.loadUnaligned(fromByteOffset: 4, as: UInt32.self) >= 2 else {
+              b.loadUnaligned(fromByteOffset: 4, as: UInt32.self) >= 3,
+              b.load(fromByteOffset: size - 4, as: UInt8.self) == UInt8(ascii: "P") else {
             munmap(p, size)
             throw LoadError.format
         }
@@ -78,7 +82,10 @@ public final class Lexicon {
         entriesOff = indexOff + sylCount * 8
         sylBlobOff = entriesOff + entryCount * 12
         textOff = sylBlobOff + sylBlobCount * 2
-        guard textOff + textLen <= size else { munmap(p, size); throw LoadError.format }
+        let pairCount = u32(size - 8)
+        pairsOff = size - 8 - pairCount * 16
+        pairStartsOff = pairsOff - sylCount * 8
+        guard textOff + textLen <= pairStartsOff else { munmap(p, size); throw LoadError.format }
 
         var c2s: [String: [UInt16]] = [:]
         var f2s: [Character: [UInt16]] = [:]
@@ -120,54 +127,47 @@ public final class Lexicon {
 
     public func syllableIDs(_ e: Entry) -> [UInt16] { (0..<e.sylCount).map { syllable(e, $0) } }
 
-    /// Single characters of a syllable, best first: the start of its run (the file sorts them first). Cached per
-    /// syllable on first use — a few entries each.
+    /// Single characters of a syllable, best first: the start of its run, up to where its first follower's words begin
+    /// (from the follower table — no entries are read to find it).
     private var singlesCache: [[Int]?] = []
     public func singles(_ s: UInt16) -> [Int] {
         if singlesCache.isEmpty { singlesCache = Array(repeating: nil, count: syllables.count) }
         if let c = singlesCache[Int(s)] { return c }
-        var out: [Int] = []
-        for i in range(firstSyllable: s) {
-            guard entry(i).sylCount == 1 else { break }
-            out.append(i)
-        }
+        let r = range(firstSyllable: s)
+        let (start, count) = pairBlock(s)
+        let end = count > 0 ? Int(base.loadUnaligned(fromByteOffset: pairsOff + start * 16 + 4, as: UInt32.self)) : r.upperBound
+        let out = Array(r.lowerBound..<max(r.lowerBound, min(end, r.upperBound)))
         singlesCache[Int(s)] = out
         return out
     }
 
+    @inline(__always) private func pairBlock(_ first: UInt16) -> (start: Int, count: Int) {
+        let o = pairStartsOff + Int(first) * 8
+        return (Int(base.loadUnaligned(fromByteOffset: o, as: UInt32.self)),
+                Int(base.loadUnaligned(fromByteOffset: o + 4, as: UInt32.self)))
+    }
+
     /// The words that start with syllables `first`, `second`: the two-syllable ones, then the longer ones, each best
-    /// first. They are one run in the file (sorted by first syllable, second syllable, length, score), found by binary
-    /// search — so the decoder visits only words whose second syllable can actually follow, can stop at the first
-    /// two-syllable word that no longer makes the cut, and keeps no index in memory.
+    /// first — one run in the file, located through the follower table: a binary search over one syllable's small
+    /// block (a page or two), never over the half-million-entry table, so a cold start does not page through the file.
     public func followers(first: UInt16, second: UInt16) -> (pairs: Range<Int>, longer: Range<Int>) {
-        let r = range(firstSyllable: first)
-        @inline(__always) func key(_ i: Int) -> Int {
-            let e = entry(i)
-            return e.sylCount == 1 ? -1 : Int(syllable(e, 1)) * 2 + (e.sylCount > 2 ? 1 : 0)
+        let (start, count) = pairBlock(first)
+        var lo = 0, hi = count
+        while lo < hi {
+            let m = (lo + hi) >> 1
+            if base.loadUnaligned(fromByteOffset: pairsOff + (start + m) * 16, as: UInt16.self) < second { lo = m + 1 } else { hi = m }
         }
-        func lower(_ k: Int) -> Int {
-            var lo = r.lowerBound, hi = r.upperBound
-            while lo < hi {
-                let m = (lo + hi) >> 1
-                if key(m) < k { lo = m + 1 } else { hi = m }
+        var a = 0, b = 0, c = 0
+        if lo < count {
+            let o = pairsOff + (start + lo) * 16
+            if base.loadUnaligned(fromByteOffset: o, as: UInt16.self) == second {
+                a = Int(base.loadUnaligned(fromByteOffset: o + 4, as: UInt32.self))
+                b = Int(base.loadUnaligned(fromByteOffset: o + 8, as: UInt32.self))
+                c = Int(base.loadUnaligned(fromByteOffset: o + 12, as: UInt32.self))
             }
-            return lo
         }
-        // remembered per pair of syllables (a 2 MB table, filled as pairs come up): the decoder asks about the same
-        // pairs on every key
-        let S = syllables.count
-        if pairCache.isEmpty { pairCache = [Int32](repeating: -1, count: S * S * 3) }
-        let slot = (Int(first) * S + Int(second)) * 3
-        if pairCache[slot] >= 0 {
-            let a = Int(pairCache[slot]), b = Int(pairCache[slot + 1]), c = Int(pairCache[slot + 2])
-            return (a..<b, b..<c)
-        }
-        let k = Int(second) * 2
-        let a = lower(k), b = lower(k + 1), c = lower(k + 2)
-        pairCache[slot] = Int32(a); pairCache[slot + 1] = Int32(b); pairCache[slot + 2] = Int32(c)
         return (a..<b, b..<c)
     }
-    private var pairCache: [Int32] = []
 
     /// The lexicon's own score for this word (text and syllables), if it has it.
     public func score(of ids: [UInt16], text: String) -> Int16? {

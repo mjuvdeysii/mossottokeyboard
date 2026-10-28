@@ -313,6 +313,8 @@ final class KeyboardView: UIView {
         var preview: KeyPreview?
         /// Finished (emitted or abandoned): never finished again.
         var finished = false
+        /// Typed the moment the finger landed (keys with no long-press choices): nothing more to type on release.
+        var typedOnDown = false
         init(keyIndex: Int, start: CGPoint) { self.keyIndex = keyIndex; self.start = start; self.location = start }
     }
     private var tracked: [ObjectIdentifier: Tracked] = [:]
@@ -490,13 +492,27 @@ final class KeyboardView: UIView {
             lastKeyDown = CACurrentMediaTime()
             onKeyDown?(kv.spec.action)
             switch kv.spec.action {
+            case .char(let s) where kv.spec.alt == nil:
+                // A key with nothing to choose on a long press types the moment the finger lands, as the fastest
+                // input methods do: the time the finger rests on the glass is no longer added to every keystroke.
+                // The balloon still shows while it is held.
+                showPreview(tr, text: kv.spec.label)
+                tr.typedOnDown = true
+                stats.emitted += 1
+                if kv.spec.isLetter, let c = s.first {
+                    onAction?(.char(s), spatial.tap(x: Double(p.x), y: Double(p.y), hitKey: c))
+                } else {
+                    onAction?(.char(s), nil)
+                }
+            case .t9:
+                tr.typedOnDown = true
+                stats.emitted += 1
+                onAction?(kv.spec.action, nil)
             case .char:
                 showPreview(tr, text: kv.spec.label)
-                if kv.spec.alt != nil {
-                    tr.longPressTimer = Timer.scheduledTimer(withTimeInterval: 0.38, repeats: false) { [weak self, weak tr] _ in
-                        guard let self, let tr else { return }
-                        self.showAlt(tr)
-                    }
+                tr.longPressTimer = Timer.scheduledTimer(withTimeInterval: 0.38, repeats: false) { [weak self, weak tr] _ in
+                    guard let self, let tr else { return }
+                    self.showAlt(tr)
                 }
             case .delete:
                 onAction?(.delete, nil)
@@ -555,8 +571,8 @@ final class KeyboardView: UIView {
             case .char where tr.altShown:
                 // the first choice stays selected until the finger actually slides
                 if let popup = tr.altPopup, abs(p.x - tr.altAnchorX) > 6 { popup.selected = popup.index(at: p.x) }
-            case .char where !tr.altShown:
-                // Slide to a neighbouring character key before release.
+            case .char where !tr.altShown && !tr.typedOnDown:
+                // Slide to a neighbouring character key before release (keys typed on landing stay typed).
                 if let idx = keyIndex(at: p), idx < keyViews.count, idx != tr.keyIndex, case .char = keyViews[idx].spec.action {
                     kv.pressed = false
                     tr.longPressTimer?.invalidate()
@@ -624,15 +640,16 @@ final class KeyboardView: UIView {
                 default: keep = false
                 }
             }
+            let already = tr.typedOnDown
             finish(tr, emit: keep)
-            if keep { stats.cancelKept += 1 } else { stats.dropped += 1 }
+            if already { } else if keep { stats.cancelKept += 1 } else { stats.dropped += 1 }
             tracked[id] = nil
             touchOrder.removeAll { $0 == id }
         }
     }
 
     private func cancelAllTouches() {
-        for (_, tr) in tracked where !tr.finished { finish(tr, emit: false); stats.dropped += 1 }
+        for (_, tr) in tracked where !tr.finished { finish(tr, emit: false); if !tr.typedOnDown { stats.dropped += 1 } }
         tracked.removeAll()
         touchOrder.removeAll()
     }
@@ -655,7 +672,7 @@ final class KeyboardView: UIView {
         guard tr.keyIndex < keyViews.count else { return }
         let kv = keyViews[tr.keyIndex]
         kv.pressed = false
-        guard emit else { return }
+        guard emit, !tr.typedOnDown else { return }
         stats.emitted += 1
         switch kv.spec.action {
         case .char(let s):

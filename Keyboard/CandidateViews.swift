@@ -379,7 +379,7 @@ final class SettingsPanelView: UIView {
         diagLabel.font = .monospacedDigitSystemFont(ofSize: 13, weight: .regular)
         diagLabel.textColor = Theme.secondaryText
         diagLabel.numberOfLines = 0
-        section("诊断", rows: [diagLabel], footer: "打一段字后打开这里：“丢弃”和“最长”能看出按键在哪一步丢了或卡了。")
+        section("诊断", rows: [diagLabel], footer: "打一段字后打开这里：“丢弃”是被系统取消、没能输入的按键；“按键响应”是每次按键在主线程上花的时间（字母按下即上屏），“候选出现”是按键到候选显示出来的时间（在后台线程解码）。")
 
         note.numberOfLines = 0
         note.font = .systemFont(ofSize: 12)

@@ -2,10 +2,9 @@ import UIKit
 import AudioToolbox
 
 final class KeyboardViewController: UIInputViewController {
-    // Engine
-    private var lexicon: Lexicon?
-    private var decoder: Decoder?
-    private var userDict: UserDictionary?
+    // Engine: decoding and learned words on their own thread (EngineHost); the main thread only draws and types
+    private let engine = EngineHost()
+    private var scheme: PinyinScheme = .xiaohe
     private let spatial = SpatialModel.standard()
 
     // Views. Everything sits in `root`, whose light (日光 / 夜灯) is forced; the controller's own view keeps the
@@ -28,7 +27,13 @@ final class KeyboardViewController: UIInputViewController {
     private var capsLock = false
     private var lastShiftTap: Date = .distantPast
     private var taps: [Tap] = []
+    /// The candidates last received from the engine, and for which state of `taps` (see `generation`).
     private var result: Decoder.Result?
+    private var resultGeneration = -1
+    /// Bumped whenever `taps` changes: a decode that comes back for an older generation is dropped.
+    private var generation = 0
+    /// The current keys are read as typed, without correction (right after an undone correction).
+    private var literalGeneration = false
     private var committedParts: [(text: String, ids: [UInt16])] = []
     private var lastInsertedSpace = false
     /// The last auto-corrected commit made with the space bar, undone by an immediate delete (as on Gboard).
@@ -111,7 +116,7 @@ final class KeyboardViewController: UIInputViewController {
         settingsPanel.onClose = { [weak self] in self?.showSettings(false) }
         settingsPanel.onChange = { [weak self] in self?.applySettings() }
         settingsPanel.onResetLearning = { [weak self] in
-            self?.userDict?.reset()
+            self?.engine.resetLearning()
             self?.spatial.offsetX = 0
             self?.spatial.offsetY = 0
             self?.spatial.keyOffsets = [:]
@@ -175,7 +180,7 @@ final class KeyboardViewController: UIInputViewController {
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         if !taps.isEmpty { commitRaw() }
-        userDict?.save()
+        engine.save()
         KeyboardSettings.shared.touchOffset = (spatial.offsetX, spatial.offsetY)
         KeyboardSettings.shared.keyOffsets = spatial.keyOffsetsList
     }
@@ -254,6 +259,7 @@ final class KeyboardViewController: UIInputViewController {
         markedHistory.removeAll()
         hasMarkedText = false
         taps.removeAll()
+        generation += 1
         result = nil
         committedParts.removeAll()
         syllablePicker.isHidden = true
@@ -272,27 +278,15 @@ final class KeyboardViewController: UIInputViewController {
 
     // MARK: - Engine
 
+    /// The lexicon, learned words and English list are memory-mapped files, opened on the engine's thread: the
+    /// keyboard appears at once, and keys typed in the first moments simply wait in the engine's queue.
     private func loadEngine() {
-        guard let path = Bundle.main.path(forResource: "lexicon", ofType: "bin"),
-              let lex = try? Lexicon(path: path) else { return }
-        lexicon = lex
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-        let ud = UserDictionary(lexicon: lex, url: dir?.appendingPathComponent("userdict.json"))
-        userDict = ud
-        decoder = Decoder(lexicon: lex, user: ud)
-        // The lexicon needs no tables in memory (its file is sorted for direct lookup). The English word list and
-        // its trie are built off the main thread, so the keyboard appears at once and its first keys do not stall;
-        // English joins in a moment later.
-        let ep = Bundle.main.path(forResource: "english", ofType: "txt")
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let ep, let en = try? EnglishLexicon(path: ep) else { return }
-            let ed = EnglishDecoder(lexicon: en)
-            DispatchQueue.main.async {
-                guard let self else { return }
-                self.decoder?.english = en
-                self.english = ed
-            }
-        }
+        let ep = Bundle.main.path(forResource: "english", ofType: "bin")
+        engine.load(lexiconPath: Bundle.main.path(forResource: "lexicon", ofType: "bin"), englishPath: ep,
+                    userDictURL: dir?.appendingPathComponent("userdict.json"))
+        // English mode reads the same file (read-only, safe to share between threads)
+        if let ep, let en = try? EnglishLexicon(path: ep) { english = EnglishDecoder(lexicon: en) }
     }
 
     // MARK: - 日光 / 夜灯
@@ -334,19 +328,21 @@ final class KeyboardViewController: UIInputViewController {
 
     private func applySettings() {
         let s = KeyboardSettings.shared
-        let scheme = PinyinScheme(rawValue: s.scheme) ?? .xiaohe
-        if decoder?.scheme != scheme {
-            if !taps.isEmpty { commitRaw() }     // keys typed under the other scheme mean something else
-            decoder?.scheme = scheme
-        }
-        decoder?.correctionEnabled = s.autocorrect
-        decoder?.englishEnabled = s.english
+        let newScheme = PinyinScheme(rawValue: s.scheme) ?? .xiaohe
+        if newScheme != scheme, !taps.isEmpty { commitRaw() }     // keys typed under the other scheme mean something else
+        scheme = newScheme
+        engine.configure(scheme: newScheme, correction: s.autocorrect, english: s.english)
         hapticsOn = s.feedback
         soundOn = s.keySound
-        settingsPanel.setLearned("词库 \(lexicon?.entryCount ?? 0) 条 · 已学习 \(userDict?.count ?? 0) 个词")
+        if !settingsPanel.isHidden {
+            let n = engine.counts()
+            settingsPanel.setLearned("词库 \(n.lexicon) 条 · 已学习 \(n.learned) 个词")
+        }
         let d = keyboard.stats
         settingsPanel.setDiagnostics("本次按键 \(d.began) 次：输入 \(d.emitted)，系统取消后保留 \(d.cancelKept)，丢弃 \(d.dropped)；"
-            + String(format: "每键处理 平均 %.1f ms、最长 %.0f ms", handleCount > 0 ? handleTotal / Double(handleCount) : 0, handleMax))
+            + String(format: "按键响应（主线程）平均 %.1f ms、最长 %.0f ms；候选出现 平均 %.1f ms、最长 %.0f ms",
+                     handleCount > 0 ? handleTotal / Double(handleCount) : 0, handleMax,
+                     candCount > 0 ? candTotal / Double(candCount) : 0, candMax))
         settingsPanel.setNote((hasFullAccess ? "" : "按键震动与按键音需在 设置 › 通用 › 键盘 › 键盘 › Mosto键盘 中开启“允许完全访问”。")
             + "键盘不联网，词库与学习记录只存在本机。")
         reconfigure()
@@ -428,6 +424,8 @@ final class KeyboardViewController: UIInputViewController {
     // MARK: - Key handling
 
     private var handleTotal = 0.0, handleMax = 0.0, handleCount = 0
+    /// From a key to its candidates appearing (decoded on the engine's thread).
+    private var candTotal = 0.0, candMax = 0.0, candCount = 0
 
     private func handle(_ action: KeyAction, tap: Tap?) {
         let t0 = CACurrentMediaTime()
@@ -480,7 +478,7 @@ final class KeyboardViewController: UIInputViewController {
             break
         case .t9(let d):
             // 九宫格: each key stands for its letters; 分词 only splits syllables inside a composition
-            guard decoder != nil, d != "'" || !taps.isEmpty else { return }
+            guard d != "'" || !taps.isEmpty else { return }
             lastInsertedSpace = false
             taps.append(Tap.t9(d))
             refresh()
@@ -497,7 +495,6 @@ final class KeyboardViewController: UIInputViewController {
     private func letter(_ s: String, tap: Tap) {
         lastInsertedSpace = false
         if chinese && !(shifted || capsLock) {
-            guard decoder != nil else { textDocumentProxy.insertText(s); return }
             taps.append(tap)
             refresh()
             return
@@ -542,7 +539,7 @@ final class KeyboardViewController: UIInputViewController {
             endEnglishWord()
         }
         if !taps.isEmpty {
-            if let c = result?.candidates.first, c.corrected, c.tapCount == taps.count, committedParts.isEmpty {
+            if let c = currentResult()?.candidates.first, c.corrected, c.tapCount == taps.count, committedParts.isEmpty {
                 let saved = taps
                 select(0)
                 if taps.isEmpty { undoable = (c.text, saved, c.syllables) }
@@ -708,39 +705,78 @@ final class KeyboardViewController: UIInputViewController {
 
     // MARK: - Composition
 
-    private func refresh() {
-        guard let decoder else { return }
-        let r = decoder.decode(taps)
-        result = r
-        // Written into the text field, underlined, until a candidate replaces it: the letters as typed (九宫格 keys
-        // have no single letter, so the pinyin read from them).
-        let marked = !taps.contains(where: { $0.group }) ? String(taps.map { $0.key }) : r.preedit
+    /// The keys changed: their letters go into the field at once (marked text, underlined); the engine decodes in the
+    /// background and the candidates are shown when they arrive — unless more keys came in meanwhile.
+    private func refresh(literal: Bool = false) {
+        generation += 1
+        literalGeneration = literal
+        let gen = generation
+        let asked = CACurrentMediaTime()
+        if !taps.contains(where: { $0.group }) { setMarked(String(taps.map { $0.key })) }
+        reconfigure()
+        engine.decode(taps, literal: literal) { [weak self] out in
+            guard let self, gen == self.generation, let out else { return }
+            let ms = (CACurrentMediaTime() - asked) * 1000
+            self.candTotal += ms; self.candCount += 1; self.candMax = max(self.candMax, ms)
+            self.show(out, generation: gen)
+        }
+    }
+
+    private func setMarked(_ marked: String) {
         textDocumentProxy.setMarkedText(marked, selectedRange: NSRange(location: (marked as NSString).length, length: 0))
         hasMarkedText = true
         markedString = marked
         markedHistory.append(marked)
         if markedHistory.count > 12 { markedHistory.removeFirst() }
-        candidateBar.update(preedit: r.preedit, candidates: r.candidates)
-        if !grid.isHidden { grid.show(r.candidates) }
-        updateSyllablePicker()
-        reconfigure()
     }
 
-    private func select(_ index: Int) {
-        guard let decoder, let r = result, index < r.candidates.count else { return }
-        let c = r.candidates[index]
-        guard c.tapCount > 0 else { return }
+    private func show(_ out: EngineHost.Output, generation gen: Int) {
+        guard !taps.isEmpty else { return }
+        let r = out.result
+        result = r
+        resultGeneration = gen
+        // 九宫格 keys have no single letter: the field shows the pinyin read from them
+        if taps.contains(where: { $0.group }) {
+            let py = r.preedit.replacingOccurrences(of: " ", with: "")
+            if py != markedString { setMarked(py) }
+        }
+        candidateBar.update(preedit: r.preedit, candidates: r.candidates)
+        if !grid.isHidden { grid.show(r.candidates) }
+        updateSyllablePicker(out.choices)
+    }
+
+    /// The candidates for exactly the keys typed now (a commit needs them): the last ones received when they are
+    /// current, else decoded at once — this waits only for a decode already under way.
+    private func currentResult() -> Decoder.Result? {
+        if resultGeneration == generation, let r = result { return r }
+        guard !taps.isEmpty, let out = engine.decodeNow(taps, literal: literalGeneration) else { return result }
+        show(out, generation: generation)
+        return out.result
+    }
+
+    /// `shown`: the candidate the user saw and tapped; if the keys changed since it was shown, the same word is
+    /// looked up in the current candidates (an index into a list that has changed would pick something else).
+    private func select(_ index: Int, shown: Candidate? = nil) {
+        guard let r = currentResult() else { return }
+        var i = index
+        if let shown, i >= r.candidates.count || r.candidates[i].text != shown.text || r.candidates[i].tapCount != shown.tapCount {
+            guard let j = r.candidates.firstIndex(where: { $0.text == shown.text && $0.tapCount == shown.tapCount }) else { return }
+            i = j
+        }
+        guard i < r.candidates.count else { return }
+        let c = r.candidates[i]
+        guard c.tapCount > 0, c.tapCount <= taps.count else { return }
         insertCommitted(c.text)
         // Learn: the word itself and where this user's finger actually lands.
         if !c.syllables.isEmpty {
-            userDict?.learn(syllables: c.syllables, text: c.text)
+            engine.learn(syllables: c.syllables, text: c.text)
             committedParts.append((c.text, c.syllables))
-            let keys = decoder.keys(for: c)
-            for (tap, key) in zip(taps.prefix(c.tapCount), keys) { spatial.observe(tap: tap, intended: key) }
+            for (tap, key) in zip(taps.prefix(c.tapCount), c.intendedKeys) { spatial.observe(tap: tap, intended: key) }
         }
         taps.removeFirst(min(c.tapCount, taps.count))
+        result = nil
         if taps.isEmpty {
-            userDict?.learn(parts: committedParts)
+            engine.learn(parts: committedParts)
             clearComposition()
         } else {
             refresh()
@@ -750,26 +786,22 @@ final class KeyboardViewController: UIInputViewController {
     /// Delete right after an auto-corrected commit: take the word back out, put the typed keys back into the
     /// composition and show them uncorrected, so the next space types what was actually pressed.
     private func undoCorrection(_ u: (text: String, taps: [Tap], syllables: [UInt16])) -> Bool {
-        guard taps.isEmpty, let decoder, (textDocumentProxy.documentContextBeforeInput ?? "").hasSuffix(u.text) else { return false }
+        guard taps.isEmpty, (textDocumentProxy.documentContextBeforeInput ?? "").hasSuffix(u.text) else { return false }
         for _ in u.text { textDocumentProxy.deleteBackward() }
-        if !u.syllables.isEmpty { userDict?.unlearn(syllables: u.syllables, text: u.text) }
+        if !u.syllables.isEmpty { engine.unlearn(syllables: u.syllables, text: u.text) }
         taps = u.taps
-        let was = decoder.correctionEnabled
-        decoder.correctionEnabled = false
-        refresh()
-        decoder.correctionEnabled = was
+        refresh(literal: true)
         return true
     }
 
     /// Long press on a candidate this user taught the keyboard: offer to remove it from what was learned.
     /// Words from the built-in lexicon cannot be removed, so nothing is offered for them.
     private func offerForget(_ i: Int) {
-        guard let r = result, i < r.candidates.count, let userDict else { return }
+        guard let r = result, i < r.candidates.count else { return }
         let c = r.candidates[i]
-        guard !c.syllables.isEmpty, userDict.contains(syllables: c.syllables, text: c.text) else { return }
+        guard !c.syllables.isEmpty, engine.knows(syllables: c.syllables, text: c.text) else { return }
         candidateBar.offerForget(c.text) { [weak self] in
-            self?.userDict?.forget(syllables: c.syllables, text: c.text)
-            self?.userDict?.save()
+            self?.engine.forget(syllables: c.syllables, text: c.text)
             if self?.taps.isEmpty == false { self?.refresh() }
         }
     }
@@ -778,8 +810,7 @@ final class KeyboardViewController: UIInputViewController {
         var guardCount = 0
         while !taps.isEmpty && guardCount < 32 {
             guardCount += 1
-            if result == nil { refresh() }
-            if let c = result?.candidates.first, c.tapCount > 0, !c.syllables.isEmpty || c.isEnglish {
+            if let c = currentResult()?.candidates.first, c.tapCount > 0, !c.syllables.isEmpty || c.isEnglish {
                 select(0)
             } else {
                 commitRaw()
@@ -788,13 +819,13 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     /// 九宫格: show the syllable column while keypad keys are being composed (it covers ， 。 ？ meanwhile).
-    private func updateSyllablePicker() {
-        guard let decoder, taps.contains(where: { $0.group }), let frame = keyboard.keypadSideColumn() else {
+    private func updateSyllablePicker(_ choices: (start: Int, choices: [(text: String, keys: [Character])])) {
+        guard taps.contains(where: { $0.group }), let frame = keyboard.keypadSideColumn() else {
             syllablePicker.isHidden = true
             keyboard.setSideColumnHidden(false)
             return
         }
-        syllableChoices = decoder.t9SyllableChoices(taps)
+        syllableChoices = choices
         guard !syllableChoices.choices.isEmpty else { syllablePicker.isHidden = true; keyboard.setSideColumnHidden(false); return }
         keyboard.setSideColumnHidden(true)
         syllablePicker.frame = frame
@@ -821,7 +852,7 @@ final class KeyboardViewController: UIInputViewController {
     private func commitRaw() {
         // 九宫格 keys are digits: what "the letters" means there is the pinyin read from them
         let raw = taps.contains(where: { $0.group })
-            ? (result?.preedit ?? "").replacingOccurrences(of: " ", with: "")
+            ? (currentResult()?.preedit ?? "").replacingOccurrences(of: " ", with: "")
             : String(taps.map { $0.key })
         insertCommitted(raw)
         clearComposition()
@@ -835,6 +866,7 @@ final class KeyboardViewController: UIInputViewController {
             hasMarkedText = false
         }
         taps.removeAll()
+        generation += 1          // a decode still under way for these keys is dropped when it comes back
         syllablePicker.isHidden = true
         keyboard.setSideColumnHidden(false)
         result = nil
@@ -856,7 +888,8 @@ final class KeyboardViewController: UIInputViewController {
             updateAutoShift(); reconfigure()
             return
         }
-        select(i)
+        // the word the user saw: the strip shows `result`
+        select(i, shown: result.flatMap { i < $0.candidates.count ? $0.candidates[i] : nil })
     }
 
     // MARK: - Panels
@@ -873,8 +906,8 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func showSettings(_ on: Bool) {
+        settingsPanel.isHidden = !on        // first: applySettings fills in the counts only for a visible panel
         if on { showEmoji(false); settingsPanel.load(); applySettings() }
-        settingsPanel.isHidden = !on
         candidateBar.isHidden = on
         keyboard.isHidden = on || !grid.isHidden
     }

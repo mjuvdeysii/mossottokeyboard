@@ -16,15 +16,7 @@ public final class EnglishDecoder {
         public let completion: Bool
     }
 
-    private final class Node {
-        var children: [Character: Node] = [:]
-        var word: Int = -1            // index into lexicon.words when a word ends here
-        var best: Double = -.infinity // best word log-prob at or below this node (for pruning and completions)
-        var bestWord: Int = -1
-    }
-
     public let lexicon: EnglishLexicon
-    private let root = Node()
 
     public var spatialWeight = 1.0
     public var correctionPenalty = 1.2
@@ -34,28 +26,12 @@ public final class EnglishDecoder {
     /// A typed word that is itself in the dictionary is replaced only when the correction is this much likelier.
     public var keepMargin = 6.0
 
+    /// The trie is in the lexicon file (flat, memory-mapped): nothing to build.
     public init(lexicon: EnglishLexicon) {
         self.lexicon = lexicon
-        for (i, w) in lexicon.words.enumerated() {
-            var node = root
-            for c in w.key {
-                let next = node.children[c] ?? Node()
-                node.children[c] = next
-                node = next
-            }
-            node.word = i
-        }
-        func fill(_ n: Node) {
-            if n.word >= 0 { n.best = lexicon.words[n.word].logp; n.bestWord = n.word }
-            for c in n.children.values {
-                fill(c)
-                if c.best > n.best { n.best = c.best; n.bestWord = c.bestWord }
-            }
-        }
-        fill(root)
     }
 
-    private struct State { let node: Node; let score: Double; let corrected: Bool; let slips: Int }
+    private struct State { let node: Int; let score: Double; let corrected: Bool; let slips: Int }
 
     /// The best readings of the taps typed so far in the current word (lowercase letters), best first.
     /// Slips allowed: one extra tap, one missed letter, or two neighbouring letters typed the wrong way round.
@@ -81,13 +57,14 @@ public final class EnglishDecoder {
     }
 
     private func search(_ taps: [Tap], startSlips: Int, extra: Double, into best: inout [Int: Suggestion]) {
-        var states = [State(node: root, score: -extra, corrected: startSlips > 0, slips: startSlips)]
+        let L = lexicon
+        var states = [State(node: 0, score: -extra, corrected: startSlips > 0, slips: startSlips)]
         for t in taps {
             var next: [State] = []
             next.reserveCapacity(states.count * 6)
             for st in states {
                 for (k, l) in t.alternatives {
-                    if let c = st.node.children[k] {
+                    if let a = k.asciiValue, let c = L.child(st.node, a) {
                         next.append(State(node: c, score: st.score + spatialWeight * l - (k != t.key ? correctionPenalty : 0),
                                           corrected: st.corrected || k != t.key, slips: st.slips))
                     }
@@ -96,30 +73,28 @@ public final class EnglishDecoder {
                 // an extra tap: skip it
                 next.append(State(node: st.node, score: st.score - slipPenalty, corrected: true, slips: 1))
                 // a missed letter: any letter here, then this tap as typed
-                if let tk = t.alternatives.first?.key {
-                    for (_, c) in st.node.children {
-                        if let d = c.children[tk] {
+                if let tk = t.alternatives.first?.key.asciiValue {
+                    for c in L.children(st.node) {
+                        if let d = L.child(c, tk) {
                             next.append(State(node: d, score: st.score - slipPenalty, corrected: true, slips: 1))
                         }
                     }
                 }
             }
             // keep the likeliest, judged with the best word still reachable (an admissible look-ahead)
-            next.sort { $0.score + $0.node.best > $1.score + $1.node.best }
+            next.sort { $0.score + L.nodeBest($0.node) > $1.score + L.nodeBest($1.node) }
             states = Array(next.prefix(beam))
             if states.isEmpty { return }
         }
         func offer(_ i: Int, _ s: Double, _ corrected: Bool, _ completion: Bool) {
-            let w = lexicon.words[i]
             if (best[i]?.score ?? -.infinity) < s {
-                best[i] = Suggestion(text: w.display, score: s, corrected: corrected, completion: completion)
+                best[i] = Suggestion(text: L.display(i), score: s, corrected: corrected, completion: completion)
             }
         }
         for st in states {
-            if st.node.word >= 0 { offer(st.node.word, st.score + lexicon.words[st.node.word].logp, st.corrected, false) }
-            if st.node.bestWord >= 0, st.node.bestWord != st.node.word {
-                offer(st.node.bestWord, st.score + st.node.best - completionPenalty, st.corrected, true)
-            }
+            let w = L.nodeWord(st.node), bw = L.nodeBestWord(st.node)
+            if w >= 0 { offer(w, st.score + L.logp(w), st.corrected, false) }
+            if bw >= 0, bw != w { offer(bw, st.score + L.nodeBest(st.node) - completionPenalty, st.corrected, true) }
         }
     }
 

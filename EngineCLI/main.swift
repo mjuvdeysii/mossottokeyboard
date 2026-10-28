@@ -21,8 +21,8 @@ let args = CommandLine.arguments
 guard args.count >= 3 else { print("usage: EngineCLI <lexicon.bin> type|bench|codes ..."); exit(1) }
 let lex = try Lexicon(path: args[1])
 let decoder = Decoder(lexicon: lex)
-// 中英混输: english.txt next to the lexicon (ENGLISH=0 turns it off)
-let englishPath = (args[1] as NSString).deletingLastPathComponent + "/english.txt"
+// 中英混输: english.bin next to the lexicon (ENGLISH=0 turns it off)
+let englishPath = (args[1] as NSString).deletingLastPathComponent + "/english.bin"
 if ProcessInfo.processInfo.environment["ENGLISH"] != "0", let en = try? EnglishLexicon(path: englishPath) { decoder.english = en }
 if let v = ProcessInfo.processInfo.environment["ENP"], let d = Double(v) { decoder.englishPenalty = d }
 let model = SpatialModel.standard()
@@ -82,7 +82,7 @@ func englishBench(_ ed: EnglishDecoder) -> [String: Double] {
 
 switch args[2] {
 case "entype":
-    guard let en = decoder.english else { print("no english.txt"); exit(1) }
+    guard let en = decoder.english else { print("no english.bin"); exit(1) }
     let ed = EnglishDecoder(lexicon: en)
     let taps = (args.count > 3 ? args[3] : "").map { Tap.exact($0) }
     print("autocorrect:", ed.autocorrection(taps)?.text ?? "-")

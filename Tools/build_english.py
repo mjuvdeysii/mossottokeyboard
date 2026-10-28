@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build Keyboard/Resources/english.txt — the English words offered while typing in Chinese mode (中英混输).
+"""Build Tools/data/english.txt (the source of Keyboard/Resources/english.bin: Tools/build_english_bin.py) — the English words offered while typing in Chinese mode (中英混输).
 
 Source: wordfreq (https://github.com/rspeer/wordfreq; data CC BY-SA 4.0), the most frequent English words.
 Each line: word <TAB> zipf frequency <TAB> how it is written (iOS, iPhone, OK, Wi-Fi … ; plain words stay lowercase).
@@ -13,7 +13,7 @@ import re
 from wordfreq import top_n_list, zipf_frequency
 
 N = 40000
-OUT = os.path.join(os.path.dirname(__file__), "..", "Keyboard", "Resources", "english.txt")
+OUT = os.path.join(os.path.dirname(__file__), "data", "english.txt")
 
 # How these are written in Chinese chat; typed as lowercase letters, offered in their usual form.
 CASED = {
