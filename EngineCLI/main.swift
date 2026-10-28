@@ -399,6 +399,25 @@ case "bench", "gate":
             print(bad.isEmpty ? "PASS odd.top1 \(odd.count)/\(odd.count)" : "FAIL odd.top1 " + bad.joined(separator: " "))
             if !bad.isEmpty { failed = true }
         }
+        // Learned words survive a save and a reload; an unreadable file is set aside (not lost, not a crash)
+        do {
+            let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mosto-ud-\(getpid())")
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let url = dir.appendingPathComponent("userdict.json")
+            let ud = UserDictionary(lexicon: lex, url: url)
+            let words: [(String, String)] = [("ni hao", "你好"), ("ke yi le", "可以了"), ("mo tou", "魔头")]
+            for (py, t) in words { ud.learn(syllables: py.split(separator: " ").map { lex.id(of: String($0))! }, text: t) }
+            ud.save()
+            let back = UserDictionary(lexicon: lex, url: url)
+            let kept = words.allSatisfy { back.contains(syllables: $0.0.split(separator: " ").map { lex.id(of: String($0))! }, text: $0.1) }
+            try? Data("{not json".utf8).write(to: url)
+            let broken = UserDictionary(lexicon: lex, url: url)
+            let aside = FileManager.default.fileExists(atPath: url.appendingPathExtension("corrupt").path)
+            let ok = kept && back.count == words.count && broken.count == 0 && aside
+            print(ok ? "PASS userdict.roundtrip" : "FAIL userdict.roundtrip kept=\(kept) count=\(back.count) broken=\(broken.count) aside=\(aside)")
+            if !ok { failed = true }
+            try? FileManager.default.removeItem(at: dir)
+        }
         // Fuzz: random keys, separators, 九宫格 mixes and long runs. Every decode must give candidates that each
         // use 1…n keys and have text, committing the first candidate over and over must use up all keys, and the
         // slowest decode must stay quick enough to keep up with typing.

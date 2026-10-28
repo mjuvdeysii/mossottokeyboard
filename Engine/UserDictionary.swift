@@ -21,9 +21,15 @@ public final class UserDictionary {
     public init(lexicon: Lexicon, url: URL?) {
         self.lexicon = lexicon
         self.url = url
-        if let url, let data = try? Data(contentsOf: url),
-           let list = try? JSONDecoder().decode([Item].self, from: data) {
-            for it in list { items[Self.key(it.p, it.t)] = it }
+        if let url, let data = try? Data(contentsOf: url) {
+            if let list = try? JSONDecoder().decode([Item].self, from: data) {
+                for it in list { items[Self.key(it.p, it.t)] = it }
+            } else {
+                // unreadable (cut off, or written by something else): keep it aside rather than overwrite it later
+                let aside = url.appendingPathExtension("corrupt")
+                try? FileManager.default.removeItem(at: aside)
+                try? FileManager.default.moveItem(at: url, to: aside)
+            }
         }
         rebuildIndex()
     }
@@ -72,7 +78,12 @@ public final class UserDictionary {
         }
         if items.count > maxItems { prune() }
         dirty = true
+        // written out every so often, not only when the keyboard is put away: iOS can end the keyboard's process
+        // without notice, and what was learned since the last save would go with it
+        learnedSinceSave += 1
+        if learnedSinceSave >= 25 { save() }
     }
+    private var learnedSinceSave = 0
 
     /// A sentence committed in several picks: remember how its pieces go together — the whole of it when it is short
     /// enough (≤ 8 syllables), else each neighbouring pair of pieces — so it comes out in one go next time.
@@ -128,6 +139,7 @@ public final class UserDictionary {
     public func save() {
         guard dirty, let url else { return }
         dirty = false
+        learnedSinceSave = 0
         let list = Array(items.values)
         if let data = try? JSONEncoder().encode(list) {
             try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)

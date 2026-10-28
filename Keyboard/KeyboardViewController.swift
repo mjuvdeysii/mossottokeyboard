@@ -322,6 +322,7 @@ final class KeyboardViewController: UIInputViewController {
         DispatchQueue.main.asyncAfter(deadline: .now() + 4) { LaunchGuard.succeeded() }
     }
     private var safeMode = false
+    private var commitsSinceSave = 0
 
     /// iOS is short of memory: everything the keyboard can rebuild goes (the emoji page when it is not showing, the
     /// decoder's last result), and the learned words are written out, so the keyboard is not the process iOS ends.
@@ -831,6 +832,13 @@ final class KeyboardViewController: UIInputViewController {
             engine.learn(syllables: c.syllables, text: c.text)
             committedParts.append((c.text, c.syllables))
             for (tap, key) in zip(taps.prefix(c.tapCount), c.intendedKeys) { spatial.observe(tap: tap, intended: key) }
+            // the touch habits are written out every so often too (iOS may end the keyboard without notice)
+            commitsSinceSave += 1
+            if commitsSinceSave >= 30 {
+                commitsSinceSave = 0
+                KeyboardSettings.shared.touchOffset = (spatial.offsetX, spatial.offsetY)
+                KeyboardSettings.shared.keyOffsets = spatial.keyOffsetsList
+            }
         }
         taps.removeFirst(min(c.tapCount, taps.count))
         if !taps.isEmpty { engine.setContext(committedParts.map { $0.text }.joined().isEmpty ? c.text : committedParts.map { $0.text }.joined()) }
