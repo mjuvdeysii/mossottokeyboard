@@ -44,6 +44,7 @@ final class EngineHost {
             if !safe, let gp = grammarPath { d.grammar = try? Grammar(path: gp) }
             self.decoder = d
             self.lock.lock(); self.loaded = true; self.lock.unlock()
+            _ = d.predictions(after: ["你"])   // builds the character table 联想 uses, off the first commit's path
         }
     }
 
@@ -105,6 +106,15 @@ final class EngineHost {
                 return last.out
             }
             return run(taps, literal: literal)
+        }
+    }
+
+    /// 联想: what may come next after the text before the cursor; `done` on the main thread.
+    func predict(after context: String, done: @escaping ([String]) -> Void) {
+        let ctx = Array(context.suffix(3))
+        queue.async {
+            let p = self.decoder?.predictions(after: ctx) ?? []
+            DispatchQueue.main.async { done(p) }
         }
     }
 

@@ -74,6 +74,7 @@ struct HomeContent: View {
                             Usage(icon: "square.grid.3x3", text: "中文键盘可选全键盘或九宫格；九宫格两种方案都能用：打字时左列列出可能的拼音，点一下就定下这几个键，“分词”切开音节。")
                             Usage(icon: "space", text: "空格：上屏首选　回车：上屏字母　删除：逐键回退，按住会加速，再久一点按词删除。")
                             Usage(icon: "wand.and.stars", text: "首选带下划线 = 已按触点位置自动纠错；第二个候选是未纠错的原文。上屏后立刻按删除可撤回纠错。")
+                            Usage(icon: "text.append", text: "联想：中文上屏后，候选栏给出接下来常用的字词，点一下直接上屏并继续联想；按任意键即收起。")
                             Usage(icon: "textformat.abc", text: "中英混输：打 ok、ios、iphone 直接出 OK、iOS、iPhone。")
                             Usage(icon: "character.cursor.ibeam", text: "英文模式（中/英 切到“英”）也按触点纠错并给出候选：teh → the、dont → don't、im → I'm；空格时替换，删除可撤回；首字母自动大写，双击空格出句号。")
                             Usage(icon: "chevron.down", text: "候选栏右侧 ⌄ 展开全部候选；长按自己学过的词可以删掉它。")

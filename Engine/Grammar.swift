@@ -89,6 +89,71 @@ public final class Grammar {
         return Double(hit.1) / 10_000
     }
 
+    /// What tends to come next after `context` (its last one to three characters): the characters, and two-character
+    /// continuations, the model has seen right after it, most frequent first — 联想 after a commit.
+    /// Each with ln(count of context + continuation).
+    /// Per character of context: a longer context the model knows outranks a shorter one (strict backoff measured best)
+    public var contextBonus = 10.0
+    public var continuationStop = 2
+    public func continuations(after context: [Character], limit: Int = 12) -> [(text: String, score: Double)] {
+        var out: [String: Double] = [:]
+        // longest context first: a three-character context that the model knows says more than its last character
+        for n in stride(from: min(3, context.count), through: 1, by: -1) {
+            guard let node = traverse(Grammar.encode(context.suffix(n))[...]) else { continue }
+            let firsts = children(of: node)
+            for (bytes1, node1, v1) in firsts {
+                let c1 = Grammar.decode(bytes1)
+                guard let ch1 = c1, Grammar.isHan(ch1) else { continue }
+                if let v1 { out[String(ch1)] = max(out[String(ch1)] ?? -.infinity, Double(v1) / 10_000 + Double(n) * contextBonus) }
+                // two characters only after a context of one or two (the model holds four characters at most)
+                guard n <= 2 else { continue }
+                for (bytes2, _, v2) in children(of: node1) {
+                    guard let v2, let ch2 = Grammar.decode(bytes2), Grammar.isHan(ch2) else { continue }
+                    let t = String([ch1, ch2])
+                    out[t] = max(out[t] ?? -.infinity, Double(v2) / 10_000 + Double(n) * contextBonus)
+                }
+            }
+            if out.count >= limit * continuationStop { break }
+        }
+        return out.sorted { $0.value > $1.value }.prefix(limit).map { ($0.key, $0.value) }
+    }
+
+    /// The nodes one character below `node`: (its bytes, the node, the count stored there if a key ends there).
+    private func children(of node: Int) -> [([UInt8], Int, Int?)] {
+        var out: [([UInt8], Int, Int?)] = []
+        // CJK characters are two bytes: a lead byte 0x80…0xDF (or the 0xE1 escape), then any byte
+        for b1 in 0x80...0xE1 {
+            guard let n1 = child(node, UInt8(b1)) else { continue }
+            for b2 in 0...255 {
+                guard let n2 = child(n1, UInt8(b2)) else { continue }
+                out.append(([UInt8(b1), UInt8(b2)], n2, leafValue(n2)))
+            }
+        }
+        return out
+    }
+
+    @inline(__always) private func child(_ node: Int, _ c: UInt8) -> Int? {
+        let id = node ^ offset(unit(node)) ^ Int(c)
+        return label(unit(id)) == UInt32(c) ? id : nil
+    }
+
+    @inline(__always) private func leafValue(_ node: Int) -> Int? {
+        let u = unit(node)
+        guard hasLeaf(u) else { return nil }
+        return Int(unit(node ^ offset(u)) & 0x7FFF_FFFF)
+    }
+
+    static func isHan(_ c: Character) -> Bool {
+        c.unicodeScalars.first.map { (0x3400...0x9FFF).contains($0.value) } ?? false
+    }
+
+    /// One two-byte CJK character back from Rime's encoding.
+    static func decode(_ b: [UInt8]) -> Character? {
+        guard b.count == 2 else { return nil }
+        let v: UInt32 = b[0] == 0xE1 ? (UInt32(b[1]) - 0x40) << 8 : (UInt32(b[0]) - 0x40) << 8 | UInt32(b[1])
+        return Unicode.Scalar(v).map(Character.init)
+    }
+
     /// Rime's encoding of characters: CJK in two bytes, ASCII in one, anything else in a short escape.
     static func encode(_ chars: ArraySlice<Character>) -> [UInt8] {
         var out: [UInt8] = []

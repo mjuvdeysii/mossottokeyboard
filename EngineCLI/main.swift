@@ -110,6 +110,54 @@ case "gramcount":
         if let v = g.logCount(Array(t)) { print("\(t)\t\(String(format: "%.3f", v))") } else { print("\(t)\t") }
     }
 
+case "wordscore":
+    while let line = readLine() { let c = Array(line); if c.count == 1 { print(line, decoder.charScore(c[0])) }; if c.count == 2 { print(line, decoder.wordScore(c[0], c[1]).map { String(format: "%.2f", $0) } ?? "-") } }
+
+case "predbench":
+    // 联想 quality: in every sentence, after each character, do the suggestions hold what comes next?
+    // SEG: the sentences cut into words (space-separated): only word boundaries are scored there
+    let files = (env["SEG"] ?? env["SENTENCES"] ?? "EngineCLI/sentences.tsv,EngineCLI/sentences2.tsv").split(separator: ",")
+    let segmented = env["SEG"] != nil
+    var points = 0, hit1 = 0, hit6 = 0, saved = 0, total = 0, exact = 0
+    if let v = env["PMC"].flatMap(Double.init) { decoder.predictionMinChar = v }
+    if let v = env["PSW"].flatMap(Double.init) { decoder.predictionSplitWord = v }
+    if let v = env["PSP"].flatMap(Double.init) { decoder.predictionSplitPenalty = v }
+    if let v = env["PNB"].flatMap(Double.init) { decoder.grammar?.contextBonus = v }
+    if let v = env["PSTOP"].flatMap(Int.init) { decoder.grammar?.continuationStop = v }
+    for f in files {
+        for line in (try! String(contentsOfFile: String(f), encoding: .utf8)).split(separator: "\n") {
+            guard let t0 = line.split(separator: "\t").first else { continue }
+            let words = t0.split(separator: " ").map(String.init)
+            let c = Array(words.joined())
+            var bounds = Set<Int>(); var acc = 0
+            for w in words { acc += w.count; bounds.insert(acc) }
+            total += c.count
+            for k in 1..<c.count where !segmented || bounds.contains(k) {
+                let p = decoder.predictions(after: Array(c[..<k]), limit: 6)
+                guard !p.isEmpty else { continue }
+                points += 1
+                let rest = String(c[k...])
+                if let first = p.first, rest.hasPrefix(first) { hit1 += 1 }
+                if let m = p.filter({ rest.hasPrefix($0) }).max(by: { $0.count < $1.count }) { hit6 += 1; saved += m.count }
+                if segmented, let wi = words.indices.first(where: { words[..<$0].joined().count == k }), p.contains(words[wi]) { exact += 1 }
+            }
+        }
+    }
+    print(String(format: "predbench: points %d  top1 %.1f%%  top6 %.1f%%  next word in top6 %.1f%%  chars covered %.1f%%", points,
+                 100 * Double(hit1) / Double(points), 100 * Double(hit6) / Double(points), 100 * Double(exact) / Double(points),
+                 100 * Double(saved) / Double(total)))
+
+case "predict":
+    // stdin: one context per line → what tends to follow it
+    guard let g = decoder.grammar else { print("no grammar"); exit(1) }
+    while let line = readLine() {
+        let t0 = Date()
+        let c = decoder.predictions(after: Array(line))
+        _ = g
+        print(line, "→", c.joined(separator: " "),
+              String(format: "%.1f ms", Date().timeIntervalSince(t0) * 1000))
+    }
+
 case "codes":
     for s in lex.syllables { print(s, XiaoheScheme.code(for: s) ?? "-") }
 

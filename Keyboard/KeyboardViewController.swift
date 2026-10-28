@@ -51,6 +51,9 @@ final class KeyboardViewController: UIInputViewController {
     private var literalGeneration = false
     private var committedParts: [(text: String, ids: [UInt16])] = []
     private var lastInsertedSpace = false
+    /// 联想: next-word suggestions shown after a Chinese commit, until the next key.
+    private var predictions: [String] = []
+    private var predictGeneration = 0
     /// The last auto-corrected commit made with the space bar, undone by an immediate delete (as on Gboard).
     private var undoable: (text: String, taps: [Tap], syllables: [UInt16])?
     private var lastDocumentID: UUID?
@@ -86,10 +89,10 @@ final class KeyboardViewController: UIInputViewController {
     // MARK: - Test bench
 
     /// What the test bench checks after every action.
-    struct TestState { let keys: String; let composing: Bool; let marked: String?; let candidates: [String]; let english: Bool; let page: KeyboardPage }
+    struct TestState { let keys: String; let composing: Bool; let marked: String?; let candidates: [String]; let english: Bool; let page: KeyboardPage; let predictions: [String] }
     var testState: TestState {
         TestState(keys: String(taps.map { $0.key }), composing: !taps.isEmpty, marked: hasMarkedText ? markedString : nil,
-                  candidates: (result?.candidates ?? []).map { $0.text }, english: !chinese, page: page)
+                  candidates: (result?.candidates ?? []).map { $0.text }, english: !chinese, page: page, predictions: predictions)
     }
     /// Block until the engine has loaded (the bench drives keys straight after creating the controller).
     func waitForEngineForTests() -> Bool {
@@ -122,7 +125,7 @@ final class KeyboardViewController: UIInputViewController {
         keyboard.canMoveCursor = { [weak self] in self?.taps.isEmpty ?? false }
         keyboard.stripIsEmpty = { [weak self] in
             guard let self else { return true }
-            return self.taps.isEmpty && self.enSuggestions.isEmpty
+            return self.taps.isEmpty && self.enSuggestions.isEmpty && self.predictions.isEmpty
         }
         keyboard.reservedTop = { [weak self] in
             // while keys are being composed the strip belongs to the candidates: Mosto takes no touches from q / w
@@ -339,6 +342,7 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func forgetLastWord() {
+        clearPredictions()
         undoable = nil
         enUndo = nil
         lastInsertedSpace = false
@@ -577,6 +581,7 @@ final class KeyboardViewController: UIInputViewController {
             if handleCount % 40 == 0 { peakFootprint = max(peakFootprint, memoryFootprintMB()) }   // a few µs
         }
         candidateBar.dismissForget()
+        clearPredictions()
         let undo = undoable
         undoable = nil
         if action == .delete, let undo, undoCorrection(undo) { return }
@@ -940,6 +945,7 @@ final class KeyboardViewController: UIInputViewController {
         if taps.isEmpty {
             engine.learn(parts: committedParts)
             clearComposition()
+            requestPredictions()
         } else {
             refresh()
         }
@@ -1044,6 +1050,15 @@ final class KeyboardViewController: UIInputViewController {
     // MARK: - Candidates
 
     func candidateTapped(_ i: Int) {
+        if taps.isEmpty, enTaps.isEmpty, i < predictions.count {
+            // a next-word suggestion goes straight in, and the suggestions after it follow
+            let text = predictions[i]
+            clearPredictions()
+            forgetLastWord()
+            host.insertText(text)
+            requestPredictions()
+            return
+        }
         if taps.isEmpty, !enTaps.isEmpty, i < enSuggestions.count {
             // an English suggestion replaces the word being typed, followed by a space
             replaceEnglishWord(with: enSuggestions[i])
@@ -1057,12 +1072,45 @@ final class KeyboardViewController: UIInputViewController {
         select(i, shown: result.flatMap { i < $0.candidates.count ? $0.candidates[i] : nil })
     }
 
+    // MARK: - 联想
+
+    private func requestPredictions() {
+        predictGeneration += 1
+        guard chinese, taps.isEmpty, enTaps.isEmpty, !emojiShown else { return }
+        let gen = predictGeneration
+        engine.predict(after: host.documentContextBeforeInput ?? "") { [weak self] list in
+            guard let self, gen == self.predictGeneration, self.taps.isEmpty, self.enTaps.isEmpty, self.chinese,
+                  !list.isEmpty else { return }
+            self.predictions = list
+            self.candidateBar.update(preedit: "", candidates: self.predictionCandidates(), prediction: true)
+            // left alone a while: the suggestions step aside and Mosto comes back to the strip
+            DispatchQueue.main.asyncAfter(deadline: .now() + 12) { [weak self] in
+                guard let self, gen == self.predictGeneration else { return }
+                self.clearPredictions()
+            }
+        }
+    }
+
+    private func predictionCandidates() -> [Candidate] {
+        predictions.map { Candidate(text: $0, tapCount: 0, syllables: [], corrected: false, score: 0) }
+    }
+
+    /// Any key ends the suggestions (a late answer for them is dropped too).
+    private func clearPredictions() {
+        predictGeneration += 1
+        guard !predictions.isEmpty else { return }
+        predictions = []
+        if taps.isEmpty, enSuggestions.isEmpty { candidateBar.update(preedit: "", candidates: []) }
+        if !grid.isHidden, taps.isEmpty { showGrid(false) }
+    }
+
     // MARK: - Panels
 
     private func showGrid(_ on: Bool) {
         if on {
             // English mode lists its own suggestions (the same ones as the strip, in the same order)
             if taps.isEmpty, !enSuggestions.isEmpty { grid.show(englishCandidates()) }
+            else if taps.isEmpty, !predictions.isEmpty { grid.show(predictionCandidates()) }
             else if let r = result { grid.show(r.candidates) }
         }
         grid.isHidden = !on

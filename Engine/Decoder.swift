@@ -691,6 +691,71 @@ public final class Decoder {
         return (start, Array(list))
     }
 
+    // MARK: - 联想: what may come next after a commit
+
+    /// Each character's readings (built once, on first use, from the lexicon's single characters).
+    private var readingsOfChar: [Character: [UInt16]] = [:]
+    private func readings(_ c: Character) -> [UInt16] {
+        if readingsOfChar.isEmpty {
+            for sid in 0..<lexicon.syllables.count {
+                for idx in lexicon.singles(UInt16(sid)) {
+                    let e = lexicon.entry(idx)
+                    guard e.sylCount == 1, let ch = lexicon.text(e).first else { continue }
+                    readingsOfChar[ch, default: []].append(UInt16(sid))
+                }
+            }
+        }
+        return readingsOfChar[c] ?? []
+    }
+
+    /// The lexicon's best score for a character on its own, in ln units.
+    func charScore(_ c: Character) -> Double {
+        var best = -Double.infinity
+        for sid in readings(c).prefix(4) {
+            for idx in lexicon.singles(sid) {
+                let e = lexicon.entry(idx)
+                if lexicon.text(e).first == c { best = max(best, Double(e.score) / 100); break }
+            }
+        }
+        return best
+    }
+    public var predictionMinChar = 13.5
+
+    /// The lexicon's best score for a two-character word, in ln units (nil: not a word it lists).
+    func wordScore(_ a: Character, _ b: Character) -> Double? {
+        var best: Int16?
+        let text = String([a, b])
+        for x in readings(a).prefix(4) { for y in readings(b).prefix(4) {
+            if let v = lexicon.score(of: [x, y], text: text) { best = max(best ?? v, v) }
+        } }
+        return best.map { Double($0) / 100 }
+    }
+
+    /// Next-word suggestions for the text before the cursor: what the language model has seen right after it (the
+    /// longest context it knows first) — one character, or a two-character word the lexicon lists — best first.
+    /// predbench (word boundaries of the sentence sets): the next word among the first six about one time in five.
+    public func predictions(after context: [Character], limit: Int = 8) -> [String] {
+        guard let grammar, let last = context.last, Grammar.isHan(last) else { return [] }
+        var scored: [(String, Double)] = []
+        for (t, v) in grammar.continuations(after: context, limit: 40) {
+            let chars = Array(t)
+            if chars.count == 2, wordScore(chars[0], chars[1]) == nil { continue }   // fragments, not words
+            // a lone character must be one people type on its own often (的 我 了, not 歹 of 好歹)
+            if chars.count == 1, charScore(chars[0]) < predictionMinChar { continue }
+            var score = v
+            // the user just finished a word (你好); a character that would rather pull its last character into a
+            // word of its own (好像) misreads it
+            if context.count >= 2, let joined = wordScore(last, chars[0]), joined >= predictionSplitWord,
+               wordScore(context[context.count - 2], last) != nil {
+                score -= predictionSplitPenalty
+            }
+            scored.append((t, score))
+        }
+        return scored.sorted { $0.1 > $1.1 }.prefix(limit).map { $0.0 }
+    }
+    public var predictionSplitWord = 11.0
+    public var predictionSplitPenalty = 3.0
+
     public func spelling(of id: UInt16) -> String {
         let s = lexicon.syllables[Int(id)]
         return scheme == .xiaohe ? (XiaoheScheme.code(for: s) ?? "") : s

@@ -177,6 +177,23 @@ enum KeyboardTests {
             log(h.string.hasSuffix("3.1"), "numbers.。 after a digit is a decimal point", "text=\(h.string)")
         } else { log(false, "quanpin.setup", "engine did not load") }
 
+        // 联想: after a Chinese commit, next-word suggestions; tapping one types it and suggests again
+        if let kb = makeKeyboard(scheme: 1, in: window) {
+            let (vc, h) = kb
+            type(vc, "women"); settle(vc); vc.handle(.space, tap: nil)
+            let until = Date().addingTimeInterval(3)
+            repeat { drain(0.02) } while vc.testState.predictions.isEmpty && Date() < until
+            let p = vc.testState.predictions
+            log(h.string == "我们" && !p.isEmpty, "predict.suggestions after 我们", "text=\(h.string) predictions=\(p)")
+            if let first = p.first {
+                vc.candidateTapped(0)
+                log(h.string == "我们" + first && h.marked == nil, "predict.tap types the suggestion", "text=\(h.string)")
+            }
+            type(vc, "a")
+            log(vc.testState.predictions.isEmpty && vc.testState.composing, "predict.a key ends the suggestions", "predictions=\(vc.testState.predictions)")
+            vc.handle(.space, tap: nil)
+        } else { log(false, "predict.setup", "engine did not load") }
+
         // The cursor moved away from the word just typed: a delete there is a delete, not an undo
         if let kb = makeKeyboard(scheme: 1, in: window) {
             let (vc, h) = kb
