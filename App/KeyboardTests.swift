@@ -180,14 +180,14 @@ enum KeyboardTests {
         // 联想: after a Chinese commit, next-word suggestions; tapping one types it and suggests again
         if let kb = makeKeyboard(scheme: 1, in: window) {
             let (vc, h) = kb
-            type(vc, "women"); settle(vc); vc.handle(.space, tap: nil)
+            type(vc, "nihao"); settle(vc); vc.handle(.space, tap: nil)
             let until = Date().addingTimeInterval(3)
             repeat { drain(0.02) } while vc.testState.predictions.isEmpty && Date() < until
             let p = vc.testState.predictions
-            log(h.string == "我们" && !p.isEmpty, "predict.suggestions after 我们", "text=\(h.string) predictions=\(p)")
+            log(h.string == "你好" && !p.isEmpty, "predict.suggestions after 你好", "text=\(h.string) predictions=\(p)")
             if let first = p.first {
                 vc.candidateTapped(0)
-                log(h.string == "我们" + first && h.marked == nil, "predict.tap types the suggestion", "text=\(h.string)")
+                log(h.string == "你好" + first && h.marked == nil, "predict.tap types the suggestion", "text=\(h.string)")
             }
             type(vc, "a")
             log(vc.testState.predictions.isEmpty && vc.testState.composing, "predict.a key ends the suggestions", "predictions=\(vc.testState.predictions)")

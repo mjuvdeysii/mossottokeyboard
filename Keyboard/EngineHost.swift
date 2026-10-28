@@ -44,7 +44,11 @@ final class EngineHost {
             if !safe, let gp = grammarPath { d.grammar = try? Grammar(path: gp) }
             self.decoder = d
             self.lock.lock(); self.loaded = true; self.lock.unlock()
-            _ = d.predictions(after: ["你"])   // builds the character table 联想 uses, off the first commit's path
+            // the character table 联想 uses: built beside the decoder's thread, never in front of a keystroke
+            DispatchQueue.global(qos: .utility).async {
+                let table = Decoder.readingsTable(lex)
+                self.queue.async { d.setReadings(table) }
+            }
         }
     }
 

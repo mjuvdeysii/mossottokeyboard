@@ -695,17 +695,26 @@ public final class Decoder {
 
     /// Each character's readings (built once, on first use, from the lexicon's single characters).
     private var readingsOfChar: [Character: [UInt16]] = [:]
+    /// Hand over a table built elsewhere (see `readingsTable`), so the decoder's thread never spends the time.
+    public func setReadings(_ table: [Character: [UInt16]]) { if readingsOfChar.isEmpty { readingsOfChar = table } }
     private func readings(_ c: Character) -> [UInt16] {
-        if readingsOfChar.isEmpty {
-            for sid in 0..<lexicon.syllables.count {
-                for idx in lexicon.singles(UInt16(sid)) {
-                    let e = lexicon.entry(idx)
-                    guard e.sylCount == 1, let ch = lexicon.text(e).first else { continue }
-                    readingsOfChar[ch, default: []].append(UInt16(sid))
-                }
+        if readingsOfChar.isEmpty { readingsOfChar = Self.readingsTable(lexicon) }
+        return readingsOfChar[c] ?? []
+    }
+    /// Every character's readings, from the lexicon's single characters (read-only: safe on any thread).
+    public static func readingsTable(_ lexicon: Lexicon) -> [Character: [UInt16]] {
+        var t: [Character: [UInt16]] = [:]
+        for sid in 0..<lexicon.syllables.count {
+            var i = lexicon.range(firstSyllable: UInt16(sid)).lowerBound
+            let end = lexicon.range(firstSyllable: UInt16(sid)).upperBound
+            while i < end {
+                let e = lexicon.entry(i)
+                if e.sylCount != 1 { break }   // a syllable's single characters come first in its run
+                if let ch = lexicon.text(e).first { t[ch, default: []].append(UInt16(sid)) }
+                i += 1
             }
         }
-        return readingsOfChar[c] ?? []
+        return t
     }
 
     /// The lexicon's best score for a character on its own, in ln units.
