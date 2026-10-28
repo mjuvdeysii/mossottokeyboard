@@ -97,6 +97,14 @@ case "entype":
     print("autocorrect:", ed.autocorrection(taps)?.text ?? "-")
     for s in ed.suggestions(taps) { print(String(format: "%7.2f", s.score), s.text, s.corrected ? "[corrected]" : "", s.completion ? "[completion]" : "") }
 
+case "gramcount":
+    // stdin: one phrase per line → phrase \t ln(count) (empty when the language model never saw it)
+    guard let g = decoder.grammar else { print("no grammar"); exit(1) }
+    while let line = readLine() {
+        let t = line.split(separator: "\t").first.map(String.init) ?? line
+        if let v = g.logCount(Array(t)) { print("\(t)\t\(String(format: "%.3f", v))") } else { print("\(t)\t") }
+    }
+
 case "codes":
     for s in lex.syllables { print(s, XiaoheScheme.code(for: s) ?? "-") }
 
@@ -151,7 +159,7 @@ case "bench", "gate":
         for (t, ids) in set {   // also the warm-up: pages the lexicon in and builds the lazy indexes
             let r = decoder.decode(codeLetters(ids).map { Tap.exact($0) })
             refs.append(r.candidates.first?.text ?? "")
-            if refs.last == t { refIsTarget += 1 }
+            if refs.last == t { refIsTarget += 1 } else if env["PERFECT_DEBUG"] != nil, name == "sentences" { print("  ✗", t, "→", refs.last!) }
         }
         // Timing: the best of three warm passes, so a busy shared CI runner does not fail the gate on noise.
         let taps = set.map { codeLetters($0.1).map { Tap.exact($0) } }

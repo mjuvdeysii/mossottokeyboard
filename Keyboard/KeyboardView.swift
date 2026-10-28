@@ -273,7 +273,15 @@ final class KeyPreview: UIView {
 
     /// `key`: the key's frame; `limit`: the horizontal room available (container bounds), both in container space.
     func place(over key: CGRect, within limit: CGRect) {
-        let capW = max(key.width + 26, 52), capH = key.height * 1.12, neck: CGFloat = 10
+        // the top row has only the strip above it, and nothing can be drawn above the keyboard's own top edge: there
+        // the balloon grows only as tall as the room allows (never shorter than the key) instead of being cut off
+        let capW = max(key.width + 26, 52)
+        var capH = key.height * 1.12, neck: CGFloat = 10
+        let room = key.minY - limit.minY
+        if neck + capH > room {
+            neck = max(4, min(10, room - key.height * 0.95))
+            capH = max(key.height * 0.9, room - neck)
+        }
         var capX = key.midX - capW / 2
         capX = min(max(limit.minX + 1, capX), limit.maxX - capW - 1)
         let top = key.minY - neck - capH
@@ -309,6 +317,7 @@ final class KeyPreview: UIView {
         shape.strokeColor = Theme.bubbleLip.resolvedColor(with: traitCollection).cgColor
         horns.frame = bounds
         horns.path = Self.hornsPath(cap)
+        horns.isHidden = top - 9 < limit.minY   // no room above for his horns
         CATransaction.commit()
         setNeedsLayout()
     }
@@ -863,7 +872,9 @@ final class KeyboardView: UIView {
         p.label.text = text
         p.label.textColor = Theme.keyText
         if p.superview == nil { addSubview(p) }
-        p.place(over: kv.frame, within: bounds)
+        // the room above: up to the top of the keyboard's whole view (the strip included)
+        let topY = superview.map { convert(CGPoint.zero, from: $0).y } ?? bounds.minY
+        p.place(over: kv.frame, within: CGRect(x: bounds.minX, y: topY + 1, width: bounds.width, height: bounds.maxY - topY - 1))
         tr.preview = p
     }
 

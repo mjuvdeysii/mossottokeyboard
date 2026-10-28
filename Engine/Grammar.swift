@@ -79,6 +79,16 @@ public final class Grammar {
         }
     }
 
+    /// The model's own count for a whole string of up to four characters, as ln(count) (nil when it never saw it).
+    public func logCount(_ text: [Character]) -> Double? {
+        guard !text.isEmpty, text.count <= 4 else { return nil }
+        let enc = Grammar.encode(text[...])
+        var out: [(Int, Int)] = []
+        prefixes(from: 0, enc, into: &out)
+        guard let hit = out.last, hit.0 == enc.count else { return nil }
+        return Double(hit.1) / 10_000
+    }
+
     /// Rime's encoding of characters: CJK in two bytes, ASCII in one, anything else in a short escape.
     static func encode(_ chars: ArraySlice<Character>) -> [UInt8] {
         var out: [UInt8] = []
