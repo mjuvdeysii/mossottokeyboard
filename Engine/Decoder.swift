@@ -340,9 +340,18 @@ public final class Decoder {
         let n = taps.count
         let spansFrom = spans(taps)
         // index: start tap -> syllable id -> spans
-        var spanAt = [[UInt16: [Span]]](repeating: [:], count: n)
-        var has = [[Bool]](repeating: [Bool](repeating: false, count: lexicon.syllables.count), count: n + 1)
-        for i in 0..<n { for s in spansFrom[i] { spanAt[i][s.id, default: []].append(s); has[i][Int(s.id)] = true } }
+        // groups[i]: the syllables that can start at tap i, each with its readings; slot[i * S + id] finds one
+        // (a flat table rather than a dictionary per position: no hashing in the innermost loops)
+        let S = lexicon.syllables.count
+        var groups = [[(id: UInt16, spans: [Span])]](repeating: [], count: n)
+        var slot = [Int32](repeating: -1, count: n * S)
+        for i in 0..<n {
+            for sp in spansFrom[i] {
+                let k = i * S + Int(sp.id)
+                if slot[k] < 0 { slot[k] = Int32(groups[i].count); groups[i].append((sp.id, [sp])) }
+                else { groups[i][Int(slot[k])].spans.append(sp) }
+            }
+        }
 
         // Edge buckets keyed by (start, end), each keeping its best `cap` words. `floor` is the score a new word must
         // beat once a bucket is full, checked before an edge is even built (most candidate words never get in).
@@ -396,8 +405,10 @@ public final class Decoder {
                     found(pos, sp, corr, cutBuf, kindBuf)
                     return
                 }
-                guard pos < n, kindBuf.last != 1, let next = spanAt[pos][syl(k)] else { return }
-                for s in next {
+                guard pos < n, kindBuf.last != 1 else { return }
+                let si = slot[pos * S + Int(syl(k))]
+                guard si >= 0 else { return }
+                for s in groups[pos][Int(si)].spans {
                     cutBuf.append(s.end); kindBuf.append(s.kind)
                     walk(k + 1, s.end, sp + s.spatial, corr || s.corrected)
                     cutBuf.removeLast(); kindBuf.removeLast()
@@ -428,7 +439,7 @@ public final class Decoder {
                 }
                 // Longer words only through the syllables that can start where this one ends (a half-typed syllable
                 // is always the last, so it starts no longer word).
-                for (sid, seconds) in first.kind != 1 && firstEnd < n ? spanAt[firstEnd] : [:] {
+                for (sid, seconds) in first.kind != 1 && firstEnd < n ? groups[firstEnd] : [] {
                     let follow = lexicon.followers(first: first.id, second: sid)
                     // two-syllable words: each reading of the second syllable, the words best first
                     if !follow.pairs.isEmpty {
@@ -453,7 +464,7 @@ public final class Decoder {
                             let e = lexicon.entry(idx)
                             if Double(e.score) / 100 < minWord { break }
                             let third = Int(lexicon.syllable(e, 2))
-                            guard thirds.contains(where: { has[$0][third] }) else { continue }
+                            guard thirds.contains(where: { slot[$0 * S + third] >= 0 }) else { continue }
                             let base = Double(e.score) / 100 - wordPenalty
                             chains({ self.lexicon.syllable(e, $0) }, count: e.sylCount, first: first, base: base) { end, sp, corr, cuts, kinds in
                                 guard accepts(i, end, cuts.count, base + sp) else { return }
