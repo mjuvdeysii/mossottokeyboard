@@ -114,8 +114,11 @@ project_settings = {
     "SWIFT_COMPILATION_MODE": "wholemodule",
     "SWIFT_OPTIMIZATION_LEVEL": '"-O"',
     "COPY_PHASE_STRIP": "NO",
+    # the decoder's hot loops: no runtime exclusivity checks in release (still checked at compile time and in debug;
+    # 九宫格 全拼 sentence decodes measured 75 → 53 ms)
+    "OTHER_SWIFT_FLAGS": '"-enforce-exclusivity=unchecked"',
 }
-project_debug = {"SWIFT_OPTIMIZATION_LEVEL": '"-Onone"', "SWIFT_COMPILATION_MODE": "singlefile",
+project_debug = {"SWIFT_OPTIMIZATION_LEVEL": '"-Onone"', "OTHER_SWIFT_FLAGS": '""', "SWIFT_COMPILATION_MODE": "singlefile",
                  "ONLY_ACTIVE_ARCH": "YES", "DEBUG_INFORMATION_FORMAT": "dwarf",
                  "SWIFT_ACTIVE_COMPILATION_CONDITIONS": "DEBUG"}
 common_target = {

@@ -27,7 +27,7 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p report
-          swiftc -O Engine/*.swift EngineCLI/main.swift -o /tmp/engine-cli 2>&1 | tee report/engine-build.txt
+          swiftc -O -enforce-exclusivity=unchecked Engine/*.swift EngineCLI/main.swift -o /tmp/engine-cli 2>&1 | tee report/engine-build.txt
           /tmp/engine-cli Keyboard/Resources/lexicon.bin type nihcdajx | tee report/engine-bench.txt
           /tmp/engine-cli Keyboard/Resources/lexicon.bin bench 0.22 0.30 | tee -a report/engine-bench.txt
       - name: Build app + keyboard (simulator, unsigned)
