@@ -214,8 +214,9 @@ final class KeyboardViewController: UIInputViewController {
         keyboard.frame = CGRect(x: insetL, y: barHeight - reach, width: w, height: b.height - barHeight + reach)
         keyboard.topReach = reach
         grid.frame = CGRect(x: insetL, y: barHeight, width: w, height: b.height - barHeight)
-        settingsPanel.frame = b
-        if emojiShown { emojiPanel.frame = b }
+        let safe = CGRect(x: insetL, y: 0, width: w, height: b.height)
+        settingsPanel.frame = safe
+        if emojiShown { emojiPanel.frame = safe }
     }
 
     override func textDidChange(_ textInput: UITextInput?) {
@@ -955,7 +956,7 @@ final class KeyboardViewController: UIInputViewController {
             showGrid(false)
             endEnglishWord()
             emojiPanel.setChinese(chinese)
-            emojiPanel.frame = view.bounds
+            emojiPanel.frame = CGRect(x: view.safeAreaInsets.left, y: 0, width: view.bounds.width - view.safeAreaInsets.left - view.safeAreaInsets.right, height: view.bounds.height)
             emojiPanel.load()
             root.bringSubviewToFront(emojiPanel)
         } else if !chinese {
