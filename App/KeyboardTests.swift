@@ -189,6 +189,13 @@ enum KeyboardTests {
                 vc.candidateTapped(0)
                 log(h.string == "你好" + first && h.marked == nil, "predict.tap types the suggestion", "text=\(h.string)")
             }
+            vc.handle(.space, tap: nil)   // (no-op guard: the suggestion row is gone after any key)
+            type(vc, "dangao"); settle(vc)
+            let hc = vc.testState.candidates
+            if let i = hc.firstIndex(of: "🎂") {
+                vc.candidateTapped(i)
+                log(i >= 1 && h.string.hasSuffix("🎂") && !vc.testState.composing, "emoji.蛋糕 offers 🎂 after the words", "index=\(i) text=\(h.string)")
+            } else { log(false, "emoji.蛋糕 offers 🎂 after the words", "candidates=\(hc.prefix(6))") }
             type(vc, "a")
             log(vc.testState.predictions.isEmpty && vc.testState.composing, "predict.a key ends the suggestions", "predictions=\(vc.testState.predictions)")
             vc.handle(.space, tap: nil)
