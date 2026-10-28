@@ -246,7 +246,12 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
             contentView.layer.cornerRadius = 8
             contentView.layer.cornerCurve = .continuous
         }
-        required init?(coder: NSCoder) { fatalError() }
+        override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+        super.traitCollectionDidChange(previous)
+        for b in [closeButton, deleteButton] { b.layer.shadowColor = Theme.functionLip.resolvedColor(with: traitCollection).cgColor }
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
         override func layoutSubviews() {
             super.layoutSubviews()
             label.frame = contentView.bounds.insetBy(dx: 4, dy: 0)
@@ -276,12 +281,19 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         closeButton.setImage(UIImage(systemName: "chevron.up", withConfiguration: cfg), for: .normal)
         deleteButton.setImage(UIImage(systemName: "delete.left", withConfiguration: cfg), for: .normal)
         for b in [closeButton, deleteButton] {
-            b.tintColor = Theme.keyText
+            b.tintColor = Theme.functionText
             b.backgroundColor = Theme.functionKey
-            b.layer.cornerRadius = 6
+            b.layer.cornerRadius = Metrics.cornerRadius
+            b.layer.cornerCurve = .continuous
+            // the keyboard's vinyl cap: a darker lip under the face (a hard, unblurred shadow)
+            b.layer.shadowOpacity = 1
+            b.layer.shadowRadius = 0
+            b.layer.shadowOffset = CGSize(width: 0, height: Metrics.lip)
+            b.layer.shadowColor = Theme.functionLip.resolvedColor(with: traitCollection).cgColor
             addSubview(b)
         }
         closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
+
         deleteButton.addTarget(self, action: #selector(deleteTapped), for: .touchUpInside)
     }
 
@@ -339,7 +351,7 @@ final class SettingsPanelView: UIView {
 
     private let schemeControl = UISegmentedControl(items: ["小鹤双拼", "全拼"])
     private let layoutControl = UISegmentedControl(items: ["全键盘", "九宫格"])
-    private let numberControl = UISegmentedControl(items: ["全键盘", "九宫格"])
+    private let numberControl = UISegmentedControl(items: ["完整页", "九宫格"])
     private let englishSwitch = UISwitch()
     private let correctionSwitch = UISwitch()
     private let feedbackSwitch = UISwitch()
@@ -403,9 +415,9 @@ final class SettingsPanelView: UIView {
         section("输入", rows: [
             row("输入方案", schemeControl),
             row("中文键盘", layoutControl),
-            row("数字键盘", numberControl),
+            row("123 键", numberControl),
             row("中英混输", englishSwitch),
-        ], footer: "中文键盘：九宫格时每个键代表它上面的几个字母，小鹤双拼与全拼都能用（全拼更准）；分词键用来切开音节。数字键盘：123 打开的是完整的数字符号页，还是九宫格数字键盘（符号键可去完整页）；没设过时跟随中文键盘，用九宫格打字就默认九宫格数字。打字时按下的字母写进输入框，带下划线，选了候选才替换成汉字。中英混输：打 ok、ios 直接出 OK、iOS。")
+        ], footer: "中文键盘：九宫格时每个键代表它上面的几个字母，小鹤双拼与全拼都能用（全拼更准）；分词键用来切开音节。123 键：打开完整的数字符号页，还是九宫格数字键盘（其上的“符号”键可去完整页）；没设过时跟随中文键盘，用九宫格打字就默认九宫格数字。打字时按下的字母写进输入框，带下划线，选了候选才替换成汉字。中英混输：打 ok、ios 直接出 OK、iOS。")
         section("自动纠错", rows: [
             row("按触点位置纠错", correctionSwitch),
         ], footer: "首选带下划线 = 已纠错；上屏后立刻按删除可撤回这次纠错。英文模式同样按触点纠错：teh → the、dont → don't、im → I'm，空格时替换，删除可撤回。")

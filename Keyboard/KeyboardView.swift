@@ -235,8 +235,12 @@ final class KeyView: UIView {
 /// Optical centring for full-width CJK punctuation: 。，、 sit in the lower-left of their em box, so on a key
 /// they look dropped and off to the side. Returns the offset that moves the glyph to the visual centre.
 func cjkPunctuationOffset(_ text: String?, fontSize: CGFloat) -> CGPoint {
-    guard let t = text, ["。", "，", "、", "．"].contains(t) else { return .zero }
-    return CGPoint(x: fontSize * 0.22, y: -fontSize * 0.2)
+    guard let t = text else { return .zero }
+    if ["。", "，", "、", "．"].contains(t) { return CGPoint(x: fontSize * 0.22, y: -fontSize * 0.2) }
+    // full-width brackets hug the inside edge of their em box: an opening one sits right, a closing one left
+    if ["（", "「", "『", "《", "〈", "【", "〔", "｛"].contains(t) { return CGPoint(x: -fontSize * 0.25, y: 0) }
+    if ["）", "」", "』", "》", "〉", "】", "〕", "｝"].contains(t) { return CGPoint(x: fontSize * 0.25, y: 0) }
+    return .zero
 }
 
 /// The key-press balloon, shaped like the iOS keyboard's: a wider cap above the key that narrows through a
