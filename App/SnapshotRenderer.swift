@@ -214,8 +214,15 @@ enum SnapshotRenderer {
             print("FOOTPRINT keyboard extension not found in \(Bundle.main.builtInPlugInsURL?.path ?? "-")")
         }
         // the keyboard's own behaviour: the real controller against a simulated text field (App/KeyboardTests.swift)
-        KeyboardTests.run(in: window, to: fm.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("keyboard-tests.txt"))
-        print("SNAPSHOTS \(dir.path)")
-        exit(0)
+        // Run from a plain run-loop callout, not from inside this task: a task runs as a main-queue block, and while
+        // one is running GCD delivers no other main-queue block — the keyboard's decode results would never arrive.
+        let file = fm.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("keyboard-tests.txt")
+        let path = dir.path
+        CFRunLoopPerformBlock(CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue) {
+            MainActor.assumeIsolated { KeyboardTests.run(in: window, to: file) }
+            print("SNAPSHOTS \(path)")
+            exit(0)
+        }
+        CFRunLoopWakeUp(CFRunLoopGetMain())
     }
 }

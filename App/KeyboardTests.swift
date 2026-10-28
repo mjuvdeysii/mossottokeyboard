@@ -212,7 +212,9 @@ enum KeyboardTests {
                 case 96..<98: if vc.syllableChoiceCount > 0 { vc.pickSyllable(r(vc.syllableChoiceCount)) }
                 default: drain(0.05)
                 }
-                if r(4) == 0 { drain(0.005) }
+                // 九宫格 keys have no letter of their own: the field shows the pinyin once the decode for them is
+                // back (a few ms on a phone), so the grid's rules are checked after it has had that time
+                if grid { drain(0.05) } else if r(4) == 0 { drain(0.005) }
                 // the rules
                 let st = vc.testState
                 if !st.composing && h.marked != nil { violations.append("marked text left after the composition ended (\(h.markedString ?? ""))") }
