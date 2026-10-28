@@ -2,6 +2,14 @@ import UIKit
 import AudioToolbox
 
 final class KeyboardViewController: UIInputViewController {
+    /// The text field being typed into: the system's proxy, or a stand-in field when the keyboard is driven by the
+    /// in-app test bench (App/KeyboardTests.swift), which runs this same controller against a simulated field.
+    var hostOverride: UITextDocumentProxy?
+    private var host: UITextDocumentProxy { hostOverride ?? super.textDocumentProxy }
+    /// Where the lexicon and the other engine files are (the keyboard's own bundle; the test bench points it at the
+    /// keyboard extension inside the app) and whether learned words are kept on disk (not in tests).
+    static var resourceBundle: Bundle = .main
+    static var keepsLearnedWords = true
     // Engine: decoding and learned words on their own thread (EngineHost); the main thread only draws and types
     private let engine = EngineHost()
     private var scheme: PinyinScheme = .xiaohe
@@ -70,6 +78,24 @@ final class KeyboardViewController: UIInputViewController {
     private var isLandscape: Bool { view.bounds.width > view.bounds.height && view.bounds.height > 0 }
     private var barHeight: CGFloat { isLandscape ? Metrics.toolbarHeightLandscape : Metrics.toolbarHeight }
 
+    // MARK: - Test bench
+
+    /// What the test bench checks after every action.
+    struct TestState { let keys: String; let composing: Bool; let marked: String?; let candidates: [String]; let english: Bool; let page: KeyboardPage }
+    var testState: TestState {
+        TestState(keys: String(taps.map { $0.key }), composing: !taps.isEmpty, marked: hasMarkedText ? markedString : nil,
+                  candidates: (result?.candidates ?? []).map { $0.text }, english: !chinese, page: page)
+    }
+    /// Block until the engine has loaded (the bench drives keys straight after creating the controller).
+    func waitForEngineForTests() -> Bool {
+        for _ in 0..<600 {
+            if engine.decodeNow([Tap.exact("a")]) != nil { return true }
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        }
+        return false
+    }
+    var syllableChoiceCount: Int { syllableChoices.choices.count }
+
     // MARK: - Lifecycle
 
     override func viewDidLoad() {
@@ -103,7 +129,7 @@ final class KeyboardViewController: UIInputViewController {
             self.enUndo = nil
             self.endEnglishWord()
             // one visible character per step: an emoji or other surrogate pair is two UTF-16 units
-            let proxy = self.textDocumentProxy
+            let proxy = self.host
             let ch = d < 0 ? proxy.documentContextBeforeInput?.last : proxy.documentContextAfterInput?.first
             // some apps share no context: then step one unit and let the system clamp at the ends
             proxy.adjustTextPosition(byCharacterOffset: d * (ch?.utf16.count ?? 1))
@@ -187,7 +213,7 @@ final class KeyboardViewController: UIInputViewController {
             c.isActive = true
             heightConstraint = c
         }
-        lastDocumentID = textDocumentProxy.documentIdentifier
+        lastDocumentID = host.documentIdentifier
         adaptToField()
         applyAppearance()
         haptic.prepare()
@@ -245,7 +271,7 @@ final class KeyboardViewController: UIInputViewController {
     override func textDidChange(_ textInput: UITextInput?) {
         super.textDidChange(textInput)
         reconcileWithHost()
-        let id = textDocumentProxy.documentIdentifier
+        let id = host.documentIdentifier
         if id != lastDocumentID {
             // Another field (or a host that reports a new identifier whenever its text changes — this arrives
             // late, after the next keys may already be typed): never throw those keys away; adapt the layout only
@@ -273,7 +299,7 @@ final class KeyboardViewController: UIInputViewController {
     /// host that does not is never mistaken for one that moved on.
     private func reconcileWithHost() {
         guard !taps.isEmpty, hasMarkedText, markedString.count >= 2,
-              let before = textDocumentProxy.documentContextBeforeInput else { return }
+              let before = host.documentContextBeforeInput else { return }
         if before.hasSuffix(markedString) {
             // the host shows our marked text in its context: confirmed once per distinct composition string
             if markedString != lastEchoed { lastEchoed = markedString; hostEchoesMarked += 1 }
@@ -299,7 +325,7 @@ final class KeyboardViewController: UIInputViewController {
 
     /// What `adaptToField` looks at: a new identifier with the same traits is the same kind of field.
     private func fieldTraits() -> [Int] {
-        let p = textDocumentProxy
+        let p = host
         return [p.keyboardType?.rawValue ?? -1, p.returnKeyType?.rawValue ?? -1, p.autocapitalizationType?.rawValue ?? -1]
     }
     private var lastFieldTraits: [Int] = []
@@ -311,10 +337,11 @@ final class KeyboardViewController: UIInputViewController {
     private func loadEngine() {
         let safe = LaunchGuard.begin()
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-        let ep = Bundle.main.path(forResource: "english", ofType: "bin")
-        engine.load(lexiconPath: Bundle.main.path(forResource: "lexicon", ofType: "bin"), englishPath: ep,
-                    grammarPath: Bundle.main.path(forResource: "grammar", ofType: "gram"),
-                    userDictURL: dir?.appendingPathComponent("userdict.json"), safe: safe)
+        let b = Self.resourceBundle
+        let ep = b.path(forResource: "english", ofType: "bin")
+        engine.load(lexiconPath: b.path(forResource: "lexicon", ofType: "bin"), englishPath: ep,
+                    grammarPath: b.path(forResource: "grammar", ofType: "gram"),
+                    userDictURL: Self.keepsLearnedWords ? dir?.appendingPathComponent("userdict.json") : nil, safe: safe)
         // English mode reads the same file (read-only, safe to share between threads)
         if !safe, let ep, let en = try? EnglishLexicon(path: ep) { english = EnglishDecoder(lexicon: en) }
         safeMode = safe
@@ -379,7 +406,7 @@ final class KeyboardViewController: UIInputViewController {
         settingsPanel.setNight(night)
     }
 
-    private func applySettings() {
+    func applySettings() {
         let s = KeyboardSettings.shared
         let newScheme = PinyinScheme(rawValue: s.scheme) ?? .xiaohe
         if newScheme != scheme, !taps.isEmpty { commitRaw() }     // keys typed under the other scheme mean something else
@@ -433,7 +460,7 @@ final class KeyboardViewController: UIInputViewController {
 
     private func adaptToField() {
         lastFieldTraits = fieldTraits()
-        let proxy = textDocumentProxy
+        let proxy = host
         switch proxy.keyboardType ?? .default {
         case .numberPad, .decimalPad, .phonePad, .asciiCapableNumberPad:
             page = .numpad   // digits-only fields (phone, code, amount) get the 九宫格 number pad
@@ -451,7 +478,7 @@ final class KeyboardViewController: UIInputViewController {
 
     /// nil = default return key, drawn as the ↵ icon like Gboard.
     private func returnLabel() -> (String?, Bool) {
-        let type = textDocumentProxy.returnKeyType ?? .default
+        let type = host.returnKeyType ?? .default
         let zh: [UIReturnKeyType: String] = [.go: "前往", .search: "搜索", .send: "发送", .done: "完成",
                                              .next: "下一项", .join: "加入", .route: "路线", .continue: "继续",
                                              .google: "搜索", .yahoo: "搜索", .emergencyCall: "紧急"]
@@ -485,7 +512,7 @@ final class KeyboardViewController: UIInputViewController {
     /// From a key to its candidates appearing (decoded on the engine's thread).
     private var candTotal = 0.0, candMax = 0.0, candCount = 0
 
-    private func handle(_ action: KeyAction, tap: Tap?) {
+    func handle(_ action: KeyAction, tap: Tap?) {
         let t0 = CACurrentMediaTime()
         defer {
             let ms = (CACurrentMediaTime() - t0) * 1000
@@ -513,7 +540,7 @@ final class KeyboardViewController: UIInputViewController {
         case .delete:
             delete()
         case .ret:
-            if !taps.isEmpty { commitRaw() } else { textDocumentProxy.insertText("\n") }
+            if !taps.isEmpty { commitRaw() } else { host.insertText("\n") }
             lastInsertedSpace = false
             if !chinese { updateAutoShift() }
             reconfigure()
@@ -538,7 +565,7 @@ final class KeyboardViewController: UIInputViewController {
         case .t9(let d):
             // 九宫格: each key stands for its letters; 分词 only splits syllables inside a composition
             guard d != "'" || !taps.isEmpty else { return }
-            if taps.isEmpty { engine.setContext(textDocumentProxy.documentContextBeforeInput ?? "") }
+            if taps.isEmpty { engine.setContext(host.documentContextBeforeInput ?? "") }
             lastInsertedSpace = false
             taps.append(Tap.t9(d))
             refresh()
@@ -556,7 +583,7 @@ final class KeyboardViewController: UIInputViewController {
         lastInsertedSpace = false
         if chinese && !(shifted || capsLock) {
             // a new composition: the words are read in the context of the text before the cursor
-            if taps.isEmpty { engine.setContext(textDocumentProxy.documentContextBeforeInput ?? "") }
+            if taps.isEmpty { engine.setContext(host.documentContextBeforeInput ?? "") }
             taps.append(tap)
             refresh()
             return
@@ -564,7 +591,7 @@ final class KeyboardViewController: UIInputViewController {
         // English, or Shift held in Chinese mode: direct letter.
         if !taps.isEmpty { commitAll() }
         let typed = (shifted || capsLock) ? s.uppercased() : s
-        textDocumentProxy.insertText(typed)
+        host.insertText(typed)
         if !chinese, english != nil {
             enTaps.append(tap)
             enTyped += typed
@@ -586,11 +613,11 @@ final class KeyboardViewController: UIInputViewController {
         // Right after a digit, as the system Chinese keyboard: 。 is a decimal point and ： a time separator
         // (3.14, 12:30), never 3。14 or 12：30.
         var out = s
-        if chinese, s == "。" || s == "：", let prev = textDocumentProxy.documentContextBeforeInput?.last,
+        if chinese, s == "。" || s == "：", let prev = host.documentContextBeforeInput?.last,
            prev.isASCII, prev.isNumber {
             out = s == "。" ? "." : ":"
         }
-        textDocumentProxy.insertText(out)
+        host.insertText(out)
         lastInsertedSpace = false
         if !chinese && [".", "!", "?"].contains(s) { updateAutoShift(); reconfigure() }
     }
@@ -610,7 +637,7 @@ final class KeyboardViewController: UIInputViewController {
             commitAll()
             return
         }
-        let proxy = textDocumentProxy
+        let proxy = host
         if !chinese, lastInsertedSpace, let before = proxy.documentContextBeforeInput,
            before.hasSuffix(" "), let prev = before.dropLast().last, prev.isLetter || prev.isNumber {
             proxy.deleteBackward()
@@ -632,7 +659,7 @@ final class KeyboardViewController: UIInputViewController {
             if taps.isEmpty { clearComposition() } else { refresh() }
             return
         }
-        textDocumentProxy.deleteBackward()
+        host.deleteBackward()
         if !enTaps.isEmpty {
             enTaps.removeLast()
             if !enTyped.isEmpty { enTyped.removeLast() }
@@ -669,16 +696,16 @@ final class KeyboardViewController: UIInputViewController {
 
     /// Replace the word being typed (still in the field just before the cursor) with `text`.
     private func replaceEnglishWord(with text: String) {
-        let before = textDocumentProxy.documentContextBeforeInput ?? ""
+        let before = host.documentContextBeforeInput ?? ""
         guard !enTyped.isEmpty, before.hasSuffix(enTyped) else { return }
-        for _ in enTyped { textDocumentProxy.deleteBackward() }
-        textDocumentProxy.insertText(text)
+        for _ in enTyped { host.deleteBackward() }
+        host.insertText(text)
     }
 
     /// Space or a punctuation mark: put in the autocorrection, remembering it so a delete right after undoes it.
     private func applyEnglishAutocorrection() {
         guard let c = enCorrection, c != enTyped else { return }
-        let before = textDocumentProxy.documentContextBeforeInput ?? ""
+        let before = host.documentContextBeforeInput ?? ""
         guard before.hasSuffix(enTyped) else { return }
         let saved = (typed: enTyped, taps: enTaps, corrected: c)
         replaceEnglishWord(with: c)
@@ -687,11 +714,11 @@ final class KeyboardViewController: UIInputViewController {
 
     /// Delete right after an autocorrection (and the space or mark that applied it): the typed word comes back.
     private func undoEnglishCorrection(_ u: (typed: String, taps: [Tap], corrected: String)) -> Bool {
-        let before = textDocumentProxy.documentContextBeforeInput ?? ""
+        let before = host.documentContextBeforeInput ?? ""
         guard !before.isEmpty, before.dropLast().hasSuffix(u.corrected) else { return false }
-        textDocumentProxy.deleteBackward()                       // the space / mark
-        for _ in u.corrected { textDocumentProxy.deleteBackward() }
-        textDocumentProxy.insertText(u.typed)
+        host.deleteBackward()                       // the space / mark
+        for _ in u.corrected { host.deleteBackward() }
+        host.insertText(u.typed)
         enTaps = u.taps
         enTyped = u.typed
         enCorrection = nil
@@ -717,8 +744,8 @@ final class KeyboardViewController: UIInputViewController {
         lastInsertedSpace = false
         if !taps.isEmpty { clearComposition(); return }
         endEnglishWord()
-        let before = textDocumentProxy.documentContextBeforeInput ?? ""
-        guard let last = before.last else { textDocumentProxy.deleteBackward(); return }
+        let before = host.documentContextBeforeInput ?? ""
+        guard let last = before.last else { host.deleteBackward(); return }
         var count = 0
         var chars = Array(before)
         func isHan(_ c: Character) -> Bool { c.unicodeScalars.first.map { (0x3400...0x9FFF).contains($0.value) } ?? false }
@@ -733,7 +760,7 @@ final class KeyboardViewController: UIInputViewController {
                 chars.removeLast(); count += 1
             }
         }
-        for _ in 0..<max(count, 1) { textDocumentProxy.deleteBackward() }
+        for _ in 0..<max(count, 1) { host.deleteBackward() }
         if !chinese { updateAutoShift(); reconfigure() }
     }
 
@@ -753,7 +780,7 @@ final class KeyboardViewController: UIInputViewController {
 
     private func updateAutoShift() {
         guard !capsLock else { return }
-        let proxy = textDocumentProxy
+        let proxy = host
         let type = proxy.autocapitalizationType ?? .sentences
         guard type != .none else { shifted = false; return }
         let before = proxy.documentContextBeforeInput ?? ""
@@ -785,7 +812,7 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func setMarked(_ marked: String) {
-        textDocumentProxy.setMarkedText(marked, selectedRange: NSRange(location: (marked as NSString).length, length: 0))
+        host.setMarkedText(marked, selectedRange: NSRange(location: (marked as NSString).length, length: 0))
         hasMarkedText = true
         markedString = marked
         markedHistory.append(marked)
@@ -855,8 +882,8 @@ final class KeyboardViewController: UIInputViewController {
     /// Delete right after an auto-corrected commit: take the word back out, put the typed keys back into the
     /// composition and show them uncorrected, so the next space types what was actually pressed.
     private func undoCorrection(_ u: (text: String, taps: [Tap], syllables: [UInt16])) -> Bool {
-        guard taps.isEmpty, (textDocumentProxy.documentContextBeforeInput ?? "").hasSuffix(u.text) else { return false }
-        for _ in u.text { textDocumentProxy.deleteBackward() }
+        guard taps.isEmpty, (host.documentContextBeforeInput ?? "").hasSuffix(u.text) else { return false }
+        for _ in u.text { host.deleteBackward() }
         if !u.syllables.isEmpty { engine.unlearn(syllables: u.syllables, text: u.text) }
         taps = u.taps
         refresh(literal: true)
@@ -904,7 +931,7 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     /// The keypad keys of the chosen syllable become its exact letters; the rest decodes around them.
-    private func pickSyllable(_ i: Int) {
+    func pickSyllable(_ i: Int) {
         let (start, choices) = syllableChoices
         guard i < choices.count, start + choices[i].keys.count <= taps.count else { return }
         playFeedback(.t9("2"))
@@ -914,7 +941,7 @@ final class KeyboardViewController: UIInputViewController {
 
     /// Insert committed text; it replaces the marked pinyin when there is one.
     private func insertCommitted(_ text: String) {
-        textDocumentProxy.insertText(text)
+        host.insertText(text)
         hasMarkedText = false
         markedString = ""
     }
@@ -932,8 +959,8 @@ final class KeyboardViewController: UIInputViewController {
     private func clearComposition() {
         markedHistory.removeAll()
         if hasMarkedText {
-            textDocumentProxy.setMarkedText("", selectedRange: NSRange(location: 0, length: 0))
-            textDocumentProxy.unmarkText()
+            host.setMarkedText("", selectedRange: NSRange(location: 0, length: 0))
+            host.unmarkText()
             hasMarkedText = false
         }
         taps.removeAll()
@@ -949,11 +976,11 @@ final class KeyboardViewController: UIInputViewController {
 
     // MARK: - Candidates
 
-    private func candidateTapped(_ i: Int) {
+    func candidateTapped(_ i: Int) {
         if taps.isEmpty, !enTaps.isEmpty, i < enSuggestions.count {
             // an English suggestion replaces the word being typed, followed by a space
             replaceEnglishWord(with: enSuggestions[i])
-            textDocumentProxy.insertText(" ")
+            host.insertText(" ")
             lastInsertedSpace = true
             endEnglishWord()
             updateAutoShift(); reconfigure()
@@ -995,13 +1022,13 @@ final class KeyboardViewController: UIInputViewController {
         p.onEmoji = { [weak self] e in
             guard let self else { return }
             self.playFeedback(.char(e))
-            self.textDocumentProxy.insertText(e)
+            self.host.insertText(e)
             self.lastInsertedSpace = false
         }
         p.onDelete = { [weak self] in
             guard let self else { return }
             self.playFeedback(.delete)
-            self.textDocumentProxy.deleteBackward()
+            self.host.deleteBackward()
         }
         p.onBack = { [weak self] in self?.playFeedback(.page(.letters)); self?.showEmoji(false) }
         p.onSettings = { [weak self] in self?.showSettings(true) }

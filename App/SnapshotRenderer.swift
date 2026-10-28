@@ -213,6 +213,8 @@ enum SnapshotRenderer {
         } else {
             print("FOOTPRINT keyboard extension not found in \(Bundle.main.builtInPlugInsURL?.path ?? "-")")
         }
+        // the keyboard's own behaviour: the real controller against a simulated text field (App/KeyboardTests.swift)
+        KeyboardTests.run(in: window, to: fm.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("keyboard-tests.txt"))
         print("SNAPSHOTS \(dir.path)")
         exit(0)
     }
