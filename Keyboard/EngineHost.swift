@@ -1,4 +1,16 @@
 import Foundation
+import Darwin
+
+/// This process's memory as iOS counts it against the keyboard's limit (phys_footprint: dirty and compressed pages;
+/// the memory-mapped lexicon, language model and English list are clean file pages and do not count), in MB.
+func memoryFootprintMB() -> Double {
+    var info = task_vm_info_data_t()
+    var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<integer_t>.size)
+    let kr = withUnsafeMutablePointer(to: &info) {
+        $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count) }
+    }
+    return kr == KERN_SUCCESS ? Double(info.phys_footprint) / 1_048_576 : 0
+}
 
 /// The input engine on its own thread. Everything that reads or changes the decoder or the learned words runs on one
 /// serial queue, so the main thread — which draws the keys and talks to the text field — never waits for a decode:
@@ -18,18 +30,24 @@ final class EngineHost {
     private var userDict: UserDictionary?
 
     /// Load the lexicon, the learned words and the English list (memory-mapped files: quick, and off the main thread).
-    func load(lexiconPath: String?, englishPath: String?, grammarPath: String?, userDictURL: URL?) {
+    /// `safe`: after launches that ended early (a crash, or iOS ending the keyboard while it was starting), the
+    /// keyboard starts with the lexicon and learned words only — no language model, no English — so it stays up
+    /// rather than iOS falling back to the system keyboard again.
+    func load(lexiconPath: String?, englishPath: String?, grammarPath: String?, userDictURL: URL?, safe: Bool = false) {
         queue.async {
             guard let path = lexiconPath, let lex = try? Lexicon(path: path) else { return }
             self.lexicon = lex
             let ud = UserDictionary(lexicon: lex, url: userDictURL)
             self.userDict = ud
             let d = Decoder(lexicon: lex, user: ud)
-            if let ep = englishPath { d.english = try? EnglishLexicon(path: ep) }
-            if let gp = grammarPath { d.grammar = try? Grammar(path: gp) }
+            if !safe, let ep = englishPath { d.english = try? EnglishLexicon(path: ep) }
+            if !safe, let gp = grammarPath { d.grammar = try? Grammar(path: gp) }
             self.decoder = d
         }
     }
+
+    /// Memory warning: write the learned words out now (nothing is lost if iOS ends the keyboard next).
+    func trim() { queue.async { self.userDict?.save() } }
 
     /// The text just before the cursor (the language model reads the first word in its context).
     func setContext(_ text: String) {

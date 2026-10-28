@@ -856,6 +856,7 @@ final class KeyboardView: UIView {
     // MARK: - Popups
 
     private func showPreview(_ tr: Tracked, text: String) {
+        guard tr.keyIndex < keyViews.count else { return }
         let kv = keyViews[tr.keyIndex]
         guard kv.spec.style == .normal || kv.spec.action == .char("，") || kv.spec.action == .char("。") || tr.altShown else { return }
         let p = tr.preview ?? KeyPreview(frame: .zero)
@@ -867,6 +868,7 @@ final class KeyboardView: UIView {
     }
 
     private func showAlt(_ tr: Tracked) {
+        guard tr.keyIndex < keyViews.count, !tr.finished else { return }   // a long-press timer after the keys changed
         let kv = keyViews[tr.keyIndex]
         guard let alt = kv.spec.alt else { return }
         tr.altShown = true

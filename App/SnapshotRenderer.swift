@@ -190,6 +190,29 @@ enum SnapshotRenderer {
                 try? img.pngData()?.write(to: dir.appendingPathComponent("\(night ? "night" : "day")_app_home.png"))
             }
         }
+        // The keyboard's memory with the engine loaded and working, measured in this process the same way iOS
+        // counts it against a keyboard's limit (the engine's files come from the keyboard extension in the app).
+        if let ext = Bundle.main.builtInPlugInsURL?.appendingPathComponent("MossOttoKeyboardExt.appex"),
+           let kb = Bundle(url: ext) ?? Bundle.main.builtInPlugInsURL.flatMap({ u in
+               (try? FileManager.default.contentsOfDirectory(at: u, includingPropertiesForKeys: nil))?.first.flatMap(Bundle.init(url:)) }) {
+            let before = memoryFootprintMB()
+            let host = EngineHost()
+            host.load(lexiconPath: kb.path(forResource: "lexicon", ofType: "bin"), englishPath: kb.path(forResource: "english", ofType: "bin"),
+                      grammarPath: kb.path(forResource: "grammar", ofType: "gram"), userDictURL: nil)
+            var worst = 0.0
+            let letters = Array("abcdefghijklmnopqrstuvwxyz")
+            var rng = SystemRandomNumberGenerator()
+            for i in 0..<400 {
+                let n = 2 + i % 24
+                let taps = (0..<n).map { _ in Tap.exact(letters[Int(rng.next() % 26)]) }
+                let t0 = CACurrentMediaTime()
+                _ = host.decodeNow(taps)
+                worst = max(worst, (CACurrentMediaTime() - t0) * 1000)
+            }
+            print(String(format: "FOOTPRINT before %.1f MB, after engine + 400 decodes %.1f MB, slowest decode %.1f ms", before, memoryFootprintMB(), worst))
+        } else {
+            print("FOOTPRINT keyboard extension not found in \(Bundle.main.builtInPlugInsURL?.path ?? "-")")
+        }
         print("SNAPSHOTS \(dir.path)")
         exit(0)
     }

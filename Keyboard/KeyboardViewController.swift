@@ -15,7 +15,14 @@ final class KeyboardViewController: UIInputViewController {
     private lazy var keyboard = KeyboardView(spatial: spatial)
     private let grid = CandidateGridView()
     private let settingsPanel = SettingsPanelView()
-    private lazy var emojiPanel: EmojiPanelView = makeEmojiPanel()
+    /// Made on first use and dropped again on a memory warning while hidden.
+    private var emojiPanelIfLoaded: EmojiPanelView?
+    private var emojiPanel: EmojiPanelView {
+        if let p = emojiPanelIfLoaded { return p }
+        let p = makeEmojiPanel()
+        emojiPanelIfLoaded = p
+        return p
+    }
     private let syllablePicker = SyllablePickerView()
     private var syllableChoices: (start: Int, choices: [(text: String, keys: [Character])]) = (0, [])
     private var heightConstraint: NSLayoutConstraint?
@@ -193,6 +200,8 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        LaunchGuard.succeeded()   // put away normally: not a launch that failed
+        peakFootprint = max(peakFootprint, memoryFootprintMB())
         if !taps.isEmpty { commitRaw() }
         engine.save()
         KeyboardSettings.shared.touchOffset = (spatial.offsetX, spatial.offsetY)
@@ -300,14 +309,33 @@ final class KeyboardViewController: UIInputViewController {
     /// The lexicon, learned words and English list are memory-mapped files, opened on the engine's thread: the
     /// keyboard appears at once, and keys typed in the first moments simply wait in the engine's queue.
     private func loadEngine() {
+        let safe = LaunchGuard.begin()
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
         let ep = Bundle.main.path(forResource: "english", ofType: "bin")
         engine.load(lexiconPath: Bundle.main.path(forResource: "lexicon", ofType: "bin"), englishPath: ep,
                     grammarPath: Bundle.main.path(forResource: "grammar", ofType: "gram"),
-                    userDictURL: dir?.appendingPathComponent("userdict.json"))
+                    userDictURL: dir?.appendingPathComponent("userdict.json"), safe: safe)
         // English mode reads the same file (read-only, safe to share between threads)
-        if let ep, let en = try? EnglishLexicon(path: ep) { english = EnglishDecoder(lexicon: en) }
+        if !safe, let ep, let en = try? EnglishLexicon(path: ep) { english = EnglishDecoder(lexicon: en) }
+        safeMode = safe
+        // up and running for a few seconds: this launch counts as a good one
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { LaunchGuard.succeeded() }
     }
+    private var safeMode = false
+
+    /// iOS is short of memory: everything the keyboard can rebuild goes (the emoji page when it is not showing, the
+    /// decoder's last result), and the learned words are written out, so the keyboard is not the process iOS ends.
+    override func didReceiveMemoryWarning() {
+        super.didReceiveMemoryWarning()
+        if !emojiShown, let p = emojiPanelIfLoaded {
+            p.removeFromSuperview()
+            emojiPanelIfLoaded = nil
+        }
+        engine.trim()
+        memoryWarnings += 1
+    }
+    private var memoryWarnings = 0
+    private var peakFootprint = 0.0
 
     // MARK: - 日光 / 夜灯
 
@@ -361,10 +389,15 @@ final class KeyboardViewController: UIInputViewController {
             settingsPanel.setLearned("词库 \(n.lexicon) 条 · 已学习 \(n.learned) 个词")
         }
         let d = keyboard.stats
+        let mem = memoryFootprintMB()
+        peakFootprint = max(peakFootprint, mem)
         settingsPanel.setDiagnostics("本次按键 \(d.began) 次：输入 \(d.emitted)，系统取消后保留 \(d.cancelKept)，丢弃 \(d.dropped)；"
-            + String(format: "按键响应（主线程）平均 %.1f ms、最长 %.0f ms；候选出现 平均 %.1f ms、最长 %.0f ms",
+            + String(format: "按键响应（主线程）平均 %.1f ms、最长 %.0f ms；候选出现 平均 %.1f ms、最长 %.0f ms；",
                      handleCount > 0 ? handleTotal / Double(handleCount) : 0, handleMax,
-                     candCount > 0 ? candTotal / Double(candCount) : 0, candMax))
+                     candCount > 0 ? candTotal / Double(candCount) : 0, candMax)
+            + String(format: "内存 %.0f MB（本次最高 %.0f MB）", mem, peakFootprint)
+            + (memoryWarnings > 0 ? "，内存警告 \(memoryWarnings) 次" : "")
+            + (safeMode ? "；上次启动未完成，本次以精简模式运行（无语言模型与中英混输），下次自动恢复" : ""))
         settingsPanel.setNote((hasFullAccess ? "" : "按键震动与按键音需在 设置 › 通用 › 键盘 › 键盘 › Mosto键盘 中开启“允许完全访问”。")
             + "键盘不联网，词库与学习记录只存在本机。")
         reconfigure()
@@ -454,6 +487,7 @@ final class KeyboardViewController: UIInputViewController {
         defer {
             let ms = (CACurrentMediaTime() - t0) * 1000
             handleTotal += ms; handleCount += 1; handleMax = max(handleMax, ms)
+            if handleCount % 40 == 0 { peakFootprint = max(peakFootprint, memoryFootprintMB()) }   // a few µs
         }
         candidateBar.dismissForget()
         let undo = undoable
@@ -979,7 +1013,7 @@ final class KeyboardViewController: UIInputViewController {
             updateAutoShift()
             reconfigure()
         }
-        emojiPanel.isHidden = !on
+        if on { emojiPanel.isHidden = false } else { emojiPanelIfLoaded?.isHidden = true }
         candidateBar.isHidden = on || !settingsPanel.isHidden
         keyboard.isHidden = on || !grid.isHidden || !settingsPanel.isHidden
     }
