@@ -22,8 +22,10 @@ final class CandidateBarView: UIView {
     private var candidates: [Candidate] = []
     private(set) var visibleCount = 0
     private var pressedIndex: Int?
-    /// Mosto in the idle corner: at night only (by day it lives in settings).
+    /// Mosto in the idle corner, by day and at night alike (only his light changes with the keyboard's).
     var showsMosto = false { didSet { update(preedit: preedit.text ?? "", candidates: candidates, prediction: isPrediction) } }
+    private var mostoWanted = false
+    private var mostoTimer: Timer?
     /// Pinyin above the candidates (when it is not written into the text field).
     var showsPreedit = false { didSet { setNeedsLayout() } }
 
@@ -31,6 +33,7 @@ final class CandidateBarView: UIView {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        backgroundColor = Theme.touchable   // never fully clear: see Theme.touchable
         preedit.font = .systemFont(ofSize: 14)
         preedit.textColor = Theme.secondaryText
         addSubview(preedit)
@@ -58,10 +61,32 @@ final class CandidateBarView: UIView {
         self.candidates = candidates
         isPrediction = prediction
         let busy = !candidates.isEmpty
-        mosto.isHidden = busy || !showsMosto
+        setMosto(!busy && showsMosto)
         preedit.isHidden = !busy || prediction || !showsPreedit
         setNeedsLayout()
         layoutIfNeeded()
+    }
+
+    /// Mosto steps aside the moment typing starts (the strip is for candidates) and comes back only when the
+    /// keyboard has been idle a moment, fading in rather than popping up — never flickering between words.
+    private func setMosto(_ on: Bool) {
+        guard on != mostoWanted else { return }
+        mostoWanted = on
+        mostoTimer?.invalidate(); mostoTimer = nil
+        guard on else { mosto.layer.removeAllAnimations(); mosto.isHidden = true; return }
+        // not on screen yet (the keyboard is being set up): simply there
+        if window == nil { mosto.alpha = 1; mosto.transform = .identity; mosto.isHidden = false; return }
+        let reduce = UIAccessibility.isReduceMotionEnabled
+        mostoTimer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: false) { [weak self] _ in
+            guard let self, self.mostoWanted else { return }
+            self.mosto.alpha = 0
+            if !reduce { self.mosto.transform = CGAffineTransform(scaleX: 0.92, y: 0.92) }
+            self.mosto.isHidden = false
+            UIView.animate(withDuration: 0.35, delay: 0, options: [.curveEaseOut, .allowUserInteraction]) {
+                self.mosto.alpha = 1
+                self.mosto.transform = .identity
+            }
+        }
     }
 
     override func layoutSubviews() {
@@ -224,7 +249,7 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         layout.sectionInset = UIEdgeInsets(top: 6, left: 6, bottom: 6, right: 6)
         collection = UICollectionView(frame: .zero, collectionViewLayout: layout)
         super.init(frame: frame)
-        backgroundColor = .clear   // on the system glass, like the keys (the keys are hidden while it shows)
+        backgroundColor = Theme.touchable   // on the system glass, like the keys (never fully clear: see Theme.touchable)
         collection.backgroundColor = .clear
         collection.contentInsetAdjustmentBehavior = .never
         collection.alwaysBounceHorizontal = false
@@ -312,7 +337,7 @@ final class SettingsPanelView: UIView {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        backgroundColor = .clear   // the system glass shows through, so the panel is one layer with the keyboard
+        backgroundColor = Theme.touchable   // the system glass shows through (never fully clear: see Theme.touchable)
 
         // Header: Mosto (day or night), the name, 完成 — fixed above the scrolling list
         mostoImage.contentMode = .scaleAspectFit
@@ -364,7 +389,7 @@ final class SettingsPanelView: UIView {
             row("按键震动", feedbackSwitch),
             row("按键音", soundSwitch),
         ], footer: "震动与按键音在按下的一瞬间发出（与系统键盘一样）；按键音跟随静音开关。")
-        section("外观", rows: [row("光线", appearance)], footer: "自动：跟随系统的浅色 / 深色模式。夜灯：深夜蓝底色，Mosto 待在候选栏左边，尾巴尖亮起金光。")
+        section("外观", rows: [row("光线", appearance)], footer: "自动：跟随系统的浅色 / 深色模式。Mosto 不打字时待在候选栏左边：日光下睁大眼睛、偶尔眨眼；夜灯下深夜蓝底色，尾巴尖亮起灯珠的金光。")
 
         learnedLabel.font = .systemFont(ofSize: 15)
         learnedLabel.textColor = Theme.secondaryText

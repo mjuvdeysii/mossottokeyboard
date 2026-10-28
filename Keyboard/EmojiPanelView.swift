@@ -89,7 +89,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         layout.sectionHeadersPinToVisibleBounds = false
         collection = UICollectionView(frame: .zero, collectionViewLayout: layout)
         super.init(frame: frame)
-        backgroundColor = .clear   // on the system glass, like the keys
+        backgroundColor = Theme.touchable   // on the system glass (never fully clear: see Theme.touchable)
         collection.backgroundColor = .clear
         collection.contentInsetAdjustmentBehavior = .never
         collection.alwaysBounceHorizontal = false

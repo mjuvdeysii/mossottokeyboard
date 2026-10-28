@@ -243,6 +243,11 @@ enum Theme {
     static let forcedNightTint = hex(0x1B2245, 0.90)
     /// Day forced while the system is dark: the light keyboard's frosted surface.
     static let forcedDayTint = hex(0xD8DBE2, 0.86)
+    /// The keyboard's own surfaces: almost invisible (2 % grey over the system glass) but never fully transparent —
+    /// inside a keyboard extension iOS does not deliver a touch that lands on a fully transparent point, even in a
+    /// view that would take it. With clear backgrounds, fast taps landing in the gaps between keys, above the top row
+    /// or in the empty strip were simply lost ("打空").
+    static let touchable = UIColor(white: 0.5, alpha: 0.02)
     /// Opaque panels over the keys (candidate grid, settings).
     static let panel = dyn(hex(0xF2F2F7), hex(0x1B2245))   // opaque: keys must not show through a panel
     /// Settings, as iOS Settings draws them: grouped background, rounded white groups, hairline separators.

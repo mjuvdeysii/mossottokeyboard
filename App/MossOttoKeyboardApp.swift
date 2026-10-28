@@ -83,7 +83,7 @@ struct HomeContent: View {
                         }
                         Card(title: "Mosto 的两种光") {
                             HStack(alignment: .top, spacing: 12) {
-                                LightTile(image: "Mosto", title: "日光", text: "瞪大眼睛看你打字。住在键盘设置的顶部。")
+                                LightTile(image: "Mosto", title: "日光", text: "瞪大眼睛看你打字，不打字时待在候选栏左边，偶尔眨眼。")
                                 LightTile(image: "MostoNight", title: "夜灯", text: "眯眼坏笑，尾巴尖亮起灯珠的金光，待在候选栏左边；键盘闲下来，他会慢慢打个哈欠。")
                             }
                         }

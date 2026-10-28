@@ -77,7 +77,7 @@ enum SnapshotRenderer {
                 let bar = CandidateBarView(frame: CGRect(x: 0, y: 0, width: width, height: Metrics.toolbarHeight))
                 root.addSubview(bar)
                 bar.mosto.setNight(night)
-                bar.showsMosto = night
+                bar.showsMosto = true
                 let kb = KeyboardView(spatial: SpatialModel.standard(width: Double(width)))
                 kb.frame = CGRect(x: 0, y: Metrics.toolbarHeight, width: width, height: 4 * Metrics.rowPitch)
                 root.addSubview(kb)

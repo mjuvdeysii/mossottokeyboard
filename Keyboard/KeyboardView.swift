@@ -325,7 +325,7 @@ final class KeyboardView: UIView {
         super.init(frame: .zero)
         isMultipleTouchEnabled = true
         clipsToBounds = false
-        backgroundColor = .clear
+        backgroundColor = Theme.touchable   // never fully clear: see Theme.touchable
     }
 
     required init?(coder: NSCoder) { fatalError() }

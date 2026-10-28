@@ -70,7 +70,7 @@ final class KeyboardViewController: UIInputViewController {
         // Clear, so the system's Liquid Glass (or the classic keyboard backdrop in older apps) shows through;
         // 日光 / 夜灯 only tint it.
         view.backgroundColor = .clear
-        root.backgroundColor = .clear
+        root.backgroundColor = Theme.touchable   // never fully clear: iOS drops touches on transparent points
         view.addSubview(root)
         tintView.isUserInteractionEnabled = false
         root.addSubview(tintView)
@@ -322,7 +322,7 @@ final class KeyboardViewController: UIInputViewController {
         tintView.forcedNight = night && !sysDark
         tintView.forcedDay = !night && sysDark
         candidateBar.mosto.setNight(night)
-        candidateBar.showsMosto = night
+        candidateBar.showsMosto = true    // by day and at night: only his light follows the keyboard's
         settingsPanel.setNight(night)
     }
 
