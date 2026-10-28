@@ -246,12 +246,7 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
             contentView.layer.cornerRadius = 8
             contentView.layer.cornerCurve = .continuous
         }
-        override func traitCollectionDidChange(_ previous: UITraitCollection?) {
-        super.traitCollectionDidChange(previous)
-        for b in [closeButton, deleteButton] { b.layer.shadowColor = Theme.functionLip.resolvedColor(with: traitCollection).cgColor }
-    }
-
-    required init?(coder: NSCoder) { fatalError() }
+        required init?(coder: NSCoder) { fatalError() }
         override func layoutSubviews() {
             super.layoutSubviews()
             label.frame = contentView.bounds.insetBy(dx: 4, dy: 0)
@@ -295,6 +290,11 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
 
         deleteButton.addTarget(self, action: #selector(deleteTapped), for: .touchUpInside)
+    }
+
+    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+        super.traitCollectionDidChange(previous)
+        for b in [closeButton, deleteButton] { b.layer.shadowColor = Theme.functionLip.resolvedColor(with: traitCollection).cgColor }
     }
 
     required init?(coder: NSCoder) { fatalError() }
