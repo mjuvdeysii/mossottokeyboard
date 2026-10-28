@@ -5,7 +5,7 @@ name: iOS
 on:
   push:
     branches: [main]
-    paths-ignore: ["README.md", "LICENSE"]
+    paths-ignore: ["README.md", "LICENSE", ".github/DEVELOPMENT.md", "docs/**"]
   workflow_dispatch:
 permissions:
   contents: write
