@@ -34,13 +34,24 @@ private struct Board<Content: View>: View {
 }
 
 /// What the text field shows: committed text, then the keys being typed as marked text (underlined, as iOS draws it).
+/// How far a demo has played: the keys type in up to 0.8, the strip answers after (1 = the still picture).
+private struct DemoRevealKey: EnvironmentKey { static let defaultValue: Double = 1 }
+extension EnvironmentValues {
+    var demoReveal: Double {
+        get { self[DemoRevealKey.self] }
+        set { self[DemoRevealKey.self] = newValue }
+    }
+}
+
 private struct FieldLine: View {
     var committed = ""
     var marked = ""
+    @Environment(\.demoReveal) private var reveal
     var body: some View {
+        let shown = String(marked.prefix(Int((Double(marked.count) * min(reveal / 0.8, 1)).rounded(.down))))
         HStack(spacing: 0) {
             Text(committed).foregroundStyle(.primary)
-            Text(marked).underline(true, color: .secondary).foregroundStyle(.primary)
+            Text(shown).underline(true, color: .secondary).foregroundStyle(.primary)
             Rectangle().fill(Color.accentColor).frame(width: 2, height: 18).padding(.leading, 1)
             Spacer(minLength: 0)
         }
@@ -64,7 +75,9 @@ struct DemoCandidate: Identifiable {
 private struct Strip: View {
     var undo: String? = nil
     let items: [DemoCandidate]
+    @Environment(\.demoReveal) private var reveal
     var body: some View {
+        let answered = reveal >= 0.85
         HStack(spacing: 2) {
             if let undo {
                 HStack(spacing: 3) {
@@ -92,6 +105,9 @@ private struct Strip: View {
             Spacer(minLength: 0)
         }
         .frame(height: 36)
+        .opacity(answered ? 1 : 0)
+        .offset(y: answered ? 0 : 5)
+        .animation(.easeOut(duration: 0.22), value: answered)
     }
 }
 
@@ -125,9 +141,10 @@ private struct MiniKey: View {
 /// The top letter row (qwertyuiop), with the key the finger actually touched marked.
 private struct LetterRow: View {
     var hit: Character? = nil
+    @Environment(\.demoReveal) private var reveal
     var body: some View {
         HStack(spacing: 4) {
-            ForEach(Array("qwertyuiop"), id: \.self) { c in MiniKey(label: String(c), hit: c == hit) }
+            ForEach(Array("qwertyuiop"), id: \.self) { c in MiniKey(label: String(c), hit: c == hit && reveal >= 0.7) }
         }
     }
 }
@@ -135,23 +152,52 @@ private struct LetterRow: View {
 // MARK: - Showcase
 
 /// A demo with its title and one short line under it.
+/// A demo that plays: the keys type into the field one by one, then the strip answers. It plays once when it first
+/// appears and again on every tap (still, with Reduce Motion).
 private struct Demo<Visual: View>: View {
     let title: String
     let line: String
     @ViewBuilder var visual: Visual
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var reveal = 1.0
+    @State private var run = 0
+    @State private var played = false
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            visual
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.headline)
-                Text(line).font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            visual.environment(\.demoReveal, reveal)
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title).font(.headline)
+                    Text(line).font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                if !reduceMotion {
+                    Image(systemName: "play.circle.fill").font(.system(size: 26)).foregroundStyle(mostoTint.opacity(reveal < 1 ? 0.35 : 1))
+                        .accessibilityHidden(true)
+                }
             }
             .padding(.horizontal, 4)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
+        .contentShape(Rectangle())
+        .onTapGesture { play() }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint("再演示一次")
+        .onAppear { if !played { played = true; play() } }
+        .task(id: run) {
+            guard run > 0, !reduceMotion else { reveal = 1; return }
+            reveal = 0
+            for i in 1...32 {
+                try? await Task.sleep(nanoseconds: 42_000_000)
+                if Task.isCancelled { return }
+                reveal = Double(i) / 32
+            }
+        }
     }
+    private func play() { run += 1 }
 }
 
 struct FeatureShowcase: View {
