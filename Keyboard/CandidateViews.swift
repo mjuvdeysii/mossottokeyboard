@@ -416,6 +416,12 @@ final class SettingsPanelView: UIView {
         // Mosto's colours on every control: violet by day, crown gold at night
         tintColor = Theme.selection
         for sw in [englishSwitch, guideSwitch, correctionSwitch, feedbackSwitch, soundSwitch] { sw.onTintColor = Theme.selection }
+        // the three input choices share one width, so their left and right edges line up down the card
+        for sc in [schemeControl, layoutControl, numberControl] {
+            sc.translatesAutoresizingMaskIntoConstraints = false
+            sc.widthAnchor.constraint(equalToConstant: 168).isActive = true
+            for i in 0..<sc.numberOfSegments { sc.setWidth(84, forSegmentAt: i) }
+        }
         for sc in [schemeControl, layoutControl, numberControl, appearance] {
             sc.selectedSegmentTintColor = Theme.selection
             sc.setTitleTextAttributes([.foregroundColor: Theme.selectionText, .font: Theme.font(14, .semibold)], for: .selected)
@@ -465,7 +471,7 @@ final class SettingsPanelView: UIView {
             row("中文键盘", layoutControl),
             row("123 键", numberControl),
             row("中英混输", englishSwitch),
-        ], footer: "中文键盘：九宫格时每个键代表它上面的几个字母，小鹤双拼与全拼都能用（全拼更准）；分词键用来切开音节。123 键：打开完整的数字符号页，还是九宫格数字键盘（其上的“符号”键可去完整页）；没设过时跟随中文键盘，用九宫格打字就默认九宫格数字。打字时按下的字母写进输入框，带下划线，选了候选才替换成汉字。中英混输：打 ok、ios 直接出 OK、iOS。")
+        ], footer: "中文键盘：九宫格每个键代表它上面的几个字母，两种方案都能用（全拼更准），“分词”切开音节。\n123 键：打开完整的数字符号页，或九宫格数字键盘；未设置时跟随中文键盘。\n中英混输：打 ok、ios 直接出 OK、iOS。\n所有设置会一直记住，更新版本不会重置。")
         section("小鹤双拼", rows: [
             row("键位提示", guideSwitch),
         ], footer: "学习用：小鹤双拼方案下，字母键上显示它代表的声母与韵母（zh、ch、sh 在 V、I、U）。记熟后可关掉。全拼方案下不显示。完整键位表与说明在 Mosto键盘 App 里。")

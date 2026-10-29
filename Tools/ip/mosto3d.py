@@ -443,7 +443,7 @@ def toy_icon(path):
     m.rotation_euler = (0, 0, math.radians(-8))
     # a shadow catcher under the keys: they sit on something
     bpy.ops.mesh.primitive_plane_add(size=12, location=(0, 0, 0)); g = bpy.context.object; g.is_shadow_catcher = True
-    B.camera(target=(0.1, 0.15, B.arg("--ty", 0.82)), dist=B.arg("--dist", 4.4), height=B.arg("--ch", 3.4), lens=B.arg("--lens", 52), fstop=22)
+    B.camera(target=(0.1, 0.15, B.arg("--ty", 0.8)), dist=B.arg("--dist", 4.15), height=B.arg("--ch", 3.25), lens=B.arg("--lens", 52), fstop=22)
     tmp = path.replace(".png", "_fg.png")
     B.render(tmp, size, size)
     bg = Image.new("RGB", (size, size))
@@ -451,7 +451,7 @@ def toy_icon(path):
     for y in range(size):                                   # warm butter-cream: the complement of Mosto's violet
         t = y / size
         if night:                                           # 夜灯: deep violet night, darker toward the bottom
-            d.line([(0, y), (size, y)], fill=(int(52 - 30 * t), int(32 - 20 * t), int(92 - 50 * t)))
+            d.line([(0, y), (size, y)], fill=(int(34 - 20 * t), int(22 - 12 * t), int(70 - 38 * t)))
         else:
             d.line([(0, y), (size, y)], fill=(int(255 - 6 * t), int(244 - 26 * t), int(214 - 62 * t)))
     # a soft pool of light behind his head: the eye goes to the face first

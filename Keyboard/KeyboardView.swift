@@ -78,6 +78,9 @@ final class KeyView: UIView {
         switch spec.action {
         // the system keyboard's type: regular weight throughout
         case .char where spec.isLetter: label.font = Theme.font(Metrics.letterFont, .regular)
+        case .char where ["“", "”", "‘", "’"].contains(spec.label):
+            // the rounded face draws the curly quotes as two near-identical straight ticks: PingFang shows “ and ”
+            label.font = UIFont(name: "PingFangSC-Medium", size: Metrics.symbolFont) ?? Theme.font(Metrics.symbolFont, .medium)
         case .char: label.font = Theme.font(Metrics.symbolFont, .medium)
         case .t9(let d): label.font = Theme.font(d == "'" ? Metrics.functionFont : 20, .semibold)
         default: label.font = Theme.font(Metrics.functionFont, .semibold)
@@ -217,9 +220,9 @@ final class KeyView: UIView {
         if let i = spec.guideInitial { lines.append((i, Theme.correctedMark)) }
         // under an initial (zh / ch / sh) the finals share one line, so the key never needs a third
         if spec.guideInitial != nil, spec.guideFinals.count > 1 {
-            lines.append((spec.guideFinals.joined(separator: " "), Theme.secondaryText))
+            lines.append((spec.guideFinals.joined(separator: " "), Theme.guideText))
         } else {
-            for f in spec.guideFinals { lines.append((f, Theme.secondaryText)) }
+            for f in spec.guideFinals { lines.append((f, Theme.guideText)) }
         }
         guard !lines.isEmpty else { return NSAttributedString() }
         var size: CGFloat = 10

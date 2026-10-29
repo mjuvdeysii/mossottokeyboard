@@ -215,11 +215,13 @@ enum Layouts {
         let row2 = [p("-", "_"), d("4"), d("5"), d("6"),
                     KeySpec(action: .space, label: ctx.chinese ? "空格" : "space", width: side)]
         let row3 = [p("/", "*"), d("7"), d("8"), d("9"), returnKey(ctx, width: side, wide: true)]
-        var row4: [KeySpec] = ctx.showGlobe
-            ? [KeySpec(action: .page(.letters), label: ctx.chinese ? "返回" : "ABC", width: 1, style: .function),
-               KeySpec(action: .globe, label: "", symbol: "globe", width: 1, style: .function)]
-            : [KeySpec(action: .page(.letters), label: ctx.chinese ? "返回" : "ABC", width: side, style: .function)]
-        row4 += [p(".", ","), d("0"), p(":", "%"),
+        // the way back keeps its full width (and the same name as on every other page); with the globe key the two
+        // punctuation keys give it the room
+        let back = KeySpec(action: .page(.letters), label: ctx.chinese ? "拼音" : "ABC", width: side, style: .function)
+        var row4: [KeySpec] = ctx.showGlobe ? [back, KeySpec(action: .globe, label: "", symbol: "globe", width: 1.2, style: .function)] : [back]
+        let punct: CGFloat = ctx.showGlobe ? 1.4 : side
+        row4 += [KeySpec(action: .char("."), label: ".", width: punct, alt: ",", style: .function), d("0"),
+                 KeySpec(action: .char(":"), label: ":", width: punct, alt: "%", style: .function),
                  KeySpec(action: .page(.numbers), label: ctx.chinese ? "符号" : "#+=", width: side, style: .function)]
         return [row1, row2, row3, row4]
     }
@@ -304,6 +306,8 @@ enum Theme {
     static let keyShadow = dyn(UIColor(white: 0, alpha: 0), UIColor(white: 0, alpha: 0))
     static let candidateText = keyText
     static let secondaryText = dyn(hex(0x6A5C96), hex(0xB4A8DC))
+    /// 键位提示 finals on the letter caps: ≥ 4.5:1 on the cream face by day and the violet face at night
+    static let guideText = dyn(hex(0x5B4D8C), hex(0xDCD5F7))
     /// The correction mark, selected alternates: Mosto's violet by day, his gold at night.
     static let correctedMark = dyn(hex(0x633EBF), hex(0xFFC45A))
     static let selection = dyn(hex(0x633EBF), hex(0xE3B04F))

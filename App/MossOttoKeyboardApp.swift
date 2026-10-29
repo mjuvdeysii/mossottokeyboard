@@ -75,10 +75,10 @@ struct HomeContent: View {
                             Usage(icon: "space", text: "空格：上屏首选　回车：上屏字母　删除：逐键回退，按住会加速，再久一点按词删除。")
                             Usage(icon: "wand.and.stars", text: "首选带下划线 = 已按触点位置自动纠错；第二个候选是未纠错的原文。上屏后立刻按删除可撤回纠错。")
                             Usage(icon: "text.append", text: "联想：中文上屏后，候选栏给出接下来常用的字词，点一下直接上屏并继续联想；按任意键即收起。")
-                            Usage(icon: "textformat.abc", text: "中英混输：打 ok、ios、iphone 直接出 OK、iOS、iPhone。")
-                            Usage(icon: "character.cursor.ibeam", text: "英文模式（中/英 切到“英”）也按触点纠错并给出候选：teh → the、dont → don't、im → I'm；空格时替换，删除可撤回；首字母自动大写，双击空格出句号。")
+                            Usage(icon: "character.bubble", text: "中英混输：打 ok、ios、iphone 直接出 OK、iOS、iPhone。")
+                            Usage(icon: "a.circle", text: "英文模式（中/英 切到“英”）也按触点纠错并给出候选：teh → the、dont → don't、im → I'm；空格时替换，删除可撤回；首字母自动大写，双击空格出句号。")
                             Usage(icon: "chevron.down", text: "候选栏右侧 ⌄ 展开全部候选；长按自己学过的词可以删掉它。")
-                            Usage(icon: "arrow.left.and.right", text: "按住空格左右拖动移动光标。123 打开数字符号页或九宫格数字键盘（键盘设置里选；用九宫格打字时默认九宫格数字，数字输入框也自动换成它）；长按 ， 可选 。？！、…：")
+                            Usage(icon: "arrow.left.and.right", text: "按住空格左右拖动移动光标。123 打开数字符号页或九宫格数字键盘（键盘设置里选；用九宫格打字时默认九宫格数字，数字输入框也自动换成它）；长按“，”键可选：。？！、…：")
                             Usage(icon: "face.smiling", text: "😊 表情：常用与八个分类，上下滑动，底栏一点跳到分类。按住 😊 打开键盘设置：输入方案、九宫格、数字键盘、中英混输、自动纠错、震动与按键音、外观。")
                             Usage(icon: "hand.tap", text: "候选栏左边的 Mosto：轻点一下打开他的颜文字（右下角“返回”回到键盘），轻点两下切换日光 / 夜灯。")
                             Usage(icon: "circle.lefthalf.filled", text: "外观：自动跟随系统浅色 / 深色；也可固定日光或夜灯（按键与 Mosto 换光，候选栏跟随系统，始终看得清）。")
@@ -140,6 +140,9 @@ struct MostoHero: View {
     @State private var blink = false
     @State private var hop = false
 
+    /// Secondary text on the hero card: the system's secondary grey reads ~3.1:1 on the cream; this holds 4.5:1.
+    private var heroSecondary: Color { scheme == .dark ? Color.white.opacity(0.72) : Color(red: 0.36, green: 0.31, blue: 0.24) }
+
     var body: some View {
         HStack(spacing: 14) {
             // a designer toy on its base: Mosto standing on one of the keyboard's vinyl keys (face over lip)
@@ -163,11 +166,11 @@ struct MostoHero: View {
             .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 6) {
                 Text("Mosto键盘").font(.title2.weight(.bold))
-                Text("小鹤双拼 · 全拼 · 九宫格\n按触点位置自动纠错")
-                    .font(.subheadline).foregroundStyle(.secondary)
+                Text("全拼 · 小鹤双拼 · 九宫格\n按触点位置自动纠错")
+                    .font(.subheadline).foregroundStyle(heroSecondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Text("Mosto，念快了像“魔头”：Moss 与 Otto 共同的另一面，住在键盘里的小魔王，歪戴小金冠。")
-                    .font(.footnote).foregroundStyle(.secondary)
+                    .font(.footnote).foregroundStyle(heroSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
