@@ -302,6 +302,15 @@ def ortho_camera(width, cz, tilt_deg=6, cx=0.0):
     c.rotation_euler = (math.radians(90) - tilt, 0, 0); c.data.type = "ORTHO"; c.data.ortho_scale = width
     s.camera = c
 
+def toy_finish(s, rim_energy=420):
+    """The toy's photo finish, shared by the icon, the app's hero and the sprites: AgX's punchy look (the violet and
+    gold stay saturated) and a warm crown-gold rim from behind, left, that lifts his outline off any ground."""
+    try: s.view_settings.look = "AgX - Punchy"
+    except TypeError: s.view_settings.look = "None"
+    bpy.ops.object.light_add(type="AREA", location=(-2.4, 2.6, 2.6), rotation=(math.radians(-60), 0, math.radians(-140)))
+    rim = bpy.context.object; rim.data.energy = rim_energy; rim.data.size = 1.6
+    rim.data.color = (1.0, 0.82, 0.52)
+
 def sprites(outdir):
     os.makedirs(outdir, exist_ok=True)
     size = B.arg("--size", 360)
@@ -310,6 +319,7 @@ def sprites(outdir):
         if only and name not in only.split(","): continue
         s = B.reset(); s.render.film_transparent = True; B.materials(); mosto_materials()
         night_world() if name in ("night", "yawn") else B.sprite_lights()
+        toy_finish(s, B.arg("--rim", 300))
         s.render.resolution_x = s.render.resolution_y = size
         build_mosto(**kw)
         ortho_camera(1.62, 0.64, cx=0.08)   # wide enough for the horns and the tail
@@ -346,6 +356,11 @@ def icon(path):
     s.render.resolution_x = s.render.resolution_y = size
     build_mosto(moss_eye=dict(look=(0.2, 0.3)), otto_eye=dict(look=(-0.05, 0.1), lid=0.52))
     ortho_camera(1.78, 0.58, cx=0.08)
+    if "--hero" in ARGS:
+        # the app's hero: the same toy scene on a transparent ground (the card behind it is the app's), blinking
+        # with --blink
+        B.render(path, size, size)
+        return
     tmp = path.replace(".png", "_fg.png")
     B.render(tmp, size, size)
     if night:
@@ -413,13 +428,7 @@ def toy_icon(path):
     if "--grin" not in B.ARGS: B.ARGS += ["--grin", "0.017"]
     s = B.reset(); s.render.film_transparent = True; B.materials(); mosto_materials()
     night_world() if night else B.sprite_lights()
-    # AgX's punchy look: the toy's violet and gold stay saturated (the plain look washes the gold key to peach)
-    try: s.view_settings.look = "AgX - Punchy"
-    except TypeError: s.view_settings.look = "None"
-    # a warm crown-gold rim from behind, left: it lifts his outline off the cream ground at home-screen size
-    bpy.ops.object.light_add(type="AREA", location=(-2.4, 2.6, 2.6), rotation=(math.radians(-60), 0, math.radians(-140)))
-    rim = bpy.context.object; rim.data.energy = B.arg("--rim", 420); rim.data.size = 1.6
-    rim.data.color = (1.0, 0.82, 0.52)
+    toy_finish(s, B.arg("--rim", 420))
     size = B.arg("--size", 1024)
     s.render.resolution_x = s.render.resolution_y = size
     cream = B.rubber("keyCream", "#FFF9EE", rough=0.5, sss=0.06)
@@ -440,6 +449,7 @@ def toy_icon(path):
     legend("A", lx, ly - 0.02 * ls, ltop, lr, 0.56 * ls, ink, "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", on="key_lav_face")
     # by night (the dark home-screen icon): his scheming squint, gold irises and the spade glowing
     m = build_mosto(**STATES["night"]) if night else \
+        build_mosto(shut="day") if "--blink" in ARGS else \
         build_mosto(moss_eye=dict(look=(0.1, 0.25)), otto_eye=dict(look=(-0.08, 0.1), lid=0.5))
     m.location = (0.02, -0.05, top - 0.02); m.scale = (B.arg("--ms", 1.55),) * 3
     m.rotation_euler = (0, 0, math.radians(-8))

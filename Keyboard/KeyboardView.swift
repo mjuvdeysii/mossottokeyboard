@@ -27,6 +27,8 @@ final class KeyView: UIView {
     /// The vinyl cap: a darker lip, the face over it (top-lit), and on the space bar Mosto's two wings.
     private let lip = CALayer()
     private let face = CAGradientLayer()
+    /// The light catching the cap's rounded top edge (soft vinyl, matte: a rim, not a gloss).
+    private let rim = CAShapeLayer()
     private let wings = CAShapeLayer()
     private let crown = CAShapeLayer()
 
@@ -39,7 +41,15 @@ final class KeyView: UIView {
         face.startPoint = CGPoint(x: 0.5, y: 0)
         face.endPoint = CGPoint(x: 0.5, y: 1)
         layer.addSublayer(lip)
+        face.locations = [0, 0.5, 1]
         layer.addSublayer(face)
+        rim.fillColor = nil
+        rim.lineWidth = 1
+        rim.lineCap = .round
+        layer.addSublayer(rim)
+        // contact shadow: the cap stands on the board, it is not printed on it
+        lip.shadowOffset = CGSize(width: 0, height: 1)
+        lip.shadowRadius = 1.5
         layer.addSublayer(wings)
         crown.path = Self.crownPath()
         crown.lineJoin = .round
@@ -146,8 +156,14 @@ final class KeyView: UIView {
             under = Theme.accentLip; fg = Theme.accentText
         }
         CATransaction.begin(); CATransaction.setDisableActions(true)
-        face.colors = [top.resolvedColor(with: t).cgColor, bottom.resolvedColor(with: t).cgColor]
-        lip.backgroundColor = under.resolvedColor(with: t).cgColor
+        // a little fall-off towards the lip gives the cap its volume
+        let b = bottom.resolvedColor(with: t), u = under.resolvedColor(with: t)
+        face.colors = [top.resolvedColor(with: t).cgColor, b.cgColor, Theme.mix(b, u, pressed ? 0.04 : 0.10).cgColor]
+        lip.backgroundColor = u.cgColor
+        lip.shadowColor = Theme.keyShadow.resolvedColor(with: t).cgColor
+        lip.shadowOpacity = pressed ? 0 : 1
+        rim.strokeColor = Theme.keyHighlight.resolvedColor(with: t).withAlphaComponent(
+            Theme.keyHighlight.resolvedColor(with: t).cgColor.alpha * (pressed ? 0.35 : style == .accent ? 0.8 : 1)).cgColor
         wings.fillColor = Theme.wing.resolvedColor(with: t).cgColor
         crown.fillColor = Theme.accentKey.resolvedColor(with: t).cgColor
         crown.strokeColor = Theme.accentLip.resolvedColor(with: t).cgColor
@@ -177,7 +193,10 @@ final class KeyView: UIView {
         let f = faceRect
         CATransaction.begin(); CATransaction.setDisableActions(true)
         lip.frame = CGRect(x: 0, y: l, width: bounds.width, height: bounds.height - l)
+        lip.shadowPath = UIBezierPath(roundedRect: lip.bounds, cornerRadius: Metrics.cornerRadius).cgPath
         face.frame = f
+        rim.frame = f
+        rim.path = Self.rimPath(in: f.size)
         if spec.action == .space, f.width > 120 {
             wings.isHidden = blanked
             wings.frame = f
@@ -244,6 +263,18 @@ final class KeyView: UIView {
                 .font: Theme.font(size, .semibold), .foregroundColor: color, .paragraphStyle: para]))
         }
         return out
+    }
+
+    /// The cap's top edge, inset half a point: the two upper corners and the line between them, ending where the
+    /// sides turn straight.
+    static func rimPath(in size: CGSize) -> CGPath {
+        let r = min(Metrics.cornerRadius, size.height / 2, size.width / 2) - 0.5
+        let p = UIBezierPath()
+        p.move(to: CGPoint(x: 0.5, y: r + 0.5))
+        p.addArc(withCenter: CGPoint(x: r + 0.5, y: r + 0.5), radius: r, startAngle: .pi, endAngle: 1.5 * .pi, clockwise: true)
+        p.addLine(to: CGPoint(x: size.width - r - 0.5, y: 0.5))
+        p.addArc(withCenter: CGPoint(x: size.width - r - 0.5, y: r + 0.5), radius: r, startAngle: 1.5 * .pi, endAngle: 0, clockwise: true)
+        return p.cgPath
     }
 
     /// Mosto's two little bat wings at the ends of the space bar: a curved arm out to the tip, three scalloped

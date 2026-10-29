@@ -69,19 +69,35 @@ struct HomeContent: View {
                                     .lineLimit(3...8)
                             }
                         }
-                        Card(title: "用法") {
-                            Usage(icon: "keyboard", text: "两种输入方案，在键盘设置里切换：全拼（默认；完整拼写，也可只打声母，如 nh → 你好）与小鹤双拼（每个字两个键，纯双拼，无形码）。选过的方案、九宫格等设置会一直记住，更新版本也不会被重置。")
-                            Usage(icon: "square.grid.3x3", text: "中文键盘可选全键盘或九宫格；九宫格两种方案都能用：打字时左列列出可能的拼音，点一下就定下这几个键，“分词”切开音节。")
-                            Usage(icon: "space", text: "空格：上屏首选　回车：上屏字母　删除：逐键回退，按住会加速，再久一点按词删除。")
-                            Usage(icon: "wand.and.stars", text: "首选带下划线 = 已按触点位置自动纠错；第二个候选是未纠错的原文。上屏后立刻按删除可撤回纠错。")
-                            Usage(icon: "text.append", text: "联想：中文上屏后，候选栏给出接下来常用的字词，点一下直接上屏并继续联想；按任意键即收起。")
-                            Usage(icon: "character.bubble", text: "中英混输：打 ok、ios、iphone 直接出 OK、iOS、iPhone。")
-                            Usage(icon: "a.circle", text: "英文模式（中/英 切到“英”）也按触点纠错并给出候选：teh → the、dont → don't、im → I'm；空格时替换，删除可撤回；首字母自动大写，双击空格出句号。")
-                            Usage(icon: "chevron.down", text: "候选栏右侧 ⌄ 展开全部候选；长按自己学过的词可以删掉它。")
-                            Usage(icon: "arrow.left.and.right", text: "按住空格左右拖动移动光标。123 打开数字符号页或九宫格数字键盘（键盘设置里选；用九宫格打字时默认九宫格数字，数字输入框也自动换成它）；长按“，”键可选：。？！、…：")
-                            Usage(icon: "face.smiling", text: "😊 表情：常用与八个分类，上下滑动，底栏一点跳到分类。按住 😊 打开键盘设置：输入方案、九宫格、数字键盘、中英混输、自动纠错、震动与按键音、外观。")
-                            Usage(icon: "hand.tap", text: "候选栏左边的 Mosto：轻点一下打开他的颜文字（右下角“返回”回到键盘），轻点两下切换日光 / 夜灯。")
-                            Usage(icon: "circle.lefthalf.filled", text: "外观：自动跟随系统浅色 / 深色；也可固定日光或夜灯（按键与 Mosto 换光，候选栏跟随系统，始终看得清）。")
+                        Card(title: "打字与纠错") {
+                            Usage(icon: "keyboard", title: "两种输入方案", text: "两种输入方案，在键盘设置里切换：全拼（默认；完整拼写，也可只打声母，如 nh → 你好）与小鹤双拼（每个字两个键，纯双拼，无形码）。选过的方案、九宫格等设置会一直记住，更新版本也不会被重置。")
+                            Divider()
+                            Usage(icon: "space", title: "空格、回车、删除", text: "空格：上屏首选　回车：上屏字母　删除：逐键回退，按住会加速，再久一点按词删除。")
+                            Divider()
+                            Usage(icon: "wand.and.stars", title: "按触点自动纠错", text: "首选带下划线 = 已按触点位置自动纠错；第二个候选是未纠错的原文。上屏后立刻按删除可撤回纠错。长句中间多按或漏按了一个键（全拼：jintiantiaqi → 今天天气），整句照样读对，后面的字继续连上。")
+                            Divider()
+                            Usage(icon: "text.append", title: "联想", text: "联想：中文上屏后，候选栏给出接下来常用的字词，点一下直接上屏并继续联想；按任意键即收起。")
+                            Divider()
+                            Usage(icon: "person.text.rectangle", title: "记住你的词", text: "词库里没有的名字、说法，分几次选出来一次后就记住了：下次完整拼出或只打声母（mstd → 摸索台灯）排第一，只打前半截排第二。")
+                            Divider()
+                            Usage(icon: "chevron.down", title: "全部候选", text: "候选栏右侧 ⌄ 展开全部候选；长按自己学过的词可以删掉它。")
+                        }
+                        Card(title: "中英混输与英文") {
+                            Usage(icon: "character.bubble", title: "中英混输", text: "中英混输：打 ok、ios、iphone 直接出 OK、iOS、iPhone；句子里夹英文词（woyongiphonedazi → 我用iPhone打字）也能读出。拼音本身拼得出的词（women、zhang）仍先给中文。")
+                            Divider()
+                            Usage(icon: "a.circle", title: "英文模式", text: "英文模式（中/英 切到“英”）也按触点纠错并给出候选：teh → the、dont → don't、im → I'm；空格时替换，删除可撤回；首字母自动大写，双击空格出句号。")
+                        }
+                        Card(title: "键盘与布局") {
+                            Usage(icon: "square.grid.3x3", title: "九宫格", text: "中文键盘可选全键盘或九宫格；九宫格两种方案都能用：打字时左列列出可能的拼音，点一下就定下这几个键，“分词”切开音节。")
+                            Divider()
+                            Usage(icon: "arrow.left.and.right", title: "光标、数字与标点", text: "按住空格左右拖动移动光标。123 打开数字符号页或九宫格数字键盘（键盘设置里选；用九宫格打字时默认九宫格数字，数字输入框也自动换成它）；长按“，”键可选：。？！、…：")
+                            Divider()
+                            Usage(icon: "face.smiling", title: "表情与键盘设置", text: "😊 表情：常用与八个分类，上下滑动，底栏一点跳到分类。按住 😊 打开键盘设置：输入方案、九宫格、数字键盘、中英混输、自动纠错、震动与按键音、外观。")
+                        }
+                        Card(title: "Mosto 与外观") {
+                            Usage(icon: "hand.tap", title: "候选栏左边的 Mosto", text: "候选栏左边的 Mosto：轻点一下打开他的颜文字（右下角“返回”回到键盘），轻点两下切换日光 / 夜灯。")
+                            Divider()
+                            Usage(icon: "circle.lefthalf.filled", title: "外观", text: "外观：自动跟随系统浅色 / 深色；也可固定日光或夜灯（按键与 Mosto 换光，候选栏跟随系统，始终看得清）。")
                         }
                         Card(title: "小鹤双拼") {
                             Text("每个字固定两键的双拼方案。全拼用户请先看清学习成本再决定；不切换也完全没关系，两种方案在这个键盘上功能相同。")
@@ -132,8 +148,9 @@ struct HomeContent: View {
     }
 }
 
-/// Mosto at the top of the app: the day sprite blinking now and then, the night sprite in dark mode, the name and
-/// what the keyboard is — on a warm cream card (the icon's colours), so the violet stands out.
+/// Mosto at the top of the app: the designer toy of the app icon — Mosto on the keyboard's own vinyl key with the
+/// 中 and A keys — blinking now and then by day, scheming at night; the name, what the keyboard is, and what it is
+/// not (no AI, offline), on a warm cream card (the icon's colours) so the violet stands out.
 struct MostoHero: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -141,46 +158,54 @@ struct MostoHero: View {
     @State private var hop = false
 
     /// Secondary text on the hero card: the system's secondary grey reads ~3.1:1 on the cream; this holds 4.5:1.
-    private var heroSecondary: Color { scheme == .dark ? Color.white.opacity(0.72) : Color(red: 0.36, green: 0.31, blue: 0.24) }
+    private var heroSecondary: Color { scheme == .dark ? Color.white.opacity(0.74) : Color(red: 0.36, green: 0.31, blue: 0.24) }
 
     var body: some View {
-        HStack(spacing: 14) {
-            // a designer toy on its base: Mosto standing on one of the keyboard's vinyl keys (face over lip)
-            VStack(spacing: -20) {
-                Image(uiImage: mostoImage(scheme == .dark ? "MostoNight" : (blink ? "MostoBlink" : "Mosto")))
-                    .resizable().scaledToFit()
-                    .frame(width: 104, height: 104)
-                    .scaleEffect(x: hop ? 1.08 : 1, y: hop ? 0.9 : 1, anchor: .bottom)
-                    .offset(y: hop ? -6 : 0)
-                    .zIndex(1)
-                ToyKey(night: scheme == .dark).frame(width: 84, height: 32)
-            }
-            .contentShape(Rectangle())
-            .onTapGesture {
-                guard !reduceMotion else { return }
-                withAnimation(.spring(response: 0.18, dampingFraction: 0.45)) { hop = true }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) { hop = false }
+        VStack(spacing: 10) {
+            Image(uiImage: mostoImage(scheme == .dark ? "MostoToyNight" : (blink ? "MostoToyBlink" : "MostoToy")))
+                .resizable().scaledToFit()
+                .frame(width: 210, height: 210)
+                .scaleEffect(x: hop ? 1.05 : 1, y: hop ? 0.95 : 1, anchor: .bottom)
+                .offset(y: hop ? -4 : 0)
+                .padding(.vertical, -18)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    guard !reduceMotion else { return }
+                    withAnimation(.spring(response: 0.18, dampingFraction: 0.45)) { hop = true }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) { hop = false }
+                    }
                 }
-            }
-            .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 6) {
+                .accessibilityHidden(true)
+            VStack(spacing: 5) {
                 Text("Mosto键盘").font(.title2.weight(.bold))
-                Text("全拼 · 小鹤双拼 · 九宫格\n按触点位置自动纠错")
+                Text("全拼 · 小鹤双拼 · 九宫格　按触点位置自动纠错")
                     .font(.subheadline).foregroundStyle(heroSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text("Mosto，念快了像“魔头”：Moss 与 Otto 共同的另一面，住在键盘里的小魔王，歪戴小金冠。")
-                    .font(.footnote).foregroundStyle(heroSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
             }
+            HStack(spacing: 6) {
+                HeroChip(symbol: "cpu", text: "不含 AI")
+                HeroChip(symbol: "wifi.slash", text: "不联网")
+                HeroChip(symbol: "iphone", text: "只在本机学习")
+            }
+            Text("Mosto，念快了像“魔头”：Moss 与 Otto 共同的另一面，住在键盘里的小魔王，歪戴小金冠。")
+                .font(.footnote).foregroundStyle(heroSecondary)
+                .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 8)
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16).padding(.bottom, 18).padding(.top, 4)
+        .frame(maxWidth: .infinity)
         .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
                 .fill(scheme == .dark
-                      ? LinearGradient(colors: [Color(red: 0.19, green: 0.14, blue: 0.38), Color(red: 0.10, green: 0.08, blue: 0.24)], startPoint: .top, endPoint: .bottom)
-                      : LinearGradient(colors: [Color(red: 1.0, green: 0.96, blue: 0.86), Color(red: 0.98, green: 0.88, blue: 0.66)], startPoint: .top, endPoint: .bottom))
+                      ? LinearGradient(colors: [Color(red: 0.22, green: 0.15, blue: 0.44), Color(red: 0.09, green: 0.07, blue: 0.22)], startPoint: .top, endPoint: .bottom)
+                      : LinearGradient(colors: [Color(red: 1.0, green: 0.97, blue: 0.89), Color(red: 0.98, green: 0.87, blue: 0.64)], startPoint: .top, endPoint: .bottom))
+                .overlay(
+                    // the pool of light behind his head, as on the icon
+                    RadialGradient(colors: [Color.white.opacity(scheme == .dark ? 0.10 : 0.55), .clear], center: UnitPoint(x: 0.5, y: 0.22), startRadius: 0, endRadius: 170)
+                        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+                )
+                .shadow(color: Color(red: 0.17, green: 0.10, blue: 0.38).opacity(scheme == .dark ? 0 : 0.10), radius: 14, y: 5)
         )
         .padding(.top, 8)
         .task {
@@ -196,33 +221,40 @@ struct MostoHero: View {
     }
 }
 
-/// One of the keyboard's vinyl keys, as Mosto's base: a cream face resting on a lavender lip (violet at night).
-struct ToyKey: View {
-    let night: Bool
+/// One of the hero's three plain facts, on a small frosted pill.
+struct HeroChip: View {
+    let symbol: String
+    let text: String
+    @Environment(\.colorScheme) private var scheme
     var body: some View {
-        let lip = night ? Color(red: 0.11, green: 0.07, blue: 0.28) : Color(red: 0.80, green: 0.75, blue: 0.92)
-        let top = night ? Color(red: 0.32, green: 0.26, blue: 0.62) : Color.white
-        let bottom = night ? Color(red: 0.27, green: 0.22, blue: 0.55) : Color(red: 1.0, green: 0.99, blue: 0.97)
-        ZStack(alignment: .top) {
-            RoundedRectangle(cornerRadius: 10, style: .continuous).fill(lip)
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(LinearGradient(colors: [top, bottom], startPoint: .top, endPoint: .bottom))
-                .padding(.bottom, 5)
-        }
-        .shadow(color: Color(red: 0.17, green: 0.10, blue: 0.38).opacity(0.18), radius: 6, y: 4)
+        Label { Text(text).lineLimit(1).minimumScaleFactor(0.8) } icon: { Image(systemName: symbol).font(.system(size: 11, weight: .semibold)) }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(scheme == .dark ? Color(red: 1.0, green: 0.86, blue: 0.55) : Color(red: 0.33, green: 0.21, blue: 0.69))
+            .padding(.horizontal, 9).padding(.vertical, 5)
+            .background(Capsule().fill(scheme == .dark ? Color.white.opacity(0.10) : Color.white.opacity(0.65)))
     }
 }
 
 struct Card<Content: View>: View {
     let title: String
     @ViewBuilder var content: Content
+    @Environment(\.colorScheme) private var scheme
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(.footnote).foregroundStyle(.secondary).padding(.leading, 4)
-            VStack(alignment: .leading, spacing: 10) { content }
-                .padding(14)
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title).font(.footnote.weight(.semibold)).foregroundStyle(.secondary).padding(.leading, 4)
+                .accessibilityAddTraits(.isHeader)
+            VStack(alignment: .leading, spacing: 12) { content }
+                .padding(16)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
+                .background(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color(UIColor.secondarySystemGroupedBackground))
+                        .shadow(color: Color(red: 0.17, green: 0.10, blue: 0.38).opacity(scheme == .dark ? 0 : 0.06), radius: 10, y: 3)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(scheme == .dark ? Color.white.opacity(0.07) : Color(red: 0.17, green: 0.10, blue: 0.38).opacity(0.06), lineWidth: 0.5)
+                )
         }
     }
 }
@@ -241,12 +273,35 @@ struct Step: View {
 
 struct Usage: View {
     let icon: String
+    var title: String? = nil
     let text: String
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Image(systemName: icon).foregroundStyle(mostoTint).frame(width: 22)
-            Text(text).font(.subheadline).fixedSize(horizontal: false, vertical: true)
+        HStack(alignment: .top, spacing: 12) {
+            IconTile(symbol: icon)
+            VStack(alignment: .leading, spacing: 3) {
+                if let title { Text(title).font(.subheadline.weight(.semibold)) }
+                Text(text).font(.subheadline).foregroundStyle(title == nil ? Color.primary : Color.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// A symbol on a small tinted vinyl tile (the keyboard's violet), as iOS Settings marks its rows.
+struct IconTile: View {
+    let symbol: String
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(mostoTint)
+            .frame(width: 30, height: 30)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(LinearGradient(colors: [mostoTint.opacity(0.10), mostoTint.opacity(0.20)], startPoint: .top, endPoint: .bottom))
+            )
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(mostoTint.opacity(0.18), lineWidth: 0.5))
+            .accessibilityHidden(true)
     }
 }
 

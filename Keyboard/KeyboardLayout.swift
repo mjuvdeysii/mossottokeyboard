@@ -284,7 +284,7 @@ enum Theme {
     static let separator = dyn(hex(0x2B1961, 0.12), UIColor(white: 1, alpha: 0.12))
 
     // Vinyl caps: face (top → bottom) over a darker lip.
-    static let key = dyn(hex(0xFFFDF8), hex(0x46378C))              // letter face
+    static let key = dyn(hex(0xFBF8FF), hex(0x46378C))              // letter face
     static let keyTop = dyn(hex(0xFFFFFF), hex(0x52429E))
     static let keyLip = dyn(hex(0xCDBFEB), hex(0x1B1248))
     static let keyPressed = dyn(hex(0xEDE6FA), hex(0x5A4AAE))
@@ -296,14 +296,21 @@ enum Theme {
     static let accentTop = dyn(hex(0xF0CA78), hex(0xEDC26C))
     static let accentLip = dyn(hex(0xA9741F), hex(0x7C5112))
     static let accentText = hex(0x2B1961)
-    static let keyHighlight = dyn(UIColor(white: 1, alpha: 0.75), UIColor(white: 1, alpha: 0.18))
+    static let keyHighlight = dyn(UIColor(white: 1, alpha: 0.95), UIColor(white: 1, alpha: 0.16))
     static let bubble = dyn(hex(0xFFFDF8), hex(0x52429E))
     static let bubbleLip = dyn(hex(0xCDBFEB), hex(0x1B1248))
     /// The wings on the space bar.
     static let wing = dyn(hex(0xB7A6E6), hex(0x2A1E66))
     static let keyText = dyn(hex(0x2B1961), hex(0xFFF3DC))
     static let functionText = dyn(hex(0x2B1961), hex(0xD9CCFF))
-    static let keyShadow = dyn(UIColor(white: 0, alpha: 0), UIColor(white: 0, alpha: 0))
+    /// The soft contact shadow under each cap.
+    static let keyShadow = dyn(hex(0x2B1961, 0.14), UIColor(white: 0, alpha: 0.32))
+    /// `a` moved `k` of the way towards `b` (opaque colours).
+    static func mix(_ a: UIColor, _ b: UIColor, _ k: CGFloat) -> UIColor {
+        var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0, r2: CGFloat = 0, g2: CGFloat = 0, b2: CGFloat = 0, a2: CGFloat = 0
+        a.getRed(&r1, green: &g1, blue: &b1, alpha: &a1); b.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+        return UIColor(red: r1 + (r2 - r1) * k, green: g1 + (g2 - g1) * k, blue: b1 + (b2 - b1) * k, alpha: a1 + (a2 - a1) * k)
+    }
     static let candidateText = keyText
     static let secondaryText = dyn(hex(0x6A5C96), hex(0xB4A8DC))
     /// 键位提示 finals on the letter caps: ≥ 4.5:1 on the cream face by day and the violet face at night

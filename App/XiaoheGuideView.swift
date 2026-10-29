@@ -125,7 +125,7 @@ private struct ChartKey: View {
         .padding(.top, 5)
         .frame(maxWidth: .infinity)
         .frame(height: 70)
-        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color(UIColor.tertiarySystemGroupedBackground)))
+        .background(VinylCap())
     }
 }
 
@@ -168,6 +168,25 @@ private struct Legend: View {
         HStack(spacing: 5) {
             Circle().fill(color).frame(width: 8, height: 8)
             Text(text).foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// The keyboard's letter cap in miniature: a top-lit face resting on a darker lip, with the light on its top edge.
+struct VinylCap: View {
+    @Environment(\.colorScheme) private var scheme
+    var body: some View {
+        let night = scheme == .dark
+        let face = night ? [Color(red: 0.32, green: 0.26, blue: 0.62), Color(red: 0.27, green: 0.22, blue: 0.55)]
+                         : [Color.white, Color(red: 0.98, green: 0.97, blue: 1.0)]
+        let lip = night ? Color(red: 0.11, green: 0.07, blue: 0.28) : Color(red: 0.80, green: 0.75, blue: 0.92)
+        ZStack(alignment: .top) {
+            RoundedRectangle(cornerRadius: 8, style: .continuous).fill(lip)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(LinearGradient(colors: face, startPoint: .top, endPoint: .bottom))
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(LinearGradient(colors: [Color.white.opacity(night ? 0.18 : 0.9), .clear], startPoint: .top, endPoint: .center), lineWidth: 0.8))
+                .padding(.bottom, 2.5)
         }
     }
 }
