@@ -96,6 +96,7 @@ public final class Decoder {
     public var mixedForeignBonus = 3.0
     /// 简拼 of one syllable between others typed in full, on the full keyboard.
     public var midAbbreviationPenalty = 0.0
+    public var abbreviationOverlapPenalty = 8.0
     public var mixedSlipPenalty = 6.0
 
     /// How many pinyin syllables spell `word` exactly (fewest), 0 when it is not pinyin at all.
@@ -362,6 +363,7 @@ public final class Decoder {
                                                : (Self.initials.contains(t0.key) ? [t0.key] : [])
             func vowel(_ j: Int) -> Bool { j < n && !taps[j].group && Self.vowels.contains(taps[j].key) }
             func hasH(_ j: Int) -> Bool { j < n && (taps[j].group ? taps[j].alternatives.contains { $0.key == "h" } : taps[j].key == "h") }
+            let spelledHere = best.values.contains { $0.kind == 0 && !$0.corrected && $0.end >= i + 2 }
             for k0 in heads0 where i + 1 < n {
                 var ends: [(end: Int, head: String)] = []
                 if !vowel(i + 1) { ends.append((end: i + 1, head: String(k0))) }
@@ -371,7 +373,10 @@ public final class Decoder {
                 let cost0 = abbreviationPenalty + (t0.group ? t9AbbreviationExtra : 0)
                 for (end, head) in ends {
                     // one initial between spelled-out syllables (bu g xiu) is more often a slip or an English word
+                    // the keys also spell a whole syllable from here (s·hui inside shui): the abbreviation is the
+                    // unlikely reading of letters typed in full
                     let cost = cost0 + (i > 0 && end < n && !t0.group ? midAbbreviationPenalty : 0)
+                        + (spelledHere && !t0.group ? abbreviationOverlapPenalty : 0)
                     for id in trie.children[k0]?.below ?? [] {
                         // a lone z / c / s also stands for zh / ch / sh, as people abbreviate both
                         guard lexicon.syllables[Int(id)].hasPrefix(head) else { continue }

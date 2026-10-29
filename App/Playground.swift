@@ -28,7 +28,7 @@ let lessons: [Lesson] = [
            check: { t, _ in t.contains("你好") }),
     Lesson(title: "按错一个键", line: "最后的 e 故意按成旁边的 w：看候选下方的小字 rw→re，再按空格。", keys: "jintianhenrw␣", slip: 11,
            check: { t, _ in t.contains("今天很热") }),
-    Lesson(title: "长句漏按一个键", line: "tian 少按一个 n，整句照样读对。", keys: "jintiantiaqihenhao␣", slip: 11, missing: "n",
+    Lesson(title: "长句漏按一个键", line: "tian 少按一个 n，整句照样读对。", keys: "jintiantiaqihenhao␣", slip: 10, missing: "n",
            check: { t, _ in t.contains("今天天气很好") }),
     Lesson(title: "撤回纠错", line: "点候选栏最左边的 ↩：刚才按的字母原样回来。", keys: "↩",
            check: { _, s in s.composing && s.keys.contains("tiaqi") }),
