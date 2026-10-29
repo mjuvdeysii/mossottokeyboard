@@ -48,105 +48,65 @@ struct HomeContent: View {
     var snapshot = false
 
     var body: some View {
-                VStack(alignment: .leading, spacing: 22) {
-                    MostoHero()
-                    Group {
-                        Card(title: "启用键盘") {
-                            Step(n: 1, text: "打开 设置 › 通用 › 键盘 › 键盘 › 添加新键盘，选择 Mosto键盘。")
-                            Divider()
-                            Step(n: 2, text: "打字时长按或轻点 🌐，切换到 Mosto键盘。")
-                            Divider()
-                            Step(n: 3, text: "（可选）在键盘列表中点 Mosto键盘，开启“允许完全访问”，就有按键震动和按键音。键盘本身不联网。")
-                            Divider()
-                            Button {
-                                if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
-                            } label: {
-                                Label("打开系统设置", systemImage: "gearshape").frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .padding(.vertical, 2)
-                        }
-                        if !snapshot {
-                            Card(title: "试打") {
-                                TextField("全拼 nihao 或小鹤 nihc → 你好", text: $text, axis: .vertical)
-                                    .lineLimit(3...8)
-                            }
-                        }
+        VStack(alignment: .leading, spacing: 30) {
+            MostoHero()
+            SetupCard()
+            if !snapshot {
+                TryField(text: $text)
+            }
+            FeatureShowcase()
+            MoreList(snapshot: snapshot)
+            HomeFooter()
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 32)
+    }
+}
+
+/// Every usage note, word for word, on a page of its own (the home page shows them as pictures).
+struct UsageDetailContent: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 22) {
                         Card(title: "打字与纠错") {
-                            Usage(icon: "keyboard", title: "两种输入方案", text: "两种输入方案，在键盘设置里切换：全拼（默认；完整拼写，也可只打声母，如 nh → 你好）与小鹤双拼（每个字两个键，纯双拼，无形码）。选过的方案、九宫格等设置会一直记住，更新版本也不会被重置。")
-                            Divider()
-                            Usage(icon: "space", title: "空格、回车、删除", text: "空格：上屏首选　回车：上屏字母　删除：逐键回退，按住会加速，再久一点按词删除。")
-                            Divider()
-                            Usage(icon: "wand.and.stars", title: "按触点自动纠错", text: "首选浅色底 = 已按触点位置自动纠错，字下方小字写着改了哪里（如 hap→hao：按的是 hap，读作 hao）；第二个候选下标“原键”，是按原样读的结果。上屏后候选栏左侧出现 ↩ 和刚才按的字母，点它或立刻按删除都可撤回纠错。长句中间多按或漏按了一个键（全拼：jintiantiaqi → 今天天气），整句照样读对，后面的字继续连上。")
-                            Divider()
-                            Usage(icon: "text.append", title: "联想", text: "联想：中文上屏后，候选栏给出接下来常用的字词，点一下直接上屏并继续联想；按任意键即收起。")
-                            Divider()
-                            Usage(icon: "person.text.rectangle", title: "记住你的词", text: "词库里没有的名字、说法，分几次选出来一次后就记住了：下次完整拼出或只打声母（mstd → 摸索台灯）排第一，只打前半截排第二。")
-                            Divider()
-                            Usage(icon: "chevron.down", title: "全部候选", text: "候选栏右侧 ⌄ 展开全部候选；长按自己学过的词可以删掉它。")
-                        }
-                        Card(title: "中英混输与英文") {
-                            Usage(icon: "character.bubble", title: "中英混输", text: "中英混输：打 ok、ios、iphone 直接出 OK、iOS、iPhone；句子里夹英文词（woyongiphonedazi → 我用iPhone打字）也能读出。拼音本身拼得出的词（women、zhang）仍先给中文。")
-                            Divider()
-                            Usage(icon: "a.circle", title: "英文模式", text: "英文模式（中/英 切到“英”）也按触点纠错并给出候选：teh → the、dont → don't、im → I'm；空格时替换，删除可撤回；首字母自动大写，双击空格出句号。")
-                        }
-                        Card(title: "键盘与布局") {
-                            Usage(icon: "square.grid.3x3", title: "九宫格", text: "中文键盘可选全键盘或九宫格；九宫格两种方案都能用：打字时左列列出可能的拼音，点一下就定下这几个键，“分词”切开音节。")
-                            Divider()
-                            Usage(icon: "arrow.left.and.right", title: "光标、数字与标点", text: "按住空格左右拖动移动光标。123 打开数字符号页或九宫格数字键盘（键盘设置里选；用九宫格打字时默认九宫格数字，数字输入框也自动换成它）；长按“，”键可选：。？！、…：")
-                            Divider()
-                            Usage(icon: "face.smiling", title: "表情与键盘设置", text: "😊 表情：常用与八个分类，上下滑动，底栏一点跳到分类。按住 😊 打开键盘设置：输入方案、九宫格、数字键盘、中英混输、自动纠错、震动与按键音、外观。")
-                        }
-                        Card(title: "Mosto 与外观") {
-                            Usage(icon: "hand.tap", title: "候选栏左边的 Mosto", text: "候选栏左边的 Mosto：轻点一下打开他的颜文字（右下角“返回”回到键盘），轻点两下切换日光 / 夜灯。")
-                            Divider()
-                            Usage(icon: "circle.lefthalf.filled", title: "外观", text: "外观：自动跟随系统浅色 / 深色；也可固定日光或夜灯（按键与 Mosto 换光，候选栏跟随系统，始终看得清）。")
-                        }
-                        Card(title: "小鹤双拼") {
-                            Text("每个字固定两键的双拼方案。全拼用户请先看清学习成本再决定；不切换也完全没关系，两种方案在这个键盘上功能相同。")
-                                .font(.subheadline).fixedSize(horizontal: false, vertical: true)
-                            if snapshot {
-                                Label("说明、学习成本与键位表", systemImage: "keyboard.badge.ellipsis")
-                            } else {
-                                NavigationLink { XiaoheGuideView() } label: {
-                                    Label("说明、学习成本与键位表", systemImage: "keyboard.badge.ellipsis").frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                            }
-                        }
-                        Card(title: "Mosto 的两种光") {
-                            HStack(alignment: .top, spacing: 12) {
-                                LightTile(image: "Mosto", title: "日光", text: "瞪大眼睛看你打字，不打字时待在候选栏左边，偶尔眨眼。")
-                                LightTile(image: "MostoNight", title: "夜灯", text: "眯眼坏笑，尾巴尖亮起灯珠的金光，待在候选栏左边；键盘闲下来，他会慢慢打个哈欠。")
-                            }
-                        }
-                        Card(title: "关于") {
-                            // privacy policy, terms and disclaimer, licences: each its own page (the same text as the
-                            // hosted pages, from Tools/build_legal.py), plus beta notes and where to give feedback
-                            ForEach(Array(LegalText.docs.enumerated()), id: \.offset) { i, doc in
-                                if i > 0 { Divider() }
-                                if snapshot {
-                                    Label(doc.title, systemImage: aboutIcon(doc.id))
-                                } else {
-                                    NavigationLink { LegalView(doc: doc) } label: {
-                                        Label(doc.title, systemImage: aboutIcon(doc.id)).frame(maxWidth: .infinity, alignment: .leading)
-                                    }
-                                }
-                            }
-                            Divider()
-                            Label("测试版：功能可能变动，发送重要内容前请核对上屏文字。在 TestFlight 中截图即可提交反馈。", systemImage: "testtube.2")
-                                .font(.footnote)
-                            if let u = URL(string: "https://github.com/mjuvdeysii/mossottokeyboard/issues") {
-                                Link(destination: u) { Label("问题与建议", systemImage: "bubble.left.and.text.bubble.right") }
-                            }
-                            Divider()
-                            Text("纯粹的输入法：不含 AI，不接入任何大模型或云端服务。候选来自装在 App 里的开源词库与统计数据（按词语在公开语料里出现的次数排序），全部在手机上计算。")
-                                .font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                            Text("键盘不联网。词库、你学过的词和触点习惯只存在这台设备上，不会上传。")
-                                .font(.footnote).foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 32)
+                Usage(icon: "keyboard", title: "两种输入方案", text: "两种输入方案，在键盘设置里切换：全拼（默认；完整拼写，也可只打声母，如 nh → 你好）与小鹤双拼（每个字两个键，纯双拼，无形码）。选过的方案、九宫格等设置会一直记住，更新版本也不会被重置。")
+                Divider()
+                Usage(icon: "space", title: "空格、回车、删除", text: "空格：上屏首选　回车：上屏字母　删除：逐键回退，按住会加速，再久一点按词删除。")
+                Divider()
+                Usage(icon: "wand.and.stars", title: "按触点自动纠错", text: "首选浅色底 = 已按触点位置自动纠错，字下方小字写着改了哪里（如 hap→hao：按的是 hap，读作 hao）；第二个候选下标“原键”，是按原样读的结果。上屏后候选栏左侧出现 ↩ 和刚才按的字母，点它或立刻按删除都可撤回纠错。长句中间多按或漏按了一个键（全拼：jintiantiaqi → 今天天气），整句照样读对，后面的字继续连上。")
+                Divider()
+                Usage(icon: "text.append", title: "联想", text: "联想：中文上屏后，候选栏给出接下来常用的字词，点一下直接上屏并继续联想；按任意键即收起。")
+                Divider()
+                Usage(icon: "person.text.rectangle", title: "记住你的词", text: "词库里没有的名字、说法，分几次选出来一次后就记住了：下次完整拼出或只打声母（mstd → 摸索台灯）排第一，只打前半截排第二。")
+                Divider()
+                Usage(icon: "chevron.down", title: "全部候选", text: "候选栏右侧 ⌄ 展开全部候选；长按自己学过的词可以删掉它。")
+            }
+            Card(title: "中英混输与英文") {
+                Usage(icon: "character.bubble", title: "中英混输", text: "中英混输：打 ok、ios、iphone 直接出 OK、iOS、iPhone；句子里夹英文词（woyongiphonedazi → 我用iPhone打字）也能读出。拼音本身拼得出的词（women、zhang）仍先给中文。")
+                Divider()
+                Usage(icon: "a.circle", title: "英文模式", text: "英文模式（中/英 切到“英”）也按触点纠错并给出候选：teh → the、dont → don't、im → I'm；空格时替换，删除可撤回；首字母自动大写，双击空格出句号。")
+            }
+            Card(title: "键盘与布局") {
+                Usage(icon: "square.grid.3x3", title: "九宫格", text: "中文键盘可选全键盘或九宫格；九宫格两种方案都能用：打字时左列列出可能的拼音，点一下就定下这几个键，“分词”切开音节。")
+                Divider()
+                Usage(icon: "arrow.left.and.right", title: "光标、数字与标点", text: "按住空格左右拖动移动光标。123 打开数字符号页或九宫格数字键盘（键盘设置里选；用九宫格打字时默认九宫格数字，数字输入框也自动换成它）；长按“，”键可选：。？！、…：")
+                Divider()
+                Usage(icon: "face.smiling", title: "表情与键盘设置", text: "😊 表情：常用与八个分类，上下滑动，底栏一点跳到分类。按住 😊 打开键盘设置：输入方案、九宫格、数字键盘、中英混输、自动纠错、震动与按键音、外观。")
+            }
+            Card(title: "Mosto 与外观") {
+                Usage(icon: "hand.tap", title: "候选栏左边的 Mosto", text: "候选栏左边的 Mosto：轻点一下打开他的颜文字（右下角“返回”回到键盘），轻点两下切换日光 / 夜灯。")
+                Divider()
+                Usage(icon: "circle.lefthalf.filled", title: "外观", text: "外观：自动跟随系统浅色 / 深色；也可固定日光或夜灯（按键与 Mosto 换光，候选栏跟随系统，始终看得清）。")
+            }
+        }
+    }
+}
+
+struct UsageDetailView: View {
+    var body: some View {
+        ScrollView { UsageDetailContent().padding(16) }
+            .background(Color(UIColor.systemGroupedBackground))
+            .navigationTitle("全部用法")
+            .navigationBarTitleDisplayMode(.inline)
     }
 }
 
