@@ -766,7 +766,8 @@ public final class Decoder {
                 w.display != w.key ? w.logp - englishPenalty + englishCasedBonus : w.logp - englishPenalty - short
             }
             // rare plain words (nih, hon…) are more likely pinyin being typed: only common ones, or ones written cased
-            if let w = english.exact(typed), w.display != w.key || w.zipf >= 3.6 {
+            // two letters only for a word written with capitals (OK, PS): plain ones (sm, xx, hd) are 简拼 being typed
+            if let w = english.exact(typed), w.display != w.key || (w.zipf >= 3.6 && n >= 3) {
                 var c = Candidate(text: w.display, tapCount: n, syllables: [], corrected: false, score: score(w))
                 c.isEnglish = true
                 extra.append(c)
@@ -831,6 +832,7 @@ public final class Decoder {
         // "letters" are digits, the pinyin read from them.
         let rawText = taps.contains(where: { $0.group }) ? preedit.replacingOccurrences(of: " ", with: "") : raw
         promoteUserPhrases(taps, &result)
+        promoteChatAbbreviation(taps, &result)
         add(Candidate(text: rawText, tapCount: n, syllables: [], corrected: false, score: -.infinity), [])
         return Result(candidates: result, preedit: preedit)
     }
@@ -1044,6 +1046,17 @@ public final class Decoder {
             if typedOf[k] != meant { out.append(Fix(typed: typedOf[k], meant: meant)) }
         }
         return out
+    }
+
+    /// 简拼 that chat has settled on (nh 你好, xx 谢谢, hh 哈哈): typed as the whole input, that reading leads —
+    /// unless the user has picked something else for these keys (what they learned stays first).
+    public static let chatAbbreviations: [String: String] = ["nh": "你好", "xx": "谢谢", "hh": "哈哈", "nhm": "你好吗"]
+    private func promoteChatAbbreviation(_ taps: [Tap], _ result: inout [Candidate]) {
+        guard scheme == .quanpin, !taps.contains(where: { $0.group }), let want = Self.chatAbbreviations[String(taps.map { $0.key })],
+              let k = result.firstIndex(where: { $0.text == want && $0.tapCount == taps.count }), k > 0 else { return }
+        if let top = result.first, let user, !top.syllables.isEmpty, user.contains(syllables: top.syllables, text: top.text) { return }
+        let c = result.remove(at: k)
+        result.insert(c, at: 0)
     }
 
     public func spelling(of id: UInt16) -> String {
