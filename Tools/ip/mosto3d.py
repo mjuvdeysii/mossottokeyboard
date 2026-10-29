@@ -401,13 +401,19 @@ def toy_icon(path):
     a little above so the legends read, on butter cream. --samples 160 for the shipped 1024 px icon."""
     from PIL import Image, ImageDraw
     s = B.reset(); s.render.film_transparent = True; B.materials(); mosto_materials(); B.sprite_lights()
-    s.view_settings.look = "None"
+    # AgX's punchy look: the toy's violet and gold stay saturated (the plain look washes the gold key to peach)
+    try: s.view_settings.look = "AgX - Punchy"
+    except TypeError: s.view_settings.look = "None"
+    # a warm crown-gold rim from behind, left: it lifts his outline off the cream ground at home-screen size
+    bpy.ops.object.light_add(type="AREA", location=(-2.4, 2.6, 2.6), rotation=(math.radians(-60), 0, math.radians(-140)))
+    rim = bpy.context.object; rim.data.energy = B.arg("--rim", 420); rim.data.size = 1.6
+    rim.data.color = (1.0, 0.82, 0.52)
     size = B.arg("--size", 1024)
     s.render.resolution_x = s.render.resolution_y = size
     cream = B.rubber("keyCream", "#FFF9EE", rough=0.5, sss=0.06)
     lav = B.rubber("keyLav", "#B3A0EC", rough=0.55)
     lavDeep = B.rubber("keyLavDeep", "#7E68CF", rough=0.55)
-    gold = B.mat("keyGold", "#FFC23A", rough=0.42, coat=0.15, sss=0.02)
+    gold = B.mat("keyGold", "#FFB52E", rough=0.36, coat=0.2, sss=0.0)
     goldDeep = B.mat("keyGoldDeep", "#C9851A", rough=0.4, coat=0.15)
     top = toy_key("key_main", 0.0, 0.0, -18, cream, lav, size=1.22)
     gx, gy, gr, gs = B.arg("--gx", 0.92), B.arg("--gy", -0.5), B.arg("--gr", -10), B.arg("--gs", 0.74)
@@ -418,8 +424,8 @@ def toy_icon(path):
     # read as keys at a glance, and the icon says "Chinese keyboard" before anyone reads its name
     ink = B.mat("keyInk", "#2B1961", rough=0.5)
     inkLight = B.mat("keyInkLight", "#FFF9EE", rough=0.5)
-    legend("中", gx, gy - 0.02 * gs, gtop, gr, 0.56 * gs, ink, "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc")
-    legend("A", lx, ly - 0.02 * ls, ltop, lr, 0.56 * ls, ink, "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc")
+    legend("中", gx, gy - 0.02 * gs, gtop, gr, 0.62 * gs, ink, "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc")
+    legend("A", lx, ly - 0.02 * ls, ltop, lr, 0.62 * ls, ink, "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc")
     m = build_mosto(moss_eye=dict(look=(0.1, 0.25)), otto_eye=dict(look=(-0.08, 0.1), lid=0.5))
     m.location = (0.02, -0.05, top - 0.02); m.scale = (B.arg("--ms", 1.55),) * 3
     m.rotation_euler = (0, 0, math.radians(-8))
@@ -433,6 +439,12 @@ def toy_icon(path):
     for y in range(size):                                   # warm butter-cream: the complement of Mosto's violet
         t = y / size
         d.line([(0, y), (size, y)], fill=(int(255 - 6 * t), int(244 - 26 * t), int(214 - 62 * t)))
+    # a soft pool of light behind his head: the eye goes to the face first
+    from PIL import ImageFilter
+    glow = Image.new("L", (size, size), 0)
+    ImageDraw.Draw(glow).ellipse([size * 0.16, size * 0.06, size * 0.84, size * 0.66], fill=int(B.arg("--halo", 90)))
+    glow = glow.filter(ImageFilter.GaussianBlur(size * 0.09))
+    bg = Image.composite(Image.new("RGB", (size, size), (255, 251, 238)), bg, glow)
     fg = Image.open(tmp).convert("RGBA")
     bg.paste(fg, (0, 0), fg)
     bg.save(path)
