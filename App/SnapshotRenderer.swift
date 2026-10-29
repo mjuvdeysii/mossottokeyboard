@@ -187,25 +187,15 @@ enum SnapshotRenderer {
                 .background(Color(UIColor.systemGroupedBackground))
                 .tint(mostoTint)
                 .environment(\.colorScheme, night ? .dark : .light)
-            // a tall page can exceed the renderer's largest bitmap at 3×: step down until it fits
+            // a tall page can exceed what the renderer or the PNG encoder takes at 3×: step down until it is written
             let r = ImageRenderer(content: content)
-            var shot: UIImage?
-            for scale in [3.0, 2.0, 1.5, 1.0] where shot == nil { r.scale = scale; shot = r.uiImage }
-            if shot == nil {
-                print("SNAPSHOT app_home: renderer gave no image; parts:")
-                func part<V: View>(_ name: String, _ v: V) {
-                    let pr = ImageRenderer(content: v.frame(width: width).environment(\.colorScheme, night ? .dark : .light))
-                    pr.scale = 2
-                    print("  ", name, pr.uiImage == nil ? "nil" : "ok")
-                    if let im = pr.uiImage { try? im.pngData()?.write(to: dir.appendingPathComponent("\(night ? "night" : "day")_part_\(name).png")) }
-                }
-                part("hero", MostoHero())
-                part("chip", HeroChip(symbol: "cpu", text: "不含 AI"))
-                part("usage", Usage(icon: "keyboard", title: "t", text: "x"))
-                part("card", Card(title: "t") { Text("x") })
-            }
-            if let img = shot {
-                try? img.pngData()?.write(to: dir.appendingPathComponent("\(night ? "night" : "day")_app_home.png"))
+            var written = false
+            for scale in [3.0, 2.0, 1.5, 1.0] where !written {
+                r.scale = scale
+                guard let img = r.uiImage else { print("SNAPSHOT app_home: no image at \(scale)×"); continue }
+                guard let data = img.pngData() else { print("SNAPSHOT app_home: no PNG at \(scale)×, size \(img.size)"); continue }
+                do { try data.write(to: dir.appendingPathComponent("\(night ? "night" : "day")_app_home.png")); written = true }
+                catch { print("SNAPSHOT app_home: write failed \(error)") }
             }
             // the 小鹤双拼 page (explanation, learning cost, key chart)
             let guide = XiaoheGuideContent()

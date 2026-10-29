@@ -356,11 +356,6 @@ def icon(path):
     s.render.resolution_x = s.render.resolution_y = size
     build_mosto(moss_eye=dict(look=(0.2, 0.3)), otto_eye=dict(look=(-0.05, 0.1), lid=0.52))
     ortho_camera(1.78, 0.58, cx=0.08)
-    if "--hero" in ARGS:
-        # the app's hero: the same toy scene on a transparent ground (the card behind it is the app's), blinking
-        # with --blink
-        B.render(path, size, size)
-        return
     tmp = path.replace(".png", "_fg.png")
     B.render(tmp, size, size)
     if night:
@@ -456,6 +451,11 @@ def toy_icon(path):
     # a shadow catcher under the keys: they sit on something
     bpy.ops.mesh.primitive_plane_add(size=12, location=(0, 0, 0)); g = bpy.context.object; g.is_shadow_catcher = True
     B.camera(target=(0.1, 0.15, B.arg("--ty", 0.8)), dist=B.arg("--dist", 4.15), height=B.arg("--ch", 3.25), lens=B.arg("--lens", 52), fstop=22)
+    if "--hero" in ARGS:
+        # the app's hero: the same toy scene on a transparent ground (the card behind it is the app's), blinking
+        # with --blink
+        B.render(path, size, size)
+        return
     tmp = path.replace(".png", "_fg.png")
     B.render(tmp, size, size)
     bg = Image.new("RGB", (size, size))

@@ -28,6 +28,8 @@ struct ContentView: View {
             .background(Color(UIColor.systemGroupedBackground))
             .navigationTitle("Mosto键盘")
             .navigationBarTitleDisplayMode(.inline)
+            // the hero card carries the name: the bar stays clear (the title still names the back button)
+            .toolbar { ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1) } }
             .tint(mostoTint)
             .task {
                 // CI only: render the keyboard's real views to PNGs, then exit (SnapshotRenderer.swift)
@@ -167,7 +169,7 @@ struct MostoHero: View {
                 .frame(width: 210, height: 210)
                 .scaleEffect(x: hop ? 1.05 : 1, y: hop ? 0.95 : 1, anchor: .bottom)
                 .offset(y: hop ? -4 : 0)
-                .padding(.vertical, -18)
+                .padding(.top, -6).padding(.bottom, -16)
                 .contentShape(Rectangle())
                 .onTapGesture {
                     guard !reduceMotion else { return }
