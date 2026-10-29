@@ -317,6 +317,8 @@ enum Theme {
     static let guideText = dyn(hex(0x5B4D8C), hex(0xDCD5F7))
     /// The correction mark, selected alternates: Mosto's violet by day, his gold at night.
     static let correctedMark = dyn(hex(0x633EBF), hex(0xFFC45A))
+    /// Behind the corrected first choice and the undo chip: a soft tint of the correction colour.
+    static let correctedTint = dyn(hex(0x633EBF, 0.10), hex(0xFFC45A, 0.15))
     static let selection = dyn(hex(0x633EBF), hex(0xE3B04F))
     static let selectionText = dyn(.white, hex(0x2B1961))
 }

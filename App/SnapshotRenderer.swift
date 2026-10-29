@@ -33,6 +33,7 @@ enum SnapshotRenderer {
             Shot(name: "letters_idle", page: .letters, state: "idle", borders: true, panel: nil),
             Shot(name: "letters_composing", page: .letters, state: "composing", borders: true, panel: nil),
             Shot(name: "letters_predict", page: .letters, state: "predict", borders: true, panel: nil),
+            Shot(name: "letters_undo", page: .letters, state: "undo", borders: true, panel: nil),
             Shot(name: "letters_guide", page: .letters, state: "idle", borders: true, panel: nil),
             Shot(name: "letters_shift", page: .letters, state: "shift", borders: true, panel: nil),
             Shot(name: "numbers", page: .numbers, state: "idle", borders: true, panel: nil),
@@ -104,14 +105,20 @@ enum SnapshotRenderer {
                                            returnIsAccent: false, shifted: shot.state == "shift", capsLock: false,
                                            keyBorders: shot.borders, pinyinGrid: shot.name.hasPrefix("t9") || shot.name.hasSuffix("_t9"),
                                            xiaoheGuide: shot.name.hasSuffix("guide")))
-                let composing = candidates(["你好", "尼好", "泥好", "拟好", "你", "尼", "泥", "拟", "逆", "腻", "nihc"], correctedFirst: true)
+                var composing = candidates(["你好", "尼好", "泥好", "拟好", "你", "尼", "泥", "拟", "逆", "腻", "nihc"], correctedFirst: true)
+                composing[0].fixes = [Fix(typed: "hap", meant: "hao")]
                 switch shot.state {
                 case "composing": bar.update(preedit: "ni hao", candidates: composing)
                 case "en_typing": bar.update(preedit: "", candidates: [
-                    Candidate(text: "the", tapCount: 0, syllables: [], corrected: true, score: 0),
+                    { var c = Candidate(text: "the", tapCount: 0, syllables: [], corrected: true, score: 0)
+                      c.fixes = [Fix(typed: "teh", meant: "the")]; return c }(),
                     Candidate(text: "teh", tapCount: 0, syllables: [], corrected: false, score: 0),
                     Candidate(text: "tech", tapCount: 0, syllables: [], corrected: false, score: 0)])
                 case "english": bar.update(preedit: "ios", candidates: candidates(["iOS", "戳死", "戳所", "戳三", "ios"], correctedFirst: false))
+                case "undo":
+                    bar.setUndo("jintiantiaqi")
+                    bar.update(preedit: "", candidates: ["很好", "不错", "怎么样", "真好"].map {
+                        Candidate(text: $0, tapCount: 0, syllables: [], corrected: false, score: 0) }, prediction: true)
                 case "predict":
                     bar.update(preedit: "", candidates: ["我", "不", "在", "一起", "可以", "也", "要", "会"].map {
                         Candidate(text: $0, tapCount: 0, syllables: [], corrected: false, score: 0) }, prediction: true)

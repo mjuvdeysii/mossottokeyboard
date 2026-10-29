@@ -13,6 +13,17 @@ public struct Candidate: Equatable {
     public var intendedKeys: [Character] = []
     /// An English word offered in Chinese mode (中英混输); committed as written, never learned as pinyin.
     public var isEnglish = false
+    /// What the correction changed, syllable by syllable, as shown under the candidate: the keys as typed and the
+    /// spelling they were read as (hap → hao, tia → tian, ttian → tian). Empty when nothing was corrected or the
+    /// change is not a few plain key edits.
+    public var fixes: [Fix] = []
+}
+
+/// One corrected syllable: the keys typed for it and the spelling they were read as.
+public struct Fix: Equatable {
+    public let typed: String
+    public let meant: String
+    public init(typed: String, meant: String) { self.typed = typed; self.meant = meant }
 }
 
 /// The two ways of spelling a syllable this keyboard accepts.
@@ -972,6 +983,62 @@ public final class Decoder {
         result.removeAll { $0.tapCount == n && promoted.contains($0.text) }
         result.insert(contentsOf: lead, at: 0)
         result.insert(contentsOf: next, at: min(lead.isEmpty ? 1 : lead.count, result.count))
+    }
+
+    /// The keys of `taps` a corrected candidate stands for, aligned with its spelling (fewest key edits: a key read
+    /// as another, one key too many, one left out; the last syllable may still be half typed): the syllables that
+    /// changed, as typed and as meant. Nothing for 九宫格 keys, abbreviations or more than three edits.
+    public func fixes(for c: Candidate, taps: [Tap]) -> [Fix] {
+        guard c.corrected, !c.syllables.isEmpty, !c.isEnglish else { return [] }
+        let used = taps.prefix(c.tapCount).filter { $0.key != "'" }
+        guard !used.contains(where: { $0.group }) else { return [] }
+        let typed = used.map { $0.key }
+        let spells = c.syllables.map { Array(spelling(of: $0)) }
+        var target: [Character] = [], owner: [Int] = []
+        for (k, sp) in spells.enumerated() { target += sp; owner += Array(repeating: k, count: sp.count) }
+        let n = typed.count, m = target.count
+        guard n > 0, m > 0, n <= 40, m <= 60 else { return [] }
+        // edit distance, typed (rows) against the spelling (columns)
+        var d = [[Int]](repeating: [Int](repeating: 0, count: m + 1), count: n + 1)
+        for i in 0...n { d[i][0] = i }
+        for j in 0...m { d[0][j] = j }
+        for i in 1...n { for j in 1...m {
+            d[i][j] = min(d[i - 1][j - 1] + (typed[i - 1] == target[j - 1] ? 0 : 1), d[i - 1][j] + 1, d[i][j - 1] + 1)
+        } }
+        // the end of the spelling may be untyped (a half-typed last syllable): only inside the last syllable
+        let lastStart = m - spells.last!.count
+        var endJ = m
+        for j in max(lastStart + 1, 1)...m where d[n][j] < d[n][endJ] { endJ = j }
+        let cost = d[n][endJ]
+        guard cost > 0, cost <= 3 else { return [] }
+        // walk back: which keys went with which syllable, and which syllables changed
+        var typedOf = [String](repeating: "", count: spells.count)
+        var changed = [Bool](repeating: false, count: spells.count)
+        var i = n, j = endJ
+        while i > 0 || j > 0 {
+            if i > 0, j > 0, d[i][j] == d[i - 1][j - 1] + (typed[i - 1] == target[j - 1] ? 0 : 1) {
+                let k = owner[j - 1]
+                typedOf[k] = String(typed[i - 1]) + typedOf[k]
+                if typed[i - 1] != target[j - 1] { changed[k] = true }
+                i -= 1; j -= 1
+            } else if i > 0, d[i][j] == d[i - 1][j] + 1 {
+                // a key too many: it goes with the syllable it was typed in (or after)
+                let k = j > 0 ? owner[j - 1] : 0
+                typedOf[k] = String(typed[i - 1]) + typedOf[k]
+                changed[k] = true
+                i -= 1
+            } else {
+                changed[owner[j - 1]] = true
+                j -= 1
+            }
+        }
+        var out: [Fix] = []
+        for k in spells.indices where changed[k] {
+            // a half-typed last syllable is shown as far as it was typed
+            let meant = k == spells.count - 1 ? String(spells[k].prefix(endJ - lastStart)) : String(spells[k])
+            if typedOf[k] != meant { out.append(Fix(typed: typedOf[k], meant: meant)) }
+        }
+        return out
     }
 
     public func spelling(of id: UInt16) -> String {

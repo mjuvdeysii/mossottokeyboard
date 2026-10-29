@@ -76,7 +76,7 @@ struct HomeContent: View {
                             Divider()
                             Usage(icon: "space", title: "空格、回车、删除", text: "空格：上屏首选　回车：上屏字母　删除：逐键回退，按住会加速，再久一点按词删除。")
                             Divider()
-                            Usage(icon: "wand.and.stars", title: "按触点自动纠错", text: "首选带下划线 = 已按触点位置自动纠错；第二个候选是未纠错的原文。上屏后立刻按删除可撤回纠错。长句中间多按或漏按了一个键（全拼：jintiantiaqi → 今天天气），整句照样读对，后面的字继续连上。")
+                            Usage(icon: "wand.and.stars", title: "按触点自动纠错", text: "首选浅色底 = 已按触点位置自动纠错，字下方小字写着改了哪里（如 hap→hao：按的是 hap，读作 hao）；第二个候选下标“原键”，是按原样读的结果。上屏后候选栏左侧出现 ↩ 和刚才按的字母，点它或立刻按删除都可撤回纠错。长句中间多按或漏按了一个键（全拼：jintiantiaqi → 今天天气），整句照样读对，后面的字继续连上。")
                             Divider()
                             Usage(icon: "text.append", title: "联想", text: "联想：中文上屏后，候选栏给出接下来常用的字词，点一下直接上屏并继续联想；按任意键即收起。")
                             Divider()

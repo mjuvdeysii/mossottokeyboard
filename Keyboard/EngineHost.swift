@@ -87,6 +87,8 @@ final class EngineHost {
         if literal { d.correctionEnabled = false }
         var r = d.decode(taps)
         d.correctionEnabled = was
+        // what the first candidate corrected, for the strip to show (hap → hao)
+        if !r.candidates.isEmpty, r.candidates[0].corrected { r.candidates[0].fixes = d.fixes(for: r.candidates[0], taps: taps) }
         // a word that has an emoji (哈哈 😂, 蛋糕 🎂): offered after the first few candidates, never before them
         if let first = r.candidates.first, first.tapCount == taps.count, let emoji = emojiHints[first.text] {
             let at = min(3, r.candidates.count)

@@ -55,7 +55,9 @@ final class KeyboardViewController: UIInputViewController {
     private var predictions: [String] = []
     private var predictGeneration = 0
     /// The last auto-corrected commit made with the space bar, undone by an immediate delete (as on Gboard).
-    private var undoable: (text: String, taps: [Tap], syllables: [UInt16])?
+    private var undoable: (text: String, taps: [Tap], syllables: [UInt16])? {
+        didSet { syncUndoChip() }
+    }
     private var lastDocumentID: UUID?
     /// The text around the cursor as the last key left it: a change notice that finds something else means the user
     /// moved the cursor or the field changed under us, and what a delete would undo is no longer just before it.
@@ -79,7 +81,14 @@ final class KeyboardViewController: UIInputViewController {
     private var enTyped = ""
     private var enSuggestions: [String] = []
     private var enCorrection: String?
-    private var enUndo: (typed: String, taps: [Tap], corrected: String)?
+    private var enUndo: (typed: String, taps: [Tap], corrected: String)? {
+        didSet { syncUndoChip() }
+    }
+    /// The strip offers putting back what a correction replaced, while a delete would still do it.
+    private func syncUndoChip() {
+        let typed = undoable.map { String($0.taps.map { $0.key }) } ?? enUndo?.typed
+        candidateBar.setUndo(typed)
+    }
     private let haptic = UIImpactFeedbackGenerator(style: .light)
     private let tick = UISelectionFeedbackGenerator()
 
@@ -150,6 +159,8 @@ final class KeyboardViewController: UIInputViewController {
         keyboard.onKeyDown = { [weak self] action in self?.playFeedback(action) }
 
         candidateBar.onSelect = { [weak self] i in self?.candidateTapped(i) }
+        // the undo chip: the same as pressing delete right after the corrected word went in
+        candidateBar.onUndo = { [weak self] in self?.handle(.delete, tap: nil) }
         candidateBar.onMostoShown = { [weak self] on in self?.tintView.lampLit = on }
         syllablePicker.isHidden = true
         keyboard.addSubview(syllablePicker)
@@ -762,7 +773,9 @@ final class KeyboardViewController: UIInputViewController {
 
     private func englishCandidates() -> [Candidate] {
         enSuggestions.enumerated().map { i, t in
-            Candidate(text: t, tapCount: 0, syllables: [], corrected: i == 0 && enCorrection != nil, score: 0)
+            var c = Candidate(text: t, tapCount: 0, syllables: [], corrected: i == 0 && enCorrection != nil, score: 0)
+            if c.corrected { c.fixes = [Fix(typed: enTyped, meant: t)] }
+            return c
         }
     }
 

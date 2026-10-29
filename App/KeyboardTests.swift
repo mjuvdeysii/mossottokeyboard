@@ -165,6 +165,16 @@ enum KeyboardTests {
             log(h.string == "你好你好", "quanpin.abbreviation nh → 你好", "text=\(h.string)")
             type(vc, "jintianttianqihenhao"); settle(vc); vc.handle(.space, tap: nil)
             log(h.string.hasSuffix("今天天气很好"), "quanpin.one key too many: jintianttianqihenhao → 今天天气很好", "text=\(h.string)")
+            log(vc.candidateBarForTests.undoTextForTests == "jintianttianqihenhao", "quanpin.undo chip offers the keys as typed",
+                "chip=\(vc.candidateBarForTests.undoTextForTests ?? "nil")")
+            let before = h.string
+            vc.candidateBarForTests.undoTapForTests()
+            settle(vc)
+            log(!h.string.hasSuffix("今天天气很好") && vc.testState.keys == "jintianttianqihenhao", "quanpin.undo chip puts the keys back",
+                "text=\(h.string) keys=\(vc.testState.keys)")
+            vc.handle(.space, tap: nil)
+            log(h.string.count > before.count - 6 && h.marked == nil && !vc.testState.composing,
+                "quanpin.after undo, space commits the keys read without correction", "text=\(h.string)")
             type(vc, "woxiangqumaidonxi"); settle(vc); vc.handle(.space, tap: nil)
             log(h.string.hasSuffix("我想去买东西"), "quanpin.one key left out: woxiangqumaidonxi → 我想去买东西", "text=\(h.string)")
             type(vc, "woyongiphonedazi"); settle(vc); vc.handle(.space, tap: nil)

@@ -14,6 +14,11 @@ final class CandidateBarView: UIView {
     var onLongPress: ((Int) -> Void)?
 
     private let preedit = UILabel()
+    /// After a corrected word went in: "↩ nihap" at the start of the strip puts the keys back as typed (the same
+    /// as pressing delete right away).
+    private let undoChip = UIButton(type: .system)
+    var onUndo: (() -> Void)?
+    private var undoText: String?
     private var longPressTimer: Timer?
     private var longPressed = false
     private let row = UIView()
@@ -34,6 +39,28 @@ final class CandidateBarView: UIView {
     var showsPreedit = false { didSet { setNeedsLayout() } }
 
     static let font = Theme.font(20, .regular)
+    static let fixFont = Theme.font(10.5, .semibold)
+
+    /// Under an auto-corrected first choice, what was corrected: the keys as typed → the spelling read (hap → hao),
+    /// at most two syllables, else how many; English: the word as typed, struck through. Under the literal reading
+    /// that follows it, "原键" (the keys exactly as pressed).
+    static func caption(for c: Candidate) -> NSAttributedString? {
+        guard c.corrected else { return nil }
+        let out = NSMutableAttributedString()
+        let typedAttrs: [NSAttributedString.Key: Any] = [.font: fixFont, .foregroundColor: Theme.secondaryText]
+        let meantAttrs: [NSAttributedString.Key: Any] = [.font: fixFont, .foregroundColor: Theme.correctedMark]
+        if c.fixes.count > 2 {
+            out.append(NSAttributedString(string: "纠正 \(c.fixes.count) 处", attributes: meantAttrs))
+            return out
+        }
+        for (k, f) in c.fixes.enumerated() {
+            if k > 0 { out.append(NSAttributedString(string: "  ", attributes: typedAttrs)) }
+            out.append(NSAttributedString(string: f.typed, attributes: typedAttrs))
+            out.append(NSAttributedString(string: "→", attributes: typedAttrs))
+            out.append(NSAttributedString(string: f.meant, attributes: meantAttrs))
+        }
+        return out.length > 0 ? out : NSAttributedString(string: "已纠错", attributes: meantAttrs)
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -48,6 +75,17 @@ final class CandidateBarView: UIView {
         expandButton.tintColor = Theme.secondaryText
         addSubview(expandButton)
         expandButton.addTarget(self, action: #selector(expandTapped), for: .touchUpInside)
+        var uc = UIButton.Configuration.filled()
+        uc.cornerStyle = .capsule
+        uc.baseBackgroundColor = Theme.correctedTint
+        uc.baseForegroundColor = Theme.correctedMark
+        uc.image = UIImage(systemName: "arrow.uturn.backward", withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))
+        uc.imagePadding = 4
+        uc.contentInsets = NSDirectionalEdgeInsets(top: 5, leading: 10, bottom: 5, trailing: 11)
+        undoChip.configuration = uc
+        undoChip.isHidden = true
+        undoChip.addAction(UIAction { [weak self] _ in self?.onUndo?() }, for: .touchUpInside)
+        addSubview(undoChip)
         // Mosto sits in the idle corner; a tap opens settings (also reachable from the ⚙︎ key)
         addSubview(mosto)
         let double = UITapGestureRecognizer(target: self, action: #selector(mostoDoubleTapped))
@@ -65,6 +103,23 @@ final class CandidateBarView: UIView {
 
     @objc private func expandTapped() { onExpand?() }
 
+    var undoTextForTests: String? { undoText }
+    func undoTapForTests() { onUndo?() }
+
+    /// Offer (or withdraw, with nil) putting back the keys a correction replaced.
+    func setUndo(_ typed: String?) {
+        guard typed != undoText else { return }
+        undoText = typed
+        if let typed {
+            var c = undoChip.configuration
+            c?.attributedTitle = AttributedString(typed, attributes: AttributeContainer([.font: Theme.font(14, .semibold)]))
+            undoChip.configuration = c
+            undoChip.accessibilityLabel = "撤回纠错，恢复为 \(typed)"
+        }
+        undoChip.isHidden = typed == nil
+        setNeedsLayout()
+    }
+
     // MARK: VoiceOver: each visible candidate is a button (the strip draws plain labels and reads raw touches)
 
     private final class CandidateElement: UIAccessibilityElement {
@@ -76,9 +131,14 @@ final class CandidateBarView: UIView {
         get {
             var out: [Any] = []
             if !mosto.isHidden { out.append(mosto) }
+            if !undoChip.isHidden { out.append(undoChip) }
             for (i, l) in labels.enumerated() where !l.isHidden {
                 let e = CandidateElement(accessibilityContainer: self)
-                e.accessibilityLabel = l.attributedText?.string ?? l.text
+                e.accessibilityLabel = i < candidates.count ? candidates[i].text : l.text
+                if i < candidates.count, !isPrediction, let cap = Self.caption(for: candidates[i]) {
+                    e.accessibilityValue = cap.string == "已纠错" ? "已纠错"
+                        : "已纠错：" + candidates[i].fixes.map { "\($0.typed) 改为 \($0.meant)" }.joined(separator: "，")
+                }
                 e.accessibilityTraits = .button
                 if i == 0, !isPrediction { e.accessibilityHint = "首选，空格上屏" }
                 e.accessibilityFrameInContainerSpace = row.convert(l.frame, to: self)
@@ -102,7 +162,7 @@ final class CandidateBarView: UIView {
         self.candidates = candidates
         isPrediction = prediction
         let busy = !candidates.isEmpty
-        setMosto(!busy && !typing && showsMosto)
+        setMosto(!busy && !typing && showsMosto && undoText == nil)
         preedit.isHidden = !busy || prediction || !showsPreedit
         setNeedsLayout()
         layoutIfNeeded()
@@ -156,10 +216,19 @@ final class CandidateBarView: UIView {
 
         // labels are pooled and reused (this runs on every keystroke): only text and frames change
         var x: CGFloat = 6
+        if !undoChip.isHidden {
+            let sz = undoChip.sizeThatFits(CGSize(width: 200, height: rowH))
+            undoChip.frame = CGRect(x: 8, y: rowY + (rowH - sz.height) / 2, width: sz.width, height: sz.height)
+            x = undoChip.frame.maxX + 6
+        }
         visibleCount = 0
         for (i, c) in candidates.enumerated() {
             // at least a 44 pt target, as Apple's guidelines ask (single characters were ~40 pt)
-            let w = max(44, ceil((c.text as NSString).size(withAttributes: [.font: Self.font]).width) + 22)
+            let cap = isPrediction ? nil
+                : (i == 0 ? Self.caption(for: c)
+                   : (i == 1 && candidates[0].corrected && !c.corrected && !c.isEnglish && c.tapCount == candidates[0].tapCount
+                      ? NSAttributedString(string: "原键", attributes: [.font: Self.fixFont, .foregroundColor: Theme.secondaryText]) : nil))
+            let w = max(44, ceil(max((c.text as NSString).size(withAttributes: [.font: Self.font]).width, cap?.size().width ?? 0)) + 22)
             if x + w > row.bounds.width && i > 0 { break }
             if pool.count <= i {
                 let l = UILabel()
@@ -173,18 +242,27 @@ final class CandidateBarView: UIView {
             }
             let l = pool[i]
             l.isHidden = false
-            l.frame = CGRect(x: x, y: 0, width: min(w, row.bounds.width - x), height: rowH)
+            l.frame = CGRect(x: x, y: 3, width: min(w, row.bounds.width - x), height: rowH - 6)
             l.textColor = Theme.candidateText
-            if i == 0 && !isPrediction && c.corrected {
-                // an auto-corrected first choice is underlined (the only mark the system bar does not have)
-                l.attributedText = NSAttributedString(string: c.text, attributes: [
-                    .underlineStyle: NSUnderlineStyle.single.rawValue, .underlineColor: Theme.correctedMark,
-                    .font: Self.font, .foregroundColor: Theme.candidateText])
+            if let cap {
+                // the word, and under it what the correction changed (or that the second one is the keys as typed)
+                let para = NSMutableParagraphStyle()
+                para.alignment = .center
+                para.lineSpacing = -1
+                let t = NSMutableAttributedString(string: c.text + "\n", attributes: [.font: Self.font, .foregroundColor: Theme.candidateText, .paragraphStyle: para])
+                let capm = NSMutableAttributedString(attributedString: cap)
+                capm.addAttribute(.paragraphStyle, value: para, range: NSRange(location: 0, length: capm.length))
+                t.append(capm)
+                l.numberOfLines = 2
+                l.attributedText = t
             } else {
+                l.numberOfLines = 1
                 l.attributedText = nil
                 l.text = c.text
             }
-            l.backgroundColor = i == pressedIndex ? Theme.functionKey : .clear
+            // the corrected first choice sits on a soft tint of the correction colour (what space will type)
+            let fixed = i == 0 && !isPrediction && c.corrected
+            l.backgroundColor = i == pressedIndex ? Theme.functionKey : (fixed ? Theme.correctedTint : .clear)
             x += w
             visibleCount += 1
         }
@@ -477,7 +555,7 @@ final class SettingsPanelView: UIView {
         ], footer: "学习用：小鹤双拼方案下，字母键上显示它代表的声母与韵母（zh、ch、sh 在 V、I、U）。记熟后可关掉。全拼方案下不显示。完整键位表与说明在 Mosto键盘 App 里。")
         section("自动纠错", rows: [
             row("按触点位置纠错", correctionSwitch),
-        ], footer: "首选带下划线 = 已纠错；上屏后立刻按删除可撤回这次纠错。英文模式同样按触点纠错：teh → the、dont → don't、im → I'm，空格时替换，删除可撤回。")
+        ], footer: "首选浅色底 = 已纠错，下方小字是改了哪里（hap→hao）；“原键”是按原样读的结果。上屏后点候选栏左侧 ↩ 或立刻按删除可撤回。英文模式同样按触点纠错：teh → the、dont → don't、im → I'm，空格时替换，删除可撤回。")
         section("键盘", rows: [
             row("按键震动", feedbackSwitch),
             row("按键音", soundSwitch),
