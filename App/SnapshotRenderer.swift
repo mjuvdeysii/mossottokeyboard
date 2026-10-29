@@ -187,9 +187,11 @@ enum SnapshotRenderer {
                 .background(Color(UIColor.systemGroupedBackground))
                 .tint(mostoTint)
                 .environment(\.colorScheme, night ? .dark : .light)
+            // a tall page can exceed the renderer's largest bitmap at 3×: step down until it fits
             let r = ImageRenderer(content: content)
-            r.scale = 3
-            if let img = r.uiImage {
+            var shot: UIImage?
+            for scale in [3.0, 2.0, 1.5, 1.0] where shot == nil { r.scale = scale; shot = r.uiImage }
+            if let img = shot {
                 try? img.pngData()?.write(to: dir.appendingPathComponent("\(night ? "night" : "day")_app_home.png"))
             }
             // the 小鹤双拼 page (explanation, learning cost, key chart)
@@ -201,8 +203,9 @@ enum SnapshotRenderer {
                 .tint(mostoTint)
                 .environment(\.colorScheme, night ? .dark : .light)
             let g = ImageRenderer(content: guide)
-            g.scale = 3
-            if let img = g.uiImage {
+            var gshot: UIImage?
+            for scale in [3.0, 2.0, 1.5, 1.0] where gshot == nil { g.scale = scale; gshot = g.uiImage }
+            if let img = gshot {
                 try? img.pngData()?.write(to: dir.appendingPathComponent("\(night ? "night" : "day")_app_xiaohe.png"))
             }
         }
