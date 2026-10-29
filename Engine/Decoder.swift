@@ -72,6 +72,8 @@ public final class Decoder {
     public var maxSyllableAlternatives = 6
     public var pruneMargin = 7.0
     public var beam = 4
+    /// 九宫格 keeps more partial sentences per position (each key reads several ways; measured better, full keyboard not)
+    public var t9Beam = 8
     /// 全拼: cost of a syllable typed as its initial only (简拼), and of a half-typed last syllable.
     public var abbreviationPenalty = 6.0
     public var prefixPenalty = 0.4
@@ -558,7 +560,7 @@ public final class Decoder {
                     }
                 }
                 cands.sort { $0.score > $1.score }
-                paths[j] = Array(cands.prefix(beam))
+                paths[j] = Array(cands.prefix(keypad ? t9Beam : beam))
             }
             return paths[n]
         }
