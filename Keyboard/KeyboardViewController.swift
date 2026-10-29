@@ -473,6 +473,7 @@ final class KeyboardViewController: UIInputViewController {
         scheme = newScheme
         engine.configure(scheme: newScheme, correction: s.autocorrect, english: s.english)
         hapticsOn = s.feedback
+        guideOn = s.xiaoheGuide
         soundOn = s.keySound
         if !settingsPanel.isHidden {
             let n = engine.counts()
@@ -497,6 +498,7 @@ final class KeyboardViewController: UIInputViewController {
 
     /// Haptics and sound, read once per settings change rather than from the defaults on every key.
     private var hapticsOn = true
+    private var guideOn = false
     private var soundOn = true
     /// Click sounds are started off the main thread: AudioServicesPlaySystemSound can block for a few milliseconds
     /// (most of all on the first sound after the keyboard appears), and the key press must not wait for it.
@@ -562,7 +564,8 @@ final class KeyboardViewController: UIInputViewController {
                                          shifted: shifted, capsLock: capsLock,
                                          keyBorders: true,
                                          numberGrid: KeyboardSettings.shared.numberPad,   // 123: the 九宫格 pad or the full page
-                                         pinyinGrid: KeyboardSettings.shared.pinyinGrid, composing: !taps.isEmpty)
+                                         pinyinGrid: KeyboardSettings.shared.pinyinGrid, composing: !taps.isEmpty,
+                                         xiaoheGuide: guideOn && scheme == .xiaohe)
         // most keystrokes change nothing on the keys: skip the work entirely (it ran twice per keystroke before)
         if ctx == lastContext { return }
         lastContext = ctx

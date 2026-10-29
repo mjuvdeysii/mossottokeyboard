@@ -37,6 +37,39 @@ public enum XiaoheScheme {
         return String([first, f])
     }
 
+    /// What each key stands for, for the key chart and the keyboard's 键位提示: the initial it carries (zh / ch / sh
+    /// only — every other initial is its own letter) and the finals, written as in school pinyin (ü). Kept beside
+    /// `finalKey`; the engine gate checks that the two agree.
+    public static let keyGuide: [Character: (initial: String?, finals: [String])] = [
+        "q": (nil, ["iu"]), "w": (nil, ["ei"]), "e": (nil, ["e"]), "r": (nil, ["uan"]), "t": (nil, ["ue", "üe"]),
+        "y": (nil, ["un"]), "u": ("sh", ["u"]), "i": ("ch", ["i"]), "o": (nil, ["uo", "o"]), "p": (nil, ["ie"]),
+        "a": (nil, ["a"]), "s": (nil, ["ong", "iong"]), "d": (nil, ["ai"]), "f": (nil, ["en"]), "g": (nil, ["eng"]),
+        "h": (nil, ["ang"]), "j": (nil, ["an"]), "k": (nil, ["ing", "uai"]), "l": (nil, ["iang", "uang"]),
+        "z": (nil, ["ou"]), "x": (nil, ["ia", "ua"]), "c": (nil, ["ao"]), "v": ("zh", ["ui", "ü"]), "b": (nil, ["in"]),
+        "n": (nil, ["iao"]), "m": (nil, ["ian"]),
+    ]
+
+    /// The guide and the code table say the same thing: every final's key lists it, every listed final is on its key.
+    public static func guideAgrees() -> [String] {
+        var bad: [String] = []
+        func school(_ f: String) -> String { f == "v" ? "ü" : f == "ve" ? "üe" : f }
+        for (f, k) in finalKey {
+            let shown = keyGuide[k]?.finals ?? []
+            // ü-forms written with u where the sound is unambiguous (juan, jun): van / vn share uan / un's key
+            if !shown.contains(school(f)) && !(f == "van" && shown.contains("uan")) && !(f == "vn" && shown.contains("un")) {
+                bad.append("\(f)→\(k)")
+            }
+        }
+        for (k, g) in keyGuide {
+            for f in g.finals {
+                let code = f == "ü" ? "v" : f == "üe" ? "ve" : f
+                if finalKey[code] != k { bad.append("\(k):\(f)") }
+            }
+            if let i = g.initial, initialKey[i] != k { bad.append("\(k):\(i)") }
+        }
+        return bad
+    }
+
     /// Display form of a syllable (lv -> lü, lve -> lüe).
     public static func display(_ pinyin: String) -> String {
         if pinyin.hasPrefix("lv") || pinyin.hasPrefix("nv") {

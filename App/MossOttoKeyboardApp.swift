@@ -83,6 +83,17 @@ struct HomeContent: View {
                             Usage(icon: "hand.tap", text: "候选栏左边的 Mosto：轻点一下打开他的颜文字（右下角“返回”回到键盘），轻点两下切换日光 / 夜灯。")
                             Usage(icon: "circle.lefthalf.filled", text: "外观：自动跟随系统浅色 / 深色；也可固定日光或夜灯（按键与 Mosto 换光，候选栏跟随系统，始终看得清）。")
                         }
+                        Card(title: "小鹤双拼") {
+                            Text("每个字固定两键的双拼方案。全拼用户请先看清学习成本再决定；不切换也完全没关系，两种方案在这个键盘上功能相同。")
+                                .font(.subheadline).fixedSize(horizontal: false, vertical: true)
+                            if snapshot {
+                                Label("说明、学习成本与键位表", systemImage: "keyboard.badge.ellipsis")
+                            } else {
+                                NavigationLink { XiaoheGuideView() } label: {
+                                    Label("说明、学习成本与键位表", systemImage: "keyboard.badge.ellipsis").frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            }
+                        }
                         Card(title: "Mosto 的两种光") {
                             HStack(alignment: .top, spacing: 12) {
                                 LightTile(image: "Mosto", title: "日光", text: "瞪大眼睛看你打字，不打字时待在候选栏左边，偶尔眨眼。")
@@ -109,6 +120,8 @@ struct HomeContent: View {
                                 Link(destination: u) { Label("问题与建议", systemImage: "bubble.left.and.text.bubble.right") }
                             }
                             Divider()
+                            Text("纯粹的输入法：不含 AI，不接入任何大模型或云端服务。候选来自装在 App 里的开源词库与统计数据（按词语在公开语料里出现的次数排序），全部在手机上计算。")
+                                .font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                             Text("键盘不联网。词库、你学过的词和触点习惯只存在这台设备上，不会上传。")
                                 .font(.footnote).foregroundStyle(.secondary)
                         }

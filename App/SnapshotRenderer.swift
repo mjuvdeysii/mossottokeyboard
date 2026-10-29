@@ -33,6 +33,7 @@ enum SnapshotRenderer {
             Shot(name: "letters_idle", page: .letters, state: "idle", borders: true, panel: nil),
             Shot(name: "letters_composing", page: .letters, state: "composing", borders: true, panel: nil),
             Shot(name: "letters_predict", page: .letters, state: "predict", borders: true, panel: nil),
+            Shot(name: "letters_guide", page: .letters, state: "idle", borders: true, panel: nil),
             Shot(name: "letters_shift", page: .letters, state: "shift", borders: true, panel: nil),
             Shot(name: "numbers", page: .numbers, state: "idle", borders: true, panel: nil),
             Shot(name: "symbols", page: .symbols, state: "idle", borders: true, panel: nil),
@@ -101,7 +102,8 @@ enum SnapshotRenderer {
                 root.addSubview(kb)
                 kb.configure(LayoutContext(page: shot.page, chinese: !shot.name.hasPrefix("en_"), showGlobe: shot.globe, returnLabel: nil,
                                            returnIsAccent: false, shifted: shot.state == "shift", capsLock: false,
-                                           keyBorders: shot.borders, pinyinGrid: shot.name.hasPrefix("t9") || shot.name.hasSuffix("_t9")))
+                                           keyBorders: shot.borders, pinyinGrid: shot.name.hasPrefix("t9") || shot.name.hasSuffix("_t9"),
+                                           xiaoheGuide: shot.name.hasSuffix("guide")))
                 let composing = candidates(["你好", "尼好", "泥好", "拟好", "你", "尼", "泥", "拟", "逆", "腻", "nihc"], correctedFirst: true)
                 switch shot.state {
                 case "composing": bar.update(preedit: "ni hao", candidates: composing)
@@ -189,6 +191,19 @@ enum SnapshotRenderer {
             r.scale = 3
             if let img = r.uiImage {
                 try? img.pngData()?.write(to: dir.appendingPathComponent("\(night ? "night" : "day")_app_home.png"))
+            }
+            // the 小鹤双拼 page (explanation, learning cost, key chart)
+            let guide = XiaoheGuideContent()
+                .padding(.horizontal, 16)
+                .frame(width: width)
+                .padding(.vertical, 12)
+                .background(Color(UIColor.systemGroupedBackground))
+                .tint(mostoTint)
+                .environment(\.colorScheme, night ? .dark : .light)
+            let g = ImageRenderer(content: guide)
+            g.scale = 3
+            if let img = g.uiImage {
+                try? img.pngData()?.write(to: dir.appendingPathComponent("\(night ? "night" : "day")_app_xiaohe.png"))
             }
         }
         // The keyboard's memory with the engine loaded and working, measured in this process the same way iOS

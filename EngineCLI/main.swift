@@ -473,6 +473,12 @@ case "bench", "gate":
             if !ok { failed = true }
             try? FileManager.default.removeItem(at: dir)
         }
+        // the key chart (键位提示 and the app's 小鹤双拼 page) agrees with the code table
+        do {
+            let bad = XiaoheScheme.guideAgrees()
+            print(bad.isEmpty ? "PASS xiaohe.keyguide" : "FAIL xiaohe.keyguide " + bad.joined(separator: " "))
+            if !bad.isEmpty { failed = true }
+        }
         // 联想: the model's suggestions, and what this user wrote after the same words before
         do {
             let ud = UserDictionary(lexicon: lex, url: nil)

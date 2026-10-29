@@ -5,6 +5,8 @@ final class KeyView: UIView {
     private(set) var borders = false
     private let label = UILabel()
     private let hintLabel = UILabel()
+    /// 小鹤键位提示: the initial and finals under the letter
+    private let guideLabel = UILabel()
     private let icon = UIImageView()
 
     var pressed = false { didSet { if pressed != oldValue { updateColors() } } }
@@ -15,7 +17,7 @@ final class KeyView: UIView {
             guard blanked != oldValue else { return }
             UIView.animate(withDuration: 0.15) {
                 let a: CGFloat = self.blanked ? 0 : 1
-                self.label.alpha = a; self.hintLabel.alpha = a; self.icon.alpha = a
+                self.label.alpha = a; self.hintLabel.alpha = a; self.icon.alpha = a; self.guideLabel.alpha = a
             }
             wings.isHidden = blanked || spec.action != .space
             crown.isHidden = blanked || spec.action != .toggleLanguage
@@ -51,6 +53,10 @@ final class KeyView: UIView {
         icon.contentMode = .center
         addSubview(label)
         addSubview(hintLabel)
+        guideLabel.numberOfLines = 0
+        guideLabel.textAlignment = .center
+        guideLabel.isHidden = true
+        addSubview(guideLabel)
         addSubview(icon)
         apply(spec, borders: borders)
     }
@@ -60,13 +66,15 @@ final class KeyView: UIView {
         // nothing to redraw when the key is unchanged (this runs for every key on every keystroke)
         if hasApplied, borders == self.borders, spec.label == self.spec.label, spec.symbol == self.spec.symbol,
            spec.style == self.spec.style, spec.action == self.spec.action, spec.alt == self.spec.alt,
-           spec.width == self.spec.width { return }
+           spec.width == self.spec.width, spec.guideFinals == self.spec.guideFinals,
+           spec.guideInitial == self.spec.guideInitial { return }
         hasApplied = true
         self.spec = spec
         self.borders = borders
         label.text = spec.label
         hintLabel.text = spec.hint
         hintLabel.isHidden = spec.hint == nil
+        guideLabel.isHidden = spec.guideFinals.isEmpty && spec.guideInitial == nil
         switch spec.action {
         // the system keyboard's type: regular weight throughout
         case .char where spec.isLetter: label.font = Theme.font(Metrics.letterFont, .regular)
@@ -144,6 +152,7 @@ final class KeyView: UIView {
         backgroundColor = .clear
         label.textColor = fg
         hintLabel.textColor = Theme.secondaryText
+        guideLabel.attributedText = guideText()
         icon.tintColor = fg
         if bounds.width > 0 { layoutCap() }
     }
@@ -185,8 +194,48 @@ final class KeyView: UIView {
         let o = cjkPunctuationOffset(label.text, fontSize: label.font.pointSize)
         label.frame = f.insetBy(dx: 2, dy: 0).offsetBy(dx: o.x, dy: o.y)
         icon.frame = f
+        // 键位提示: the letter moves up and smaller; the initial (gold) and finals sit under it, one per line —
+        // only where the cap is tall enough to read them (portrait); in landscape the letter alone
+        let guided = !(spec.guideFinals.isEmpty && spec.guideInitial == nil) && f.height >= 34
+        guideLabel.isHidden = !guided
+        if guided {
+            let top = f.height * 0.40
+            label.font = Theme.font(min(Metrics.letterFont, top * 0.95), .regular)
+            label.frame = CGRect(x: f.minX + 2, y: f.minY + 1, width: f.width - 4, height: top)
+            guideLabel.attributedText = guideText(fitting: CGSize(width: f.width - 2, height: f.height - top - 2))
+            guideLabel.frame = CGRect(x: f.minX + 1, y: f.minY + top, width: f.width - 2, height: f.height - top - 2)
+        } else if spec.isLetter {
+            label.font = Theme.font(Metrics.letterFont, .regular)
+        }
         // Digit hint in the cap's top-right corner.
         hintLabel.frame = CGRect(x: f.maxX - 16, y: f.minY + 2, width: 12, height: 13)
+    }
+
+    /// The guide's lines: the initial in the accent colour, then each final; the size shrinks until all lines fit.
+    private func guideText(fitting box: CGSize? = nil) -> NSAttributedString {
+        var lines: [(String, UIColor)] = []
+        if let i = spec.guideInitial { lines.append((i, Theme.correctedMark)) }
+        for f in spec.guideFinals { lines.append((f, Theme.secondaryText)) }
+        guard !lines.isEmpty else { return NSAttributedString() }
+        var size: CGFloat = 10
+        if let box {
+            while size > 6.5 {
+                let font = Theme.font(size, .semibold)
+                let widest = lines.map { ($0.0 as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
+                if widest <= box.width && font.lineHeight * CGFloat(lines.count) <= box.height { break }
+                size -= 0.5
+            }
+        }
+        let para = NSMutableParagraphStyle()
+        para.alignment = .center
+        para.lineSpacing = 0
+        para.maximumLineHeight = Theme.font(size, .semibold).lineHeight
+        let out = NSMutableAttributedString()
+        for (k, (text, color)) in lines.enumerated() {
+            out.append(NSAttributedString(string: (k > 0 ? "\n" : "") + text, attributes: [
+                .font: Theme.font(size, .semibold), .foregroundColor: color, .paragraphStyle: para]))
+        }
+        return out
     }
 
     /// Mosto's two little bat wings at the ends of the space bar: a curved arm out to the tip, three scalloped

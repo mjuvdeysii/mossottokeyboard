@@ -34,6 +34,9 @@ struct KeySpec {
     var style: KeyStyle = .normal
     var isLetter: Bool = false
     var hint: String? = nil          // small corner label (top-row digits, like Gboard)
+    /// 小鹤键位提示: the initial (zh / ch / sh) and finals this letter stands for, drawn under the letter
+    var guideInitial: String? = nil
+    var guideFinals: [String] = []
     var moreAlts: [String] = []      // further long-press choices after `alt`, shown as a row
 }
 
@@ -53,6 +56,8 @@ struct LayoutContext: Equatable {
     var pinyinGrid: Bool = false
     /// Something is being composed (重输 and 分词 apply).
     var composing: Bool = false
+    /// 小鹤键位提示: the letter keys show the initials and finals of 小鹤双拼 (learning mode)
+    var xiaoheGuide: Bool = false
 }
 
 /// Geometry measured from Gboard iOS 2.3 on a 402 pt wide iPhone (1206 px screenshots):
@@ -123,7 +128,12 @@ enum Layouts {
                 let upper = ctx.shifted || ctx.capsLock
                 let label = upper ? String(c).uppercased() : String(c)
                 // letters are plain: no corner digits, no long-press symbols (digits and symbols live on 123 / #+=)
-                specs.append(KeySpec(action: .char(String(c)), label: label, isLetter: true))
+                var spec = KeySpec(action: .char(String(c)), label: label, isLetter: true)
+                if ctx.xiaoheGuide, ctx.chinese, let g = XiaoheScheme.keyGuide[c] {
+                    spec.guideInitial = g.initial
+                    spec.guideFinals = g.finals
+                }
+                specs.append(spec)
             }
             if r == 2 {
                 let shiftSymbol = ctx.capsLock ? "capslock.fill" : (ctx.shifted ? "shift.fill" : "shift")

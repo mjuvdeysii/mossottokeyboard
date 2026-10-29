@@ -400,6 +400,7 @@ final class SettingsPanelView: UIView {
     private let layoutControl = UISegmentedControl(items: ["全键盘", "九宫格"])
     private let numberControl = UISegmentedControl(items: ["完整页", "九宫格"])
     private let englishSwitch = UISwitch()
+    private let guideSwitch = UISwitch()
     private let correctionSwitch = UISwitch()
     private let feedbackSwitch = UISwitch()
     private let soundSwitch = UISwitch()
@@ -414,7 +415,7 @@ final class SettingsPanelView: UIView {
         backgroundColor = Theme.touchable   // the system glass shows through (never fully clear: see Theme.touchable)
         // Mosto's colours on every control: violet by day, crown gold at night
         tintColor = Theme.selection
-        for sw in [englishSwitch, correctionSwitch, feedbackSwitch, soundSwitch] { sw.onTintColor = Theme.selection }
+        for sw in [englishSwitch, guideSwitch, correctionSwitch, feedbackSwitch, soundSwitch] { sw.onTintColor = Theme.selection }
         for sc in [schemeControl, layoutControl, numberControl, appearance] {
             sc.selectedSegmentTintColor = Theme.selection
             sc.setTitleTextAttributes([.foregroundColor: Theme.selectionText, .font: Theme.font(14, .semibold)], for: .selected)
@@ -465,6 +466,9 @@ final class SettingsPanelView: UIView {
             row("123 键", numberControl),
             row("中英混输", englishSwitch),
         ], footer: "中文键盘：九宫格时每个键代表它上面的几个字母，小鹤双拼与全拼都能用（全拼更准）；分词键用来切开音节。123 键：打开完整的数字符号页，还是九宫格数字键盘（其上的“符号”键可去完整页）；没设过时跟随中文键盘，用九宫格打字就默认九宫格数字。打字时按下的字母写进输入框，带下划线，选了候选才替换成汉字。中英混输：打 ok、ios 直接出 OK、iOS。")
+        section("小鹤双拼", rows: [
+            row("键位提示", guideSwitch),
+        ], footer: "学习用：小鹤双拼方案下，字母键上显示它代表的声母与韵母（zh、ch、sh 在 V、I、U）。记熟后可关掉。全拼方案下不显示。完整键位表与说明在 Mosto键盘 App 里。")
         section("自动纠错", rows: [
             row("按触点位置纠错", correctionSwitch),
         ], footer: "首选带下划线 = 已纠错；上屏后立刻按删除可撤回这次纠错。英文模式同样按触点纠错：teh → the、dont → don't、im → I'm，空格时替换，删除可撤回。")
@@ -500,7 +504,7 @@ final class SettingsPanelView: UIView {
         }
         numberControl.addTarget(self, action: #selector(numberChanged), for: .valueChanged)
         numberControl.setContentHuggingPriority(.required, for: .horizontal)
-        for sw in [englishSwitch, correctionSwitch, feedbackSwitch, soundSwitch] {
+        for sw in [englishSwitch, guideSwitch, correctionSwitch, feedbackSwitch, soundSwitch] {
             sw.addTarget(self, action: #selector(changed), for: .valueChanged)
         }
         load()
@@ -623,6 +627,7 @@ final class SettingsPanelView: UIView {
         layoutControl.selectedSegmentIndex = s.pinyinGrid ? 1 : 0
         numberControl.selectedSegmentIndex = s.numberPad ? 1 : 0
         englishSwitch.isOn = s.english
+        guideSwitch.isOn = s.xiaoheGuide
         correctionSwitch.isOn = s.autocorrect
         feedbackSwitch.isOn = s.feedback
         soundSwitch.isOn = s.keySound
@@ -638,6 +643,7 @@ final class SettingsPanelView: UIView {
         s.scheme = schemeControl.selectedSegmentIndex
         s.pinyinGrid = layoutControl.selectedSegmentIndex == 1
         s.english = englishSwitch.isOn
+        s.xiaoheGuide = guideSwitch.isOn
         s.autocorrect = correctionSwitch.isOn
         s.feedback = feedbackSwitch.isOn
         s.keySound = soundSwitch.isOn
@@ -681,6 +687,11 @@ final class KeyboardSettings {
     var autocorrect: Bool {
         get { d.object(forKey: "autocorrect") as? Bool ?? true }
         set { d.set(newValue, forKey: "autocorrect") }
+    }
+    /// 小鹤键位提示 (learning mode): letter keys show the initials and finals they stand for.
+    var xiaoheGuide: Bool {
+        get { d.object(forKey: "xiaoheGuide") as? Bool ?? false }
+        set { d.set(newValue, forKey: "xiaoheGuide") }
     }
     /// 中英混输: English words offered among the Chinese candidates.
     var english: Bool {
