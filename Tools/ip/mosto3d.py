@@ -454,7 +454,9 @@ def toy_icon(path):
     if "--hero" in ARGS:
         # the app's hero: the same toy scene on a transparent ground (the card behind it is the app's), blinking
         # with --blink
+        at = bead_position() if night else None
         B.render(path, size, size)
+        if night: add_glow(path, at, radius=0.09, strength=0.65)   # the spade's warm light, as in the keyboard
         return
     tmp = path.replace(".png", "_fg.png")
     B.render(tmp, size, size)

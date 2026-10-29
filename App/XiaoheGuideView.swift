@@ -53,6 +53,10 @@ struct XiaoheGuideContent: View {
                     .font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
 
+            Card(title: "练一练") {
+                XiaoheDrill()
+            }
+
             Card(title: "没有声母的字（零声母）") {
                 ZeroRow(rule: "单字母韵母：按两次", examples: "啊 a → aa　哦 o → oo　饿 e → ee")
                 Divider()
@@ -106,8 +110,9 @@ struct XiaoheKeyChart: View {
     }
 }
 
-private struct ChartKey: View {
+struct ChartKey: View {
     let letter: Character
+    var mark: Color? = nil
     var body: some View {
         let g = XiaoheScheme.keyGuide[letter]
         VStack(spacing: 1) {
@@ -126,6 +131,7 @@ private struct ChartKey: View {
         .frame(maxWidth: .infinity)
         .frame(height: 70)
         .background(VinylCap())
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(mark ?? .clear, lineWidth: 2.5))
     }
 }
 
@@ -188,5 +194,101 @@ struct VinylCap: View {
                     .strokeBorder(LinearGradient(colors: [Color.white.opacity(night ? 0.18 : 0.9), .clear], startPoint: .top, endPoint: .center), lineWidth: 0.8))
                 .padding(.bottom, 2.5)
         }
+    }
+}
+
+/// 练一练: a common character and its pinyin; tap its two keys on the chart. Right goes on to the next one; wrong
+/// shows the two keys it takes. Nothing is kept — it is only for getting a feel for the layout.
+struct XiaoheDrill: View {
+    private static let words: [(String, String)] = [
+        ("你", "ni"), ("好", "hao"), ("我", "wo"), ("是", "shi"), ("中", "zhong"), ("国", "guo"), ("的", "de"),
+        ("了", "le"), ("在", "zai"), ("人", "ren"), ("有", "you"), ("这", "zhe"), ("说", "shuo"), ("要", "yao"),
+        ("就", "jiu"), ("出", "chu"), ("会", "hui"), ("学", "xue"), ("双", "shuang"), ("拼", "pin"), ("想", "xiang"),
+        ("光", "guang"), ("熊", "xiong"), ("鹤", "he"), ("安", "an"), ("爱", "ai"), ("二", "er"), ("饿", "e"),
+        ("昂", "ang"), ("欧", "ou"), ("用", "yong"), ("天", "tian"), ("气", "qi"), ("小", "xiao"), ("月", "yue"),
+        ("去", "qu"), ("快", "kuai"), ("床", "chuang"), ("水", "shui"), ("追", "zhui"), ("女", "nv"), ("绿", "lv"),
+    ]
+    @State private var index = Int.random(in: 0..<XiaoheDrill.words.count)
+    @State private var typed: [Character] = []
+    @State private var verdict: Bool?
+    @State private var streak = 0
+    private let rows = ["qwertyuiop", "asdfghjkl", "zxcvbnm"]
+
+    private var word: (String, String) { Self.words[index] }
+    private var code: [Character] { Array(XiaoheScheme.code(for: word.1) ?? "") }
+
+    var body: some View {
+        VStack(spacing: 12) {
+            HStack(alignment: .center, spacing: 14) {
+                VStack(spacing: 2) {
+                    Text(word.0).font(.system(size: 40, weight: .semibold))
+                    Text(word.1.replacingOccurrences(of: "v", with: "ü")).font(.system(.subheadline, design: .rounded)).foregroundStyle(.secondary)
+                }
+                .frame(width: 76)
+                HStack(spacing: 8) {
+                    ForEach(0..<2, id: \.self) { i in
+                        let shown: Character? = i < typed.count ? typed[i] : (verdict == false ? code[i] : nil)
+                        Text(shown.map { String($0).uppercased() } ?? "")
+                            .font(.system(size: 24, weight: .semibold, design: .rounded))
+                            .frame(width: 48, height: 52)
+                            .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(Color(UIColor.tertiarySystemFill)))
+                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(slotColor(i), lineWidth: 2))
+                    }
+                }
+                Spacer(minLength: 0)
+                VStack(alignment: .trailing, spacing: 4) {
+                    if let v = verdict {
+                        Label(v ? "对了" : "是 \(String(code).uppercased())", systemImage: v ? "checkmark.circle.fill" : "arrow.uturn.right.circle.fill")
+                            .font(.subheadline.weight(.semibold)).foregroundStyle(v ? Color.green : Color.orange)
+                    }
+                    if streak > 1 { Text("连对 \(streak)").font(.caption.weight(.semibold)).foregroundStyle(mostoTint) }
+                }
+            }
+            VStack(spacing: 6) {
+                ForEach(rows, id: \.self) { row in
+                    HStack(spacing: 4) {
+                        ForEach(Array(row), id: \.self) { c in
+                            Button { tap(c) } label: { ChartKey(letter: c, mark: keyMark(c)) }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel(String(c))
+                        }
+                    }
+                    .padding(.horizontal, row.count == 10 ? 0 : (row.count == 9 ? 14 : 44))
+                }
+            }
+            if verdict == false {
+                Button("下一个") { next() }.font(.subheadline.weight(.semibold))
+            }
+        }
+        .animation(.spring(response: 0.25, dampingFraction: 0.8), value: typed.count)
+        .animation(.easeOut(duration: 0.2), value: verdict)
+    }
+
+    private func slotColor(_ i: Int) -> Color {
+        guard let v = verdict else { return i == typed.count ? mostoTint : .clear }
+        return v ? .green : .orange
+    }
+    private func keyMark(_ c: Character) -> Color? {
+        guard verdict == false else { return nil }
+        return code.contains(c) ? .orange : nil
+    }
+    private func tap(_ c: Character) {
+        guard verdict == nil, typed.count < 2 else { return }
+        typed.append(c)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        guard typed.count == 2 else { return }
+        let ok = typed == code
+        verdict = ok
+        streak = ok ? streak + 1 : 0
+        UINotificationFeedbackGenerator().notificationOccurred(ok ? .success : .warning)
+        if ok { DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { next() } }
+    }
+    private func next() {
+        typed = []; verdict = nil
+        var n = Int.random(in: 0..<Self.words.count)
+        if n == index { n = (n + 1) % Self.words.count }
+        index = n
     }
 }

@@ -71,8 +71,19 @@ final class PlaygroundModel: ObservableObject {
         }
     }
 
+    /// The keyboard to practise on (this app's own copy of the settings: the keyboard in other apps is unaffected).
+    @Published var layout = 0 {   // 0 全拼, 1 小鹤双拼, 2 九宫格
+        didSet { applyLayout() }
+    }
+    func applyLayout() {
+        let s = KeyboardSettings.shared
+        s.scheme = layout == 1 ? 0 : 1
+        s.pinyinGrid = layout == 2
+        keyboard?.applySettings()
+    }
+
     func skip() { withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { step = min(step + 1, lessons.count) } }
-    func restart() { clear(); withAnimation { step = 0 } }
+    func restart() { clear(); layout = 0; withAnimation { step = 0 } }
     func clear() { host.clear(); refresh() }
 }
 
@@ -109,7 +120,8 @@ struct KeyboardHostView: UIViewControllerRepresentable {
         ])
         vc.didMove(toParent: box)
         model.keyboard = vc
-        DispatchQueue.main.async { model.ready = true }
+        // the guided steps are written for 全拼 on the full keyboard
+        DispatchQueue.main.async { model.ready = true; model.applyLayout() }
         return box
     }
 
@@ -165,12 +177,18 @@ struct LessonCard: View {
                 Text(l.title).font(.title3.weight(.bold))
                 Spacer()
                 if model.justPassed {
-                    Label("成功", systemImage: "checkmark.circle.fill").font(.subheadline.weight(.semibold)).foregroundStyle(.green)
-                        .transition(.scale.combined(with: .opacity))
+                    // Mosto pops up to cheer the step done
+                    HStack(spacing: 4) {
+                        Image(uiImage: mostoImage("Mosto")).resizable().scaledToFit().frame(width: 34, height: 34)
+                        Text("好！").font(.subheadline.weight(.bold)).foregroundStyle(mostoTint)
+                    }
+                    .transition(.scale(scale: 0.4, anchor: .bottom).combined(with: .opacity))
+                    .accessibilityLabel("成功")
                 }
             }
             Text(l.line).font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            KeyChips(keys: l.keys, slip: l.slip, missing: l.missing)
+            // the keys typed so far fill in, so the step shows where one is
+            KeyChips(keys: l.keys, slip: l.slip, missing: l.missing, done: model.marked.count)
         }
         .padding(16)
         .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
@@ -185,25 +203,29 @@ private struct KeyChips: View {
     let keys: String
     let slip: Int?
     let missing: Character?
+    var done = 0
     var body: some View {
         WrapLayout(spacing: 3, lineSpacing: 5) {
             ForEach(Array(keys.enumerated()), id: \.offset) { i, c in
                 if i == slip, let m = missing {
                     // the key not pressed, then the one at this place
                     chip(String(m), style: .gap)
-                    chip(String(c), style: .plain)
+                    chip(String(c), style: .plain, typed: i < done)
                 } else {
-                    chip(c == "␣" ? "空格" : String(c), style: i == slip ? .slip : (c == "␣" || c == "↩" ? .function : .plain))
+                    chip(c == "␣" ? "空格" : String(c), style: i == slip ? .slip : (c == "␣" || c == "↩" ? .function : .plain),
+                         typed: c != "␣" && c != "↩" && i < done)
                 }
             }
         }
+        .animation(.easeOut(duration: 0.12), value: done)
     }
     enum Style { case plain, slip, gap, function }
-    @ViewBuilder private func chip(_ t: String, style: Style) -> some View {
+    @ViewBuilder private func chip(_ t: String, style: Style, typed: Bool = false) -> some View {
         Text(t)
-            .font(.system(size: 15, weight: style == .slip ? .bold : .regular, design: .rounded))
+            .font(.system(size: 15, weight: style == .slip || typed ? .bold : .regular, design: .rounded))
             .strikethrough(style == .gap, color: .secondary)
-            .foregroundStyle(style == .slip ? Color.white : (style == .gap ? Color.secondary : Color.primary))
+            .foregroundStyle(style == .slip ? Color.white : (style == .gap ? Color.secondary : (typed ? mostoTint : Color.primary)))
+            .scaleEffect(typed ? 1.06 : 1)
             .frame(minWidth: 24, minHeight: 30)
             .padding(.horizontal, t.count > 1 ? 8 : 2)
             .background(
@@ -226,6 +248,13 @@ private struct DoneCard: View {
                 Text("都会了").font(.title3.weight(.bold))
                 Text("随便打打试试。到“启用”里添加键盘，就能在所有 App 里用。").font(.subheadline).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                Picker("练习用的键盘", selection: $model.layout) {
+                    Text("全拼").tag(0)
+                    Text("小鹤双拼").tag(1)
+                    Text("九宫格").tag(2)
+                }
+                .pickerStyle(.segmented)
+                .padding(.vertical, 2)
                 Button("再来一遍") { model.restart() }.font(.subheadline.weight(.semibold))
             }
         }
