@@ -66,7 +66,7 @@ final class PlaygroundModel: ObservableObject {
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) { [weak self] in
                 guard let self else { return }
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { self.step += 1; self.justPassed = false }
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { self.step = min(self.step + 1, lessons.count); self.justPassed = false }
             }
         }
     }
@@ -126,7 +126,7 @@ struct PlaygroundScreen: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     if model.step < lessons.count {
-                        LessonCard(model: model)
+                        LessonCard(model: model, index: model.step)
                     } else {
                         DoneCard(model: model)
                     }
@@ -147,13 +147,16 @@ struct PlaygroundScreen: View {
 /// The current step: progress, what to do, the keys to press (the slip in colour), and a tick when it worked.
 struct LessonCard: View {
     @ObservedObject var model: PlaygroundModel
+    /// The step this card shows, fixed when it is made: while it animates out the model has already moved on
+    /// (past the last step, too), so the card never reads the model's current step for its content.
+    let index: Int
     var body: some View {
-        let l = lessons[model.step]
+        let l = lessons[min(max(index, 0), lessons.count - 1)]
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
                 ForEach(0..<lessons.count, id: \.self) { i in
-                    Capsule().fill(i < model.step ? mostoTint : (i == model.step ? mostoTint.opacity(0.55) : Color(UIColor.tertiarySystemFill)))
-                        .frame(width: i == model.step ? 22 : 8, height: 8)
+                    Capsule().fill(i < index ? mostoTint : (i == index ? mostoTint.opacity(0.55) : Color(UIColor.tertiarySystemFill)))
+                        .frame(width: i == index ? 22 : 8, height: 8)
                 }
                 Spacer()
                 Button("跳过") { model.skip() }.font(.subheadline)
@@ -172,7 +175,7 @@ struct LessonCard: View {
         .padding(16)
         .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: model.justPassed)
-        .id(model.step)
+        .id(index)
         .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity), removal: .opacity))
     }
 }

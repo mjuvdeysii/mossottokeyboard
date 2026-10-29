@@ -203,7 +203,7 @@ enum SnapshotRenderer {
             lesson.marked = "jintiantiaqi"
             let parts: [(String, AnyView)] = [
                 ("0", AnyView(page(VStack(spacing: 14) {
-                    LessonCard(model: lesson)
+                    LessonCard(model: lesson, index: 2)
                     TextArea(model: lesson)
                 }))),
                 ("1", AnyView(page(VStack(spacing: 30) {
