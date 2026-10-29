@@ -188,21 +188,32 @@ enum SnapshotRenderer {
         }
         // the companion app's home screen (the same SwiftUI view, rendered off-screen)
         for night in [false, true] {
-            let content = HomeContent(text: .constant(""), snapshot: true)
-                .frame(width: width)
-                .padding(.vertical, 12)
-                .background(Color(UIColor.systemGroupedBackground))
-                .tint(mostoTint)
-                .environment(\.colorScheme, night ? .dark : .light)
-            // a tall page can exceed what the renderer or the PNG encoder takes at 3×: step down until it is written
-            let r = ImageRenderer(content: content)
-            var written = false
-            for scale in [3.0, 2.0, 1.5, 1.0] where !written {
-                r.scale = scale
-                guard let img = r.uiImage else { print("SNAPSHOT app_home: no image at \(scale)×"); continue }
-                guard let data = img.pngData() else { print("SNAPSHOT app_home: no PNG at \(scale)×, size \(img.size)"); continue }
-                do { try data.write(to: dir.appendingPathComponent("\(night ? "night" : "day")_app_home.png")); written = true }
-                catch { print("SNAPSHOT app_home: write failed \(error)") }
+            // the home page in three parts (one tall bitmap of all of it comes out black)
+            func page<V: View>(_ v: V) -> some View {
+                v.padding(.horizontal, 16)
+                    .frame(width: width)
+                    .padding(.vertical, 12)
+                    .background(Color(UIColor.systemGroupedBackground))
+                    .tint(mostoTint)
+                    .environment(\.colorScheme, night ? .dark : .light)
+            }
+            let parts: [(String, AnyView)] = [
+                ("1", AnyView(page(VStack(spacing: 30) {
+                    MostoHero()
+                    SetupCard()
+                }))),
+                ("2", AnyView(page(FeatureShowcase()))),
+                ("3", AnyView(page(VStack(spacing: 30) {
+                    MoreList(snapshot: true)
+                    HomeFooter()
+                }))),
+            ]
+            for (k, v) in parts {
+                let r = ImageRenderer(content: v)
+                r.scale = 2
+                if let img = r.uiImage, let data = img.pngData() {
+                    try? data.write(to: dir.appendingPathComponent("\(night ? "night" : "day")_app_home\(k).png"))
+                } else { print("SNAPSHOT app_home\(k): no image") }
             }
             // the 小鹤双拼 page (explanation, learning cost, key chart)
             let guide = XiaoheGuideContent()
