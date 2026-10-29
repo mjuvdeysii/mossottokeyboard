@@ -197,7 +197,15 @@ enum SnapshotRenderer {
                     .tint(mostoTint)
                     .environment(\.colorScheme, night ? .dark : .light)
             }
+            let lesson = PlaygroundModel()
+            lesson.step = 2
+            lesson.before = "你好今天很热"
+            lesson.marked = "jintiantiaqi"
             let parts: [(String, AnyView)] = [
+                ("0", AnyView(page(VStack(spacing: 14) {
+                    LessonCard(model: lesson)
+                    TextArea(model: lesson)
+                }))),
                 ("1", AnyView(page(VStack(spacing: 30) {
                     MostoHero()
                     SetupCard()

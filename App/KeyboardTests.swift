@@ -4,7 +4,7 @@ import UIKit
 /// marked text the way UIKit text views do (marked text sits at the cursor and is part of the text before it;
 /// inserting replaces it; unmarking keeps it). It also records what a real host would punish: deleting while
 /// something is marked (hosts disagree about what that deletes).
-final class FakeTextHost: NSObject, UITextDocumentProxy {
+class FakeTextHost: NSObject, UITextDocumentProxy {
     private(set) var text: [Character] = []
     private(set) var cursor = 0
     private(set) var marked: Range<Int>?
@@ -55,6 +55,7 @@ final class FakeTextHost: NSObject, UITextDocumentProxy {
         marked = s.isEmpty ? nil : start..<(start + s.count)
     }
     func unmarkText() { marked = nil }
+    func clear() { text = []; cursor = 0; marked = nil }
 }
 
 /// CI: drives the real KeyboardViewController against FakeTextHost — fixed scenarios with expected text, then

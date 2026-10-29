@@ -18,25 +18,34 @@ let mostoTint = Color(UIColor { $0.userInterfaceStyle == .dark
 /// The companion app: Mosto, how to turn the keyboard on, a field to try it, how it works, and the fine print.
 /// Built from plain stacks (not Form), laid out like iOS Settings, so the same view also renders to an image in CI.
 struct ContentView: View {
-    @State private var text = ""
-
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                HomeContent(text: $text)
+        TabView {
+            NavigationStack {
+                PlaygroundScreen()
+                    .navigationTitle("上手")
+                    .navigationBarTitleDisplayMode(.inline)
             }
-            .background(Color(UIColor.systemGroupedBackground))
-            .navigationTitle("Mosto键盘")
-            .navigationBarTitleDisplayMode(.inline)
-            // the hero card carries the name: the bar stays clear (the title still names the back button)
-            .toolbar { ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1) } }
-            .tint(mostoTint)
-            .task {
-                // CI only: render the keyboard's real views to PNGs, then exit (SnapshotRenderer.swift)
-                if SnapshotRenderer.requested,
-                   let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first {
-                    SnapshotRenderer.run(in: scene)
-                }
+            .tabItem { Label("上手", systemImage: "hand.tap") }
+            NavigationStack {
+                EnableScreen()
+                    .navigationTitle("启用")
+                    .navigationBarTitleDisplayMode(.inline)
+            }
+            .tabItem { Label("启用", systemImage: "keyboard") }
+            NavigationStack {
+                ScrollView { HomeContent(text: .constant("")) }
+                    .background(Color(UIColor.systemGroupedBackground))
+                    .navigationTitle("了解")
+                    .navigationBarTitleDisplayMode(.inline)
+            }
+            .tabItem { Label("了解", systemImage: "sparkles") }
+        }
+        .tint(mostoTint)
+        .task {
+            // CI only: render the keyboard's real views to PNGs, then exit (SnapshotRenderer.swift)
+            if SnapshotRenderer.requested,
+               let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first {
+                SnapshotRenderer.run(in: scene)
             }
         }
     }
@@ -50,10 +59,6 @@ struct HomeContent: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 30) {
             MostoHero()
-            SetupCard()
-            if !snapshot {
-                TryField(text: $text)
-            }
             FeatureShowcase()
             MoreList(snapshot: snapshot)
             HomeFooter()
