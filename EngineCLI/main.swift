@@ -43,6 +43,11 @@ if let v = env["MIXC"].flatMap(Double.init) { decoder.mixedCasedBonus = v }
 if let v = env["MIXR"].flatMap(Double.init) { decoder.mixedRarePenalty = v }
 if let v = env["MIXY"].flatMap(Double.init) { decoder.mixedPinyinPenalty = v }
 if let v = env["MIXZ"].flatMap(Double.init) { decoder.mixedMinZipf = v }
+if let v = env["MISSP"].flatMap(Double.init) { decoder.missingPenalty = v }
+if let v = env["MIXF"].flatMap(Double.init) { decoder.mixedForeignBonus = v }
+if let v = env["ABM"].flatMap(Double.init) { decoder.midAbbreviationPenalty = v }
+if let v = env["MIXS"].flatMap(Double.init) { decoder.mixedSlipPenalty = v }
+if let v = env["SKM"].flatMap(Double.init) { decoder.slipMargin = v }
 if env["SKIP"] == "0" { decoder.skipEnabled = false }
 if let v = env["SKIPP"].flatMap(Double.init) { decoder.skipPenalty = v; decoder.xiaoheSkipPenalty = v }
 if let v = env["SKIPD"].flatMap(Double.init) { decoder.skipDoublePenalty = v; decoder.xiaoheSkipDoublePenalty = v }
@@ -177,6 +182,16 @@ case "type":
     let letters = args.count > 3 ? args[3] : ""
     let t0 = Date()
     let t9 = ProcessInfo.processInfo.environment["T9"] == "1"   // keys are 九宫格 digits (2–9, ' for 分词)
+    if let spec = ProcessInfo.processInfo.environment["LEARN"] {   // "zhang zi xuan|张梓萱;..." learned once each first
+        let ud = UserDictionary(lexicon: lex, url: nil)
+        let idMap = Dictionary(uniqueKeysWithValues: lex.syllables.enumerated().map { ($1, UInt16($0)) })
+        for item in spec.split(separator: ";") {
+            let f = item.split(separator: "|")
+            let ids = f[0].split(separator: " ").compactMap { idMap[String($0)] }
+            for _ in 0..<(f.count > 2 ? Int(f[2])! : 1) { ud.learn(syllables: ids, text: String(f[1])) }
+        }
+        decoder.user = ud
+    }
     let r = decoder.decode(letters.map { t9 ? Tap.t9($0) : Tap.exact($0) })
     let ms = Date().timeIntervalSince(t0) * 1000
     print("preedit: \(r.preedit)   (\(String(format: "%.1f", ms)) ms)")
@@ -340,6 +355,18 @@ case "bench", "gate":
             if c.prefix(3).contains(where: { $0.text == t }) { top3 += 1 }
         }
         metrics["extra.sentences.top1"] = 100 * Double(ok) / Double(max(total, 1))
+        // and with one key left out instead
+        var mok = 0, mtotal = 0
+        for (t, ids) in decoder.scheme == .xiaohe ? [] : sentItems {
+            var letters = Array(codeLetters(ids))
+            guard letters.count >= 4 else { continue }
+            letters.remove(at: 1 + Int(rng.next() * Double(letters.count - 2)))
+            let c = decoder.decode(letters.map { Tap.exact($0) }).candidates
+            mtotal += 1
+            if c.first?.text == t { mok += 1 } else if env["MISS_DEBUG"] != nil { print("   -", t, "→", c.first?.text ?? "-", "|", String(letters)) }
+        }
+        metrics["missing.sentences.top1"] = 100 * Double(mok) / Double(max(mtotal, 1))
+        if mtotal > 0 { print(String(format: "== one key missing: sentences top1 %.1f%%", metrics["missing.sentences.top1"]!)) }
         print(String(format: "== one key too many: sentences top1 %.1f%%  top3 %.1f%%  (n=%d)", metrics["extra.sentences.top1"]!, 100 * Double(top3) / Double(max(total, 1)), total))
     }
 
@@ -431,6 +458,48 @@ case "bench", "gate":
         metrics["learn.same"] = firstTime(sentItems[...])
         metrics["learn.harm"] = metrics["learn.base"]! - metrics["learn.heldout"]!
         decoder.user = nil
+        // 自造词: a phrase the lexicon does not read (names, the user's own terms), committed once — typed again alone
+        // it must come first, and inside a sentence it must be read as that phrase
+        do {
+            var rngU = RNG(s: 11)
+            var phrases: [(text: String, ids: [UInt16], sentence: Int)] = []
+            for (si, (t, ids)) in sentItems.enumerated() where t.count >= 6 {
+                let chars = Array(t)
+                let L = 3 + Int(rngU.next() * 2)
+                let a = Int(rngU.next() * Double(chars.count - L))
+                let pt = String(chars[a..<a + L]), pids = Array(ids[a..<a + L])
+                guard pt.allSatisfy({ $0.unicodeScalars.first!.value >= 0x4E00 }) else { continue }
+                let top = decoder.decode(codeLetters(pids).map { Tap.exact($0) }).candidates.first?.text
+                if top != pt { phrases.append((pt, pids, si)) }
+            }
+            let ud2 = UserDictionary(lexicon: lex, url: nil)
+            for ph in phrases { ud2.learn(syllables: ph.ids, text: ph.text) }
+            decoder.user = ud2
+            var alone = 0, inside = 0, insideN = 0
+            for ph in phrases {
+                let top = decoder.decode(codeLetters(ph.ids).map { Tap.exact($0) }).candidates.first?.text
+                if top == ph.text { alone += 1 } else if env["USER_DEBUG"] != nil { print("   alone", ph.text, "→", top ?? "") }
+                let (t, ids) = sentItems[ph.sentence]
+                guard ids.count <= 14 else { continue }
+                insideN += 1
+                let st = decoder.decode(codeLetters(ids).map { Tap.exact($0) }).candidates.first?.text ?? ""
+                if st.contains(ph.text) { inside += 1 } else if env["USER_DEBUG"] != nil { print("   inside", ph.text, "|", t, "→", st) }
+            }
+            // by initials and half typed (全拼): 莫斯托 from mst, 摸索台灯 second from mosuotai
+            if decoder.scheme == .quanpin {
+                let idMap = Dictionary(uniqueKeysWithValues: lex.syllables.enumerated().map { ($1, UInt16($0)) })
+                ud2.learn(syllables: ["mo", "si", "tuo"].compactMap { idMap[$0] }, text: "莫斯托")
+                ud2.learn(syllables: ["mo", "suo", "tai", "deng"].compactMap { idMap[$0] }, text: "摸索台灯")
+                let a = decoder.decode("mst".map { Tap.exact($0) }).candidates.first?.text
+                let b = decoder.decode("mosuotai".map { Tap.exact($0) }).candidates.prefix(2).map { $0.text }
+                if a != "莫斯托" || !b.contains("摸索台灯") { alone = 0; print("   自造词 mst →", a ?? "", "| mosuotai →", b) }
+            }
+            decoder.user = nil
+            metrics["userword.alone"] = 100 * Double(alone) / Double(max(phrases.count, 1))
+            metrics["userword.inside"] = 100 * Double(inside) / Double(max(insideN, 1))
+            print(String(format: "== 自造词: alone top1 %.1f%% (n=%d) | inside its sentence %.1f%% (n=%d)",
+                         metrics["userword.alone"]!, phrases.count, metrics["userword.inside"]!, insideN))
+        }
         print(String(format: "== learning: picks/sentence %.2f | typed again %.1f%% | unseen after learning %.1f%% (nothing learned %.1f%%)",
                      metrics["learn.picks"]!, metrics["learn.same"]!, metrics["learn.heldout"]!, metrics["learn.base"]!))
     }
@@ -457,6 +526,8 @@ case "bench", "gate":
             ("t9.sentences.top3", 55.0, true),
             ("t9.sentences.ms", 20.0, false),
             ("learn.same", 95.0, true),        // sentences typed again after picking them once (%)
+            ("userword.alone", 98.0, true),    // 自造词 typed again alone: first (%)
+            ("userword.inside", 94.0, true),   // 自造词 inside its sentence: read as that phrase (%)
             ("adapt.after", 78.0, true),       // off-centre thumbs, unseen words after 1000 words of use (%)
             ("learn.harm", 1.0, false),        // unseen sentences made worse by what was learned (points) — at most
             ("fuzz.bad", 0.0, false),          // random input: candidates that use no keys, too many, or have no text
@@ -474,10 +545,13 @@ case "bench", "gate":
             ("t9.sentences.top1", 68.0, true),
             ("t9.sentences.ms", 150.0, false),
             ("learn.same", 95.0, true),
+            ("userword.alone", 98.0, true),
+            ("userword.inside", 94.0, true),
             ("learn.harm", 1.0, false),
             ("fuzz.bad", 0.0, false),
             ("fuzz.p99.ms", 100.0, false),
             ("extra.sentences.top1", 70.0, true),
+            ("missing.sentences.top1", 45.0, true), // a sentence with one key left out still read right (%)
             ("mixed.sentences.top1", 72.0, true),
         ]
         print("scheme:", decoder.scheme == .xiaohe ? "小鹤双拼" : "全拼")

@@ -65,4 +65,6 @@ python3 Tools/gen_xcodeproj.py
 `EngineCLI/sentences3.tsv`（185 句）不参与任何调参，只用于验证改动是否真的变好：
 `SENTENCES=EngineCLI/sentences3.tsv EngineCLI <lexicon.bin> bench 0.22`（`PERFECT_DEBUG=1` 列出打错的句子）。
 `EngineCLI/sentences4.tsv`（158 句，运营 / 育儿 / 摄影 / 日语 / 日常，pypinyin 生成后人工校对多音字）是第二个留出集，同样只用于验证。
+门禁另含：多按一键 / 漏按一键（全拼）整句首选、中英混输句子、自造词（单打 / 句中）。
+
 联想质量：`SEG=<按词切分的句子文件> EngineCLI <lexicon.bin> predbench`（只在词边界处计分：下一个词是否在前六个联想里）。

@@ -48,7 +48,7 @@ public final class Decoder {
     /// A word of two or more syllables the user picked starts this much ahead (a picked word should come first next
     /// time; homophone words rarely collide the way single characters do).
     public var userWordBoost = 3.0
-    public var userPhraseScore = 9.0
+    public var userPhraseScore = 11.0
     /// 中英混输: English words for the typed letters, ranked against the Chinese readings by frequency.
     public var english: EnglishLexicon?
     public var englishEnabled = true
@@ -80,6 +80,12 @@ public final class Decoder {
     public var mixedMinZipf = 4.0
     public var mixedPinyinPenalty = 4.0
     public var mixedRarePenalty = 5.0
+    /// A common word whose letters no pinyin spells (bug, email): reading it as Chinese needs a correction, so the
+    /// word as typed is the likelier meaning.
+    public var mixedForeignBonus = 3.0
+    /// 简拼 of one syllable between others typed in full, on the full keyboard.
+    public var midAbbreviationPenalty = 0.0
+    public var mixedSlipPenalty = 6.0
 
     /// How many pinyin syllables spell `word` exactly (fewest), 0 when it is not pinyin at all.
     private var pinyinCache: [String: Int] = [:]
@@ -232,6 +238,10 @@ public final class Decoder {
     public var skipPenalty = 11.0
     public var skipDoublePenalty = 8.0
     public var xiaoheSkipPenalty = 7.0
+    /// 漏按了一个键 (全拼): a letter the keys left out — don for dong, tia for tian.
+    public var missingPenalty = 9.0
+    /// How far below the best clean path a slip / left-out-key path may start and still be kept.
+    public var slipMargin = 2.0
     public var xiaoheSkipDoublePenalty = 5.5
     @inline(__always) private func skipCost(_ taps: [Tap], _ k: Int) -> Double {
         let doubled = k > 0 && taps[k - 1].key == taps[k].key || k + 1 < taps.count && taps[k + 1].key == taps[k].key
@@ -295,8 +305,26 @@ public final class Decoder {
                         next.append(State(node: st.node, score: st.score - skipCost(taps, pos), corrected: true, skipped: true))
                     }
                 }
-                if let top = next.map({ $0.score }).max() { next = next.filter { $0.score >= top - pruneMargin } }
-                if next.count > 24 { next = Array(next.sorted { $0.score > $1.score }.prefix(24)) }
+                // 漏按了一个键: a letter the keys skipped (don for dong, tia for tian), once per syllable like a slip
+                if skipEnabled, !t.group {
+                    var added: [State] = []
+                    for st in next where !st.skipped {
+                        for (_, child) in st.node.children {
+                            added.append(State(node: child, score: st.score - missingPenalty, corrected: true, skipped: true))
+                        }
+                    }
+                    next += added
+                }
+                // a slip or a left-out key costs more than the margin: those paths are judged among themselves
+                if let top = next.map({ $0.score }).max() {
+                    let margin = pruneMargin + slipMargin
+                    next = next.filter { $0.score >= top - (($0.skipped) ? margin : pruneMargin) }
+                }
+                if next.count > 24 {
+                    let plain = next.filter { !$0.skipped }.sorted { $0.score > $1.score }.prefix(20)
+                    let slips = next.filter { $0.skipped }.sorted { $0.score > $1.score }.prefix(24 - plain.count)
+                    next = Array(plain) + Array(slips)
+                }
                 pos += 1
                 for st in next {
                     let cost = st.score - (st.corrected ? correctionPenalty : 0)
@@ -329,8 +357,10 @@ public final class Decoder {
                 if "zcs".contains(k0), i + 2 < n, hasH(i + 1), !vowel(i + 2), !boundaries.contains(i + 1) {
                     ends.append((end: i + 2, head: String(k0) + "h"))
                 }
-                let cost = abbreviationPenalty + (t0.group ? t9AbbreviationExtra : 0)
+                let cost0 = abbreviationPenalty + (t0.group ? t9AbbreviationExtra : 0)
                 for (end, head) in ends {
+                    // one initial between spelled-out syllables (bu g xiu) is more often a slip or an English word
+                    let cost = cost0 + (i > 0 && end < n && !t0.group ? midAbbreviationPenalty : 0)
                     for id in trie.children[k0]?.below ?? [] {
                         // a lone z / c / s also stands for zh / ch / sh, as people abbreviate both
                         guard lexicon.syllables[Int(id)].hasPrefix(head) else { continue }
@@ -502,6 +532,7 @@ public final class Decoder {
         // WeChat) is typed on purpose and pays less. Full keyboard only, letters as typed. The keys after it are
         // reachable too, so the Chinese words that follow it are read.
         var englishEdges: [Edge] = []
+        var foreignSpans = Set<Int>()
         let mixing = englishEnabled && mixedEnglish && english != nil && n >= 2 && !taps.contains(where: { $0.group })
         let letters = mixing ? taps.map { $0.key.lowercased() } : []
         for i in 0..<n where reach[i] {
@@ -523,6 +554,8 @@ public final class Decoder {
                     if syl == 1 { continue }
                     if syl > 1 { cost += mixedPinyinPenalty }
                     if w.zipf < mixedMinZipf { cost += mixedRarePenalty }
+                    // not when it is the tail of a longer word typed here (lack in slack)
+                    else if syl == 0, !englishEdges.contains(where: { $0.end == j + 1 }) { cost -= mixedForeignBonus; foreignSpans.insert(i * 1024 + j + 1) }
                 }
                 let score = mixedA + mixedB * w.zipf - wordPenalty - cost + (cased ? mixedCasedBonus : 0)
                 englishEdges.append(Edge(start: i, end: j + 1, score: score, corrected: false, entry: -1, userText: w.display,
@@ -534,13 +567,15 @@ public final class Decoder {
         for i in 0..<n where reach[i] {
             for first in spansFrom[i] {
                 let firstEnd = first.end
+                // a slip read into the letters of a common English word typed whole (bu·g for bug) pays more
+                let fsp = first.spatial - (first.kind == 3 && foreignSpans.contains(i * 1024 + firstEnd) ? mixedSlipPenalty : 0)
                 // Single characters (best first: stop at the first that no longer makes the cut). An abbreviation
                 // is never a one-character word.
                 if first.kind != 2 {
                     for idx in lexicon.singles(first.id) {
                         let base = Double(lexicon.entry(idx).score) / 100 - wordPenalty
-                        guard accepts(i, firstEnd, 1, base + first.spatial) else { break }
-                        insert(Edge(start: i, end: firstEnd, score: base + first.spatial, corrected: first.corrected, entry: idx,
+                        guard accepts(i, firstEnd, 1, base + fsp) else { break }
+                        insert(Edge(start: i, end: firstEnd, score: base + fsp, corrected: first.corrected, entry: idx,
                                     userText: nil, ids: [], cuts: [firstEnd], kinds: [first.kind]))
                     }
                 }
@@ -551,7 +586,7 @@ public final class Decoder {
                     // two-syllable words: each reading of the second syllable, the words best first
                     if !follow.pairs.isEmpty {
                         for s2 in seconds {
-                            let sp = first.spatial + s2.spatial
+                            let sp = fsp + s2.spatial
                             let corr = first.corrected || s2.corrected
                             for idx in follow.pairs {
                                 let score = Double(lexicon.entry(idx).score) / 100
@@ -734,7 +769,8 @@ public final class Decoder {
                 }
                 var pos = result.prefix(while: { $0.score >= c.score }).count
                 // a short plain word never displaces a Chinese reading of the same keys (么 before "me")
-                if n <= 3, !result.isEmpty, english.exact(typed)?.display == c.text, c.text == typed { pos = max(pos, 1) }
+                // nor does a plain word that pinyin spells whole (zhang, women, bang → 张, 我们, 帮 first)
+                if !result.isEmpty, c.text == typed, n <= 3 || pinyinSyllables(typed) >= 1 { pos = max(pos, 1) }
                 result.insert(c, at: pos)
                 resultEdges.insert([], at: pos)
             }
@@ -778,6 +814,7 @@ public final class Decoder {
         // The letters as typed are always the last choice (Gboard offers the raw input too); for 九宫格 keys, whose
         // "letters" are digits, the pinyin read from them.
         let rawText = taps.contains(where: { $0.group }) ? preedit.replacingOccurrences(of: " ", with: "") : raw
+        promoteUserPhrases(taps, &result)
         add(Candidate(text: rawText, tapCount: n, syllables: [], corrected: false, score: -.infinity), [])
         return Result(candidates: result, preedit: preedit)
     }
@@ -886,6 +923,56 @@ public final class Decoder {
     }
     public var predictionSplitWord = 11.0
     public var predictionSplitPenalty = 3.0
+
+    /// 自造词 first: a phrase of the user's own (one the lexicon does not have) whose keys are exactly what was typed —
+    /// spelled out, or by its initials (zzx for 张梓萱) — leads the candidates; one the keys begin (mosuotai for
+    /// 摸索台灯, past its first syllable) comes right after the first. The words the lexicon has compete as usual.
+    private var syllablesByFirstKey: [Character: [UInt16]] = [:]
+    private func promoteUserPhrases(_ taps: [Tap], _ result: inout [Candidate]) {
+        guard let user, user.count > 0, let t0 = taps.first, t0.key != "'" else { return }
+        if syllablesByFirstKey.isEmpty {
+            for id in 0..<lexicon.syllables.count {
+                if let c = spelling(of: UInt16(id)).first { syllablesByFirstKey[c, default: []].append(UInt16(id)) }
+            }
+        }
+        let n = taps.count
+        func matches(_ t: Tap, _ c: Character) -> Bool { t.group ? t.alternatives.contains { $0.key == c } : t.key == c }
+        let firstKeys: [Character] = t0.group ? t0.alternatives.map { $0.key } : [t0.key]
+        var exact: [(c: Candidate, count: Int)] = [], begun: [(c: Candidate, count: Int)] = []
+        for k in firstKeys {
+            for sid in syllablesByFirstKey[k] ?? [] {
+                for u in user.candidates(first: sid) where u.lex == nil && u.ids.count >= 2 {
+                    let spell = u.ids.map { Array(spelling(of: $0)) }
+                    let full = spell.flatMap { $0 }
+                    var kind = 0   // 1 exact, 2 initials, 3 begun
+                    if full.count >= n, zip(taps, full).allSatisfy({ matches($0.0, $0.1) }) {
+                        if full.count == n { kind = 1 } else if n > spell[0].count { kind = 3 }
+                    } else if scheme == .quanpin, n >= u.ids.count, n <= 2 * u.ids.count {
+                        // initials, zh / ch / sh as one or two keys
+                        var pos = 0, ok = true
+                        for sp in spell {
+                            guard pos < n, matches(taps[pos], sp[0]) else { ok = false; break }
+                            pos += 1
+                            if sp.count > 1, sp[1] == "h", "zcs".contains(sp[0]), pos < n, matches(taps[pos], "h") { pos += 1 }
+                        }
+                        if ok, pos == n { kind = 2 }
+                    }
+                    guard kind > 0 else { continue }
+                    var c = Candidate(text: u.text, tapCount: n, syllables: u.ids, corrected: false, score: result.first?.score ?? 0)
+                    if kind == 1, !taps.contains(where: { $0.group }) { c.intendedKeys = full }
+                    if kind == 3 { begun.append((c, u.count)) } else { exact.append((c, u.count)) }
+                }
+            }
+        }
+        guard !exact.isEmpty || !begun.isEmpty else { return }
+        let lead = exact.sorted { $0.count > $1.count }.map { $0.c }
+        // one the reading already leads with stays where it is
+        let next = begun.sorted { $0.count > $1.count }.prefix(2).map { $0.c }.filter { lead.isEmpty ? $0.text != result.first?.text : true }
+        let promoted = Set(lead.map { $0.text } + next.map { $0.text })
+        result.removeAll { $0.tapCount == n && promoted.contains($0.text) }
+        result.insert(contentsOf: lead, at: 0)
+        result.insert(contentsOf: next, at: min(lead.isEmpty ? 1 : lead.count, result.count))
+    }
 
     public func spelling(of id: UInt16) -> String {
         let s = lexicon.syllables[Int(id)]

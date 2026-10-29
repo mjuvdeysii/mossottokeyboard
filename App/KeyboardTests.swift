@@ -165,6 +165,8 @@ enum KeyboardTests {
             log(h.string == "你好你好", "quanpin.abbreviation nh → 你好", "text=\(h.string)")
             type(vc, "jintianttianqihenhao"); settle(vc); vc.handle(.space, tap: nil)
             log(h.string.hasSuffix("今天天气很好"), "quanpin.one key too many: jintianttianqihenhao → 今天天气很好", "text=\(h.string)")
+            type(vc, "woxiangqumaidonxi"); settle(vc); vc.handle(.space, tap: nil)
+            log(h.string.hasSuffix("我想去买东西"), "quanpin.one key left out: woxiangqumaidonxi → 我想去买东西", "text=\(h.string)")
             type(vc, "woyongiphonedazi"); settle(vc); vc.handle(.space, tap: nil)
             log(h.string.hasSuffix("我用iPhone打字"), "mixed.woyongiphonedazi → 我用iPhone打字", "text=\(h.string)")
             vc.handle(.toggleLanguage, tap: nil)
