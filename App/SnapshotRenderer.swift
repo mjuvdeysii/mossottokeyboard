@@ -191,6 +191,19 @@ enum SnapshotRenderer {
             let r = ImageRenderer(content: content)
             var shot: UIImage?
             for scale in [3.0, 2.0, 1.5, 1.0] where shot == nil { r.scale = scale; shot = r.uiImage }
+            if shot == nil {
+                print("SNAPSHOT app_home: renderer gave no image; parts:")
+                func part<V: View>(_ name: String, _ v: V) {
+                    let pr = ImageRenderer(content: v.frame(width: width).environment(\.colorScheme, night ? .dark : .light))
+                    pr.scale = 2
+                    print("  ", name, pr.uiImage == nil ? "nil" : "ok")
+                    if let im = pr.uiImage { try? im.pngData()?.write(to: dir.appendingPathComponent("\(night ? "night" : "day")_part_\(name).png")) }
+                }
+                part("hero", MostoHero())
+                part("chip", HeroChip(symbol: "cpu", text: "不含 AI"))
+                part("usage", Usage(icon: "keyboard", title: "t", text: "x"))
+                part("card", Card(title: "t") { Text("x") })
+            }
             if let img = shot {
                 try? img.pngData()?.write(to: dir.appendingPathComponent("\(night ? "night" : "day")_app_home.png"))
             }
