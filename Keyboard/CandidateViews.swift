@@ -679,9 +679,21 @@ final class KeyboardSettings {
     static let shared = KeyboardSettings()
     private let d = UserDefaults.standard
 
-    /// 0 小鹤双拼, 1 全拼 (PinyinScheme raw value)
+    /// Every choice is stored the moment it is made and only ever changed by the user: an update never resets it
+    /// (the keyboard's defaults live in its own container, which iOS keeps across updates).
+    /// A first install starts in 全拼. Earlier versions started in 小鹤双拼 without storing it: a keyboard that has
+    /// been used before (it stored touch habits or any setting) keeps 小鹤双拼, written down now so it stays.
+    private init() {
+        if d.object(forKey: "scheme") == nil {
+            let usedBefore = ["offsetX", "keyOffsets", "appearance", "autocorrect", "english", "pinyinGrid", "feedback", "keySound"]
+                .contains { d.object(forKey: $0) != nil }
+            d.set(usedBefore ? 0 : 1, forKey: "scheme")
+        }
+    }
+
+    /// 0 小鹤双拼, 1 全拼 (PinyinScheme raw value). First install: 全拼 (see init).
     var scheme: Int {
-        get { d.object(forKey: "scheme") as? Int ?? 0 }
+        get { d.object(forKey: "scheme") as? Int ?? 1 }
         set { d.set(newValue, forKey: "scheme") }
     }
     var autocorrect: Bool {

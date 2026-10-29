@@ -16,7 +16,7 @@ Usage (Blender as a Python module, bpy 5.x):
   python Tools/ip/mosto3d.py sheet  out_dir      hero shot and states, day and night
   python Tools/ip/mosto3d.py sprites out_dir     transparent keyboard sprites (day, blink, night)
   python Tools/ip/mosto3d.py icon   out.png      1024 px app icon (Mosto alone)
-  python Tools/ip/mosto3d.py toyicon out.png     1024 px app icon: Mosto on the keyboard's vinyl keys
+  python Tools/ip/mosto3d.py toyicon out.png     1024 px app icon: Mosto on the keyboard's vinyl keys (--night: the dark-mode icon)
 Options: --samples N  --palette lilac|vermilion|coral  --color #RRGGBB (body only)
 """
 import math, os, sys
@@ -348,6 +348,9 @@ def icon(path):
     ortho_camera(1.78, 0.58, cx=0.08)
     tmp = path.replace(".png", "_fg.png")
     B.render(tmp, size, size)
+    if night:
+        at = bead_position()
+        add_glow(tmp, at, radius=0.1, strength=0.7)
     bg = Image.new("RGB", (size, size))
     d = ImageDraw.Draw(bg)
     for y in range(size):                                   # warm butter-cream: the complement of Mosto's violet, so it stands out
@@ -374,9 +377,9 @@ def toy_key(name, x, y, rot, face, lip, size=1.0, z=0.0):
     keycap(name + "_face", 0.86 * s, 0.86 * s, 0.26 * s, 0.12 * s, face, (x, y - 0.02 * s, z + 0.42 * s), rot)
     return z + 0.55 * s     # the top of the face
 
-def legend(text, x, y, z, rot, size, material, font_path):
+def legend(text, x, y, z, rot, size, material, font_path, on=None):
     """A key's legend: raised a hair above the face, centred, turned with the key."""
-    bpy.ops.object.text_add(location=(x, y, z + 0.002)); t = bpy.context.object
+    bpy.ops.object.text_add(location=(x, y, z + 0.006)); t = bpy.context.object
     t.data.body = text
     try: t.data.font = bpy.data.fonts.load(font_path)
     except Exception: pass
@@ -387,9 +390,14 @@ def legend(text, x, y, z, rot, size, material, font_path):
     bpy.context.view_layer.update()
     h = max(t.dimensions.x, t.dimensions.y)
     if h > 0: t.scale = (size / h, size / h, 1.0)
-    # a font's "centre" is its line box, not the glyph: move the glyph's own box onto the key's centre
+    # a font's "centre" is its line box, not the glyph: move the glyph's own box onto the key face's real centre
+    # (keycap() bakes the location into the mesh, so a key turns about the world origin, not about (x, y))
     bpy.context.view_layer.update()
     from mathutils import Vector
+    if on is not None:
+        o = bpy.data.objects[on]
+        vs = [o.matrix_world @ v.co for v in o.data.vertices]
+        x = sum(v.x for v in vs) / len(vs); y = sum(v.y for v in vs) / len(vs)
     corners = [t.matrix_world @ Vector(c) for c in t.bound_box]
     cx = sum(c.x for c in corners) / 8; cy = sum(c.y for c in corners) / 8
     t.location.x += x - cx; t.location.y += y - cy
@@ -400,7 +408,9 @@ def toy_icon(path):
     over a lavender lip), with a crown-gold 中 key and a lavender A key in front of him (中/英 at a glance), seen from
     a little above so the legends read, on butter cream. --samples 160 for the shipped 1024 px icon."""
     from PIL import Image, ImageDraw
-    s = B.reset(); s.render.film_transparent = True; B.materials(); mosto_materials(); B.sprite_lights()
+    night = "--night" in ARGS
+    s = B.reset(); s.render.film_transparent = True; B.materials(); mosto_materials()
+    night_world() if night else B.sprite_lights()
     # AgX's punchy look: the toy's violet and gold stay saturated (the plain look washes the gold key to peach)
     try: s.view_settings.look = "AgX - Punchy"
     except TypeError: s.view_settings.look = "None"
@@ -424,9 +434,11 @@ def toy_icon(path):
     # read as keys at a glance, and the icon says "Chinese keyboard" before anyone reads its name
     ink = B.mat("keyInk", "#2B1961", rough=0.5)
     inkLight = B.mat("keyInkLight", "#FFF9EE", rough=0.5)
-    legend("中", gx, gy - 0.02 * gs, gtop, gr, 0.62 * gs, ink, "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc")
-    legend("A", lx, ly - 0.02 * ls, ltop, lr, 0.62 * ls, ink, "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc")
-    m = build_mosto(moss_eye=dict(look=(0.1, 0.25)), otto_eye=dict(look=(-0.08, 0.1), lid=0.5))
+    legend("中", gx, gy - 0.02 * gs, gtop, gr, 0.56 * gs, ink, "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", on="key_gold_face")
+    legend("A", lx, ly - 0.02 * ls, ltop, lr, 0.56 * ls, ink, "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", on="key_lav_face")
+    # by night (the dark home-screen icon): his scheming squint, gold irises and the spade glowing
+    m = build_mosto(**STATES["night"]) if night else \
+        build_mosto(moss_eye=dict(look=(0.1, 0.25)), otto_eye=dict(look=(-0.08, 0.1), lid=0.5))
     m.location = (0.02, -0.05, top - 0.02); m.scale = (B.arg("--ms", 1.55),) * 3
     m.rotation_euler = (0, 0, math.radians(-8))
     # a shadow catcher under the keys: they sit on something
@@ -438,13 +450,16 @@ def toy_icon(path):
     d = ImageDraw.Draw(bg)
     for y in range(size):                                   # warm butter-cream: the complement of Mosto's violet
         t = y / size
-        d.line([(0, y), (size, y)], fill=(int(255 - 6 * t), int(244 - 26 * t), int(214 - 62 * t)))
+        if night:                                           # 夜灯: deep violet night, darker toward the bottom
+            d.line([(0, y), (size, y)], fill=(int(52 - 30 * t), int(32 - 20 * t), int(92 - 50 * t)))
+        else:
+            d.line([(0, y), (size, y)], fill=(int(255 - 6 * t), int(244 - 26 * t), int(214 - 62 * t)))
     # a soft pool of light behind his head: the eye goes to the face first
     from PIL import ImageFilter
     glow = Image.new("L", (size, size), 0)
     ImageDraw.Draw(glow).ellipse([size * 0.16, size * 0.06, size * 0.84, size * 0.66], fill=int(B.arg("--halo", 90)))
     glow = glow.filter(ImageFilter.GaussianBlur(size * 0.09))
-    bg = Image.composite(Image.new("RGB", (size, size), (255, 251, 238)), bg, glow)
+    bg = Image.composite(Image.new("RGB", (size, size), (78, 52, 140) if night else (255, 251, 238)), bg, glow)
     fg = Image.open(tmp).convert("RGBA")
     bg.paste(fg, (0, 0), fg)
     bg.save(path)
