@@ -215,7 +215,12 @@ final class KeyView: UIView {
     private func guideText(fitting box: CGSize? = nil) -> NSAttributedString {
         var lines: [(String, UIColor)] = []
         if let i = spec.guideInitial { lines.append((i, Theme.correctedMark)) }
-        for f in spec.guideFinals { lines.append((f, Theme.secondaryText)) }
+        // under an initial (zh / ch / sh) the finals share one line, so the key never needs a third
+        if spec.guideInitial != nil, spec.guideFinals.count > 1 {
+            lines.append((spec.guideFinals.joined(separator: " "), Theme.secondaryText))
+        } else {
+            for f in spec.guideFinals { lines.append((f, Theme.secondaryText)) }
+        }
         guard !lines.isEmpty else { return NSAttributedString() }
         var size: CGFloat = 10
         if let box {

@@ -19,8 +19,8 @@ struct XiaoheGuideContent: View {
             Card(title: "是什么") {
                 Text("双拼把每个音节固定成两个键：第一个键打声母，第二个键打韵母。小鹤双拼是其中一种键位安排。")
                     .fixedSize(horizontal: false, vertical: true)
-                Text("例：你好 = n i + h c　中国 = v s + g o　双拼 = u l + p b")
-                    .font(.subheadline.monospaced()).foregroundStyle(.secondary)
+                Text("例：你好 → ni hc　中国 → vs go　双拼 → ul pb")
+                    .font(.subheadline).foregroundStyle(.secondary)
                 Text("Mosto键盘的全拼与小鹤双拼功能完全相同（纠错、联想、九宫格、学习），用哪一种都可以，随时在键盘设置里切换。")
                     .font(.subheadline).fixedSize(horizontal: false, vertical: true)
             }
@@ -157,7 +157,7 @@ private struct ZeroRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(rule).font(.subheadline.weight(.semibold))
-            Text(examples).font(.subheadline.monospaced()).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Text(examples).font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
     }
 }
