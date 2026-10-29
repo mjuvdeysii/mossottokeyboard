@@ -69,6 +69,38 @@ public final class Decoder {
     public var englishCompletions = false
     /// Words usually written with capitals in Chinese text (iOS, iPhone, OK…) are typed on purpose: a bonus.
     public var englishCasedBonus = 3.0
+    /// 中英混输 inside a sentence (an English word among Chinese ones): on/off, and how an English word's frequency
+    /// (wordfreq zipf) maps onto the lexicon's ln-frequency scale (fitted over words both lists have), what being
+    /// English in Chinese mode costs, the bonus for a word written with capitals, the least zipf for a plain word.
+    public var mixedEnglish = true
+    public var mixedA = 4.67
+    public var mixedB = 1.58
+    public var mixedPenalty = 2.0
+    public var mixedCasedBonus = 5.0
+    public var mixedMinZipf = 4.0
+    public var mixedPinyinPenalty = 4.0
+    public var mixedRarePenalty = 5.0
+
+    /// How many pinyin syllables spell `word` exactly (fewest), 0 when it is not pinyin at all.
+    private var pinyinCache: [String: Int] = [:]
+    func pinyinSyllables(_ word: String) -> Int {
+        if let v = pinyinCache[word] { return v }
+        let chars = Array(word)
+        var best = [Int](repeating: Int.max, count: chars.count + 1)
+        best[0] = 0
+        for i in 0..<chars.count where best[i] != Int.max {
+            var node = trie
+            var j = i
+            while j < chars.count, let next = node.children[chars[j]] {
+                node = next; j += 1
+                if !node.ids.isEmpty { best[j] = min(best[j], best[i] + 1) }
+            }
+        }
+        let v = best[chars.count] == Int.max ? 0 : best[chars.count]
+        if pinyinCache.count > 5000 { pinyinCache.removeAll() }
+        pinyinCache[word] = v
+        return v
+    }
     public var maxSyllableAlternatives = 6
     public var pruneMargin = 7.0
     public var beam = 4
@@ -109,7 +141,8 @@ public final class Decoder {
         let id: UInt16
         let spatial: Double       // includes correction / abbreviation / prefix costs
         let corrected: Bool
-        let kind: UInt8           // 0 full spelling, 1 half-typed last syllable, 2 abbreviation (initial only)
+        let kind: UInt8           // 0 full spelling, 1 half-typed last syllable, 2 abbreviation (initial only),
+                                  // 3 full spelling with one key read as typed by mistake
     }
 
     struct Edge {
@@ -149,26 +182,35 @@ public final class Decoder {
     private func xiaoheSpans(_ taps: [Tap]) -> [[Span]] {
         let n = taps.count
         var out = [[Span]](repeating: [], count: n)
-        var i = 0
-        while i + 1 < n {
-            let a = taps[i], b = taps[i + 1]
-            var best: [UInt16: Span] = [:]
+        /// The syllables two keys spell, scored, into `best` (ending at `end`, `extra` = cost of a key left out).
+        func pair(_ a: Tap, _ b: Tap, end: Int, extra: Double, into best: inout [UInt16: Span]) {
             for (ka, la) in alternatives(a) {
                 for (kb, lb) in alternatives(b) {
                     guard let ids = lexicon.codeToSyllables[String([ka, kb])] else { continue }
-                    let corrected = isCorrection(ka, a) || isCorrection(kb, b)
-                    let s = spatialWeight * (la + lb) - (corrected ? correctionPenalty : 0)
+                    let corrected = extra > 0 || isCorrection(ka, a) || isCorrection(kb, b)
+                    let s = spatialWeight * (la + lb) - (corrected ? correctionPenalty : 0) - extra
                     for id in ids where (best[id]?.spatial ?? -.infinity) < s {
-                        best[id] = Span(end: i + 2, id: id, spatial: s, corrected: corrected, kind: 0)
+                        best[id] = Span(end: end, id: id, spatial: s, corrected: corrected, kind: extra > 0 ? 3 : 0)
                     }
                 }
             }
-            // 九宫格: every syllable on the two keys is equally likely here; the words decide, so keep them all
-            out[i] = pruned(best, limit: a.group || b.group ? 96 : maxSyllableAlternatives)
-            i += 2
         }
-        if n % 2 == 1, let t = taps.last {
-            // a dangling first key: any syllable whose code starts with it
+        // Every position may start a syllable: a key typed by mistake (one too many) shifts the pairs after it, and
+        // the reading carries on from there instead of falling apart for the rest of the sentence.
+        for i in 0..<max(0, n - 1) {
+            let a = taps[i], b = taps[i + 1]
+            var best: [UInt16: Span] = [:]
+            pair(a, b, end: i + 2, extra: 0, into: &best)
+            // one key too many: inside the syllable (a x b), or just before it (x a b) — full keyboard only
+            if skipEnabled, i + 2 < n, !a.group, !b.group, !taps[i + 2].group {
+                pair(a, taps[i + 2], end: i + 3, extra: skipCost(taps, i + 1), into: &best)
+                pair(b, taps[i + 2], end: i + 3, extra: skipCost(taps, i), into: &best)
+            }
+            // 九宫格: every syllable on the two keys is equally likely here; the words decide, so keep them all
+            out[i] = pruned(best, limit: a.group || b.group ? 96 : maxSyllableAlternatives + (skipEnabled ? 4 : 0))
+        }
+        if let t = taps.last {
+            // a dangling first key: any syllable whose code starts with it (reached when the keys before it pair up)
             var best: [UInt16: Span] = [:]
             for (k, l) in alternatives(t) {
                 let corrected = isCorrection(k, t)
@@ -177,9 +219,24 @@ public final class Decoder {
                     best[id] = Span(end: n, id: id, spatial: s, corrected: corrected, kind: 1)
                 }
             }
-            out[n - 1] = pruned(best, limit: 400)
+            out[n - 1] += pruned(best, limit: 400)
         }
         return out
+    }
+
+    /// 多按了一个键: whether a key may be read as typed by mistake, and what that costs (less for a key pressed
+    /// twice — the commonest slip — than for a stray one).
+    /// Measured per scheme (a sentence with one key too many read right: 全拼 0 → 74–76%, 小鹤 0 → 47–54%; clean
+    /// sentences unchanged, noisy ones within a sentence or two): 小鹤's pairs need the cheaper slip to realign.
+    public var skipEnabled = true
+    public var skipPenalty = 11.0
+    public var skipDoublePenalty = 8.0
+    public var xiaoheSkipPenalty = 7.0
+    public var xiaoheSkipDoublePenalty = 5.5
+    @inline(__always) private func skipCost(_ taps: [Tap], _ k: Int) -> Double {
+        let doubled = k > 0 && taps[k - 1].key == taps[k].key || k + 1 < taps.count && taps[k + 1].key == taps[k].key
+        if scheme == .xiaohe { return doubled ? xiaoheSkipDoublePenalty : xiaoheSkipPenalty }
+        return doubled ? skipDoublePenalty : skipPenalty
     }
 
     // 全拼: a trie of syllable spellings
@@ -220,7 +277,7 @@ public final class Decoder {
                 if (best[k]?.spatial ?? -.infinity) < s.spatial { best[k] = s }
             }
             // walk the trie with every plausible key per tap
-            struct State { let node: TrieNode; let score: Double; let corrected: Bool }
+            struct State { let node: TrieNode; let score: Double; let corrected: Bool; var skipped = false }
             var states = [State(node: trie, score: 0, corrected: false)]
             var pos = i
             while pos < n && !states.isEmpty {
@@ -229,7 +286,13 @@ public final class Decoder {
                 for st in states {
                     for (k, l) in alternatives(t) {
                         guard let child = st.node.children[k] else { continue }
-                        next.append(State(node: child, score: st.score + spatialWeight * l, corrected: st.corrected || isCorrection(k, t)))
+                        next.append(State(node: child, score: st.score + spatialWeight * l, corrected: st.corrected || isCorrection(k, t),
+                                          skipped: st.skipped))
+                    }
+                    // 多按了一个键: this key read as a slip, once per syllable — inside it, or right after it (the
+                    // next syllable then starts on the following key); never as the syllable's first key
+                    if skipEnabled, !t.group, !st.skipped, st.node !== trie {
+                        next.append(State(node: st.node, score: st.score - skipCost(taps, pos), corrected: true, skipped: true))
                     }
                 }
                 if let top = next.map({ $0.score }).max() { next = next.filter { $0.score >= top - pruneMargin } }
@@ -237,7 +300,7 @@ public final class Decoder {
                 pos += 1
                 for st in next {
                     let cost = st.score - (st.corrected ? correctionPenalty : 0)
-                    for id in st.node.ids { emit(Span(end: pos, id: id, spatial: cost, corrected: st.corrected, kind: 0)) }
+                    for id in st.node.ids { emit(Span(end: pos, id: id, spatial: cost, corrected: st.corrected, kind: st.skipped ? 3 : 0)) }
                     if pos == n {
                         // still typing the last syllable: anything it can grow into — but when the keys already spell
                         // a whole syllable (xian), that syllable comes first and the longer ones (xiang) after
@@ -433,7 +496,40 @@ public final class Decoder {
         // spelled-out syllables in 全拼 (the "hon" of "zhong").
         var reach = [Bool](repeating: false, count: n + 1)
         reach[0] = true
-        for i in 0..<n where reach[i] { for sp in spansFrom[i] { reach[sp.end] = true } }
+        // 中英混输 inside a sentence: an English word typed between Chinese words (woyong iphone dazi → 我用iPhone打字)
+        // is one more word of the lattice, on the scale of the Chinese words (its frequency mapped onto the
+        // lexicon's), paying for being English in Chinese mode; a word people write with capitals (iPhone, PPT,
+        // WeChat) is typed on purpose and pays less. Full keyboard only, letters as typed. The keys after it are
+        // reachable too, so the Chinese words that follow it are read.
+        var englishEdges: [Edge] = []
+        let mixing = englishEnabled && mixedEnglish && english != nil && n >= 2 && !taps.contains(where: { $0.group })
+        let letters = mixing ? taps.map { $0.key.lowercased() } : []
+        for i in 0..<n where reach[i] {
+            for sp in spansFrom[i] { reach[sp.end] = true }
+            guard mixing, let english else { continue }
+            var word = ""
+            for j in i..<min(n, i + 16) {
+                word += letters[j]
+                let len = j - i + 1
+                guard len >= 2, let w = english.exact(word) else { continue }
+                let cased = w.display != w.key
+                // two letters only for a capitalised word (OK); a plain word that is itself a pinyin syllable (men,
+                // ban, shi) is never English here; one the letters could also spell as pinyin (women) pays more; a
+                // rare one (costco, emoji) is kept for when nothing else reads those keys
+                guard cased || len >= 3 else { continue }
+                var cost = mixedPenalty
+                if !cased {
+                    let syl = pinyinSyllables(word)
+                    if syl == 1 { continue }
+                    if syl > 1 { cost += mixedPinyinPenalty }
+                    if w.zipf < mixedMinZipf { cost += mixedRarePenalty }
+                }
+                let score = mixedA + mixedB * w.zipf - wordPenalty - cost + (cased ? mixedCasedBonus : 0)
+                englishEdges.append(Edge(start: i, end: j + 1, score: score, corrected: false, entry: -1, userText: w.display,
+                                         ids: [], cuts: [j + 1], kinds: [0]))
+                reach[j + 1] = true
+            }
+        }
 
         for i in 0..<n where reach[i] {
             for first in spansFrom[i] {
@@ -494,6 +590,9 @@ public final class Decoder {
                                           : min(userCap, userWordBoost + userWeight * log(1 + Double(u.count)))
                         let base = (u.lex.map { Double($0) / 100 } ?? userPhraseScore) - wordPenalty + gain
                         chains({ u.ids[$0] }, count: L, first: first, base: base) { end, sp, corr, cuts, kinds in
+                            // a learned word's boost never pays for reading a key as a slip (it would take over
+                            // readings the keys spell exactly)
+                            if kinds.contains(3) { return }
                             insert(Edge(start: i, end: end, score: base + sp, corrected: corr, entry: -1, userText: u.text,
                                         ids: u.ids, cuts: cuts, kinds: kinds))
                         }
@@ -511,6 +610,9 @@ public final class Decoder {
                 edges.append(e)
             }
         }
+
+        edges.reserveCapacity(edges.count + englishEdges.count)
+        for e in englishEdges { ending[e.end].append(edges.count); edges.append(e) }
 
         // K-best Viterbi over the word lattice (once unrestricted, once literal-only)
         struct Path { var score: Double; var edges: [Int]; var corrected: Bool }
@@ -624,7 +726,12 @@ public final class Decoder {
                 c.isEnglish = true
                 extra.append(c)
             }
-            for c in extra.sorted(by: { $0.score > $1.score }) where seen.insert(c.text).inserted {
+            for c in extra.sorted(by: { $0.score > $1.score }) {
+                // the same word read inside the sentence lattice (scored as one word among Chinese ones) gives way to
+                // this placement, which is how a whole-input English word is ranked
+                if !seen.insert(c.text).inserted, let k = result.firstIndex(where: { $0.text == c.text }) {
+                    result.remove(at: k); resultEdges.remove(at: k)
+                }
                 var pos = result.prefix(while: { $0.score >= c.score }).count
                 // a short plain word never displaces a Chinese reading of the same keys (么 before "me")
                 if n <= 3, !result.isEmpty, english.exact(typed)?.display == c.text, c.text == typed { pos = max(pos, 1) }
@@ -636,7 +743,10 @@ public final class Decoder {
         // Words covering a shorter prefix of the input, longest first
         if n > 1 {
             for end in stride(from: n - 1, through: 1, by: -1) {
-                let list = ending[end].filter { edges[$0].start == 0 }.sorted { edges[$0].score > edges[$1].score }
+                // a word on its own never reads a key as a slip: picked from the strip it would swallow the next
+                // word's first key (我们回 taking the j of jin)
+                let list = ending[end].filter { edges[$0].start == 0 && !edges[$0].kinds.contains(3) }
+                    .sorted { edges[$0].score > edges[$1].score }
                 for ei in list {
                     let e = edges[ei]
                     add(candidate([e], tapCount: end, corrected: e.corrected, score: e.score), [e])

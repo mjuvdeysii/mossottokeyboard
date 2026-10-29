@@ -195,7 +195,7 @@ def build_mosto(x=0.0, moss_eye=None, otto_eye=None, shut=None, glow=0.0, lean=0
         fx = 0.03; fz = my + 0.045 + oh * 0.1   # at the top edge of the open mouth, in front of it (see fy)
     else:
         pts = [(-0.085, my + 0.02), (-0.04, my - 0.012), (0.0, my + 0.004), (0.04, my - 0.012), (0.085, my + 0.02)]
-        parts.append(B.tube("mosto_grin", [(x_, surface_y(x_, z_) - 0.005, z_) for x_, z_ in pts], 0.011, M["pupil"]))
+        parts.append(B.tube("mosto_grin", [(x_, surface_y(x_, z_) - 0.005, z_) for x_, z_ in pts], B.arg("--grin", 0.011), M["pupil"]))
         fx = 0.035; fz = my - 0.012
     import mathutils
     fy = surface_y(fx, fz) - (0.075 if yawn > 0 else 0.004)
@@ -409,6 +409,8 @@ def toy_icon(path):
     a little above so the legends read, on butter cream. --samples 160 for the shipped 1024 px icon."""
     from PIL import Image, ImageDraw
     night = "--night" in ARGS
+    # at home-screen size the grin is what says he is grinning: a bolder line than the keyboard sprites need
+    if "--grin" not in B.ARGS: B.ARGS += ["--grin", "0.017"]
     s = B.reset(); s.render.film_transparent = True; B.materials(); mosto_materials()
     night_world() if night else B.sprite_lights()
     # AgX's punchy look: the toy's violet and gold stay saturated (the plain look washes the gold key to peach)

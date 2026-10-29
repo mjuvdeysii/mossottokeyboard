@@ -937,7 +937,11 @@ final class KeyboardViewController: UIInputViewController {
         if !c.syllables.isEmpty {
             engine.learn(syllables: c.syllables, text: c.text)
             committedParts.append((c.text, c.syllables))
-            for (tap, key) in zip(taps.prefix(c.tapCount), c.intendedKeys) { spatial.observe(tap: tap, intended: key) }
+            // touch habits only from a reading that uses every key once (one with a key left out would pair the
+            // taps after it with the wrong keys)
+            if c.intendedKeys.count == c.tapCount {
+                for (tap, key) in zip(taps.prefix(c.tapCount), c.intendedKeys) { spatial.observe(tap: tap, intended: key) }
+            }
             // the touch habits are written out every so often too (iOS may end the keyboard without notice)
             commitsSinceSave += 1
             if commitsSinceSave >= 30 {

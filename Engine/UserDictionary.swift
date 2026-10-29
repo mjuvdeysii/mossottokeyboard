@@ -64,7 +64,8 @@ public final class UserDictionary {
     }
 
     public func learn(syllables ids: [UInt16], text: String) {
-        guard !ids.isEmpty, !text.isEmpty, ids.count <= 8 else { return }
+        // one syllable per character: a reading with an English word in it (我用iPhone) is not a learnable word
+        guard !ids.isEmpty, !text.isEmpty, ids.count <= 8, text.count == ids.count else { return }
         let p = ids.map { lexicon.syllables[Int($0)] }
         let k = Self.key(p, text)
         let now = Date().timeIntervalSince1970

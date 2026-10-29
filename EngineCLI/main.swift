@@ -37,6 +37,15 @@ if let v = env["BEAM"].flatMap(Int.init) { decoder.beam = v }
 if let v = env["UGD"].flatMap(Double.init) { decoder.unigramDiscount = v }
 if let v = env["UGC"].flatMap(Double.init) { decoder.unigramCenter = v }
 if let v = env["CP"].flatMap(Double.init) { decoder.fullCompletionPenalty = v }
+if env["MIX"] == "0" { decoder.mixedEnglish = false }
+if let v = env["MIXP"].flatMap(Double.init) { decoder.mixedPenalty = v }
+if let v = env["MIXC"].flatMap(Double.init) { decoder.mixedCasedBonus = v }
+if let v = env["MIXR"].flatMap(Double.init) { decoder.mixedRarePenalty = v }
+if let v = env["MIXY"].flatMap(Double.init) { decoder.mixedPinyinPenalty = v }
+if let v = env["MIXZ"].flatMap(Double.init) { decoder.mixedMinZipf = v }
+if env["SKIP"] == "0" { decoder.skipEnabled = false }
+if let v = env["SKIPP"].flatMap(Double.init) { decoder.skipPenalty = v; decoder.xiaoheSkipPenalty = v }
+if let v = env["SKIPD"].flatMap(Double.init) { decoder.skipDoublePenalty = v; decoder.xiaoheSkipDoublePenalty = v }
 if let v = env["T9PFX"].flatMap(Double.init) { decoder.t9PrefixExtra = v }
 if let v = env["T9MIN"].flatMap(Double.init) { decoder.t9MinWordScore = v }
 if let v = env["UW"].flatMap(Double.init) { decoder.userWeight = v }
@@ -288,6 +297,52 @@ case "bench", "gate":
         }
     }
 
+    // 中英混输 inside sentences: EngineCLI/mixed.tsv (text, pinyin syllables and |english words), top-1 equals the text (letter case aside)
+    if let raw = try? String(contentsOfFile: env["MIXED"] ?? "EngineCLI/mixed.tsv", encoding: .utf8) {
+        decoder.correctionEnabled = true
+        var ok = 0, total = 0
+        for line in raw.split(separator: "\n") {
+            let f = line.split(separator: "\t"); guard f.count == 2 else { continue }
+            // keys: pinyin syllables (typed in the scheme under test) and |english words, space-separated
+            let keys = f[1].split(separator: " ").map { tok -> String in
+                tok.hasPrefix("|") ? String(tok.dropFirst()) : lex.id(of: String(tok)).map { decoder.spelling(of: $0) } ?? String(tok)
+            }.joined()
+            let c = decoder.decode(keys.map { Tap.exact($0) }).candidates
+            total += 1
+            if c.first?.text.lowercased() == f[0].lowercased() { ok += 1 } else if env["MIX_DEBUG"] != nil { print("   ≠", f[0], "→", c.first?.text ?? "-") }
+        }
+        metrics["mixed.sentences.top1"] = 100 * Double(ok) / Double(max(total, 1))
+        print(String(format: "== 中英混输 sentences: top1 %.1f%% (n=%d)", metrics["mixed.sentences.top1"]!, total))
+    }
+
+    // 多按了一个键: every sentence typed once more with one key too many, somewhere inside — the key before it
+    // pressed twice, or a neighbour of the next key brushed on the way — perfect keys otherwise.
+    //   extra.sentences.top1 — top-1 equals the intended sentence (%)
+    do {
+        decoder.correctionEnabled = true
+        let rows = ["qwertyuiop", "asdfghjkl", "zxcvbnm"].map(Array.init)
+        func neighbour(_ c: Character, _ r: inout RNG) -> Character {
+            for row in rows { if let i = row.firstIndex(of: c) {
+                let j = i == 0 ? 1 : i == row.count - 1 ? i - 1 : (r.next() < 0.5 ? i - 1 : i + 1)
+                return row[j]
+            } }
+            return c
+        }
+        var rng = RNG(s: 7), ok = 0, top3 = 0, total = 0
+        for (k, (t, ids)) in sentItems.enumerated() {
+            var letters = Array(codeLetters(ids))
+            guard letters.count >= 4 else { continue }
+            let p = 1 + Int(rng.next() * Double(letters.count - 2))
+            letters.insert(k % 2 == 0 ? letters[p - 1] : neighbour(letters[p], &rng), at: p)
+            let c = decoder.decode(letters.map { Tap.exact($0) }).candidates
+            total += 1
+            if c.first?.text == t { ok += 1 } else if env["EXTRA_DEBUG"] != nil { print("   +", t, "→", c.first?.text ?? "-", "|", String(letters)) }
+            if c.prefix(3).contains(where: { $0.text == t }) { top3 += 1 }
+        }
+        metrics["extra.sentences.top1"] = 100 * Double(ok) / Double(max(total, 1))
+        print(String(format: "== one key too many: sentences top1 %.1f%%  top3 %.1f%%  (n=%d)", metrics["extra.sentences.top1"]!, 100 * Double(top3) / Double(max(total, 1)), total))
+    }
+
     // Touch adaptation: a user whose thumbs land off-centre in a pattern (keys on the left hit to their right, on the
     // right to their left, the top row low), σ=0.22 noise on top. Words typed with corrections learned from what was
     // committed; then fresh words measured with what was learned.
@@ -406,6 +461,8 @@ case "bench", "gate":
             ("learn.harm", 1.0, false),        // unseen sentences made worse by what was learned (points) — at most
             ("fuzz.bad", 0.0, false),          // random input: candidates that use no keys, too many, or have no text
             ("fuzz.p99.ms", 40.0, false),      // random input: 99th-percentile decode time (ms) — at most
+            ("extra.sentences.top1", 50.0, true),  // a sentence with one key too many still read right (%)
+            ("mixed.sentences.top1", 66.0, true),  // an English word inside a Chinese sentence (%)
         ] : [
             ("words.on", 97.0, true),
             ("words.broken", 1.0, false),
@@ -420,6 +477,8 @@ case "bench", "gate":
             ("learn.harm", 1.0, false),
             ("fuzz.bad", 0.0, false),
             ("fuzz.p99.ms", 100.0, false),
+            ("extra.sentences.top1", 70.0, true),
+            ("mixed.sentences.top1", 72.0, true),
         ]
         print("scheme:", decoder.scheme == .xiaohe ? "小鹤双拼" : "全拼")
         var failed = false
