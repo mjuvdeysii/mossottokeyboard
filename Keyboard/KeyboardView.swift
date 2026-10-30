@@ -510,7 +510,9 @@ final class AltPopup: UIView {
 /// and fast two-thumb typing rolls over instead of dropping letters.
 final class KeyboardView: UIView {
     var onAction: ((KeyAction, Tap?) -> Void)?
-    var onCursorMove: ((Int) -> Void)?
+    /// The space bar drags the cursor one character (+1 right, −1 left). Returns whether it passed a visible
+    /// character (false at the start or end of the text): the ticks follow only what the cursor really passes.
+    var onCursorMove: ((Int) -> Bool)?
     /// Whether a drag on the space bar may move the cursor now (not while a pinyin is being composed).
     var canMoveCursor: (() -> Bool)?
     /// A finger lands on a key (where, for the haptic).
@@ -548,6 +550,8 @@ final class KeyboardView: UIView {
         var repeatTimer: KeyTimer?
         var dragAccum: CGFloat = 0
         var dragging = false
+        /// The ticks of a cursor drag (rounds/R4.md): by the finger's distance, not by the characters.
+        var rhythm = CursorRhythm()
         var lastMove: CFTimeInterval
         let began: CFTimeInterval
         var repeatCount = 0
@@ -839,17 +843,22 @@ final class KeyboardView: UIView {
             if !tr.dragging && abs(p.x - tr.start.x) > threshold && (canMoveCursor?() ?? true) {
                 tr.dragging = true
                 tr.dragAccum = 0
+                tr.rhythm.begin(at: now)
                 setCursorMode(true, except: tr.keyIndex)
                 onFeedback?(.cursorMode, p)
             }
             if tr.dragging {
                 tr.dragAccum += dx
                 let step: CGFloat = speed > 900 ? 3.5 : speed > 450 ? 5.5 : 9
+                var steps = 0, passed = 0
                 while abs(tr.dragAccum) >= step {
                     let dir = tr.dragAccum > 0 ? 1 : -1
-                    onCursorMove?(dir)
+                    if onCursorMove?(dir) == true { passed += 1 }
+                    steps += dir
                     tr.dragAccum -= CGFloat(dir) * step
                 }
+                // felt by the finger's distance (every 27 pt, ≥ 100 ms apart), not once per character
+                if tr.rhythm.feed(dx: dx, steps: steps, passed: passed, at: now) { onFeedback?(.cursorStep, p) }
             }
         case .delete:
             followClearSwipe(tr, to: p, at: time)

@@ -119,6 +119,7 @@ enum KeyboardTests {
         let saved = (KeyboardSettings.shared.scheme, KeyboardSettings.shared.pinyinGrid, KeyboardSettings.shared.english)
         scenarios(window)
         tryFromDemo(window)
+        cursor(window)
         feedback(window)
         strip(window)
         clearSwipe(window)
@@ -386,6 +387,277 @@ enum KeyboardTests {
         log(vc.diagnosticsForTests.contains("完全访问 未开"), "feedback.diagnostics say 完全访问 未开", vc.diagnosticsForTests)
         vc.fullAccessOverride = nil
         vc.applySettings()
+
+        // The controller checks R2 left (rounds/R4.md, 方案第 4 项), through the real touches
+        let host = kb.1
+        let board = vc.keyboardViewForTests
+        typealias Felt = RecordingFeedbackPlayer.Entry
+        let light = Felt(kind: .impact, intensity: 0.6), firm = Felt(kind: .impact, intensity: 1), tick = Felt(kind: .selection, intensity: 1)
+
+        // 1. long press on ， until its other characters show, then slide to the second: the key's own tap and click,
+        // one tick as they show, one as the choice moves
+        if let comma = board.keyRectsForTests(.char("，"))?.cap {
+            reset(vc, host)
+            var events: [FeedbackEvent] = []
+            let felt = board.onFeedback
+            board.onFeedback = { e, p in events.append(e); felt?(e, p) }
+            // the row of 6 (。？！、…：) opens to the left near the right edge (KeyboardView.showAlt): one cell that way
+            let cell = max(comma.width, 34)
+            let reversed = comma.midX - cell / 2 - 4 + (cell * 6 + 8) > board.bounds.width - 2
+            let samples = path(from: center(comma), legs: [(.zero, 0.5), (CGVector(dx: reversed ? -cell : cell, dy: 0), 0.15)])
+            let held = samples.filter { $0.time <= samples[0].time + 0.5 + 1e-9 }
+            rec.clear()
+            board.feedForTests(held)
+            let shownHaptics = rec.haptics, shownSounds = rec.sounds, shownEvents = events
+            board.feedForTests(Array(samples.dropFirst(held.count)))
+            board.onFeedback = felt
+            log(shownHaptics == [light, tick] && shownSounds == [1104] && shownEvents == [.altShown],
+                "feedback.long press ，: the key (light + 1104), then 1 tick as the choices show, no other tap, one click",
+                "\(shownHaptics) \(shownSounds) \(shownEvents)")
+            log(rec.haptics == [light, tick, tick] && rec.sounds == [1104] && events == [.altShown, .altMoved],
+                "feedback.long press ，, slide to the second choice: 1 more tick", "\(rec.haptics) \(rec.sounds) \(events)")
+        } else { log(false, "feedback.long press ，", "no ， key") }
+
+        // 2. the cursor's ticks as the controller plays them: as many as the cursor group counted for the same drag
+        if let space = board.keyRectsForTests(.space)?.cap {
+            placeCursor(vc, host, before: 30, after: 30)
+            rec.clear()
+            board.feedForTests(path(from: center(space), legs: [(CGVector(dx: 100, dy: 0), 0.5)]))
+            let ticks = rec.haptics.filter { $0 == tick }.count, firms = rec.haptics.filter { $0 == firm }.count
+            log(uniformCursorSteps != nil && ticks == uniformCursorSteps && firms == 2 && rec.sounds == [1104],
+                "feedback.cursor drag 100 pt / 0.5 s: \(ticks) ticks played, as the cursor group counted; space and cursor mode firm",
+                "cursor group \(uniformCursorSteps.map { "\($0)" } ?? "nil") · \(rec.haptics) \(rec.sounds)")
+        } else { log(false, "feedback.cursor drag", "no space key") }
+
+        // 3. a candidate: nothing as the finger lands, one tap and click as it lifts and selects; a slide: nothing
+        let cb = vc.candidateBarForTests
+        reset(vc, host); type(vc, "shi"); settle(vc)
+        if let f = cb.candidateFrameForTests(1) {
+            let t0 = nextTime()
+            rec.clear()
+            cb.touchForTests([TouchSample(id: 0, phase: .began, point: center(f), time: t0)])
+            let atDown = rec.haptics.count + rec.sounds.count
+            cb.touchForTests([TouchSample(id: 0, phase: .ended, point: center(f), time: t0 + 0.1)])
+            log(atDown == 0 && rec.haptics == [light] && rec.sounds == [1104] && !vc.testState.composing,
+                "feedback.candidate: nothing as the finger lands, one light tap and 1104 as it lifts and selects",
+                "at landing \(atDown) · \(rec.haptics) \(rec.sounds) text=\(host.string)")
+            reset(vc, host); type(vc, "shi"); settle(vc)
+            if let g = cb.candidateFrameForTests(1) {
+                rec.clear()
+                cb.touchForTests(swipe(from: center(g), to: CGVector(dx: -60, dy: 0), duration: 0.2))
+                log(rec.haptics.isEmpty && rec.sounds.isEmpty && vc.testState.composing,
+                    "feedback.slide 60 pt on the candidates, then lift: nothing felt, nothing typed", "\(rec.haptics) \(rec.sounds) text=\(host.string)")
+            }
+        } else { log(false, "feedback.candidate", "no candidates for shi") }
+
+        // 4. a correction from start to undo: n i h a p (p landing on its left half, toward o), space, then ↩
+        reset(vc, host)
+        let rects = "nihap".compactMap { board.keyRectsForTests(.char(String($0)))?.cap }
+        if rects.count == 5, let space = board.keyRectsForTests(.space)?.cap {
+            var all: [Felt] = []
+            rec.clear()
+            var t = nextTime()
+            for (i, rect) in rects.enumerated() {
+                let p = CGPoint(x: i == 4 ? rect.midX - 0.4 * rect.width : rect.midX, y: rect.midY)
+                board.feedForTests([TouchSample(id: 0, phase: .began, point: p, time: t), TouchSample(id: 0, phase: .ended, point: p, time: t + 0.06)])
+                t += 0.15
+            }
+            settle(vc)
+            let lettersFelt = rec.haptics == Array(repeating: light, count: 5) && rec.sounds.count == 5 && rec.sounds.allSatisfy { $0 == 1104 }
+            let lettersDetail = "\(rec.haptics) \(rec.sounds)"
+            all += rec.haptics
+            rec.clear()
+            let sp = center(space)
+            board.feedForTests([TouchSample(id: 0, phase: .began, point: sp, time: t), TouchSample(id: 0, phase: .ended, point: sp, time: t + 0.08)])
+            settle(vc)
+            let spaceHaptics = rec.haptics, spaceSounds = rec.sounds
+            all += rec.haptics
+            let chip = vc.candidateBarForTests.undoTextForTests
+            log(host.string == "你好" && chip == "nihap", "feedback.nihap (p toward o), space: 你好 goes in corrected, ↩ nihap offered",
+                "text=\(host.string) chip=\(chip ?? "nil")")
+            log(lettersFelt && spaceHaptics == [firm] && spaceSounds == [1104],
+                "feedback.nihap, space: 5 light taps for the letters, then only the space key's firm tap and 1104 (nothing for the correction)",
+                "letters \(lettersDetail) · space \(spaceHaptics) \(spaceSounds)")
+            rec.clear()
+            vc.candidateBarForTests.undoTapForTests(); settle(vc)
+            all += rec.haptics
+            log(rec.haptics == [firm] && rec.sounds == [1155], "feedback.↩ after the correction: one firm tap and 1155", "\(rec.haptics) \(rec.sounds)")
+            log(!all.contains { $0.kind == .soft }, "feedback.the correction, start to undo: nothing soft", "\(all)")
+        } else { log(false, "feedback.correction", "keys not found") }
+        reset(vc, host)
+    }
+
+    // MARK: - Cursor: the space bar drags the cursor; the ticks follow the finger's distance (rounds/R4.md, 方案第 2 项)
+
+    /// The .cursorStep count of the cursor group's first drag (100 pt / 0.5 s): the feedback group checks that the
+    /// controller plays as many.
+    static var uniformCursorSteps: Int?
+
+    /// Nothing composed; `before` characters before the cursor and `after` after it.
+    static func placeCursor(_ vc: KeyboardViewController, _ h: FakeTextHost, before: Int, after: Int) {
+        reset(vc, h)
+        h.insertText(String(repeating: "字", count: before + after))
+        h.adjustTextPosition(byCharacterOffset: -after)
+        vc.textDidChange(nil)
+        drain(0.01)
+    }
+
+    /// The cursor steps of build 225 (KeyboardView, unchanged in R4), replayed on the same samples: where the cursor
+    /// must be after each sample, from `start` in a text of `length` characters (it stops at both ends).
+    static func oldRuleCursor(_ samples: [TouchSample], start: Int, length: Int) -> [Int] {
+        guard let first = samples.first else { return [] }
+        var c = start
+        var prev = first.point
+        var lastMove = first.time
+        var accum: CGFloat = 0
+        var dragging = false
+        var out: [Int] = []
+        for s in samples {
+            if s.phase == .moved {
+                let dx = s.point.x - prev.x
+                let speed = abs(dx) / CGFloat(max(s.time - lastMove, 1.0 / 120))
+                prev = s.point
+                lastMove = s.time
+                let threshold: CGFloat = s.time - first.time > 0.3 ? 12 : 22
+                if !dragging && abs(s.point.x - first.point.x) > threshold { dragging = true; accum = 0 }
+                if dragging {
+                    accum += dx
+                    let step: CGFloat = speed > 900 ? 3.5 : speed > 450 ? 5.5 : 9
+                    while abs(accum) >= step {
+                        let d = accum > 0 ? 1 : -1
+                        c = max(0, min(length, c + d))
+                        accum -= CGFloat(d) * step
+                    }
+                }
+            }
+            out.append(c)
+        }
+        return out
+    }
+
+    /// One drag as the keys felt it: the times of the ticks (the sample each came with), cursor mode, and where the
+    /// field's cursor is after each sample.
+    struct Drag { var cursors: [Int]; var ticks: [CFTimeInterval]; var modes: Int; var entered: CFTimeInterval?; var end: CFTimeInterval }
+
+    static func drag(_ vc: KeyboardViewController, _ h: FakeTextHost, _ samples: [TouchSample]) -> Drag {
+        let kb = vc.keyboardViewForTests
+        var now: CFTimeInterval = 0
+        var ticks: [CFTimeInterval] = []
+        var modes = 0
+        var entered: CFTimeInterval?
+        let felt = kb.onFeedback
+        kb.onFeedback = { e, p in
+            if e == .cursorStep { ticks.append(now) }
+            if e == .cursorMode { modes += 1; if entered == nil { entered = now } }
+            felt?(e, p)
+        }
+        var cursors: [Int] = []
+        for s in samples {
+            now = s.time
+            kb.feedForTests([s])
+            cursors.append(h.cursor)
+        }
+        kb.onFeedback = felt
+        return Drag(cursors: cursors, ticks: ticks, modes: modes, entered: entered, end: samples.last?.time ?? 0)
+    }
+
+    static func cursor(_ window: UIWindow) {
+        guard let made = makeKeyboard(scheme: 1, in: window) else { log(false, "cursor.setup", "engine did not load"); return }
+        let (vc, h) = made
+        vc.feedbackPlayer = RecordingFeedbackPlayer()
+        guard let space = vc.keyboardViewForTests.keyRectsForTests(.space)?.cap else { log(false, "cursor.setup", "no space key"); return }
+        let start = center(space)
+        let minGap = CursorRhythm.minInterval - CursorRhythm.slack
+        func gaps(_ t: [CFTimeInterval]) -> [CFTimeInterval] { zip(t, t.dropFirst()).map { $1 - $0 } }
+        func ms(_ t: [CFTimeInterval]) -> String { gaps(t).map { String(format: "%.0f", $0 * 1000) }.joined(separator: ",") }
+
+        // 1. 100 pt in 0.5 s from the middle of space, 30 characters either side: 8 characters, 2 ticks, 1 cursor mode
+        placeCursor(vc, h, before: 30, after: 30)
+        let s1 = path(from: start, legs: [(CGVector(dx: 100, dy: 0), 0.5)])
+        let want1 = oldRuleCursor(s1, start: 30, length: 60)
+        let d1 = drag(vc, h, s1)
+        let cells1 = (d1.cursors.last ?? 30) - 30
+        uniformCursorSteps = d1.ticks.count
+        log(d1.cursors == want1 && cells1 == 8 && d1.ticks.count == 2 && d1.modes == 1,
+            "cursor.100 pt / 0.5 s: \(cells1) characters (build 225's steps), \(d1.ticks.count) ticks, \(d1.modes) cursor mode",
+            "cursor \(d1.cursors.last ?? -1) want \(want1.last ?? -1) same steps \(d1.cursors == want1) gaps \(ms(d1.ticks)) ms")
+
+        // 2. a fast drag, 300 pt in 0.25 s: the same characters as build 225; at most 3 ticks, ≥ 100 ms apart
+        placeCursor(vc, h, before: 500, after: 500)
+        let s2 = path(from: start, legs: [(CGVector(dx: 300, dy: 0), 0.25)])
+        let want2 = oldRuleCursor(s2, start: 500, length: 1000)
+        let d2 = drag(vc, h, s2)
+        let cells2 = (d2.cursors.last ?? 500) - 500
+        log(d2.cursors == want2 && d2.ticks.count <= 3 && gaps(d2.ticks).allSatisfy { $0 >= minGap },
+            "cursor.300 pt / 0.25 s: \(cells2) characters (build 225's steps), \(d2.ticks.count) ticks (≤ 3), gaps \(ms(d2.ticks)) ms (≥ 100)",
+            "cursor \(d2.cursors.last ?? -1) want \(want2.last ?? -1)")
+
+        // 3. steady drags for 1.2 s: ticks a second = min(speed / 27, 10) ± 1, never more than 10 in a second
+        for v in [50.0, 100, 200, 400, 800, 1200, 2000] {
+            placeCursor(vc, h, before: 2000, after: 2000)
+            let s = path(from: start, legs: [(CGVector(dx: v * 1.2, dy: 0), 1.2)])
+            let want = oldRuleCursor(s, start: 2000, length: 4000)
+            let d = drag(vc, h, s)
+            let cells = (d.cursors.last ?? 2000) - 2000
+            let span = d.end - (d.entered ?? d.end)
+            let rate = span > 0 ? Double(d.ticks.count) / span : 0
+            let target = min(v / 27, 10)
+            let busiest = d.ticks.map { t in d.ticks.filter { $0 >= t && $0 < t + 1 - 1e-6 }.count }.max() ?? 0
+            log(d.cursors == want && d.modes == 1 && abs(rate - target) <= 1 && busiest <= 10,
+                String(format: "cursor.%.0f pt/s for 1.2 s: %ld characters (build 225's steps), %ld ticks, %.1f a second (want %.1f ± 1), at most %ld in a second",
+                       v, cells, d.ticks.count, rate, target, busiest),
+                "same steps \(d.cursors == want) cursor mode \(d.modes)")
+        }
+
+        // 4. 40 pt in 0.4 s, still for 0.3 s, then 9.5 pt in 0.2 s: the character after the pause ticks
+        placeCursor(vc, h, before: 30, after: 30)
+        let s4 = path(from: start, legs: [(CGVector(dx: 40, dy: 0), 0.4), (CGVector(dx: 40, dy: 0), 0.3), (CGVector(dx: 49.5, dy: 0), 0.2)])
+        let d4 = drag(vc, h, s4)
+        let resume = s4[0].time + 0.7 + 1e-9
+        let iResume = s4.firstIndex { $0.time > resume } ?? s4.count
+        let cells4 = (d4.cursors.last ?? 0) - d4.cursors[max(0, iResume - 1)]
+        let after4 = d4.ticks.filter { $0 > resume }
+        log(d4.cursors == oldRuleCursor(s4, start: 30, length: 60) && cells4 >= 1 && after4.count == 1,
+            "cursor.still 0.3 s, then 9.5 pt: \(cells4) character(s), \(after4.count) tick", "all ticks \(d4.ticks.map { String(format: "%.3f", $0 - s4[0].time) })")
+
+        // 5. right 60 pt in 0.4 s, then straight back 30 pt in 0.3 s: the first character on the way back ticks
+        placeCursor(vc, h, before: 30, after: 30)
+        let s5 = path(from: start, legs: [(CGVector(dx: 60, dy: 0), 0.4), (CGVector(dx: 30, dy: 0), 0.3)])
+        let d5 = drag(vc, h, s5)
+        let turn = s5[0].time + 0.4 + 1e-9
+        let back = d5.ticks.filter { $0 > turn }
+        let lastOut = d5.ticks.filter { $0 <= turn }.last
+        if let i = (1..<s5.count).first(where: { s5[$0].time > turn && d5.cursors[$0] < d5.cursors[$0 - 1] }) {
+            let t = s5[i].time
+            let spaced = lastOut.map { t - $0 >= minGap } ?? true
+            log(d5.cursors == oldRuleCursor(s5, start: 30, length: 60) && (spaced ? back == [t] : back.isEmpty),
+                "cursor.turning back: the first character back ticks (\(back.count) tick on the way back)",
+                "first back at \(String(format: "%.3f", t - s5[0].time)) s, ticks back \(back.map { String(format: "%.3f", $0 - s5[0].time) }), "
+                    + "last before \(lastOut.map { String(format: "%.3f", $0 - s5[0].time) } ?? "none")")
+        } else { log(false, "cursor.turning back", "the cursor never moved back: \(d5.cursors)") }
+
+        // 6. at the end of the text: right 100 pt, nothing passed, no tick; then back 60 pt: ticks again as a 200 pt/s drag
+        placeCursor(vc, h, before: 60, after: 0)
+        let s6 = path(from: start, legs: [(CGVector(dx: 100, dy: 0), 0.5), (CGVector(dx: 40, dy: 0), 0.3)])
+        let d6 = drag(vc, h, s6)
+        let turn6 = s6[0].time + 0.5 + 1e-9
+        let iTurn = s6.lastIndex { $0.time <= turn6 } ?? 0
+        let out6 = d6.ticks.filter { $0 <= turn6 }, back6 = d6.ticks.filter { $0 > turn6 }
+        let backCells = d6.cursors[iTurn] - (d6.cursors.last ?? 0)
+        // 60 pt at 200 pt/s ticks as test 3 does: 60 / 27 ≈ 2, ± 1
+        log(d6.cursors[iTurn] == 60 && out6.isEmpty && backCells > 0 && (1...3).contains(back6.count) && d6.cursors == oldRuleCursor(s6, start: 60, length: 60),
+            "cursor.at the end: 0 characters and 0 ticks; back 60 pt: \(backCells) characters, \(back6.count) ticks",
+            "cursor at the turn \(d6.cursors[iTurn]) ticks out \(out6.count)")
+
+        // 7. while composing, a drag on space is space, as before: no cursor mode, no tick
+        reset(vc, h); type(vc, "nihao"); settle(vc)
+        let firstChoice = vc.testState.candidates.first
+        let d7 = drag(vc, h, path(from: start, legs: [(CGVector(dx: 100, dy: 0), 0.5)]))
+        settle(vc)
+        log(d7.ticks.isEmpty && d7.modes == 0 && firstChoice != nil && h.string == firstChoice && !vc.testState.composing,
+            "cursor.drag on space while composing: no cursor mode, 0 ticks, the space goes in as before",
+            "text=\(h.string) first=\(firstChoice ?? "nil") modes=\(d7.modes) ticks=\(d7.ticks.count)")
+        reset(vc, h)
     }
 
     // MARK: - Recorded touches (rounds/R3.md, 方案第 3 项)

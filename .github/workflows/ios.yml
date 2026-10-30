@@ -70,6 +70,7 @@ jobs:
           for i in $(seq 1 60); do ls "$DATA"/Documents/snapshots/night_app_home3.png >/dev/null 2>&1 && break; sleep 2; done
           # then the memory measurement the renderer prints last
           for i in $(seq 1 240); do grep -q "SNAPSHOTS" app-console.log 2>/dev/null && break; sleep 2; done
+          echo "-- footprint --"; grep -E "^FOOTPRINT" app-console.log || echo "::warning::FOOTPRINT line missing"
           echo "-- app console (tail) --"; tail -60 app-console.log || true
           echo "-- crash reports --"
           for f in $(ls -t ~/Library/Logs/DiagnosticReports/*MossOtto* 2>/dev/null | head -2); do head -120 "$f"; done

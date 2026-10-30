@@ -116,7 +116,6 @@ final class KeyboardViewController: UIInputViewController {
         return Self.inExtension ? hasFullAccess : true
     }
     static let inExtension = Bundle.main.bundleURL.pathExtension == "appex"
-    private var lastCursorTick = 0.0
 
     private var isLandscape: Bool { view.bounds.width > view.bounds.height && view.bounds.height > 0 }
     private var barHeight: CGFloat { isLandscape ? Metrics.toolbarHeightLandscape : Metrics.toolbarHeight }
@@ -175,7 +174,7 @@ final class KeyboardViewController: UIInputViewController {
             return self.candidateBar.convert(m.frame.insetBy(dx: -6, dy: 0), to: self.keyboard)
         }
         keyboard.onCursorMove = { [weak self] d in
-            guard let self, self.taps.isEmpty else { return }
+            guard let self, self.taps.isEmpty else { return false }
             // the cursor leaves the word just typed: nothing to undo or autocorrect there any more
             self.undoable = nil
             self.enUndo = nil
@@ -186,9 +185,9 @@ final class KeyboardViewController: UIInputViewController {
             let ch = d < 0 ? proxy.documentContextBeforeInput?.last : proxy.documentContextAfterInput?.first
             // some apps share no context: then step one unit and let the system clamp at the ends
             proxy.adjustTextPosition(byCharacterOffset: d * (ch?.utf16.count ?? 1))
-            // a tick for every character passed, at most one per 25 ms (a fast drag would only buzz); none at the ends
-            let now = CACurrentMediaTime()
-            if ch != nil, now - self.lastCursorTick >= 0.025 { self.lastCursorTick = now; self.feel(.cursorStep) }
+            // whether a visible character was passed (none at the ends): the keys tick by the finger's distance
+            // (CursorRhythm), not here
+            return ch != nil
         }
         keyboard.onKeyDown = { [weak self] action, p in self?.feel(.key(action), at: p) }
         keyboard.onFeedback = { [weak self] event, p in self?.feel(event, at: p) }

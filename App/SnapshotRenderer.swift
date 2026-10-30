@@ -47,6 +47,8 @@ enum SnapshotRenderer {
             Shot(name: "grid", page: .letters, state: "composing", borders: true, panel: "grid"),
             Shot(name: "settings", page: .letters, state: "idle", borders: true, panel: "settings"),
             Shot(name: "settings_full", page: .letters, state: "idle", borders: true, panel: "settings_full"),
+            // rounds/R4.md: without 允许完全访问 — the two switches greyed, the line that says why
+            Shot(name: "settings_noaccess", page: .letters, state: "idle", borders: true, panel: "settings_noaccess"),
             Shot(name: "letters_english", page: .letters, state: "english", borders: true, panel: nil),
             Shot(name: "en_autocorrect", page: .letters, state: "en_typing", borders: true, panel: nil),
             Shot(name: "longpress_comma", page: .letters, state: "idle", borders: true, panel: "longpress"),
@@ -192,13 +194,21 @@ enum SnapshotRenderer {
                     panel.setChinese(true)
                     panel.layoutIfNeeded()
                     panel.load(kaomoji: shot.panel == "kaomoji")
-                } else if shot.panel == "settings" || shot.panel == "settings_full" {
+                } else if shot.panel == "settings" || shot.panel == "settings_full" || shot.panel == "settings_noaccess" {
                     let panel = SettingsPanelView(frame: root.bounds)
                     root.addSubview(panel)
                     kb.isHidden = true; bar.isHidden = true   // as in the keyboard: the panel replaces them
                     panel.setNight(night)
                     panel.setLearned("词库 1866491 条 · 已学习 0 个词")
-                    panel.setNote("词库与学习记录只存在本机，键盘全程离线工作。")
+                    if shot.panel == "settings_noaccess" {
+                        // as KeyboardViewController.applySettings shows it without 允许完全访问
+                        panel.setFeedbackAvailable(false)
+                        panel.setNote("按键震动与按键音需在 设置 › 通用 › 键盘 › 键盘 › Mosto键盘 中开启“允许完全访问”。"
+                            + "词库与学习记录只存在本机，键盘全程离线工作。")
+                        panel.demoScrollToFeedback()
+                    } else {
+                        panel.setNote("词库与学习记录只存在本机，键盘全程离线工作。")
+                    }
                 }
                 root.setNeedsLayout(); root.layoutIfNeeded()
                 kb.layoutIfNeeded(); bar.layoutIfNeeded()

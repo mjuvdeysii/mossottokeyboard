@@ -1108,6 +1108,19 @@ final class SettingsPanelView: UIView {
     }
     func setLearned(_ text: String) { learnedLabel.text = text }
     func setDiagnostics(_ text: String) { diagLabel.text = text }
+    /// Snapshot support: the list scrolled so the 键盘 section (震动、按键音 and, without 允许完全访问, why) starts at
+    /// the top, as far as the list goes.
+    func demoScrollToFeedback() {
+        layoutIfNeeded()
+        stack.layoutIfNeeded()
+        guard let group = groups.first(where: { feedbackSwitch.isDescendant(of: $0) }), let wrap = group.superview,
+              let i = stack.arrangedSubviews.firstIndex(of: wrap) else { return }
+        // from its caption (the line above the group)
+        let top = i > 0 ? stack.arrangedSubviews[i - 1].frame.minY : wrap.frame.minY
+        let y = stack.frame.minY + top - 6
+        let maxY = max(0, scroll.contentSize.height - scroll.bounds.height)
+        scroll.contentOffset = CGPoint(x: 0, y: min(max(0, y), maxY))
+    }
     var diagnosticsText: String { diagLabel.text ?? "" }
 
     @objc private func changed() {
