@@ -70,11 +70,41 @@ def check_app(bundle):
     print(f"::notice title=App record::{a['name']} ({bundle})")
 
 
+def whats_new(bundle, build, path, wait_minutes=25):
+    """TestFlight 'What to Test' for this build, from a text file (zh-Hans; ≤ 4000 characters). The build appears in
+    App Store Connect a few minutes after upload: wait for it."""
+    text = open(path, encoding="utf-8").read().strip()[:4000]
+    q = urllib.parse.urlencode({"filter[bundleId]": bundle})
+    app = [a for a in call("GET", f"/apps?{q}").get("data", []) if a["attributes"]["bundleId"] == bundle][0]
+    deadline = time.time() + wait_minutes * 60
+    build_id = None
+    while time.time() < deadline:
+        q = urllib.parse.urlencode({"filter[app]": app["id"], "filter[version]": str(build), "limit": 1})
+        data = call("GET", f"/builds?{q}").get("data", [])
+        if data:
+            build_id = data[0]["id"]; break
+        time.sleep(30)
+    if not build_id:
+        print(f"::warning title=What to Test::build {build} not in App Store Connect after {wait_minutes} min"); return
+    locs = call("GET", f"/builds/{build_id}/betaBuildLocalizations").get("data", [])
+    mine = [l for l in locs if l["attributes"].get("locale") == "zh-Hans"]
+    if mine:
+        call("PATCH", f"/betaBuildLocalizations/{mine[0]['id']}",
+             {"data": {"type": "betaBuildLocalizations", "id": mine[0]["id"], "attributes": {"whatsNew": text}}})
+    else:
+        call("POST", "/betaBuildLocalizations",
+             {"data": {"type": "betaBuildLocalizations", "attributes": {"locale": "zh-Hans", "whatsNew": text},
+                       "relationships": {"build": {"data": {"type": "builds", "id": build_id}}}}})
+    print(f"::notice title=What to Test::set for build {build}")
+
+
 if __name__ == "__main__":
     cmd = sys.argv[1]
     if cmd == "ensure-bundle-ids":
         ensure_bundle_ids(sys.argv[2:])
     elif cmd == "check-app":
         check_app(sys.argv[2])
+    elif cmd == "whats-new":
+        whats_new(sys.argv[2], sys.argv[3], sys.argv[4])
     else:
         sys.exit(f"unknown command {cmd}")

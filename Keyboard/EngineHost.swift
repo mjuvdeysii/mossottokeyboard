@@ -61,6 +61,13 @@ final class EngineHost {
             }
             self.decoder = d
             self.lock.lock(); self.loaded = true; self.lock.unlock()
+            // warm up: the first real keystroke would otherwise pay for paging in the models (≈ 0.2 s)
+            if !safe {
+                self.queue.async {
+                    for s in ["wo", "nihao", "women", "shi", "de", "jintian"] { _ = d.decode(s.map { Tap.exact($0) }) }
+                    _ = d.predictions(after: Array("你好"))
+                }
+            }
             // the character table 联想 uses: built beside the decoder's thread, never in front of a keystroke
             DispatchQueue.global(qos: .utility).async {
                 let table = Decoder.readingsTable(lex)

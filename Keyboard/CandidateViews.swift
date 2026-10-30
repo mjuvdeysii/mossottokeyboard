@@ -596,7 +596,8 @@ final class SettingsPanelView: UIView {
         diagLabel.textColor = Theme.secondaryText
         diagLabel.tag = Self.tagSecondary
         diagLabel.numberOfLines = 0
-        section("诊断", rows: [diagLabel], footer: "打一段字后打开这里：“丢弃”是被系统取消、没能输入的按键；“按键响应”是每次按键在主线程上花的时间（字母按下即上屏），“候选出现”是按键到候选显示出来的时间（在后台线程解码）。")
+        // 诊断: for testers (TestFlight) only — nobody else needs to read key timings
+        if Self.isTestFlight { section("诊断", rows: [diagLabel], footer: "打一段字后打开这里：“丢弃”是被系统取消、没能输入的按键；“按键响应”是每次按键在主线程上花的时间（字母按下即上屏），“候选出现”是按键到候选显示出来的时间（在后台线程解码）。") }
 
         note.numberOfLines = 0
         note.font = .systemFont(ofSize: 12)
@@ -719,6 +720,16 @@ final class SettingsPanelView: UIView {
     }
 
     /// Mosto in the header shows the light the keyboard is in.
+    /// A TestFlight build (its receipt is the sandbox one).
+    static let isTestFlight: Bool = {
+        if Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt" { return true }
+        #if DEBUG
+        return true
+        #else
+        return false
+        #endif
+    }()
+
     private static let tagPrimary = 9_701, tagSecondary = 9_702, tagGroup = 9_703, tagLine = 9_704
 
     /// The style changed (Mosto / 简洁): every colour set at creation follows; no Mosto in 简洁.

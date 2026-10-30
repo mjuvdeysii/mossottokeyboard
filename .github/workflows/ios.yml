@@ -187,3 +187,11 @@ jobs:
           git config user.name "github-actions"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -q --orphan tf-tmp && git rm -rqf --cached . && find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
           cp /tmp/testflight.txt . && git add -A && git commit -qm "testflight report ${GITHUB_SHA}" && git push -qf origin tf-tmp:ci-logs-testflight
+      - name: What to Test (TESTFLIGHT.md)
+        if: env.ASC_KEY_ID != '' && success()
+        continue-on-error: true
+        timeout-minutes: 28
+        run: |
+          # the report step above left an orphan branch checked out: read the files from this commit
+          git show "${GITHUB_SHA}:Tools/asc.py" > /tmp/asc.py && git show "${GITHUB_SHA}:TESTFLIGHT.md" > /tmp/TESTFLIGHT.md
+          python3 /tmp/asc.py whats-new "$BUNDLE" "$((100 + ${{ github.run_number }}))" /tmp/TESTFLIGHT.md
