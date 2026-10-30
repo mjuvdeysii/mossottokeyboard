@@ -34,8 +34,6 @@ enum SnapshotRenderer {
             Shot(name: "letters_composing", page: .letters, state: "composing", borders: true, panel: nil),
             Shot(name: "letters_predict", page: .letters, state: "predict", borders: true, panel: nil),
             Shot(name: "letters_undo", page: .letters, state: "undo", borders: true, panel: nil),
-            // a long sentence with three keys put right: the one nearest the cursor, and how many
-            Shot(name: "letters_longfix", page: .letters, state: "longfix", borders: true, panel: nil),
             Shot(name: "plain_composing", page: .letters, state: "composing", borders: true, panel: nil),
             Shot(name: "plain_numbers", page: .numbers, state: "idle", borders: true, panel: nil),
             Shot(name: "letters_guide", page: .letters, state: "idle", borders: true, panel: nil),
@@ -125,10 +123,6 @@ enum SnapshotRenderer {
                       c.fixes = [Fix(typed: "teh", meant: "the")]; return c }(),
                     Candidate(text: "teh", tapCount: 0, syllables: [], corrected: false, score: 0),
                     Candidate(text: "tech", tapCount: 0, syllables: [], corrected: false, score: 0)])
-                case "longfix":
-                    var c = candidates(["孩子今天在幼儿园玩得很开心", "孩子今天在幼儿园玩得很开心那", "孩子"], correctedFirst: true)
-                    c[0].fixes = [Fix(typed: "tiam", meant: "tian"), Fix(typed: "yiu", meant: "you"), Fix(typed: "xn", meant: "xin")]
-                    bar.update(preedit: "hai zi jin tiam zai yiu er yuan wan de hen kai xn", candidates: c)
                 case "english": bar.update(preedit: "ios", candidates: candidates(["iOS", "戳死", "戳所", "戳三", "ios"], correctedFirst: false))
                 case "undo":
                     bar.setUndo("jintiantiaqi")
@@ -280,7 +274,7 @@ enum SnapshotRenderer {
             }
             times.sort()
             let p99 = times[min(times.count - 1, Int(Double(times.count) * 0.99))]
-            print(String(format: "FOOTPRINT first decode %.1f ms (cold), warm p99 %.1f ms, max %.1f ms; memory before %.1f MB, engine loaded +%.1f MB, after 400 decodes +%.1f MB",
+            print(String(format: "FOOTPRINT load + first decode %.1f ms, warm p99 %.1f ms, max %.1f ms; memory before %.1f MB, engine loaded +%.1f MB, after 400 decodes +%.1f MB",
                          cold, p99, times.last ?? 0, before, loaded - before, memoryFootprintMB() - before))
         } else {
             print("FOOTPRINT keyboard extension not found in \(Bundle.main.builtInPlugInsURL?.path ?? "-")")

@@ -54,6 +54,8 @@ final class PlaygroundModel: ObservableObject {
     @Published var marked = ""      // the keys being composed (underlined, as the field shows them)
     @Published var step = 0         // index into `lessons`; lessons.count = free typing
     @Published var justPassed = false
+    /// Which pass the pending move-on belongs to (a later pass, jump or skip supersedes it).
+    private var passCount = 0
     @Published var ready = false
     let host = ObservedTextHost()
     var keyboard: KeyboardViewController?
@@ -74,9 +76,11 @@ final class PlaygroundModel: ObservableObject {
             justPassed = true
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             let passed = step
+            passCount += 1
+            let pass = passCount
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) { [weak self] in
-                // a jump or a skip in the meantime already moved on: then only the tick goes
-                guard let self, self.justPassed else { return }
+                // a jump, a skip or another pass in the meantime already moved on: then only the tick goes
+                guard let self, self.justPassed, self.passCount == pass else { return }
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                     if self.step == passed { self.step = min(passed + 1, lessons.count) }
                     self.justPassed = false
@@ -114,6 +118,7 @@ final class PlaygroundModel: ObservableObject {
         keyboard?.textDidChange(nil)   // the word before is gone with the text: no ↩, no suggestions for it
         if layout != 0 { layout = 0 }
         justPassed = false
+        passCount += 1
         step = lesson
         refresh()
     }

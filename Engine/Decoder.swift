@@ -98,8 +98,9 @@ public final class Decoder {
     public var mixedForeignBonus = 3.0
     /// 简拼 of one syllable between others typed in full, on the full keyboard. A lone initial there is far more often
     /// a slip or a key left out (开心 for kaixn, 火锅吧 for huoguobna) than a syllable abbreviated mid-sentence
-    /// (R1: 全拼 one key too many 81.0 → 87.5%, sentences as typed unchanged).
-    public var midAbbreviationPenalty = 6.0
+    /// (R1: 全拼 one key too many 81.0 → 85.6%, left out 48.5 → 49.2%, sentences as typed unchanged). Higher still helps
+    /// slips but pushes deliberate mixes like woxhni (我喜欢你) to second.
+    public var midAbbreviationPenalty = 4.0
     public var abbreviationOverlapPenalty = 8.0
     public var mixedSlipPenalty = 6.0
 
@@ -255,7 +256,7 @@ public final class Decoder {
     public var skipDoublePenalty = 8.0
     public var xiaoheSkipPenalty = 7.0
     /// 漏按了一个键 (全拼): a letter the keys left out — don for dong, tia for tian.
-    public var missingPenalty = 7.0
+    public var missingPenalty = 9.0
     /// How far below the best clean path a slip / left-out-key path may start and still be kept.
     public var slipMargin = 2.0
     public var xiaoheSkipDoublePenalty = 5.5
@@ -1004,21 +1005,41 @@ public final class Decoder {
         let used = taps.prefix(c.tapCount).filter { $0.key != "'" }
         guard !used.contains(where: { $0.group }) else { return [] }
         var typed = used.map { $0.key }
-        // 中英混输: the English words in the text were typed as they are — take their keys out, so only the pinyin is
-        // aligned (我用iPhone打字 for woyongiphonedazii: zii→zi)
-        var latin: [String] = [], run = ""
-        for ch in c.text { if ch.isASCII && ch.isLetter { run.append(ch) } else if !run.isEmpty { latin.append(run); run = "" } }
-        if !run.isEmpty { latin.append(run) }
-        for w in latin {
-            let lw = Array(w.lowercased())
-            guard lw.count <= typed.count else { continue }
-            if let at = (0...(typed.count - lw.count)).first(where: { Array(typed[$0..<$0 + lw.count]).map { Character($0.lowercased()) } == lw }) {
-                typed.removeSubrange(at..<at + lw.count)
-            }
-        }
         let spells = c.syllables.map { Array(spelling(of: $0)) }
         var target: [Character] = [], owner: [Int] = []
         for (k, sp) in spells.enumerated() { target += sp; owner += Array(repeating: k, count: sp.count) }
+        /// How far these keys are from the spelling (the last syllable may be half-typed).
+        func distance(_ t: [Character]) -> Int {
+            let n = t.count, m = target.count
+            guard n > 0, m > 0 else { return Int.max }
+            var prev = Array(0...m), cur = [Int](repeating: 0, count: m + 1)
+            for i in 1...n {
+                cur[0] = i
+                for j in 1...m { cur[j] = min(prev[j - 1] + (t[i - 1] == target[j - 1] ? 0 : 1), prev[j] + 1, cur[j - 1] + 1) }
+                swap(&prev, &cur)
+            }
+            return prev[max(m - spells.last!.count + 1, 1)...m].min() ?? Int.max
+        }
+        // 中英混输: the English words in the text were typed as they are — take their keys out, so only the pinyin is
+        // aligned (我用iPhone打字 for woyongiphonedazii: zii→zi). A short word may also hide inside the pinyin (ok in
+        // wokan…le ok): of every place the word's keys appear, the one that leaves the pinyin closest to its spelling.
+        var latin: [String] = [], run = ""
+        for ch in c.text { if ch.isASCII && ch.isLetter { run.append(ch) } else if !run.isEmpty { latin.append(run); run = "" } }
+        if !run.isEmpty { latin.append(run) }
+        if !latin.isEmpty, typed.count <= 90, target.count <= 120 {
+            for w in latin {
+                let lw = Array(w.lowercased())
+                guard lw.count <= typed.count else { continue }
+                var best: (at: Int, d: Int)?
+                for at in 0...(typed.count - lw.count)
+                where typed[at..<at + lw.count].map({ Character($0.lowercased()) }) == lw {
+                    var rest = typed; rest.removeSubrange(at..<at + lw.count)
+                    let dd = distance(rest)
+                    if best == nil || dd < best!.d { best = (at, dd) }
+                }
+                if let b = best { typed.removeSubrange(b.at..<b.at + lw.count) }
+            }
+        }
         let n = typed.count, m = target.count
         guard n > 0, m > 0, n <= 90, m <= 120 else { return [] }
         // edit distance, typed (rows) against the spelling (columns)

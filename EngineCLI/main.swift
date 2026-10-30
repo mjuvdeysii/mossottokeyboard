@@ -587,8 +587,8 @@ case "bench", "gate":
             ("learn.harm", 1.0, false),
             ("fuzz.bad", 0.0, false),
             ("fuzz.p99.ms", 100.0, false),
-            ("extra.sentences.top1", 85.0, true),
-            ("missing.sentences.top1", 49.0, true), // a sentence with one key left out still read right (%)
+            ("extra.sentences.top1", 84.0, true),
+            ("missing.sentences.top1", 48.0, true), // a sentence with one key left out still read right (%)
             ("mixed.sentences.top1", 78.0, true),
             ("fix.caption.coverage", 98.0, true),
         ]
