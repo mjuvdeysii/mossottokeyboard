@@ -4,19 +4,30 @@ import UIKit
 /// system's scrolling gives the swipe its inertia and bounce.
 final class CandidateStrip: UIScrollView {
     weak var owner: CandidateBarView?
+    /// Whether the row was still gliding when the finger came down — read before any recogniser stops it, so that
+    /// touch only stops the glide and never types the candidate under it.
+    private(set) var glidingAtDown = false
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        if event?.type == .touches { glidingAtDown = isDecelerating }
+        return super.hitTest(point, with: event)
+    }
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesBegan(touches, with: event)
         guard let t = touches.first, let o = owner else { return }
         o.stripTouch(.began, at: t.location(in: o), time: CACurrentMediaTime())
     }
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesMoved(touches, with: event)
         guard let t = touches.first, let o = owner else { return }
         o.stripTouch(.moved, at: t.location(in: o), time: CACurrentMediaTime())
     }
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesEnded(touches, with: event)
         guard let t = touches.first, let o = owner else { return }
         o.stripTouch(.ended, at: t.location(in: o), time: CACurrentMediaTime())
     }
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesCancelled(touches, with: event)
         guard let t = touches.first, let o = owner else { return }
         o.stripTouch(.cancelled, at: t.location(in: o), time: CACurrentMediaTime())
     }
@@ -513,7 +524,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             let idx = candidateIndex(at: p)
             let text = idx.flatMap { $0 < candidates.count ? candidates[$0].text : nil }
             // a finger that lands while the row is still gliding only stops it
-            let gliding = strip.isDecelerating || benchGliding
+            let gliding = strip.glidingAtDown || strip.isDecelerating || benchGliding
             gesture.begin(index: idx, text: text, at: p, time: time, stoppingScroll: gliding, canHold: !isPrediction)
             longPressTimer?.invalidate()
             if idx != nil, !isPrediction, !gliding, !benchTouches {
@@ -877,6 +888,7 @@ final class SettingsPanelView: UIView {
         accessLabel.tag = Self.tagSecondary
         accessLabel.numberOfLines = 0
         accessLabel.isHidden = true
+        setFeedbackAvailable(true)
         learnedLabel.font = .systemFont(ofSize: 15)
         learnedLabel.textColor = Theme.secondaryText
         learnedLabel.tag = Self.tagSecondary
@@ -1087,6 +1099,12 @@ final class SettingsPanelView: UIView {
         feedbackSwitch.isEnabled = ok
         soundSwitch.isEnabled = ok
         accessLabel.isHidden = ok
+        // the line it sits on, and the hairline above it, only while there is something to say
+        if let cell = accessLabel.superview, let list = cell.superview as? UIStackView,
+           let i = list.arrangedSubviews.firstIndex(of: cell) {
+            cell.isHidden = ok
+            if i > 0 { list.arrangedSubviews[i - 1].isHidden = ok }
+        }
     }
     func setLearned(_ text: String) { learnedLabel.text = text }
     func setDiagnostics(_ text: String) { diagLabel.text = text }

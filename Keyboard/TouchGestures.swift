@@ -124,8 +124,8 @@ struct StripGesture {
 }
 
 /// A key's timer (long press, held delete). On the keys it is a run-loop timer; on the test bench it fires when the
-/// clock of the fed samples passes it, so a recorded sequence plays out the same on every run.
-@MainActor
+/// clock of the fed samples passes it, so a recorded sequence plays out the same on every run. Used on the main
+/// thread only (the keys and the test bench); not marked @MainActor so that a run-loop timer's block may fire it.
 final class KeyTimer {
     fileprivate(set) var fireAt: CFTimeInterval
     let interval: CFTimeInterval?

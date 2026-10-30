@@ -111,6 +111,8 @@ final class SystemFeedbackPlayer: FeedbackPlayer {
     }
 
     private var attached: Bool { view?.window != nil }
+    /// Where an event with no finger position plays (a candidate, the ↩ chip, Mosto): the middle of the keys.
+    private var centre: CGPoint? { view.map { CGPoint(x: $0.bounds.midX, y: $0.bounds.midY) } }
 
     func prepare() {
         if attached { light.prepare(); tick.prepare() } else { plainLight.prepare(); plainTick.prepare() }
@@ -122,16 +124,16 @@ final class SystemFeedbackPlayer: FeedbackPlayer {
         switch kind {
         case .impact:
             let g = onView ? light : plainLight
-            if #available(iOS 17.5, *), onView, let point { g.impactOccurred(intensity: intensity, at: point) }
+            if #available(iOS 17.5, *), onView, let point = point ?? centre { g.impactOccurred(intensity: intensity, at: point) }
             else { g.impactOccurred(intensity: intensity) }
             g.prepare()
         case .soft:
             let g = onView ? soft : plainSoft
-            if #available(iOS 17.5, *), onView, let point { g.impactOccurred(intensity: intensity, at: point) }
+            if #available(iOS 17.5, *), onView, let point = point ?? centre { g.impactOccurred(intensity: intensity, at: point) }
             else { g.impactOccurred(intensity: intensity) }
         case .selection:
             let g = onView ? tick : plainTick
-            if #available(iOS 17.5, *), onView, let point { g.selectionChanged(at: point) }
+            if #available(iOS 17.5, *), onView, let point = point ?? centre { g.selectionChanged(at: point) }
             else { g.selectionChanged() }
             g.prepare()
         }

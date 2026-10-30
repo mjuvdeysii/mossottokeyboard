@@ -553,13 +553,15 @@ final class KeyboardViewController: UIInputViewController {
         let d = keyboard.stats
         let mem = memoryFootprintMB()
         peakFootprint = max(peakFootprint, mem)
+        let access = feedbackAllowed ? "已开" : "未开", haptics = hapticsOn ? "开" : "关"
+        let feelLine: String = "；震动：完全访问 \(access) · 开关 \(haptics) · 本次已发出 \(feedbackPlayer.played) 次"
         settingsPanel.setDiagnostics("本次按键 \(d.began) 次：输入 \(d.emitted)，系统取消后保留 \(d.cancelKept)，丢弃 \(d.dropped)；"
             + String(format: "按键响应（主线程）平均 %.1f ms、最长 %.0f ms；候选出现 平均 %.1f ms、最长 %.0f ms；",
                      handleCount > 0 ? handleTotal / Double(handleCount) : 0, handleMax,
                      candCount > 0 ? candTotal / Double(candCount) : 0, candMax)
             + String(format: "内存 %.0f MB（本次最高 %.0f MB）", mem, peakFootprint)
             + (memoryWarnings > 0 ? "，内存警告 \(memoryWarnings) 次" : "")
-            + "；震动：完全访问 \(feedbackAllowed ? "已开" : "未开") · 开关 \(hapticsOn ? "开" : "关") · 本次已发出 \(feedbackPlayer.played) 次"
+            + feelLine
             + (safeMode ? "；上次启动未完成，本次以精简模式运行（无语言模型与中英混输），下次自动恢复" : ""))
         settingsPanel.setFeedbackAvailable(feedbackAllowed)
         settingsPanel.setNote((feedbackAllowed ? "" : "按键震动与按键音需在 设置 › 通用 › 键盘 › 键盘 › Mosto键盘 中开启“允许完全访问”。")
@@ -1120,7 +1122,8 @@ final class KeyboardViewController: UIInputViewController {
     /// What the ↩ chip says for cleared keys: the letters as typed, or on the 九宫格 the pinyin read from them (as
     /// return would type it).
     private func restorableText(_ keys: [Tap], literal: Bool) -> String {
-        if keys.contains(where: { $0.group }), let py = engine.decodeNow(keys, literal: literal)?.result.preedit {
+        // the keypad's keys spell their pinyin only once the engine is there (no waiting on it here)
+        if keys.contains(where: { $0.group }), engine.isLoaded, let py = engine.decodeNow(keys, literal: literal)?.result.preedit {
             return py.replacingOccurrences(of: " ", with: "")
         }
         return String(keys.map { $0.key })
