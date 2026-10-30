@@ -660,7 +660,7 @@ enum KeyboardTests {
                         mismatches += 1
                         if firstMismatch.isEmpty {
                             let ca = Array(pr.ha.string), cb = Array(pr.hb.string)
-                            let at = zip(ca, cb).firstIndex { $0 != $1 } ?? min(ca.count, cb.count)
+                            let at = (0..<min(ca.count, cb.count)).first { ca[$0] != cb[$0] } ?? min(ca.count, cb.count)
                             firstMismatch = "after \(k + 1) keys: lengths \(ca.count)/\(cb.count), first difference at \(at): A …\(String(ca[max(0, at - 6)..<min(ca.count, at + 6)])) / B …\(String(cb[max(0, at - 6)..<min(cb.count, at + 6)])); keys A \(pr.a.testState.keys) B \(pr.b.testState.keys)"
                         }
                     }
@@ -758,7 +758,7 @@ enum KeyboardTests {
                             if vc.tapsForTests == taps && vc.testState.candidates == cands { restored += 1 }
                             else if restoreDiff.isEmpty {
                                 let now = vc.testState.candidates
-                                let at = zip(cands, now).firstIndex { $0 != $1 } ?? min(cands.count, now.count)
+                                let at = (0..<min(cands.count, now.count)).first { cands[$0] != now[$0] } ?? min(cands.count, now.count)
                                 restoreDiff = "taps same: \(vc.tapsForTests == taps) keys \(vc.testState.keys) | counts \(cands.count)/\(now.count), first difference at \(at): was \(Array(cands[min(at, cands.count)...].prefix(4))) now \(Array(now[min(at, now.count)...].prefix(4)))"
                             }
                         }
