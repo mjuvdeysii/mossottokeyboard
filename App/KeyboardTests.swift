@@ -164,6 +164,12 @@ enum KeyboardTests {
             log(h.string == "你好", "quanpin.nihao → 你好", "text=\(h.string)")
             type(vc, "nh"); vc.handle(.space, tap: nil)
             log(h.string == "你好你好", "quanpin.abbreviation nh → 你好", "text=\(h.string)")
+            // 简洁 (无主题): switching the style redraws the keys and types the same
+            KeyboardSettings.shared.style = 1; vc.applySettings()
+            type(vc, "nihao"); settle(vc); vc.handle(.space, tap: nil)
+            log(h.string.hasSuffix("你好") && Theme.plain, "style.简洁 types as before", "text=\(h.string)")
+            KeyboardSettings.shared.style = 0; vc.applySettings()
+            log(!Theme.plain, "style.back to Mosto", "")
             // 连续打字: a punctuation key commits the reading and follows it, the next words read on in context
             type(vc, "womenzoule"); settle(vc); vc.handle(.char("，"), tap: nil)
             log(h.string.hasSuffix("我们走了，") && h.marked == nil, "continuous.，commits the reading first", "text=\(h.string)")

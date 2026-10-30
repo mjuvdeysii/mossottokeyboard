@@ -47,7 +47,7 @@ public final class Decoder {
     public var scheme: PinyinScheme = .xiaohe
 
     public var correctionEnabled = true
-    public var spatialWeight = 1.5
+    public var spatialWeight = 1.8
     public var correctionPenalty = 1.5
     public var wordPenalty = 26.0   // with the language model (each word also pays its non-collocation cost)
     /// What learning adds. A word the lexicon has gets its own frequency plus  userWeight·ln(1 + times picked),

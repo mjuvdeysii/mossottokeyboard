@@ -530,8 +530,10 @@ final class SettingsPanelView: UIView {
         title.text = "Mosto键盘"
         title.font = Theme.font(17, .bold)
         title.textColor = Theme.keyText
+        title.tag = Self.tagPrimary
         statusLabel.font = .systemFont(ofSize: 12)
         statusLabel.textColor = Theme.secondaryText
+        statusLabel.tag = Self.tagSecondary
         let titles = UIStackView(arrangedSubviews: [title, statusLabel])
         titles.axis = .vertical
         titles.spacing = 1
@@ -581,6 +583,7 @@ final class SettingsPanelView: UIView {
 
         learnedLabel.font = .systemFont(ofSize: 15)
         learnedLabel.textColor = Theme.secondaryText
+        learnedLabel.tag = Self.tagSecondary
         learnedLabel.numberOfLines = 0
         let reset = UIButton(type: .system)
         reset.setTitle("清空已学习的词语与触点习惯", for: .normal)
@@ -591,12 +594,14 @@ final class SettingsPanelView: UIView {
         section("学习", rows: [learnedLabel, reset], footer: nil)
         diagLabel.font = .monospacedDigitSystemFont(ofSize: 13, weight: .regular)
         diagLabel.textColor = Theme.secondaryText
+        diagLabel.tag = Self.tagSecondary
         diagLabel.numberOfLines = 0
         section("诊断", rows: [diagLabel], footer: "打一段字后打开这里：“丢弃”是被系统取消、没能输入的按键；“按键响应”是每次按键在主线程上花的时间（字母按下即上屏），“候选出现”是按键到候选显示出来的时间（在后台线程解码）。")
 
         note.numberOfLines = 0
         note.font = .systemFont(ofSize: 12)
         note.textColor = Theme.secondaryText
+        note.tag = Self.tagSecondary
         stack.addArrangedSubview(inset(note))
 
         for c in [schemeControl, layoutControl, appearance, styleControl] {
@@ -632,12 +637,14 @@ final class SettingsPanelView: UIView {
         cap.text = title
         cap.font = .systemFont(ofSize: 13)
         cap.textColor = Theme.secondaryText
+        cap.tag = Self.tagSecondary
         let capWrap = inset(cap)
         stack.addArrangedSubview(capWrap)
         stack.setCustomSpacing(4, after: capWrap)
 
         let group = UIView()
         group.backgroundColor = Theme.settingsGroup
+        group.tag = Self.tagGroup
         group.layer.cornerRadius = 12
         group.layer.cornerCurve = .continuous
         let inner = UIStackView()
@@ -646,6 +653,7 @@ final class SettingsPanelView: UIView {
             if i > 0 {
                 let line = UIView()
                 line.backgroundColor = Theme.separator
+                line.tag = Self.tagLine
                 line.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale).isActive = true
                 inner.addArrangedSubview(line)
             }
@@ -686,6 +694,7 @@ final class SettingsPanelView: UIView {
             f.numberOfLines = 0
             f.font = .systemFont(ofSize: 12)
             f.textColor = Theme.secondaryText
+            f.tag = Self.tagSecondary
             stack.setCustomSpacing(4, after: wrap)
             let fw = inset(f)
             stack.addArrangedSubview(fw)
@@ -700,6 +709,7 @@ final class SettingsPanelView: UIView {
         l.text = text
         l.font = .systemFont(ofSize: 16)
         l.textColor = Theme.keyText
+        l.tag = Self.tagPrimary
         l.numberOfLines = 0
         l.setContentCompressionResistancePriority(.required, for: .horizontal)
         let s = UIStackView(arrangedSubviews: [l, UIView(), control])
@@ -709,6 +719,32 @@ final class SettingsPanelView: UIView {
     }
 
     /// Mosto in the header shows the light the keyboard is in.
+    private static let tagPrimary = 9_701, tagSecondary = 9_702, tagGroup = 9_703, tagLine = 9_704
+
+    /// The style changed (Mosto / 简洁): every colour set at creation follows; no Mosto in 简洁.
+    func themeChanged() {
+        tintColor = Theme.selection
+        for sw in [englishSwitch, guideSwitch, correctionSwitch, feedbackSwitch, soundSwitch] { sw.onTintColor = Theme.selection }
+        for sc in [schemeControl, layoutControl, numberControl, appearance, styleControl] {
+            sc.selectedSegmentTintColor = Theme.selection
+            sc.setTitleTextAttributes([.foregroundColor: Theme.selectionText, .font: Theme.font(14, .semibold)], for: .selected)
+            sc.setTitleTextAttributes([.foregroundColor: Theme.keyText, .font: Theme.font(14, .medium)], for: .normal)
+        }
+        mostoImage.isHidden = Theme.plain
+        func walk(_ v: UIView) {
+            switch v.tag {
+            case Self.tagPrimary: (v as? UILabel)?.textColor = Theme.keyText
+            case Self.tagSecondary: (v as? UILabel)?.textColor = Theme.secondaryText
+            case Self.tagGroup: v.backgroundColor = Theme.settingsGroup
+            case Self.tagLine: v.backgroundColor = Theme.separator
+            default: break
+            }
+            v.subviews.forEach(walk)
+        }
+        walk(self)
+        updateStatus()
+    }
+
     func setNight(_ night: Bool) {
         mostoImage.image = UIImage(named: night ? "mosto_night" : "mosto_day", in: Bundle(for: SettingsPanelView.self), with: nil)
         updateStatus(night: night)

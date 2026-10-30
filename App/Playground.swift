@@ -75,10 +75,15 @@ final class PlaygroundModel: ObservableObject {
     @Published var layout = 0 {   // 0 全拼, 1 小鹤双拼, 2 九宫格
         didSet { applyLayout() }
     }
+    /// 小鹤键位提示 on the practice keyboard (the letters show their initial and finals).
+    @Published var guide = true {
+        didSet { applyLayout() }
+    }
     func applyLayout() {
         let s = KeyboardSettings.shared
         s.scheme = layout == 1 ? 0 : 1
         s.pinyinGrid = layout == 2
+        s.xiaoheGuide = guide
         keyboard?.applySettings()
     }
 
@@ -255,6 +260,12 @@ private struct DoneCard: View {
                 }
                 .pickerStyle(.segmented)
                 .padding(.vertical, 2)
+                if model.layout == 1 {
+                    // 小鹤 on the practice keyboard: the guide on the keys, and a few words to try
+                    Toggle("键位提示", isOn: $model.guide).font(.subheadline).tint(mostoTint)
+                    Text("试试：nihc 你好 · vsgo 中国 · ulpb 双拼 · keyi 可以").font(.system(.footnote, design: .rounded))
+                        .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
                 Button("再来一遍") { model.restart() }.font(.subheadline.weight(.semibold))
             }
         }

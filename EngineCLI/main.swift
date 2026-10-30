@@ -50,8 +50,6 @@ if let v = env["MIXS"].flatMap(Double.init) { decoder.mixedSlipPenalty = v }
 if let v = env["AOP"].flatMap(Double.init) { decoder.abbreviationOverlapPenalty = v }
 if let v = env["CORR"].flatMap(Double.init) { decoder.correctionPenalty = v }
 if let v = env["SPW"].flatMap(Double.init) { decoder.spatialWeight = v }
-if let v = env["CORR"].flatMap(Double.init) { decoder.correctionPenalty = v }
-if let v = env["SPW"].flatMap(Double.init) { decoder.spatialWeight = v }
 if let v = env["SKM"].flatMap(Double.init) { decoder.slipMargin = v }
 if env["SKIP"] == "0" { decoder.skipEnabled = false }
 if let v = env["SKIPP"].flatMap(Double.init) { decoder.skipPenalty = v; decoder.xiaoheSkipPenalty = v }

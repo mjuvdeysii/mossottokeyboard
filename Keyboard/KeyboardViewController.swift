@@ -458,7 +458,7 @@ final class KeyboardViewController: UIInputViewController {
             Theme.plain = plain
             keyboard.themeChanged()
             candidateBar.themeChanged()
-            settingsPanel.setNeedsLayout()
+            settingsPanel.themeChanged()
         }
         let sysDark = systemIsDark
         let mode = KeyboardSettings.shared.appearance
