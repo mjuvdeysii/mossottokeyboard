@@ -353,7 +353,7 @@ enum Theme {
     static var keyShadow: UIColor { plain ? plain_keyShadow : mosto_keyShadow }
     /// `a` moved `k` of the way towards `b` (opaque colours).
     private static let mosto_keyShadow: UIColor = dyn(hex(0x2B1961, 0.14), UIColor(white: 0, alpha: 0.32))
-    private static let plain_keyShadow: UIColor = dyn(UIColor(white: 0, alpha: 0.22), UIColor(white: 0, alpha: 0.45))
+    private static let plain_keyShadow: UIColor = dyn(UIColor(white: 0, alpha: 0.10), UIColor(white: 0, alpha: 0.35))
     static func mix(_ a: UIColor, _ b: UIColor, _ k: CGFloat) -> UIColor {
         var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0, r2: CGFloat = 0, g2: CGFloat = 0, b2: CGFloat = 0, a2: CGFloat = 0
         a.getRed(&r1, green: &g1, blue: &b1, alpha: &a1); b.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)

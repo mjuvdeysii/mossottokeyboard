@@ -103,6 +103,19 @@ final class CandidateBarView: UIView {
 
     @objc private func expandTapped() { onExpand?() }
 
+    /// The style changed (Mosto / 简洁): the colours set once at creation follow.
+    func themeChanged() {
+        expandButton.tintColor = Theme.secondaryText
+        preedit.textColor = Theme.secondaryText
+        preedit.font = Theme.font(14, .medium)
+        var uc = undoChip.configuration
+        uc?.baseBackgroundColor = Theme.correctedTint
+        uc?.baseForegroundColor = Theme.correctedMark
+        undoChip.configuration = uc
+        let t = undoText; undoText = nil; setUndo(t)
+        setNeedsLayout()
+    }
+
     var undoTextForTests: String? { undoText }
     func undoTapForTests() { onUndo?() }
 
@@ -704,8 +717,9 @@ final class SettingsPanelView: UIView {
     /// The line under the name: the light, the scheme and the layout in use, at a glance.
     private func updateStatus(night: Bool? = nil) {
         let s = KeyboardSettings.shared
-        let light = night.map { $0 ? "夜灯" : "日光" } ?? (["自动", "日光", "夜灯"][s.appearance])
-        statusLabel.text = "\(light) · \(s.scheme == 0 ? "小鹤双拼" : "全拼") · \(s.pinyinGrid ? "九宫格" : "全键盘")"
+        let nightName = s.style == 1 ? "夜光" : "夜灯"
+        let light = night.map { $0 ? nightName : "日光" } ?? (["自动", "日光", nightName][s.appearance])
+        statusLabel.text = "\(s.style == 1 ? "简洁" : "Mosto") · \(light) · \(s.scheme == 0 ? "小鹤双拼" : "全拼") · \(s.pinyinGrid ? "九宫格" : "全键盘")"
     }
 
     func load() {

@@ -457,7 +457,7 @@ final class KeyboardViewController: UIInputViewController {
         if plain != Theme.plain {
             Theme.plain = plain
             keyboard.themeChanged()
-            candidateBar.setNeedsLayout()
+            candidateBar.themeChanged()
             settingsPanel.setNeedsLayout()
         }
         let sysDark = systemIsDark
