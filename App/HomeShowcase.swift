@@ -380,7 +380,7 @@ struct SetupCard: View {
                     }
                 }
                 SetupStep(n: 3, title: "震动与按键音（可选）") {
-                    Text("在键盘列表中点 Mosto键盘，开启“允许完全访问”。键盘始终只在手机上运行。")
+                    Text("在键盘列表中点 Mosto键盘，开启“允许完全访问”。键盘始终只在手机上运行。仍然感觉不到震动时，打开 设置 › 声音与触感 › 系统触感反馈。")
                         .font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 Button {

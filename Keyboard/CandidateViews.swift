@@ -501,6 +501,7 @@ final class SettingsPanelView: UIView {
     private let styleControl = UISegmentedControl(items: ["Mosto", "简洁"])
     private let learnedLabel = UILabel()
     private let diagLabel = UILabel()
+    private let accessLabel = UILabel()
     private let note = UILabel()
     private var groups: [UIView] = []
 
@@ -577,9 +578,16 @@ final class SettingsPanelView: UIView {
         section("键盘", rows: [
             row("按键震动", feedbackSwitch),
             row("按键音", soundSwitch),
+            accessLabel,
         ], footer: "震动与按键音在按下的一瞬间发出（与系统键盘一样）；按键音跟随静音开关。")
         section("外观", rows: [row("风格", styleControl), row("光线", appearance)], footer: "风格：Mosto 是软胶按键与 Mosto 本人；简洁是没有主题的素净按键，白天清爽、夜里低亮。光线自动：跟随系统的浅色 / 深色模式。Mosto 不打字时待在候选栏左边：轻点他选颜文字，轻点两下切换日光 / 夜灯。日光下睁大眼睛、偶尔眨眼；夜灯下深紫底色，尾巴尖亮起金光。按键是他的软胶：空格上是他的翅膀，中 / 英 键戴着他的歪王冠，换行键是王冠的金色。")
 
+        accessLabel.text = "按键震动与按键音需要允许完全访问：设置 › 通用 › 键盘 › 键盘 › Mosto键盘。"
+        accessLabel.font = .systemFont(ofSize: 13)
+        accessLabel.textColor = Theme.secondaryText
+        accessLabel.tag = Self.tagSecondary
+        accessLabel.numberOfLines = 0
+        accessLabel.isHidden = true
         learnedLabel.font = .systemFont(ofSize: 15)
         learnedLabel.textColor = Theme.secondaryText
         learnedLabel.tag = Self.tagSecondary
@@ -784,8 +792,16 @@ final class SettingsPanelView: UIView {
     }
 
     func setNote(_ text: String) { note.text = text }
+    /// Without 允许完全访问 the system plays no haptics or click sounds for a keyboard: the two switches show it
+    /// (greyed, the choice kept) and say what they need.
+    func setFeedbackAvailable(_ ok: Bool) {
+        feedbackSwitch.isEnabled = ok
+        soundSwitch.isEnabled = ok
+        accessLabel.isHidden = ok
+    }
     func setLearned(_ text: String) { learnedLabel.text = text }
     func setDiagnostics(_ text: String) { diagLabel.text = text }
+    var diagnosticsText: String { diagLabel.text ?? "" }
 
     @objc private func changed() {
         let s = KeyboardSettings.shared

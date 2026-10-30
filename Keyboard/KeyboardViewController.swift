@@ -89,8 +89,19 @@ final class KeyboardViewController: UIInputViewController {
         let typed = undoable.map { String($0.taps.map { $0.key }) } ?? enUndo?.typed
         candidateBar.setUndo(typed)
     }
-    private let haptic = UIImpactFeedbackGenerator(style: .light)
-    private let tick = UISelectionFeedbackGenerator()
+    /// What is felt and heard (Keyboard/KeyFeedback.swift); the test bench swaps in a recorder.
+    lazy var feedbackPlayer: FeedbackPlayer = SystemFeedbackPlayer(view: keyboard)
+    /// The test bench: stand in for 允许完全访问 (nil: as the system says).
+    var fullAccessOverride: Bool?
+    /// Haptics and click sounds need 允许完全访问 in a keyboard extension; inside this app (上手) the keyboard runs in
+    /// the app's own process, where they always work — there `hasFullAccess` says nothing about them.
+    var diagnosticsForTests: String { settingsPanel.diagnosticsText }
+    var feedbackAllowed: Bool {
+        if let o = fullAccessOverride { return o }
+        return Self.inExtension ? hasFullAccess : true
+    }
+    static let inExtension = Bundle.main.bundleURL.pathExtension == "appex"
+    private var lastCursorTick = 0.0
 
     private var isLandscape: Bool { view.bounds.width > view.bounds.height && view.bounds.height > 0 }
     private var barHeight: CGFloat { isLandscape ? Metrics.toolbarHeightLandscape : Metrics.toolbarHeight }
@@ -154,13 +165,16 @@ final class KeyboardViewController: UIInputViewController {
             let ch = d < 0 ? proxy.documentContextBeforeInput?.last : proxy.documentContextAfterInput?.first
             // some apps share no context: then step one unit and let the system clamp at the ends
             proxy.adjustTextPosition(byCharacterOffset: d * (ch?.utf16.count ?? 1))
-            if ch != nil, self.hapticsOn, self.hasFullAccess { self.tick.selectionChanged() }
+            // a tick for every character passed, at most one per 25 ms (a fast drag would only buzz); none at the ends
+            let now = CACurrentMediaTime()
+            if ch != nil, now - self.lastCursorTick >= 0.025 { self.lastCursorTick = now; self.feel(.cursorStep) }
         }
-        keyboard.onKeyDown = { [weak self] action in self?.playFeedback(action) }
+        keyboard.onKeyDown = { [weak self] action, p in self?.feel(.key(action), at: p) }
+        keyboard.onFeedback = { [weak self] event, p in self?.feel(event, at: p) }
 
-        candidateBar.onSelect = { [weak self] i in self?.candidateTapped(i) }
+        candidateBar.onSelect = { [weak self] i in self?.feel(.candidate); self?.candidateTapped(i) }
         // the undo chip: the same as pressing delete right after the corrected word went in
-        candidateBar.onUndo = { [weak self] in self?.handle(.delete, tap: nil) }
+        candidateBar.onUndo = { [weak self] in self?.feel(.undoChip); self?.handle(.delete, tap: nil) }
         candidateBar.onMostoShown = { [weak self] on in self?.tintView.lampLit = on }
         syllablePicker.isHidden = true
         keyboard.addSubview(syllablePicker)
@@ -171,18 +185,18 @@ final class KeyboardViewController: UIInputViewController {
         candidateBar.onSettings = { [weak self] in self?.showSettings(true) }
         candidateBar.onMostoTap = { [weak self] in
             guard let self else { return }
-            self.playFeedback(.emoji)
+            self.feel(.mosto)
             if !self.taps.isEmpty { self.commitAll() }   // as the emoji key does: nothing typed is left half-marked
             self.showEmoji(true, kaomoji: true)
         }
         candidateBar.onMostoDoubleTap = { [weak self] in
             // 日光 ⇄ 夜灯, from whatever light is showing now (自动 included); the settings page shows the choice
             guard let self else { return }
-            self.playFeedback(.emoji)
+            self.feel(.mosto)
             KeyboardSettings.shared.appearance = self.isNight ? 1 : 2
             self.applyAppearance()
         }
-        grid.onSelect = { [weak self] i in self?.showGrid(false); self?.candidateTapped(i) }
+        grid.onSelect = { [weak self] i in self?.feel(.candidate); self?.showGrid(false); self?.candidateTapped(i) }
         grid.onClose = { [weak self] in self?.showGrid(false) }
         grid.onDelete = { [weak self] in
             guard let self else { return }
@@ -249,7 +263,7 @@ final class KeyboardViewController: UIInputViewController {
         afterLastKey = contextSnapshot()
         adaptToField()
         applyAppearance()
-        haptic.prepare()
+        feedbackPlayer.prepare()
     }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
@@ -509,8 +523,10 @@ final class KeyboardViewController: UIInputViewController {
                      candCount > 0 ? candTotal / Double(candCount) : 0, candMax)
             + String(format: "内存 %.0f MB（本次最高 %.0f MB）", mem, peakFootprint)
             + (memoryWarnings > 0 ? "，内存警告 \(memoryWarnings) 次" : "")
+            + "；震动：完全访问 \(feedbackAllowed ? "已开" : "未开") · 开关 \(hapticsOn ? "开" : "关") · 本次已发出 \(feedbackPlayer.played) 次"
             + (safeMode ? "；上次启动未完成，本次以精简模式运行（无语言模型与中英混输），下次自动恢复" : ""))
-        settingsPanel.setNote((hasFullAccess ? "" : "按键震动与按键音需在 设置 › 通用 › 键盘 › 键盘 › Mosto键盘 中开启“允许完全访问”。")
+        settingsPanel.setFeedbackAvailable(feedbackAllowed)
+        settingsPanel.setNote((feedbackAllowed ? "" : "按键震动与按键音需在 设置 › 通用 › 键盘 › 键盘 › Mosto键盘 中开启“允许完全访问”。")
             + "词库与学习记录只存在本机，键盘全程离线工作。")
         reconfigure()
         applyAppearance()
@@ -521,22 +537,12 @@ final class KeyboardViewController: UIInputViewController {
     private var hapticsOn = true
     private var guideOn = false
     private var soundOn = true
-    /// Click sounds are started off the main thread: AudioServicesPlaySystemSound can block for a few milliseconds
-    /// (most of all on the first sound after the keyboard appears), and the key press must not wait for it.
-    private static let soundQueue = DispatchQueue(label: "mosto.keysound", qos: .userInteractive)
-
-    /// The system keyboard's three click sounds: letters and symbols, delete, and the other function keys.
-    private func playFeedback(_ action: KeyAction) {
-        guard hasFullAccess else { return }
-        if hapticsOn { haptic.impactOccurred(); haptic.prepare() }
-        guard soundOn else { return }
-        let sound: SystemSoundID
-        switch action {
-        case .char, .space, .t9: sound = 1104
-        case .delete, .deleteWord: sound = 1155
-        default: sound = 1156
-        }
-        Self.soundQueue.async { AudioServicesPlaySystemSound(sound) }
+    /// Felt and heard as the table says (FeedbackModel), when the switches and 允许完全访问 allow it.
+    func feel(_ event: FeedbackEvent, at point: CGPoint? = nil) {
+        guard feedbackAllowed else { return }
+        let r = FeedbackModel.response(for: event)
+        if hapticsOn, let kind = r.kind { feedbackPlayer.play(kind, intensity: r.intensity, at: point) }
+        if soundOn, let sound = r.sound { feedbackPlayer.play(sound: sound) }
     }
 
     // MARK: - Field adaptation
@@ -1040,7 +1046,7 @@ final class KeyboardViewController: UIInputViewController {
     func pickSyllable(_ i: Int) {
         let (start, choices) = syllableChoices
         guard i < choices.count, start + choices[i].keys.count <= taps.count else { return }
-        playFeedback(.t9("2"))
+        feel(.candidate)
         taps.replaceSubrange(start..<(start + choices[i].keys.count), with: choices[i].keys.map { Tap.exact($0) })
         refresh()
     }
@@ -1169,16 +1175,16 @@ final class KeyboardViewController: UIInputViewController {
         root.addSubview(p)
         p.onEmoji = { [weak self] e in
             guard let self else { return }
-            self.playFeedback(.char(e))
+            self.feel(.key(.char(e)))
             self.host.insertText(e)
             self.lastInsertedSpace = false
         }
         p.onDelete = { [weak self] in
             guard let self else { return }
-            self.playFeedback(.delete)
+            self.feel(.key(.delete))
             self.host.deleteBackward()
         }
-        p.onBack = { [weak self] in self?.playFeedback(.page(.letters)); self?.showEmoji(false) }
+        p.onBack = { [weak self] in self?.feel(.key(.page(.letters))); self?.showEmoji(false) }
         p.onSettings = { [weak self] in self?.showSettings(true) }
         return p
     }

@@ -513,7 +513,10 @@ final class KeyboardView: UIView {
     var onCursorMove: ((Int) -> Void)?
     /// Whether a drag on the space bar may move the cursor now (not while a pinyin is being composed).
     var canMoveCursor: (() -> Bool)?
-    var onKeyDown: ((KeyAction) -> Void)?
+    /// A finger lands on a key (where, for the haptic).
+    var onKeyDown: ((KeyAction, CGPoint) -> Void)?
+    /// Something felt that is not a key landing: other characters shown or changed, cursor mode, word deletes.
+    var onFeedback: ((FeedbackEvent, CGPoint?) -> Void)?
     weak var inputController: UIInputViewController?
 
     let spatial: SpatialModel
@@ -732,7 +735,7 @@ final class KeyboardView: UIView {
             let kv = keyViews[idx]
             kv.pressed = true
             lastKeyDown = CACurrentMediaTime()
-            onKeyDown?(kv.spec.action)
+            onKeyDown?(kv.spec.action, p)
             switch kv.spec.action {
             case .char(let s) where kv.spec.alt == nil:
                 // A key with nothing to choose on a long press types the moment the finger lands, as the fastest
@@ -802,6 +805,7 @@ final class KeyboardView: UIView {
                     tr.dragging = true
                     tr.dragAccum = 0
                     setCursorMode(true, except: tr.keyIndex)
+                    onFeedback?(.cursorMode, p)
                 }
                 if tr.dragging {
                     tr.dragAccum += dx
@@ -814,7 +818,10 @@ final class KeyboardView: UIView {
                 }
             case .char where tr.altShown:
                 // the first choice stays selected until the finger actually slides
-                if let popup = tr.altPopup, abs(p.x - tr.altAnchorX) > 6 { popup.selected = popup.index(at: p.x) }
+                if let popup = tr.altPopup, abs(p.x - tr.altAnchorX) > 6 {
+                    let i = popup.index(at: p.x)
+                    if i != popup.selected { popup.selected = i; onFeedback?(.altMoved, p) }
+                }
             case .char where !tr.altShown && !tr.typedOnDown:
                 // Slide to a neighbouring character key before release (keys typed on landing stay typed).
                 if let idx = keyIndex(at: p), idx < keyViews.count, idx != tr.keyIndex, case .char = keyViews[idx].spec.action {
@@ -963,6 +970,7 @@ final class KeyboardView: UIView {
                 self.onAction?(.delete, nil)
             } else if tr.repeatCount % 3 == 0 {
                 self.onAction?(.deleteWord, nil)
+                self.onFeedback?(.deleteWord, nil)
             }
         }
         RunLoop.main.add(t, forMode: .common)
@@ -1027,6 +1035,7 @@ final class KeyboardView: UIView {
             addSubview(popup)
             tr.altPopup = popup
         }
-        onKeyDown?(kv.spec.action)
+        // the finger already felt the key landing: the choices appearing are a tick, with no second click
+        onFeedback?(.altShown, tr.location)
     }
 }

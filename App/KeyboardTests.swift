@@ -119,6 +119,7 @@ enum KeyboardTests {
         let saved = (KeyboardSettings.shared.scheme, KeyboardSettings.shared.pinyinGrid, KeyboardSettings.shared.english)
         scenarios(window)
         tryFromDemo(window)
+        feedback(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -286,6 +287,72 @@ enum KeyboardTests {
         log(p.host.string.isEmpty && p.before.isEmpty && p.marked.isEmpty && !vc.testState.composing && !p.justPassed,
             "app.试一试 starts with an empty field", "text=\(p.host.string) before=\(p.before) marked=\(p.marked) keys=\(vc.testState.keys)")
         p.keyboard = nil
+    }
+
+    // MARK: - Feedback: the table, and what the keyboard plays (rounds/R2.md)
+
+    static func feedback(_ window: UIWindow) {
+        // the table, row by row
+        func r(_ e: FeedbackEvent) -> FeedbackResponse { FeedbackModel.response(for: e) }
+        let rows: [(String, FeedbackEvent, FeedbackResponse)] = [
+            ("letter", .key(.char("a")), FeedbackResponse(kind: .impact, intensity: 0.6, sound: 1104)),
+            ("九宫格 key", .key(.t9("5")), FeedbackResponse(kind: .impact, intensity: 0.6, sound: 1104)),
+            ("space", .key(.space), FeedbackResponse(kind: .impact, intensity: 1, sound: 1104)),
+            ("delete", .key(.delete), FeedbackResponse(kind: .impact, intensity: 1, sound: 1155)),
+            ("return", .key(.ret), FeedbackResponse(kind: .impact, intensity: 1, sound: 1156)),
+            ("shift", .key(.shift), FeedbackResponse(kind: .impact, intensity: 1, sound: 1156)),
+            ("candidate", .candidate, FeedbackResponse(kind: .impact, intensity: 0.6, sound: 1104)),
+            ("undo chip", .undoChip, FeedbackResponse(kind: .impact, intensity: 1, sound: 1155)),
+            ("other characters shown", .altShown, FeedbackResponse(kind: .selection, intensity: 1, sound: nil)),
+            ("other character chosen", .altMoved, FeedbackResponse(kind: .selection, intensity: 1, sound: nil)),
+            ("cursor mode", .cursorMode, FeedbackResponse(kind: .impact, intensity: 1, sound: nil)),
+            ("cursor step", .cursorStep, FeedbackResponse(kind: .selection, intensity: 1, sound: nil)),
+            ("word delete", .deleteWord, FeedbackResponse(kind: .selection, intensity: 1, sound: nil)),
+            ("Mosto", .mosto, FeedbackResponse(kind: .soft, intensity: 0.7, sound: 1156)),
+        ]
+        for (name, e, want) in rows { log(r(e) == want, "feedback.table \(name)", "got \(r(e))") }
+
+        guard let kb = makeKeyboard(scheme: 1, in: window) else { log(false, "feedback.setup", "engine did not load"); return }
+        let vc = kb.0
+        let rec = RecordingFeedbackPlayer()
+        vc.feedbackPlayer = rec
+        let s = KeyboardSettings.shared
+        let (oldFeedback, oldSound) = (s.feedback, s.keySound)
+        defer { s.feedback = oldFeedback; s.keySound = oldSound; vc.applySettings() }
+        s.feedback = true; s.keySound = true; vc.applySettings()
+
+        // in this app the keyboard plays whatever 允许完全访问 says (the 上手 page)
+        log(vc.feedbackAllowed, "feedback.inside the app: allowed", "hasFullAccess=\(vc.hasFullAccess)")
+        rec.clear(); vc.feel(.key(.char("a")))
+        log(rec.haptics == [.init(kind: .impact, intensity: 0.6)] && rec.sounds == [1104], "feedback.a: one light tap and a click",
+            "\(rec.haptics) \(rec.sounds)")
+        rec.clear(); vc.feel(.key(.delete))
+        log(rec.haptics == [.init(kind: .impact, intensity: 1)] && rec.sounds == [1155], "feedback.delete: one firm tap and the delete click",
+            "\(rec.haptics) \(rec.sounds)")
+        rec.clear(); vc.feel(.mosto)
+        log(rec.haptics == [.init(kind: .soft, intensity: 0.7)], "feedback.Mosto: soft", "\(rec.haptics)")
+        let keys: [KeyAction] = [.char("q"), .space, .ret, .shift, .delete, .t9("2"), .page(.numbers), .toggleLanguage, .emoji]
+        rec.clear(); for k in keys { vc.feel(.key(k)) }
+        log(!rec.haptics.contains { $0.kind == .soft }, "feedback.no key is soft", "\(rec.haptics)")
+
+        // switches on their own
+        s.feedback = false; s.keySound = true; vc.applySettings()
+        rec.clear(); vc.feel(.key(.char("a")))
+        log(rec.haptics.isEmpty && rec.sounds == [1104], "feedback.震动 off: only the click", "\(rec.haptics) \(rec.sounds)")
+        s.feedback = true; s.keySound = false; vc.applySettings()
+        rec.clear(); vc.feel(.key(.char("a")))
+        log(rec.haptics.count == 1 && rec.sounds.isEmpty, "feedback.按键音 off: only the tap", "\(rec.haptics) \(rec.sounds)")
+        s.keySound = true
+
+        // without 允许完全访问 (in another app): nothing at all, and the diagnostics say why
+        vc.fullAccessOverride = false
+        vc.applySettings()
+        rec.clear()
+        for e: FeedbackEvent in [.key(.char("a")), .key(.delete), .candidate, .undoChip, .altShown, .cursorStep, .mosto] { vc.feel(e) }
+        log(rec.haptics.isEmpty && rec.sounds.isEmpty, "feedback.without full access: nothing", "\(rec.haptics) \(rec.sounds)")
+        log(vc.diagnosticsForTests.contains("完全访问 未开"), "feedback.diagnostics say 完全访问 未开", vc.diagnosticsForTests)
+        vc.fullAccessOverride = nil
+        vc.applySettings()
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key
