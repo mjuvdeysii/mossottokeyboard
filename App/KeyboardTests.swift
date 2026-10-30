@@ -645,7 +645,12 @@ enum KeyboardTests {
             var clears = 0, mismatches = 0, firstMismatch = ""
             let base = kbA.clearSwipes
             for (vc, h) in [(pr.a, pr.ha), (pr.b, pr.hb)] { reset(vc, h) }
+            // space and delete act on what was read so far: both keyboards wait for their reading first, so the two
+            // fields differ only if the swipe made a difference (not by which decode happened to arrive in time)
+            let letterCaps = Array("abcdefghijklmnopqrstuvwxyz").compactMap { kbA.keyRectsForTests(.char(String($0)))?.cap }
             for (k, stroke) in strokes.enumerated() {
+                let onLetter = stroke.first.map { p in letterCaps.contains { $0.contains(p.point) } } ?? true
+                if !onLetter { settle(pr.a); settle(pr.b) }
                 pr.a.keyboardViewForTests.feedForTests(stroke)
                 pr.b.keyboardViewForTests.feedForTests(stroke)
                 if k % 25 == 24 { drain(0.002) }
@@ -653,7 +658,11 @@ enum KeyboardTests {
                     settle(pr.a); settle(pr.b)
                     if pr.ha.string != pr.hb.string || pr.a.testState.keys != pr.b.testState.keys {
                         mismatches += 1
-                        if firstMismatch.isEmpty { firstMismatch = "after \(k + 1) keys: A \(pr.ha.string.suffix(20)) / B \(pr.hb.string.suffix(20))" }
+                        if firstMismatch.isEmpty {
+                            let ca = Array(pr.ha.string), cb = Array(pr.hb.string)
+                            let at = zip(ca, cb).firstIndex { $0 != $1 } ?? min(ca.count, cb.count)
+                            firstMismatch = "after \(k + 1) keys: lengths \(ca.count)/\(cb.count), first difference at \(at): A …\(String(ca[max(0, at - 6)..<min(ca.count, at + 6)])) / B …\(String(cb[max(0, at - 6)..<min(cb.count, at + 6)])); keys A \(pr.a.testState.keys) B \(pr.b.testState.keys)"
+                        }
                     }
                 }
             }
@@ -748,7 +757,9 @@ enum KeyboardTests {
                             settle(vc)
                             if vc.tapsForTests == taps && vc.testState.candidates == cands { restored += 1 }
                             else if restoreDiff.isEmpty {
-                                restoreDiff = "taps same: \(vc.tapsForTests == taps) keys \(vc.testState.keys) | was \(cands.prefix(6)) | now \(vc.testState.candidates.prefix(6))"
+                                let now = vc.testState.candidates
+                                let at = zip(cands, now).firstIndex { $0 != $1 } ?? min(cands.count, now.count)
+                                restoreDiff = "taps same: \(vc.tapsForTests == taps) keys \(vc.testState.keys) | counts \(cands.count)/\(now.count), first difference at \(at): was \(Array(cands[min(at, cands.count)...].prefix(4))) now \(Array(now[min(at, now.count)...].prefix(4)))"
                             }
                         }
                     }
