@@ -61,6 +61,13 @@ if let v = env["UW"].flatMap(Double.init) { decoder.userWeight = v }
 if env["GRAMMAR"] != "0" {
     let gp = env["GRAMMAR"] ?? (args[1] as NSString).deletingLastPathComponent + "/grammar.gram"
     decoder.grammar = try? Grammar(path: gp)
+    // the sentence model (万象) beside it reads the keys; grammar.gram then serves 联想 (SENTENCE=0 turns it off)
+    let sp = env["SENTENCE"] ?? (args[1] as NSString).deletingLastPathComponent + "/sentence.gram"
+    if sp != "0", let sentence = try? Grammar(path: sp) {
+        decoder.predictionGrammar = decoder.grammar
+        decoder.grammar = sentence
+        print("sentence model:", sp)
+    }
 }
 if let v = env["GW"].flatMap(Double.init) { decoder.grammarWeight = v }
 if let v = env["MW"].flatMap(Double.init) { decoder.contextNormalisation = v }
@@ -519,9 +526,9 @@ case "bench", "gate":
         let floors: [(String, Double, Bool)] = decoder.scheme == .xiaohe ? [
             ("words.on", 96.0, true),          // σ=0.22 touch noise, correction on, top-1 (%)
             ("words.broken", 1.0, false),      // clean words changed by correction (%) — at most
-            ("sentences.perfect", 86.0, true), // perfect keys, top-1 equals the intended sentence (%)
+            ("sentences.perfect", 89.0, true), // perfect keys, top-1 equals the intended sentence (%)
             ("sentences.on", 90.0, true),
-            ("sentences.true", 81.0, true),    // σ=0.22 touch noise, correction on, top-1 equals the intended sentence (%)
+            ("sentences.true", 85.5, true),    // σ=0.22 touch noise, correction on, top-1 equals the intended sentence (%)
             ("words.ms", 3.0, false),          // average decode time (ms) — at most
             ("en.kept", 99.0, true),            // English: correctly typed words left alone (%)
             ("en.on", 97.0, true),              // English: σ=0.22 touch noise, what space types is the word (%)
@@ -541,9 +548,9 @@ case "bench", "gate":
         ] : [
             ("words.on", 97.0, true),
             ("words.broken", 1.0, false),
-            ("sentences.perfect", 86.0, true),
+            ("sentences.perfect", 89.0, true),
             ("sentences.on", 92.0, true),
-            ("sentences.true", 83.0, true),
+            ("sentences.true", 85.5, true),
             ("sentences.ms", 16.0, false),     // CI runners vary 2–5× (1.2 ms locally)
             ("t9.words.top1", 66.0, true),
             ("t9.sentences.top1", 68.0, true),
@@ -621,6 +628,7 @@ case "bench", "gate":
             let ud = UserDictionary(lexicon: lex, url: nil)
             let d2 = Decoder(lexicon: lex, user: ud)
             d2.grammar = decoder.grammar
+            d2.predictionGrammar = decoder.predictionGrammar
             func ids(_ py: String) -> [UInt16] { py.split(separator: " ").map { lex.id(of: String($0))! } }
             ud.learn(parts: [("魔头", ids("mo tou")), ("小金冠", ids("xiao jin guan"))])
             let model = d2.predictions(after: Array("我们"))

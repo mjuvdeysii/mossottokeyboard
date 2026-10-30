@@ -86,7 +86,8 @@ DOCS = [
         ("词库与数据", [
             ["雾凇拼音 rime-ice（中文词库）— GPL-3.0 — https://github.com/iDvel/rime-ice",
              "其中的腾讯词库部分来自腾讯 AI Lab 中文词向量词表，经 rime-ice 收录；注音由 pypinyin（MIT）生成",
-             "八股文 rime-octagram-data（语言模型）— LGPL-3.0 — https://github.com/lotem/rime-octagram-data",
+             "八股文 rime-octagram-data（语言模型，用于联想）— LGPL-3.0 — https://github.com/lotem/rime-octagram-data",
+             "万象语法模型 wanxiang-lts-zh-hans（整句读法，作者 amzxyz）— CC BY 4.0 — https://github.com/amzxyz/rime-wanxiang-data",
              "wordfreq（英文词频，中英混输）— 数据 CC BY-SA 4.0 — https://github.com/rspeer/wordfreq",
              "Emojibase（表情列表与分类）— MIT — https://github.com/milesj/emojibase",
              "Unicode CLDR（表情的中文名称与关键词，用于表情联想）— Unicode License v3 — https://github.com/unicode-org/cldr"],

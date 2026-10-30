@@ -411,6 +411,7 @@ final class KeyboardViewController: UIInputViewController {
         let ep = b.path(forResource: "english", ofType: "bin")
         engine.load(lexiconPath: b.path(forResource: "lexicon", ofType: "bin"), englishPath: ep,
                     grammarPath: b.path(forResource: "grammar", ofType: "gram"),
+                    sentencePath: b.path(forResource: "sentence", ofType: "gram"),
                     userDictURL: Self.keepsLearnedWords ? dir?.appendingPathComponent("userdict.json") : nil, safe: safe,
                     emojiHintsPath: b.path(forResource: "emoji_hints", ofType: "txt"))
         // English mode reads the same file (read-only, safe to share between threads)

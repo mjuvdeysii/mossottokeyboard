@@ -18,6 +18,13 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+      # the sentence model (万象, ~400 MB, CC BY 4.0) is not in git: cached here, fetched and checksummed when missing
+      - uses: actions/cache@v4
+        with:
+          path: Keyboard/Resources/sentence.gram
+          key: sentence-gram-e34500ab44626dc0
+      - name: Sentence model
+        run: Tools/fetch_sentence_model.sh Keyboard/Resources/sentence.gram
       - name: Xcode
         run: |
           X=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1); sudo xcode-select -s "$X"; xcodebuild -version
@@ -120,6 +127,14 @@ jobs:
         run: echo "::warning title=TestFlight skipped::Add secrets ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8, APPLE_TEAM_ID to this repository."
       - uses: actions/checkout@v4
         if: env.ASC_KEY_ID != ''
+      - uses: actions/cache@v4
+        if: env.ASC_KEY_ID != ''
+        with:
+          path: Keyboard/Resources/sentence.gram
+          key: sentence-gram-e34500ab44626dc0
+      - name: Sentence model
+        if: env.ASC_KEY_ID != ''
+        run: Tools/fetch_sentence_model.sh Keyboard/Resources/sentence.gram
       - name: Bundle IDs and app record
         if: env.ASC_KEY_ID != ''
         run: |

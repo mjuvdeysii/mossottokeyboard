@@ -35,8 +35,10 @@ final class EngineHost {
     /// `safe`: after launches that ended early (a crash, or iOS ending the keyboard while it was starting), the
     /// keyboard starts with the lexicon and learned words only — no language model, no English — so it stays up
     /// rather than iOS falling back to the system keyboard again.
-    func load(lexiconPath: String?, englishPath: String?, grammarPath: String?, userDictURL: URL?, safe: Bool = false,
-              emojiHintsPath: String? = nil) {
+    /// `sentencePath`: the sentence model (万象, a large modern corpus) that reads the keys; `grammarPath` then serves
+    /// 联想 only. Without it, `grammarPath` does both.
+    func load(lexiconPath: String?, englishPath: String?, grammarPath: String?, sentencePath: String? = nil, userDictURL: URL?,
+              safe: Bool = false, emojiHintsPath: String? = nil) {
         queue.async {
             if !safe, let hp = emojiHintsPath, let text = try? String(contentsOfFile: hp, encoding: .utf8) {
                 var t: [String: [String]] = [:]
@@ -53,6 +55,10 @@ final class EngineHost {
             let d = Decoder(lexicon: lex, user: ud)
             if !safe, let ep = englishPath { d.english = try? EnglishLexicon(path: ep) }
             if !safe, let gp = grammarPath { d.grammar = try? Grammar(path: gp) }
+            if !safe, let sp = sentencePath, let sentence = try? Grammar(path: sp) {
+                d.predictionGrammar = d.grammar
+                d.grammar = sentence
+            }
             self.decoder = d
             self.lock.lock(); self.loaded = true; self.lock.unlock()
             // the character table 联想 uses: built beside the decoder's thread, never in front of a keystroke

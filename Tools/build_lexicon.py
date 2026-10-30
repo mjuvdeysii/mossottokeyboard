@@ -149,7 +149,19 @@ def main():
             calibrated += 1
         print(f"calibrated {calibrated} of {len(flat)} flat-weight entries", file=sys.stderr)
 
-    syllables = sorted({s for (_, syls) in merged for s in syls})
+    scores = {}
+    for (text, syls), w in merged.items():
+        score = override.get((text, syls), int(round(math.log(w + 1) * 100)))
+        if text in demote or any(c in demote for c in text):   # a listed single character: every word with it
+            score = min(score, -500)   # kept, but never the pick when anything else reads the same keys
+        scores[(text, syls)] = score
+    write_lexicon(out_path, scores)
+    print(f"skipped={skipped}")
+
+
+def write_lexicon(out_path, scores):
+    """The binary lexicon from (text, syllables) → score (ln-frequency × 100)."""
+    syllables = sorted({s for (_, syls) in scores for s in syls})
     sid = {s: i for i, s in enumerate(syllables)}
 
     # sanity: every syllable must have a 2-letter code
@@ -158,10 +170,7 @@ def main():
         assert c and len(c) == 2 and c.isalpha(), (s, c)
 
     entries = []
-    for (text, syls), w in merged.items():
-        score = override.get((text, syls), int(round(math.log(w + 1) * 100)))
-        if text in demote or any(c in demote for c in text):   # a listed single character: every word with it
-            score = min(score, -500)   # kept, but never the pick when anything else reads the same keys
+    for (text, syls), score in scores.items():
         score = max(score, -32768)
         score = min(score, 32767)
         ids = [sid[s] for s in syls]
@@ -222,7 +231,7 @@ def main():
         f.write(struct.pack("<I", len(table)))
         f.write(b"PAIR")
 
-    print(f"syllables={len(syllables)} entries={len(entries)} skipped={skipped} "
+    print(f"syllables={len(syllables)} entries={len(entries)} "
           f"sylBlob={len(syl_blob)} textBlob={len(text_blob)}")
     with open(out_path + ".codes.txt", "w") as f:
         for s in syllables:

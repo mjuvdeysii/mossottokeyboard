@@ -66,6 +66,8 @@ public final class Decoder {
     /// Which words go together (Rime octagram language model): each word of a sentence is scored against the text
     /// before it — inside the sentence, and for its first word the text already in the field (`leftContext`).
     public var grammar: Grammar?
+    /// 联想 reads its own model when set (the sentence model's scores are not counts of what follows a context).
+    public var predictionGrammar: Grammar?
     public var grammarWeight = 1.0
     /// The language model weighs less on a word whose keys were corrected: it chooses between words the keys spell,
     /// it does not talk the keyboard into changing keys to make a likelier phrase.
@@ -86,7 +88,7 @@ public final class Decoder {
     public var mixedEnglish = true
     public var mixedA = 4.67
     public var mixedB = 1.58
-    public var mixedPenalty = 2.0
+    public var mixedPenalty = -3.0
     public var mixedCasedBonus = 5.0
     public var mixedMinZipf = 4.0
     public var mixedPinyinPenalty = 4.0
@@ -247,7 +249,7 @@ public final class Decoder {
     /// Measured per scheme (a sentence with one key too many read right: 全拼 0 → 74–76%, 小鹤 0 → 47–54%; clean
     /// sentences unchanged, noisy ones within a sentence or two): 小鹤's pairs need the cheaper slip to realign.
     public var skipEnabled = true
-    public var skipPenalty = 11.0
+    public var skipPenalty = 9.0
     public var skipDoublePenalty = 8.0
     public var xiaoheSkipPenalty = 7.0
     /// 漏按了一个键 (全拼): a letter the keys left out — don for dong, tia for tian.
@@ -917,7 +919,7 @@ public final class Decoder {
     /// longest context it knows first) — one character, or a two-character word the lexicon lists — best first.
     /// predbench (word boundaries of the sentence sets): the next word among the first six about one time in five.
     public func predictions(after context: [Character], limit: Int = 8) -> [String] {
-        guard let grammar, let last = context.last, Grammar.isHan(last) else { return [] }
+        guard let grammar = predictionGrammar ?? grammar, let last = context.last, Grammar.isHan(last) else { return [] }
         _ = grammar
         var scored: [(String, Double)] = []
         for (t, v) in grammar.continuations(after: context, limit: 40) {

@@ -250,7 +250,8 @@ enum SnapshotRenderer {
             let before = memoryFootprintMB()
             let host = EngineHost()
             host.load(lexiconPath: kb.path(forResource: "lexicon", ofType: "bin"), englishPath: kb.path(forResource: "english", ofType: "bin"),
-                      grammarPath: kb.path(forResource: "grammar", ofType: "gram"), userDictURL: nil)
+                      grammarPath: kb.path(forResource: "grammar", ofType: "gram"),
+                      sentencePath: kb.path(forResource: "sentence", ofType: "gram"), userDictURL: nil)
             var worst = 0.0
             let letters = Array("abcdefghijklmnopqrstuvwxyz")
             var rng = SystemRandomNumberGenerator()

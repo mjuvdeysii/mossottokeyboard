@@ -5,3 +5,4 @@ DerivedData/
 build/
 .build/
 __pycache__/
+Keyboard/Resources/sentence.gram
