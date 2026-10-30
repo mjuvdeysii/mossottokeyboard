@@ -83,8 +83,8 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p report
-          /tmp/engine-cli Keyboard/Resources/lexicon.bin gate | grep -E "scheme|PASS|FAIL" | tee report/engine-gate.txt
-          SCHEME=quanpin /tmp/engine-cli Keyboard/Resources/lexicon.bin gate | grep -E "scheme|PASS|FAIL" | tee -a report/engine-gate.txt
+          /tmp/engine-cli Keyboard/Resources/lexicon.bin gate | grep -E "scheme|PASS|FAIL|RECORD" | tee report/engine-gate.txt
+          SCHEME=quanpin /tmp/engine-cli Keyboard/Resources/lexicon.bin gate | grep -E "scheme|PASS|FAIL|RECORD" | tee -a report/engine-gate.txt
       - name: Keyboard test bench (blocks the release on failure)
         run: |
           cat report/keyboard-tests.txt 2>/dev/null | head -60 || true

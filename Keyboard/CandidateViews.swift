@@ -1,9 +1,32 @@
 import UIKit
 
-/// Top strip, as on the system keyboard: as many candidates as fit (no horizontal scrolling) and a chevron that
-/// opens the full grid. Idle it stays empty — only at night Mosto sits at its left, tail tip glowing.
-/// The pinyin is written into the text field as marked text; with that turned off it shows above the candidates.
-final class CandidateBarView: UIView {
+/// The scrolling row of the candidate strip: the strip reads its touches (tap, slide, hold — StripGesture) and the
+/// system's scrolling gives the swipe its inertia and bounce.
+final class CandidateStrip: UIScrollView {
+    weak var owner: CandidateBarView?
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let t = touches.first, let o = owner else { return }
+        o.stripTouch(.began, at: t.location(in: o), time: CACurrentMediaTime())
+    }
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let t = touches.first, let o = owner else { return }
+        o.stripTouch(.moved, at: t.location(in: o), time: CACurrentMediaTime())
+    }
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let t = touches.first, let o = owner else { return }
+        o.stripTouch(.ended, at: t.location(in: o), time: CACurrentMediaTime())
+    }
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let t = touches.first, let o = owner else { return }
+        o.stripTouch(.cancelled, at: t.location(in: o), time: CACurrentMediaTime())
+    }
+}
+
+/// Top strip, as on the system keyboard: every candidate in one row that scrolls sideways (the first screen full,
+/// the last one cut at the edge where more follow), and a chevron that opens the full grid. Idle it stays empty —
+/// only Mosto sits at its left. The pinyin is written into the text field as marked text; with that turned off it
+/// shows above the candidates.
+final class CandidateBarView: UIView, UIScrollViewDelegate {
     var onSelect: ((Int) -> Void)?
     var onExpand: (() -> Void)?
     var onSettings: (() -> Void)?
@@ -15,31 +38,42 @@ final class CandidateBarView: UIView {
 
     private let preedit = UILabel()
     /// After a corrected word went in: "↩ nihap" at the start of the strip puts the keys back as typed (the same
-    /// as pressing delete right away).
+    /// as pressing delete right away). After a swipe that cleared the composition: the keys it cleared.
     private let undoChip = UIButton(type: .system)
     var onUndo: (() -> Void)?
     private var undoText: String?
     private var longPressTimer: Timer?
-    private var longPressed = false
-    private let row = UIView()
+    /// The candidates, in a row that scrolls; inside a box whose mask fades the edges where more candidates are.
+    private let stripBox = UIView()
+    private let strip = CandidateStrip()
+    private let fade = CAGradientLayer()
     private let expandButton = UIButton(type: .system)
     let mosto = MostoView()
     private var labels: [UILabel] = []
     private var pool: [UILabel] = []
+    /// What each pooled label shows now (so a label is only redrawn when it changes).
+    private var poolKeys: [String] = []
     private var isPrediction = false
     private var candidates: [Candidate] = []
+    /// Candidates laid out so far (the row is laid out a screen or two ahead of what is shown), their widths, and
+    /// measured widths by text and caption, kept through a composition.
     private(set) var visibleCount = 0
-    private var pressedIndex: Int?
+    private var widths: [CGFloat] = []
+    private var widthCache: [String: CGFloat] = [:]
+    private var gesture = StripGesture()
+    /// The test bench drives touches with its own clock: the hold is checked against it, no timer runs.
+    private var benchTouches = false
     /// Mosto in the idle corner, by day and at night alike (only his light changes with the keyboard's).
     var showsMosto = false { didSet { update(preedit: preedit.text ?? "", candidates: candidates, prediction: isPrediction) } }
     private var mostoWanted = false
-    private var pressedText: String?
     private var mostoTimer: Timer?
     /// Pinyin above the candidates (when it is not written into the text field).
     var showsPreedit = false { didSet { setNeedsLayout() } }
 
     static var font: UIFont { Theme.font(20, .regular) }
     static var fixFont: UIFont { Theme.font(10.5, .semibold) }
+    /// Below this height (landscape) a caption sits beside its candidate, not under it.
+    static let twoLineHeight: CGFloat = 44
 
     /// Under an auto-corrected first choice, what was corrected: the keys as typed → the spelling read (hap → hao),
     /// at most two syllables, else how many; English: the word as typed, struck through. Under the literal reading
@@ -67,8 +101,27 @@ final class CandidateBarView: UIView {
         preedit.font = Theme.font(14, .medium)
         preedit.textColor = Theme.secondaryText
         addSubview(preedit)
-        addSubview(row)
-        row.isUserInteractionEnabled = false
+        // the row scrolls with the system's own inertia and bounce; no scroll bar; a finger that lands highlights
+        // at once, and the scrolling takes the touch over (no selection) once it starts
+        strip.owner = self
+        strip.delegate = self
+        strip.showsHorizontalScrollIndicator = false
+        strip.showsVerticalScrollIndicator = false
+        strip.alwaysBounceHorizontal = true
+        strip.alwaysBounceVertical = false
+        strip.decelerationRate = .normal
+        strip.delaysContentTouches = false
+        strip.canCancelContentTouches = true
+        strip.scrollsToTop = false
+        strip.contentInsetAdjustmentBehavior = .never
+        strip.backgroundColor = .clear
+        strip.panGestureRecognizer.addTarget(self, action: #selector(stripPanned(_:)))
+        stripBox.backgroundColor = .clear
+        stripBox.addSubview(strip)
+        fade.startPoint = CGPoint(x: 0, y: 0.5)
+        fade.endPoint = CGPoint(x: 1, y: 0.5)
+        fade.colors = [UIColor.clear.cgColor, UIColor.black.cgColor, UIColor.black.cgColor, UIColor.clear.cgColor]
+        addSubview(stripBox)
         let cfg = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
         expandButton.setImage(UIImage(systemName: "chevron.down", withConfiguration: cfg), for: .normal)
         expandButton.tintColor = Theme.secondaryText
@@ -111,28 +164,45 @@ final class CandidateBarView: UIView {
         uc?.baseBackgroundColor = Theme.correctedTint
         uc?.baseForegroundColor = Theme.correctedMark
         undoChip.configuration = uc
-        let t = undoText; undoText = nil; setUndo(t)
+        let t = undoText, spoken = undoChip.accessibilityLabel
+        undoText = nil; setUndo(t, spoken: spoken)
+        widthCache = [:]
+        poolKeys = poolKeys.map { _ in "" }
         setNeedsLayout()
     }
 
     var undoTextForTests: String? { undoText }
     func undoTapForTests() { onUndo?() }
 
-    /// Offer (or withdraw, with nil) putting back the keys a correction replaced.
-    func setUndo(_ typed: String?) {
+    /// Offer (or withdraw, with nil) putting back keys: the ones a correction replaced, or the ones a swipe cleared.
+    /// `spoken`: what VoiceOver says for it (by default, that it takes back a correction).
+    func setUndo(_ typed: String?, spoken: String? = nil) {
         guard typed != undoText else { return }
         undoText = typed
         if let typed {
             var c = undoChip.configuration
             c?.attributedTitle = AttributedString(typed, attributes: AttributeContainer([.font: Theme.font(14, .semibold)]))
             undoChip.configuration = c
-            undoChip.accessibilityLabel = "撤回纠错，恢复为 \(typed)"
+            undoChip.accessibilityLabel = spoken ?? "撤回纠错，恢复为 \(typed)"
+            // the chip belongs to the strip's left corner: Mosto stays away while it is there
+            setMosto(false)
+        } else {
+            setMosto(candidates.isEmpty && !typing && showsMosto)
         }
         undoChip.isHidden = typed == nil
         setNeedsLayout()
     }
 
-    // MARK: VoiceOver: each visible candidate is a button (the strip draws plain labels and reads raw touches)
+    /// A swipe left off delete is armed: the candidates fade to show they are about to go (no animation: it follows
+    /// the finger).
+    func setClearPreview(_ on: Bool) {
+        let a: CGFloat = on ? 0.35 : 1
+        stripBox.alpha = a
+        expandButton.alpha = a
+    }
+    var clearPreviewForTests: Bool { stripBox.alpha < 1 }
+
+    // MARK: VoiceOver: each laid-out candidate is a button (the strip draws plain labels and reads raw touches)
 
     private final class CandidateElement: UIAccessibilityElement {
         var activate: (() -> Void)?
@@ -153,7 +223,7 @@ final class CandidateBarView: UIView {
                 }
                 e.accessibilityTraits = .button
                 if i == 0, !isPrediction { e.accessibilityHint = "首选，空格上屏" }
-                e.accessibilityFrameInContainerSpace = row.convert(l.frame, to: self)
+                e.accessibilityFrameInContainerSpace = strip.convert(l.frame, to: self)
                 e.activate = { [weak self] in self?.onSelect?(i) }
                 out.append(e)
             }
@@ -165,14 +235,44 @@ final class CandidateBarView: UIView {
         }
         set { }
     }
+
+    /// VoiceOver's three-finger swipe: a screen of candidates at a time.
+    override func accessibilityScroll(_ direction: UIAccessibilityScrollDirection) -> Bool {
+        let page = strip.bounds.width
+        guard page > 0, !stripBox.isHidden else { return false }
+        let maxX = max(0, strip.contentSize.width - page)
+        var x = strip.contentOffset.x
+        switch direction {
+        case .right, .next: x = min(maxX, x + page)
+        case .left, .previous: x = max(0, x - page)
+        default: return false
+        }
+        guard x != strip.contentOffset.x else { return false }
+        strip.setContentOffset(CGPoint(x: x, y: 0), animated: false)
+        UIAccessibility.post(notification: .pageScrolled, argument: nil)
+        return true
+    }
+
     @objc private func mostoTapped() { onMostoTap?() }
     @objc private func mostoDoubleTapped() { mosto.hop(); onMostoDoubleTap?() }
 
     /// `prediction`: the row shows next-word suggestions (联想) rather than candidates for typed keys.
     func update(preedit text: String, candidates: [Candidate], prediction: Bool = false) {
         preedit.text = text
+        // another list (a new key, a commit): the row starts from the beginning again; the same list (the same keys
+        // decoded once more) leaves it where the finger put it
+        let changed = prediction != isPrediction || candidates.count != self.candidates.count
+            || !zip(candidates, self.candidates).allSatisfy { $0.text == $1.text }
         self.candidates = candidates
         isPrediction = prediction
+        // widths are measured again from the cache (captions can change with the same words)
+        widths = []
+        if candidates.isEmpty || widthCache.count > 1500 { widthCache = [:] }
+        if changed, strip.contentOffset != .zero {
+            inUpdate = true
+            strip.setContentOffset(.zero, animated: false)
+            inUpdate = false
+        }
         let busy = !candidates.isEmpty
         setMosto(!busy && !typing && showsMosto && undoText == nil)
         preedit.isHidden = !busy || prediction || !showsPreedit
@@ -184,7 +284,7 @@ final class CandidateBarView: UIView {
     /// keyboard has been idle a moment, fading in rather than popping up — never flickering between words.
     /// Keys are being composed (the candidates may not have arrived yet): Mosto stays out of the way.
     var typing = false {
-        didSet { if typing != oldValue { setMosto(!typing && candidates.isEmpty && showsMosto) } }
+        didSet { if typing != oldValue { setMosto(!typing && candidates.isEmpty && showsMosto && undoText == nil) } }
     }
 
     /// Mosto is (about to be) shown or put away — his night light follows him.
@@ -226,105 +326,294 @@ final class CandidateBarView: UIView {
         let rowY = preH
         let rowH = h - preH
         expandButton.frame = CGRect(x: bounds.width - 44, y: rowY, width: 44, height: rowH)
-        row.frame = CGRect(x: 0, y: rowY, width: bounds.width - 44, height: rowH)
-
-        // labels are pooled and reused (this runs on every keystroke): only text and frames change
-        var x: CGFloat = 6
+        // the row starts where the first candidate always started (after the chip, if there is one) and ends at ⌄
+        var lead: CGFloat = 6
         if !undoChip.isHidden {
             let sz = undoChip.sizeThatFits(CGSize(width: 200, height: rowH))
             undoChip.frame = CGRect(x: 8, y: rowY + (rowH - sz.height) / 2, width: sz.width, height: sz.height)
-            x = undoChip.frame.maxX + 6
+            lead = undoChip.frame.maxX + 6
         }
-        visibleCount = 0
-        for (i, c) in candidates.enumerated() {
-            // at least a 44 pt target, as Apple's guidelines ask (single characters were ~40 pt)
-            let cap = isPrediction ? nil
-                : (i == 0 ? Self.caption(for: c)
-                   : (i == 1 && candidates[0].corrected && !c.corrected && !c.isEnglish && c.tapCount == candidates[0].tapCount
-                      ? NSAttributedString(string: "原键", attributes: [.font: Self.fixFont, .foregroundColor: Theme.secondaryText]) : nil))
-            let w = max(44, ceil(max((c.text as NSString).size(withAttributes: [.font: Self.font]).width, cap?.size().width ?? 0)) + 22)
-            if x + w > row.bounds.width && i > 0 { break }
-            if pool.count <= i {
+        let box = CGRect(x: lead, y: rowY, width: max(0, bounds.width - 44 - lead), height: rowH)
+        if stripBox.frame != box { stripBox.frame = box }
+        let inner = CGRect(origin: .zero, size: box.size)
+        if strip.frame != inner { strip.frame = inner }
+        // nothing to show: the strip takes no touches (they fall to the strip's own view, as before it scrolled)
+        stripBox.isHidden = candidates.isEmpty
+        layoutCandidates()
+    }
+
+    /// The caption a candidate carries: what the first choice corrected, or "原键" on the literal reading after it.
+    private func captionFor(_ i: Int) -> NSAttributedString? {
+        guard !isPrediction, i < candidates.count, i <= 1 else { return nil }
+        let c = candidates[i]
+        if i == 0 { return Self.caption(for: c) }
+        guard candidates[0].corrected, !c.corrected, !c.isEnglish, c.tapCount == candidates[0].tapCount else { return nil }
+        return NSAttributedString(string: "原键", attributes: [.font: Self.fixFont, .foregroundColor: Theme.secondaryText])
+    }
+
+    /// The candidate's text as the label draws it: with its caption under it (portrait), or beside it on the same
+    /// baseline, 4 pt after it (landscape, where the strip has no room for two lines).
+    private func labelText(_ c: Candidate, caption cap: NSAttributedString, inline: Bool) -> NSAttributedString {
+        let para = NSMutableParagraphStyle()
+        para.alignment = .center
+        let capm = NSMutableAttributedString(attributedString: cap)
+        if inline {
+            let t = NSMutableAttributedString(string: c.text, attributes: [.font: Self.font, .foregroundColor: Theme.candidateText, .paragraphStyle: para])
+            if t.length > 0 { t.addAttribute(.kern, value: 4, range: NSRange(location: t.length - 1, length: 1)) }
+            capm.addAttribute(.paragraphStyle, value: para, range: NSRange(location: 0, length: capm.length))
+            t.append(capm)
+            return t
+        }
+        para.lineSpacing = -1
+        let t = NSMutableAttributedString(string: c.text + "\n", attributes: [.font: Self.font, .foregroundColor: Theme.candidateText, .paragraphStyle: para])
+        capm.addAttribute(.paragraphStyle, value: para, range: NSRange(location: 0, length: capm.length))
+        t.append(capm)
+        return t
+    }
+
+    /// Width of candidate `i` (cached by text and caption): at least a 44 pt target, as Apple's guidelines ask.
+    private func measure(_ i: Int, inline: Bool) -> CGFloat {
+        let c = candidates[i]
+        let cap = captionFor(i)
+        let key = (inline ? "1" : "0") + "\u{1}" + c.text + "\u{1}" + (cap?.string ?? "")
+        if let w = widthCache[key] { return w }
+        let textW = (c.text as NSString).size(withAttributes: [.font: Self.font]).width
+        let w: CGFloat
+        if let cap {
+            w = inline ? max(44, ceil(textW + 4 + cap.size().width) + 22) : max(44, ceil(max(textW, cap.size().width)) + 22)
+        } else {
+            w = max(44, ceil(textW) + 22)
+        }
+        widthCache[key] = w
+        return w
+    }
+
+    /// Lay the row out from its start to two screens past what is shown (the rest only as the finger gets there:
+    /// a single syllable can have hundreds of candidates). Labels are pooled and reused: only text and frames change.
+    private func layoutCandidates() {
+        let viewW = strip.bounds.width
+        let rowH = strip.bounds.height
+        let inline = bounds.height < Self.twoLineHeight
+        let need = strip.contentOffset.x + max(viewW, 1) * 2
+        let pressed = gesture.highlighted
+        var x: CGFloat = 0
+        var n = 0
+        while n < candidates.count && (x < need || n == 0) {
+            let w: CGFloat
+            if n < widths.count { w = widths[n] } else { w = measure(n, inline: inline); widths.append(w) }
+            if pool.count <= n {
                 let l = UILabel()
                 l.font = Self.font
                 l.textAlignment = .center
                 l.lineBreakMode = .byTruncatingTail
                 l.layer.cornerRadius = 8
                 l.clipsToBounds = true
-                row.addSubview(l)
+                strip.addSubview(l)
                 pool.append(l)
+                poolKeys.append("")
             }
-            let l = pool[i]
+            let l = pool[n]
             l.isHidden = false
-            l.frame = CGRect(x: x, y: 3, width: min(w, row.bounds.width - x), height: rowH - 6)
-            l.textColor = Theme.candidateText
-            if let cap {
-                // the word, and under it what the correction changed (or that the second one is the keys as typed)
-                let para = NSMutableParagraphStyle()
-                para.alignment = .center
-                para.lineSpacing = -1
-                let t = NSMutableAttributedString(string: c.text + "\n", attributes: [.font: Self.font, .foregroundColor: Theme.candidateText, .paragraphStyle: para])
-                let capm = NSMutableAttributedString(attributedString: cap)
-                capm.addAttribute(.paragraphStyle, value: para, range: NSRange(location: 0, length: capm.length))
-                t.append(capm)
-                l.numberOfLines = 2
-                l.attributedText = t
-            } else {
-                l.numberOfLines = 1
-                l.attributedText = nil
-                l.text = c.text
+            let frame = CGRect(x: x, y: 3, width: w, height: rowH - 6)
+            if l.frame != frame { l.frame = frame }
+            let c = candidates[n]
+            let cap = captionFor(n)
+            let key = (inline ? "1" : "0") + "\u{1}" + c.text + "\u{1}" + (cap?.string ?? "")
+            if poolKeys[n] != key {
+                poolKeys[n] = key
+                l.textColor = Theme.candidateText
+                if let cap {
+                    // the word, and with it what the correction changed (or that this one is the keys as typed)
+                    l.numberOfLines = inline ? 1 : 2
+                    l.attributedText = labelText(c, caption: cap, inline: inline)
+                } else {
+                    l.numberOfLines = 1
+                    l.attributedText = nil
+                    l.text = c.text
+                }
             }
             // the corrected first choice sits on a soft tint of the correction colour (what space will type)
-            let fixed = i == 0 && !isPrediction && c.corrected
-            l.backgroundColor = i == pressedIndex ? Theme.functionKey : (fixed ? Theme.correctedTint : .clear)
+            let fixed = n == 0 && !isPrediction && c.corrected
+            l.backgroundColor = n == pressed ? Theme.functionKey : (fixed ? Theme.correctedTint : .clear)
             x += w
-            visibleCount += 1
+            n += 1
         }
-        for l in pool.dropFirst(visibleCount) { l.isHidden = true }
-        labels = Array(pool.prefix(visibleCount))
-        expandButton.isHidden = candidates.count <= visibleCount
+        if visibleCount != n || labels.count != n {
+            for l in pool.dropFirst(n) where !l.isHidden { l.isHidden = true }
+            labels = Array(pool.prefix(n))
+        }
+        visibleCount = n
+        // the rest is still to be laid out: the row is as long as they would make it on average; exact once laid out
+        let total = n == candidates.count || n == 0 ? x : x + CGFloat(candidates.count - n) * (x / CGFloat(n))
+        let size = CGSize(width: total, height: rowH)
+        if strip.contentSize != size { strip.contentSize = size }
+        // ⌄: there are candidates past the edge (the full grid shows them all)
+        expandButton.isHidden = !(total > viewW + 0.5)
+        updateFade()
     }
 
+    /// 12 pt fades at the edges where the row goes on (the right edge while more follow, the left once scrolled):
+    /// the candidates thin out into the strip's own background — no colour, no shadow.
+    private func updateFade() {
+        let w = stripBox.bounds.width
+        let x = strip.contentOffset.x
+        let left = x > 0.5
+        let right = x + w < strip.contentSize.width - 0.5
+        guard w > 24, left || right, !stripBox.isHidden else {
+            if stripBox.layer.mask != nil { stripBox.layer.mask = nil }
+            return
+        }
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        fade.frame = stripBox.bounds
+        let e = Double(12 / w)
+        fade.locations = [0, NSNumber(value: left ? e : 0), NSNumber(value: right ? 1 - e : 1), 1]
+        if stripBox.layer.mask !== fade { stripBox.layer.mask = fade }
+        CATransaction.commit()
+    }
+
+    // MARK: Scrolling
+
+    private var inUpdate = false
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        guard !inUpdate else { return }
+        // less than a screen laid out ahead of what is shown: lay out the next
+        let laidEnd = widths.prefix(visibleCount).reduce(0, +)
+        if visibleCount < candidates.count, laidEnd - (scrollView.contentOffset.x + scrollView.bounds.width) < scrollView.bounds.width {
+            layoutCandidates()
+        } else {
+            updateFade()
+        }
+    }
+
+    @objc private func stripPanned(_ g: UIPanGestureRecognizer) {
+        if g.state == .began { stripScrollBegan() }
+    }
+
+    /// The strip began to scroll under the finger: no tap, no hold.
+    private func stripScrollBegan() {
+        if gesture.scrollBegan() {
+            longPressTimer?.invalidate()
+            setNeedsLayout()
+        }
+    }
+
+    // MARK: Touches (tap, slide, hold: StripGesture)
+
+    /// The candidate under a point of this view (an index into the full list), where the row shows it.
     private func candidateIndex(at p: CGPoint) -> Int? {
-        let q = convert(p, to: row)
-        guard q.y >= -8, q.x < row.bounds.width else { return nil }
+        let q = convert(p, to: strip)
+        guard q.y >= -8, q.x >= strip.bounds.minX, q.x < strip.bounds.maxX else { return nil }
         return labels.firstIndex { $0.frame.minX <= q.x && q.x < $0.frame.maxX }
     }
 
-    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard let t = touches.first else { return }
-        pressedIndex = candidateIndex(at: t.location(in: self))
-        pressedText = pressedIndex.flatMap { $0 < candidates.count ? candidates[$0].text : nil }
-        longPressed = false
-        longPressTimer?.invalidate()
-        if let idx = pressedIndex, !isPrediction {
-            longPressTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
-                guard let self, self.pressedIndex == idx else { return }
-                self.longPressed = true
-                self.pressedIndex = nil
-                self.setNeedsLayout()
-                self.onLongPress?(idx)
+    func stripTouch(_ phase: TouchSample.Phase, at p: CGPoint, time: CFTimeInterval) {
+        switch phase {
+        case .began:
+            let idx = candidateIndex(at: p)
+            let text = idx.flatMap { $0 < candidates.count ? candidates[$0].text : nil }
+            // a finger that lands while the row is still gliding only stops it
+            let gliding = strip.isDecelerating || benchGliding
+            gesture.begin(index: idx, text: text, at: p, time: time, stoppingScroll: gliding, canHold: !isPrediction)
+            longPressTimer?.invalidate()
+            if idx != nil, !isPrediction, !gliding, !benchTouches {
+                // in the common run-loop modes: it fires while the scroll view tracks the finger too
+                let t = Timer(timeInterval: StripGesture.holdTime, repeats: false) { [weak self] _ in
+                    guard let self else { return }
+                    self.holdDue(at: self.gesture.began + StripGesture.holdTime)
+                }
+                RunLoop.main.add(t, forMode: .common)
+                longPressTimer = t
             }
+            setNeedsLayout()
+        case .moved:
+            if gesture.move(to: p) {
+                longPressTimer?.invalidate()
+                setNeedsLayout()
+            }
+        case .ended:
+            longPressTimer?.invalidate()
+            let idx = candidateIndex(at: p)
+            let current = idx.flatMap { $0 < candidates.count ? candidates[$0].text : nil }
+            let chosen = gesture.end(index: idx, currentText: current)
+            setNeedsLayout()
+            if let chosen { onSelect?(chosen) }
+        case .cancelled:
+            longPressTimer?.invalidate()
+            gesture.cancel()
+            setNeedsLayout()
         }
-        setNeedsLayout()
     }
 
-    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        longPressTimer?.invalidate()
-        guard let t = touches.first, !longPressed else { longPressed = false; return }
-        let idx = candidateIndex(at: t.location(in: self))
-        let was = pressedIndex
-        pressedIndex = nil
+    private func holdDue(at t: CFTimeInterval) {
+        guard let i = gesture.hold(at: t) else { return }
         setNeedsLayout()
-        // the word under the finger must still be the one it pressed: candidates that arrived meanwhile
-        // (a decode finishing mid-tap) never get committed unseen
-        if let idx, idx == was, idx < candidates.count, candidates[idx].text == pressedText { onSelect?(idx) }
+        onLongPress?(i)
     }
 
-    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-        longPressTimer?.invalidate()
-        pressedIndex = nil
-        setNeedsLayout()
+    // MARK: Test bench
+
+    /// The bench's "the row is still gliding" (it cannot fling a real scroll view).
+    private var benchGliding = false
+
+    /// Recorded touches in this view's coordinates, through the same tap / slide / hold judgement as real ones; the
+    /// hold is checked against the samples' clock. `gliding`: the row was still moving as the finger landed.
+    func touchForTests(_ samples: [TouchSample], gliding: Bool = false) {
+        benchTouches = true
+        benchGliding = gliding
+        defer { benchGliding = false }
+        for s in samples {
+            if gesture.down { holdDue(at: s.time) }
+            stripTouch(s.phase, at: s.point, time: s.time)
+            layoutIfNeeded()
+        }
+    }
+
+    /// A tap (finger down and up again within 0.1 s, not moving) at a point of this view.
+    func tapForTests(at p: CGPoint, time: CFTimeInterval) {
+        touchForTests([TouchSample(id: 0, phase: .began, point: p, time: time),
+                       TouchSample(id: 0, phase: .ended, point: p, time: time + 0.1)])
+    }
+
+    /// The row scrolls by a finger moving `dx` (negative: to the left, showing later candidates), through the same
+    /// entry the system's scrolling uses.
+    func stripPanForTests(dx: CGFloat) {
+        stripScrollBegan()
+        let maxX = max(0, strip.contentSize.width - strip.bounds.width)
+        strip.setContentOffset(CGPoint(x: min(maxX, max(0, strip.contentOffset.x - dx)), y: 0), animated: false)
+        layoutIfNeeded()
+    }
+
+    /// Snapshot support: the row scrolled to `x`.
+    func scrollStrip(to x: CGFloat) {
+        layoutIfNeeded()
+        for _ in 0..<8 {
+            let maxX = max(0, strip.contentSize.width - strip.bounds.width)
+            strip.setContentOffset(CGPoint(x: min(maxX, max(0, x)), y: 0), animated: false)
+            layoutIfNeeded()
+            if strip.contentOffset.x >= min(x, maxX) - 0.5 { break }
+        }
+    }
+
+    var stripOffsetForTests: CGFloat { strip.contentOffset.x }
+    /// The scrolling row's viewport, in this view's coordinates.
+    var stripFrameForTests: CGRect { stripBox.frame }
+    var stripContentWidthForTests: CGFloat { strip.contentSize.width }
+    var stripWidthForTests: CGFloat { strip.bounds.width }
+    var laidOutForTests: Int { visibleCount }
+    var laidOutWidthForTests: CGFloat { widths.prefix(visibleCount).reduce(0, +) }
+    var lastLaidTextForTests: String? { visibleCount > 0 ? labels[visibleCount - 1].text ?? labels[visibleCount - 1].attributedText?.string : nil }
+    var expandShownForTests: Bool { !expandButton.isHidden }
+    /// Where candidate `i` is drawn, in this view's coordinates (nil: not laid out yet).
+    func candidateFrameForTests(_ i: Int) -> CGRect? {
+        guard i < visibleCount else { return nil }
+        return strip.convert(labels[i].frame, to: self)
+    }
+    /// Lay out a candidate list and return how long it took (ms).
+    func timedUpdateForTests(_ list: [Candidate]) -> Double {
+        let t0 = CACurrentMediaTime()
+        update(preedit: "", candidates: list)
+        return (CACurrentMediaTime() - t0) * 1000
     }
 
     // MARK: - Remove a learned word

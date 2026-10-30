@@ -55,6 +55,11 @@ enum SnapshotRenderer {
             Shot(name: "cursor_drag", page: .letters, state: "idle", borders: true, panel: "cursor"),
             Shot(name: "forced_light", page: .letters, state: "composing", borders: true, panel: "forced"),
             Shot(name: "forget_word", page: .letters, state: "composing", borders: true, panel: "forget"),
+            // rounds/R3.md: the strip scrolled to the middle of a long list (both edges fade); a swipe left off delete
+            // armed (the candidates faded, delete held); after the clear, the ↩ chip with the keys it took
+            Shot(name: "strip_scrolled", page: .letters, state: "composing", borders: true, panel: "scrolled"),
+            Shot(name: "clear_armed", page: .letters, state: "composing", borders: true, panel: "clear_armed"),
+            Shot(name: "cleared_undo", page: .letters, state: "cleared", borders: true, panel: nil),
             Shot(name: "press_comma_numbers", page: .numbers, state: "idle", borders: true, panel: "press:，"),
             Shot(name: "emoji", page: .letters, state: "idle", borders: true, panel: "emoji"),
             Shot(name: "mosto_yawn", page: .letters, state: "idle", borders: true, panel: "yawn"),
@@ -117,7 +122,12 @@ enum SnapshotRenderer {
                 var composing = candidates(["你好", "尼好", "泥好", "拟好", "你", "尼", "泥", "拟", "逆", "腻", "nihc"], correctedFirst: !t9Shot)
                 if !t9Shot { composing[0].fixes = [Fix(typed: "hap", meant: "hao")] }
                 switch shot.state {
+                case "composing" where shot.panel == "scrolled":
+                    bar.update(preedit: "ni hao", candidates: composing + candidates(["倪", "霓", "匿", "妮", "昵", "溺", "睨", "鲵", "旎", "怩"]))
                 case "composing": bar.update(preedit: "ni hao", candidates: composing)
+                case "cleared":
+                    bar.setUndo("nihap", spoken: "撤回清空，恢复为 nihap")
+                    bar.update(preedit: "", candidates: [])
                 case "en_typing": bar.update(preedit: "", candidates: [
                     { var c = Candidate(text: "the", tapCount: 0, syllables: [], corrected: true, score: 0)
                       c.fixes = [Fix(typed: "teh", meant: "the")]; return c }(),
@@ -147,6 +157,12 @@ enum SnapshotRenderer {
                     kb.demoPress(String(panel.dropFirst(6)))
                 } else if shot.panel == "forget" {
                     bar.offerForget("尼好") {}
+                } else if shot.panel == "scrolled" {
+                    bar.scrollStrip(to: width * 0.6)
+                } else if shot.panel == "clear_armed" {
+                    kb.layoutIfNeeded()
+                    kb.demoHold(.delete)
+                    bar.setClearPreview(true)
                 } else if shot.panel == "cursor" {
                     kb.layoutIfNeeded()
                     kb.demoCursorMode()

@@ -78,10 +78,45 @@ if let v = env["GCF"].flatMap(Double.init) { decoder.grammarCorrectedFactor = v 
 if let v = env["UC"].flatMap(Double.init) { decoder.userCap = v }
 if let v = env["UP"].flatMap(Double.init) { decoder.userPhraseScore = v }
 if let v = env["UB"].flatMap(Double.init) { decoder.userWordBoost = v }
+if env["TAIL"] == "0" { decoder.tailSlipEnabled = false }
+if let v = env["TSE"].flatMap(Double.init) { decoder.tailSlipExtra = v }
+if env["DEDUPE"] == "0" { decoder.dedupeLastCharacter = false }
+if let v = env["DDK"].flatMap(Int.init) { decoder.dedupeKeep = v }
 
 
 func codeLetters(_ ids: [UInt16]) -> String {
     ids.map { decoder.spelling(of: $0) }.joined()
+}
+
+/// A tap in the middle of key `c`, as a finger landing on the key's centre gives on the phone (the touch model's
+/// neighbours included) — not `Tap.exact`, which carries the key alone.
+func centreTap(_ c: Character) -> Tap {
+    guard let (cx, cy) = model.center(of: c) else { return Tap.exact(c) }
+    return model.tap(x: cx, y: cy, hitKey: c)
+}
+
+/// R1 现场错例 (EngineCLI/r1_typos.tsv): every key a tap on the centre of its key (r1.top1 / r1.top3), and the old
+/// `Tap.exact` reading beside it for one round (r1.exact.*). The scheme is put back as it was.
+func r1Typos(_ path: String, debug: Bool) -> (top1: Int, top3: Int, exact1: Int, exact3: Int, total: Int) {
+    let keep = decoder.scheme, keepCorr = decoder.correctionEnabled
+    defer { decoder.scheme = keep; decoder.correctionEnabled = keepCorr }
+    decoder.correctionEnabled = true
+    var t1 = 0, t3 = 0, e1 = 0, e3 = 0, total = 0
+    guard let raw = try? String(contentsOfFile: path, encoding: .utf8) else { return (0, 0, 0, 0, 0) }
+    for line in raw.split(separator: "\n") where !line.hasPrefix("#") {
+        let f = line.split(separator: "\t").map(String.init); guard f.count == 3 else { continue }
+        decoder.scheme = f[0] == "xiaohe" ? .xiaohe : .quanpin
+        let top = decoder.decode(f[1].map(centreTap)).candidates.prefix(3).map { $0.text }
+        let ex = decoder.decode(f[1].map { Tap.exact($0) }).candidates.prefix(3).map { $0.text }
+        total += 1
+        if top.first == f[2] { t1 += 1 }; if top.contains(f[2]) { t3 += 1 }
+        if ex.first == f[2] { e1 += 1 }; if ex.contains(f[2]) { e3 += 1 }
+        if debug, env["TYPO_DEBUG"] == "1" || top.first != f[2] {
+            print(top.first == f[2] ? "  ok" : (top.contains(f[2]) ? "  top3" : "  MISS"), f[1], "→", top.first ?? "-", "| want", f[2],
+                  "| exact →", ex.first ?? "-")
+        }
+    }
+    return (t1, t3, e1, e3, total)
 }
 
 func noisyTaps(_ letters: String, sigmaX: Double, sigmaY: Double, rng: inout RNG) -> [Tap] {
@@ -124,16 +159,8 @@ func englishBench(_ ed: EnglishDecoder) -> [String: Double] {
 
 switch args[2] {
 case "typos":   // EngineCLI <lexicon> typos <tsv>: scheme<TAB>keys<TAB>expected — r1.top1 / r1.top3 (a record, not a gate)
-    var t1 = 0, t3 = 0, total = 0
-    for line in (try! String(contentsOfFile: args[3], encoding: .utf8)).split(separator: "\n") where !line.hasPrefix("#") {
-        let f = line.split(separator: "\t").map(String.init); guard f.count == 3 else { continue }
-        decoder.scheme = f[0] == "xiaohe" ? .xiaohe : .quanpin
-        let r = decoder.decode(f[1].map { Tap.exact($0) })
-        let top = r.candidates.prefix(3).map { $0.text }
-        total += 1; if top.first == f[2] { t1 += 1 }; if top.contains(f[2]) { t3 += 1 }
-        if env["TYPO_DEBUG"] == "1" || top.first != f[2] { print(top.first == f[2] ? "  ok" : (top.contains(f[2]) ? "  top3" : "  MISS"), f[1], "→", top.first ?? "-", "| want", f[2]) }
-    }
-    print("r1.top1 \(t1)/\(total)  r1.top3 \(t3)/\(total)")
+    let r = r1Typos(args[3], debug: true)
+    print("r1.top1 \(r.top1)/\(r.total)  r1.top3 \(r.top3)/\(r.total)  r1.exact.top1 \(r.exact1)/\(r.total)  r1.exact.top3 \(r.exact3)/\(r.total)")
 
 case "entype":
     guard let en = decoder.english else { print("no english.bin"); exit(1) }
@@ -376,6 +403,21 @@ case "bench", "gate":
             if !decoder.fixes(for: c, taps: letters.map { Tap.exact($0) }).isEmpty { fixSaid += 1 }
             else if env["FIX_DEBUG"] != nil { print("   ? no fix:", c.text, "|", String(letters)) }
         }
+        // dedupe.pairs: among the first three candidates, two whole readings that differ only in their last character
+        // (开心那 / 开心你, 方案没 / 方案吗) — the second takes a place a different reading should have
+        // dedupe.pairs counts pairs whose last words are both one character (what the decoder sets aside);
+        // dedupe.pairs.any every pair differing only in the last character (homophone words too: 门口 / 门扣)
+        var dupPairs = 0, dupAny = 0
+        func countDup(_ c: [Candidate], _ n: Int) {
+            let top = c.prefix(3).filter { $0.tapCount == n && $0.text.count >= 2 }
+            for x in 0..<top.count { for y in (x + 1)..<max(x + 1, top.count) where top[x].text.count == top[y].text.count
+                && top[x].text.dropLast() == top[y].text.dropLast() {
+                dupAny += 1
+                let single = top[x].lastWordLength == 1 && top[y].lastWordLength == 1
+                if single { dupPairs += 1 }
+                if env["DUP_DEBUG"] != nil { print("   dup\(single ? "1" : "*"):", top[x].text, "/", top[y].text) }
+            } }
+        }
         for (k, (t, ids)) in sentItems.enumerated() {
             var letters = Array(codeLetters(ids))
             guard letters.count >= 4 else { continue }
@@ -384,22 +426,76 @@ case "bench", "gate":
             let c = decoder.decode(letters.map { Tap.exact($0) }).candidates
             total += 1
             countFix(c.first, letters)
+            countDup(c, letters.count)
             if c.first?.text == t { ok += 1 } else if env["EXTRA_DEBUG"] != nil { print("   +", t, "→", c.first?.text ?? "-", "|", String(letters)) }
             if c.prefix(3).contains(where: { $0.text == t }) { top3 += 1 }
         }
         metrics["extra.sentences.top1"] = 100 * Double(ok) / Double(max(total, 1))
-        // and with one key left out instead
+        // and with one key left out instead (小鹤 too, as a record: a pair missing a key shifts every pair after it)
         var mok = 0, mtotal = 0
-        for (t, ids) in decoder.scheme == .xiaohe ? [] : sentItems {
+        for (t, ids) in sentItems {
             var letters = Array(codeLetters(ids))
             guard letters.count >= 4 else { continue }
             letters.remove(at: 1 + Int(rng.next() * Double(letters.count - 2)))
             let c = decoder.decode(letters.map { Tap.exact($0) }).candidates
             mtotal += 1
-            countFix(c.first, letters)
+            if decoder.scheme == .quanpin { countFix(c.first, letters) }
+            countDup(c, letters.count)
             if c.first?.text == t { mok += 1 } else if env["MISS_DEBUG"] != nil { print("   -", t, "→", c.first?.text ?? "-", "|", String(letters)) }
         }
         metrics["missing.sentences.top1"] = 100 * Double(mok) / Double(max(mtotal, 1))
+        // 句末多按: one key too many after the last key (全拼) — half the sentences the last key pressed twice, half a
+        // neighbour of it brushed; perfect keys otherwise. extra.tail.top1 / top3 (%)
+        if decoder.scheme == .quanpin {
+            var rngT = RNG(s: 7), tok = 0, t3 = 0, tn = 0
+            for (k, (t, ids)) in sentItems.enumerated() {
+                var letters = Array(codeLetters(ids))
+                guard letters.count >= 4 else { continue }
+                letters.append(k % 2 == 0 ? letters.last! : neighbour(letters.last!, &rngT))
+                let c = decoder.decode(letters.map { Tap.exact($0) }).candidates
+                tn += 1
+                countFix(c.first, letters)
+                countDup(c, letters.count)
+                if c.first?.text == t { tok += 1 } else if env["TAIL_DEBUG"] != nil {
+                    print("   ▸", t, "→", c.prefix(3).map { $0.text }.joined(separator: " / "), "|", String(letters))
+                }
+                if c.prefix(3).contains(where: { $0.text == t }) { t3 += 1 }
+            }
+            metrics["extra.tail.top1"] = 100 * Double(tok) / Double(max(tn, 1))
+            metrics["extra.tail.top3"] = 100 * Double(t3) / Double(max(tn, 1))
+            print(String(format: "== one key too many after the last: sentences top1 %.1f%%  top3 %.1f%%  (n=%d)",
+                         metrics["extra.tail.top1"]!, metrics["extra.tail.top3"]!, tn))
+        }
+        metrics["dedupe.pairs"] = Double(dupPairs)
+        metrics["dedupe.pairs.any"] = Double(dupAny)
+        print(String(format: "== first three readings differing only in their last character: %d pairs with one-character last words, %d in all", dupPairs, dupAny))
+        // 两处按错: one key too many or left out in the first half of the sentence and another in the second half
+        // (a key pressed twice, a neighbour brushed, or a key left out), both schemes. two.sentences.top1 / top3 (%)
+        do {
+            var rngW = RNG(s: 11), wok = 0, w3 = 0, wn = 0
+            for (t, ids) in sentItems {
+                var letters = Array(codeLetters(ids))
+                guard letters.count >= 8 else { continue }
+                let h = letters.count / 2
+                let b = h + 1 + Int(rngW.next() * Double(letters.count - 2 - h))
+                let a = 1 + Int(rngW.next() * Double(h - 2))
+                for idx in [b, a] {
+                    if rngW.next() < 0.5 {
+                        letters.insert(rngW.next() < 0.5 ? letters[idx - 1] : neighbour(letters[idx], &rngW), at: idx)
+                    } else {
+                        letters.remove(at: idx)
+                    }
+                }
+                let c = decoder.decode(letters.map { Tap.exact($0) }).candidates
+                wn += 1
+                if c.first?.text == t { wok += 1 } else if env["TWO_DEBUG"] != nil { print("   ±", t, "→", c.first?.text ?? "-", "|", String(letters)) }
+                if c.prefix(3).contains(where: { $0.text == t }) { w3 += 1 }
+            }
+            metrics["two.sentences.top1"] = 100 * Double(wok) / Double(max(wn, 1))
+            metrics["two.sentences.top3"] = 100 * Double(w3) / Double(max(wn, 1))
+            print(String(format: "== two keys wrong (one too many or left out, in each half): sentences top1 %.1f%%  top3 %.1f%%  (n=%d)",
+                         metrics["two.sentences.top1"]!, metrics["two.sentences.top3"]!, wn))
+        }
         metrics["fix.caption.coverage"] = 100 * Double(fixSaid) / Double(max(fixMarked, 1))
         print(String(format: "== corrections that say what changed: %.1f%% (%d of %d)", metrics["fix.caption.coverage"]!, fixSaid, fixMarked))
         if mtotal > 0 { print(String(format: "== one key missing: sentences top1 %.1f%%", metrics["missing.sentences.top1"]!)) }
@@ -571,6 +667,7 @@ case "bench", "gate":
             ("extra.sentences.top1", 55.0, true),  // a sentence with one key too many still read right (%)
             ("mixed.sentences.top1", 72.0, true),  // an English word inside a Chinese sentence (%)
             ("fix.caption.coverage", 98.0, true), // a corrected first candidate says what it changed (%)
+            ("dedupe.pairs", 100.0, false),    // first three readings differing only in a last one-character word (at most two per sentence)
         ] : [
             ("words.on", 97.0, true),
             ("words.broken", 1.0, false),
@@ -591,6 +688,9 @@ case "bench", "gate":
             ("missing.sentences.top1", 48.0, true), // a sentence with one key left out still read right (%)
             ("mixed.sentences.top1", 78.0, true),
             ("fix.caption.coverage", 98.0, true),
+            ("extra.tail.top1", 71.0, true),   // one key too many after the last key still read right (%)
+            ("extra.tail.top3", 90.0, true),   // … among the first three (%)
+            ("dedupe.pairs", 100.0, false),
         ]
         print("scheme:", decoder.scheme == .xiaohe ? "小鹤双拼" : "全拼")
         var failed = false
@@ -720,6 +820,15 @@ case "bench", "gate":
             metrics["fuzz.p99.ms"] = p99
             print(String(format: "== fuzz: 1500 inputs, invalid %d, decode p99 %.1f ms, slowest %.1f ms (%@)", bad.count, p99, worst, worstInput))
             for b in bad { print("   ", b) }
+        }
+        // Records (R2: measured and reported, not floors): R1 现场错例 with centre-of-key taps and the old exact reading,
+        // two keys wrong in a sentence, 小鹤 one key left out
+        if decoder.scheme == .quanpin {
+            let r = r1Typos(env["TYPOS"] ?? "EngineCLI/r1_typos.tsv", debug: env["TYPO_DEBUG"] != nil)
+            print("RECORD r1.top1 \(r.top1)/\(r.total)  r1.top3 \(r.top3)/\(r.total)  r1.exact.top1 \(r.exact1)/\(r.total)  r1.exact.top3 \(r.exact3)/\(r.total)")
+        }
+        for k in ["two.sentences.top1", "two.sentences.top3"] + (decoder.scheme == .xiaohe ? ["missing.sentences.top1"] : []) {
+            print(String(format: "RECORD %@ %.2f", k, metrics[k] ?? .nan))
         }
         for (k, v, atLeast) in floors {
             let m = metrics[k] ?? .nan

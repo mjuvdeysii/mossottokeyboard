@@ -84,8 +84,23 @@ final class KeyboardViewController: UIInputViewController {
     private var enUndo: (typed: String, taps: [Tap], corrected: String)? {
         didSet { syncUndoChip() }
     }
-    /// The strip offers putting back what a correction replaced, while a delete would still do it.
+    /// The composition a swipe left off delete (or 重输) cleared, until the next key: the ↩ chip puts it back as it
+    /// was — the same keys, read in the same context (rounds/R3.md).
+    private var cleared: (taps: [Tap], context: String, literal: Bool, text: String)? {
+        didSet { syncUndoChip() }
+    }
+    /// The keys as they were before the last delete took one (a swipe that clears restores the key its own landing
+    /// deleted, too).
+    private var beforeDelete: (taps: [Tap], literal: Bool)?
+    /// A clear that comes from the swipe on delete (not the 重输 key).
+    private var clearingBySwipe = false
+    /// The strip offers putting back what a correction replaced, while a delete would still do it; or what a swipe
+    /// cleared, until the next key.
     private func syncUndoChip() {
+        if let c = cleared {
+            candidateBar.setUndo(Self.abbreviated(c.text, to: 12), spoken: "撤回清空，恢复为 \(c.text)")
+            return
+        }
         let typed = undoable.map { String($0.taps.map { $0.key }) } ?? enUndo?.typed
         candidateBar.setUndo(typed)
     }
@@ -109,11 +124,16 @@ final class KeyboardViewController: UIInputViewController {
     // MARK: - Test bench
 
     /// What the test bench checks after every action.
-    struct TestState { let keys: String; let composing: Bool; let marked: String?; let candidates: [String]; let english: Bool; let page: KeyboardPage; let predictions: [String] }
+    /// `restorable`: the keys the ↩ chip would put back after a clear (nil: none).
+    struct TestState { let keys: String; let composing: Bool; let marked: String?; let candidates: [String]; let english: Bool; let page: KeyboardPage; let predictions: [String]; let restorable: String? }
     var testState: TestState {
         TestState(keys: String(taps.map { $0.key }), composing: !taps.isEmpty, marked: hasMarkedText ? markedString : nil,
-                  candidates: (result?.candidates ?? []).map { $0.text }, english: !chinese, page: page, predictions: predictions)
+                  candidates: (result?.candidates ?? []).map { $0.text }, english: !chinese, page: page, predictions: predictions,
+                  restorable: cleared.map { String($0.taps.map { $0.key }) })
     }
+    /// The keys being composed, with where each landed (a restore must give back exactly these).
+    var tapsForTests: [String] { taps.map { "\($0.key)@\($0.x ?? -1),\($0.y ?? -1)" } }
+    var keyboardViewForTests: KeyboardView { keyboard }
     /// Block until the engine has loaded (the bench drives keys straight after creating the controller).
     func waitForEngineForTests() -> Bool {
         for _ in 0..<600 {
@@ -159,6 +179,7 @@ final class KeyboardViewController: UIInputViewController {
             // the cursor leaves the word just typed: nothing to undo or autocorrect there any more
             self.undoable = nil
             self.enUndo = nil
+            self.cleared = nil
             self.endEnglishWord()
             // one visible character per step: an emoji or other surrogate pair is two UTF-16 units
             let proxy = self.host
@@ -171,10 +192,24 @@ final class KeyboardViewController: UIInputViewController {
         }
         keyboard.onKeyDown = { [weak self] action, p in self?.feel(.key(action), at: p) }
         keyboard.onFeedback = { [weak self] event, p in self?.feel(event, at: p) }
+        // swipe left off delete: clears the composition (rounds/R3.md)
+        keyboard.isComposing = { [weak self] in !(self?.taps.isEmpty ?? true) }
+        keyboard.onClearPreview = { [weak self] on in self?.candidateBar.setClearPreview(on) }
+        keyboard.onClearSwipe = { [weak self] in
+            guard let self else { return }
+            self.clearingBySwipe = true
+            self.handle(.clearInput, tap: nil)
+            self.clearingBySwipe = false
+        }
 
         candidateBar.onSelect = { [weak self] i in self?.feel(.candidate); self?.candidateTapped(i) }
-        // the undo chip: the same as pressing delete right after the corrected word went in
-        candidateBar.onUndo = { [weak self] in self?.feel(.undoChip); self?.handle(.delete, tap: nil) }
+        // the undo chip: after a clear, the keys it cleared; else the same as pressing delete right after the
+        // corrected word went in
+        candidateBar.onUndo = { [weak self] in
+            guard let self else { return }
+            self.feel(.undoChip)
+            if self.cleared != nil { self.restoreCleared() } else { self.handle(.delete, tap: nil) }
+        }
         candidateBar.onMostoShown = { [weak self] on in self?.tintView.lampLit = on }
         syllablePicker.isHidden = true
         keyboard.addSubview(syllablePicker)
@@ -372,6 +407,7 @@ final class KeyboardViewController: UIInputViewController {
         clearPredictions()
         undoable = nil
         enUndo = nil
+        cleared = nil
         lastInsertedSpace = false
         endEnglishWord()
     }
@@ -615,6 +651,10 @@ final class KeyboardViewController: UIInputViewController {
         }
         candidateBar.dismissForget()
         clearPredictions()
+        // a clear can be taken back only until the next key
+        cleared = nil
+        let lastDelete = beforeDelete
+        beforeDelete = nil
         let undo = undoable
         undoable = nil
         if action == .delete, let undo, undoCorrection(undo) { return }
@@ -669,7 +709,15 @@ final class KeyboardViewController: UIInputViewController {
             taps.append(Tap.t9(d))
             refresh()
         case .clearInput:
+            // 重输, or a swipe left off delete: the keys go, and the ↩ chip offers them back. The swipe's own landing
+            // deleted a key first; it comes back too.
+            let swiped = clearingBySwipe ? lastDelete : nil
+            let keys = swiped?.taps ?? taps
+            guard !keys.isEmpty else { break }
+            let literal = swiped?.literal ?? literalGeneration
+            let text = restorableText(keys, literal: literal)
             if !taps.isEmpty { clearComposition() }
+            cleared = (keys, host.documentContextBeforeInput ?? "", literal, text)
         case .deleteWord:
             deleteWord()
         case .emoji:
@@ -754,6 +802,7 @@ final class KeyboardViewController: UIInputViewController {
     private func delete() {
         lastInsertedSpace = false
         if !taps.isEmpty {
+            beforeDelete = (taps, literalGeneration)
             taps.removeLast()
             if taps.isEmpty { clearComposition() } else { refresh() }
             return
@@ -1066,6 +1115,50 @@ final class KeyboardViewController: UIInputViewController {
             : String(taps.map { $0.key })
         insertCommitted(raw)
         clearComposition()
+    }
+
+    /// What the ↩ chip says for cleared keys: the letters as typed, or on the 九宫格 the pinyin read from them (as
+    /// return would type it).
+    private func restorableText(_ keys: [Tap], literal: Bool) -> String {
+        if keys.contains(where: { $0.group }), let py = engine.decodeNow(keys, literal: literal)?.result.preedit {
+            return py.replacingOccurrences(of: " ", with: "")
+        }
+        return String(keys.map { $0.key })
+    }
+
+    /// Longer than `limit` characters: the middle gives way to an ellipsis (the start and the end stay readable).
+    static func abbreviated(_ s: String, to limit: Int) -> String {
+        guard s.count > limit else { return s }
+        return String(s.prefix(limit / 2)) + "…" + String(s.suffix(limit - limit / 2 - 1))
+    }
+
+    /// The ↩ chip after a clear: the keys come back exactly as they were, read in the same context.
+    private func restoreCleared() {
+        guard let c = cleared else { return }
+        candidateBar.dismissForget()
+        clearPredictions()
+        undoable = nil
+        enUndo = nil
+        beforeDelete = nil
+        cleared = nil
+        lastInsertedSpace = false
+        taps = c.taps
+        engine.setContext(c.context)
+        refresh(literal: c.literal)
+        afterLastKey = contextSnapshot()
+    }
+
+    /// Drop whatever is being composed without offering it back (the app's 上手 page starting a lesson afresh).
+    func discardComposition() {
+        candidateBar.dismissForget()
+        clearPredictions()
+        undoable = nil
+        enUndo = nil
+        cleared = nil
+        beforeDelete = nil
+        endEnglishWord()
+        if !taps.isEmpty { clearComposition() }
+        afterLastKey = contextSnapshot()
     }
 
     private func clearComposition() {

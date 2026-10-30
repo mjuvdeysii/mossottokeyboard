@@ -17,6 +17,8 @@ public struct Candidate: Equatable {
     /// spelling they were read as (hap → hao, tia → tian, ttian → tian). Empty when nothing was corrected or the
     /// change is not a few plain key edits.
     public var fixes: [Fix] = []
+    /// Characters in the last word of the reading (a key read as a slip at the end is no word); 0 when unknown.
+    public var lastWordLength = 0
 }
 
 /// One corrected syllable: the keys typed for it and the spelling they were read as.
@@ -257,6 +259,23 @@ public final class Decoder {
     public var xiaoheSkipPenalty = 7.0
     /// 漏按了一个键 (全拼): a letter the keys left out — don for dong, tia for tian.
     public var missingPenalty = 9.0
+    /// 句末多按 (全拼): the last key read as one pressed by mistake after the words before it (gongyuann → 公园,
+    /// fageiwoo → 发给我), at the cost of a slip (`skipCost`) plus a correction, weighed by the language model against
+    /// reading that key as the initial of one more character (公园内, 方案吗). Inside a sentence a key is still never
+    /// read as a slip in place of a syllable's first key. 小鹤 and 九宫格 unchanged.
+    /// R2, tuning set (305 sentences, last key pressed twice or a neighbour brushed after it): top1 42.0 → 73.1%,
+    /// top3 64.9 → 91.8%; every other sentence measure unchanged. Cheaper (tailSlipExtra −2…−6) reads more of them
+    /// but costs sentences typed with touch noise (89.5 → 88.9%) and one key left out (49.2 → 47.5%): kept at 0.
+    public var tailSlipEnabled = true
+    public var tailSlipExtra = 0.0
+    /// Candidates: of whole readings that differ only in their last one-character word (开心那 / 开心年 / 开心你), the
+    /// first is kept and the next different reading takes the place of the others. Readings of different lengths
+    /// (开心 with the last key read as a slip, 开心那 with it read as a character) both stay. Readings whose last word is
+    /// longer (门口 / 门扣, 见他 / 见她) are different words and stay. `dedupeKeep`: how many readings per such group.
+    public var dedupeLastCharacter = true
+    /// Two: a question ending typed as its initial (…fanganm → 方案吗) stays beside the slip reading (方案没), which the
+    /// language model ranks almost level with it (R2).
+    public var dedupeKeep = 2
     /// How far below the best clean path a slip / left-out-key path may start and still be kept.
     public var slipMargin = 2.0
     public var xiaoheSkipDoublePenalty = 5.5
@@ -667,8 +686,16 @@ public final class Decoder {
             }
         }
 
-        edges.reserveCapacity(edges.count + englishEdges.count)
+        edges.reserveCapacity(edges.count + englishEdges.count + 1)
         for e in englishEdges { ending[e.end].append(edges.count); edges.append(e) }
+        // 句末多按: the last key, on its own, read as a slip after whatever the keys before it read (an empty word)
+        if scheme == .quanpin, skipEnabled, tailSlipEnabled, correctionEnabled, n >= 3, reach[n - 1],
+           !taps.contains(where: { $0.group }), taps[n - 1].key != "'" {
+            let cost = skipCost(taps, n - 1) + correctionPenalty + tailSlipExtra
+            ending[n].append(edges.count)
+            edges.append(Edge(start: n - 1, end: n, score: -cost, corrected: true, entry: -1, userText: "", ids: [],
+                              cuts: [n], kinds: [3]))
+        }
 
         // K-best Viterbi over the word lattice (once unrestricted, once literal-only)
         struct Path { var score: Double; var edges: [Int]; var corrected: Bool }
@@ -687,7 +714,7 @@ public final class Decoder {
         grammar?.resetMassBudget()
         /// The language-model score of word `ei` after the words of `prev` (or after the text in the field).
         func link(_ prev: [Int], _ ei: Int) -> Double {
-            guard let grammar else { return 0 }
+            guard let grammar, edges[ei].userText?.isEmpty != true else { return 0 }
             var ctx: [Character] = []
             var k = prev.count - 1
             while ctx.count < 3 && k >= 0 { ctx.insert(contentsOf: chars(prev[k]), at: 0); k -= 1 }
@@ -704,6 +731,7 @@ public final class Decoder {
             }
             return lift
         }
+        let width = keypad ? t9Beam : beam
         func bestPaths(literalOnly: Bool) -> [Path] {
             var paths = [[Path]](repeating: [], count: n + 1)
             paths[0] = [Path(score: 0, edges: [], corrected: false)]
@@ -718,7 +746,8 @@ public final class Decoder {
                     }
                 }
                 cands.sort { $0.score > $1.score }
-                paths[j] = Array(cands.prefix(keypad ? t9Beam : beam))
+                // the whole input keeps twice the beam: readings set aside as duplicates make room for the next ones
+                paths[j] = Array(cands.prefix(j == n && dedupeLastCharacter ? 2 * width : width))
             }
             return paths[n]
         }
@@ -733,6 +762,7 @@ public final class Decoder {
             var c = Candidate(text: es.map(text).joined(), tapCount: tapCount, syllables: es.flatMap(ids),
                               corrected: corrected, score: score)
             c.intendedKeys = keys(es)
+            c.lastWordLength = es.last(where: { text($0) != "" }).map { text($0).count } ?? 0
             return c
         }
 
@@ -745,20 +775,44 @@ public final class Decoder {
 
         let full = bestPaths(literalOnly: false)
         var fullCands = full.map { p in (p.edges.map { edges[$0] }, p.corrected, p.score) }
+        // as many whole readings as the beam alone gave before duplicates were set aside
+        var shown = Set(full.prefix(width).map { p in p.edges.map { text(edges[$0]) }.joined() })
         for ei in ending[n] where edges[ei].start == 0 {
             fullCands.append(([edges[ei]], edges[ei].corrected, edges[ei].score + link([], ei)))
+            shown.insert(text(edges[ei]))
         }
         fullCands.sort { $0.2 > $1.2 }
+        /// The text before its last word, when that word is one character (the slip edge counts as no word).
+        func stem(_ es: [Edge]) -> Substring? {
+            guard let last = es.last(where: { text($0) != "" }), text(last).count == 1 else { return nil }
+            let t = es.map(text).joined()
+            return t.count >= 2 ? t.dropLast() : nil
+        }
+        var stems: [Substring: Int] = [:]
+        var wholeAdded = 0
+        func addWhole(_ es: [Edge], corrected: Bool, score: Double) {
+            guard wholeAdded < shown.count else { return }
+            let st = dedupeLastCharacter ? stem(es) : nil
+            if let st, stems[st, default: 0] >= dedupeKeep { return }
+            let before = result.count
+            add(candidate(es, tapCount: n, corrected: corrected, score: score), es)
+            if result.count > before {
+                wholeAdded += 1
+                if let st { stems[st, default: 0] += 1 }
+            }
+        }
 
         if let first = fullCands.first {
-            add(candidate(first.0, tapCount: n, corrected: first.1, score: first.2), first.0)
+            addWhole(first.0, corrected: first.1, score: first.2)
             // Gboard-style: when the top choice was auto-corrected, offer the literal reading next.
             if first.1, correctionEnabled, let lit = bestPaths(literalOnly: true).first {
                 let es = lit.edges.map { edges[$0] }
+                let before = result.count
                 add(candidate(es, tapCount: n, corrected: false, score: lit.score), es)
+                if result.count > before, let st = stem(es) { stems[st, default: 0] += 1 }
             }
         }
-        for c in fullCands.dropFirst() { add(candidate(c.0, tapCount: n, corrected: c.1, score: c.2), c.0) }
+        for c in fullCands.dropFirst() { addWhole(c.0, corrected: c.1, score: c.2) }
 
         // 中英混输: the letters as an English word (exact, then the likeliest completion), placed by score among
         // the readings that cover all the input — so "ok" leads with OK, while "de" still leads with 的.

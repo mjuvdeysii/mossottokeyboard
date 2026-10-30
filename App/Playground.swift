@@ -21,6 +21,9 @@ struct Lesson {
     var slip: Int? = nil          // index in `keys` of the key pressed on purpose wrong / the place a key is left out
     var missing: Character? = nil // the letter left out at `slip`
     let check: (String, KeyboardViewController.TestState) -> Bool
+    /// A second step after `check` passes: it gets what `check` left the keyboard holding to put back (the keys a
+    /// clear took away), and passes the lesson.
+    var then: ((KeyboardViewController.TestState, String?) -> Bool)? = nil
 }
 
 let lessons: [Lesson] = [
@@ -32,6 +35,9 @@ let lessons: [Lesson] = [
            check: { t, _ in t.contains("今天天气很好") }),
     Lesson(title: "撤回纠错", line: "点候选栏最左边的 ↩：刚才按的字母原样回来。", keys: "↩",
            check: { _, s in s.composing && s.keys.contains("tiaqi") }),
+    Lesson(title: "清空正在打的拼音", line: "从删除键往左一划，正在打的拼音一次清空；点 ↩ 找回。", keys: "⌫↩",
+           check: { _, s in !s.composing && s.restorable != nil },
+           then: { s, keys in s.composing && keys != nil && s.keys == keys }),
     Lesson(title: "中英混输", line: "英文词夹在句子里照打，不用切换。先按删除清掉刚才的字母，再打：", keys: "woyongiphonedazi␣",
            check: { t, _ in t.contains("iPhone打字") }),
     Lesson(title: "只打声母", line: "常用词只打每个字的声母。", keys: "bzd␣",
@@ -54,6 +60,9 @@ final class PlaygroundModel: ObservableObject {
     @Published var marked = ""      // the keys being composed (underlined, as the field shows them)
     @Published var step = 0         // index into `lessons`; lessons.count = free typing
     @Published var justPassed = false
+    /// A lesson with two steps (清空, then 找回): the first is done; what it left to put back.
+    @Published var firstDone = false
+    private var firstKeys: String?
     /// Which pass the pending move-on belongs to (a later pass, jump or skip supersedes it).
     private var passCount = 0
     @Published var ready = false
@@ -72,7 +81,21 @@ final class PlaygroundModel: ObservableObject {
             before = all; marked = ""
         }
         guard step < lessons.count, !justPassed, let kb = keyboard else { return }
-        if lessons[step].check(all, kb.testState) {
+        let lesson = lessons[step], state = kb.testState
+        if let then = lesson.then {
+            if !firstDone {
+                if lesson.check(all, state) { firstDone = true; firstKeys = state.restorable }
+                return
+            }
+            // the keys to put back are gone (another key was pressed): the first step again
+            if !then(state, firstKeys) {
+                if state.restorable == nil && !lesson.check(all, state) && state.keys != firstKeys { firstDone = false; firstKeys = nil }
+                return
+            }
+        } else if !lesson.check(all, state) {
+            return
+        }
+        do {
             justPassed = true
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             let passed = step
@@ -84,6 +107,8 @@ final class PlaygroundModel: ObservableObject {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                     if self.step == passed { self.step = min(passed + 1, lessons.count) }
                     self.justPassed = false
+                    self.firstDone = false
+                    self.firstKeys = nil
                 }
             }
         }
@@ -105,19 +130,25 @@ final class PlaygroundModel: ObservableObject {
         keyboard?.applySettings()
     }
 
-    func skip() { withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { step = min(step + 1, lessons.count) } }
-    func restart() { clear(); layout = 0; withAnimation { step = 0 } }
+    func skip() {
+        firstDone = false; firstKeys = nil
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { step = min(step + 1, lessons.count) }
+    }
+    func restart() { clear(); layout = 0; firstDone = false; firstKeys = nil; withAnimation { step = 0 } }
     func clear() { host.clear(); refresh() }
 
     /// Straight to one lesson (「了解」页的「试一试」): the keys being composed dropped, the field empty, the practice
     /// keyboard back on 全拼 (the lessons are written for it).
     func jump(to lesson: Int) {
         guard lessons.indices.contains(lesson) else { return }
-        keyboard?.handle(.clearInput, tap: nil)
+        // dropped, not cleared: no ↩ offers the keys back in the new lesson
+        keyboard?.discardComposition()
         host.clear()
         keyboard?.textDidChange(nil)   // the word before is gone with the text: no ↩, no suggestions for it
         if layout != 0 { layout = 0 }
         justPassed = false
+        firstDone = false
+        firstKeys = nil
         passCount += 1
         step = lesson
         refresh()
@@ -250,8 +281,9 @@ private struct KeyChips: View {
                     chip(String(m), style: .gap)
                     chip(String(c), style: .plain, typed: i < done)
                 } else {
-                    chip(c == "␣" ? "空格" : String(c), style: i == slip ? .slip : (c == "␣" || c == "↩" ? .function : .plain),
-                         typed: c != "␣" && c != "↩" && i < done)
+                    let function = c == "␣" || c == "↩" || c == "⌫"
+                    chip(c == "␣" ? "空格" : (c == "⌫" ? "⌫ 往左划" : String(c)), style: i == slip ? .slip : (function ? .function : .plain),
+                         typed: !function && i < done)
                 }
             }
         }

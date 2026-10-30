@@ -517,6 +517,14 @@ final class KeyboardView: UIView {
     var onKeyDown: ((KeyAction, CGPoint) -> Void)?
     /// Something felt that is not a key landing: other characters shown or changed, cursor mode, word deletes.
     var onFeedback: ((FeedbackEvent, CGPoint?) -> Void)?
+    /// Whether something is being composed now (a swipe left off delete clears it only then).
+    var isComposing: (() -> Bool)?
+    /// A swipe left off delete is armed (true) or no longer (false): the strip shows what lifting would do.
+    var onClearPreview: ((Bool) -> Void)?
+    /// A swipe left off delete was let go while armed: clear the composition.
+    var onClearSwipe: (() -> Void)?
+    /// The test bench's stand-in for the version before the swipe existed (the same touches, no swipe to clear).
+    var clearSwipeEnabled = true
     weak var inputController: UIInputViewController?
 
     let spatial: SpatialModel
@@ -536,22 +544,28 @@ final class KeyboardView: UIView {
         var altOptions: [String] = []
         var altPopup: AltPopup?
         var altAnchorX: CGFloat = 0
-        var longPressTimer: Timer?
-        var repeatTimer: Timer?
+        var longPressTimer: KeyTimer?
+        var repeatTimer: KeyTimer?
         var dragAccum: CGFloat = 0
         var dragging = false
-        var lastMove = CACurrentMediaTime()
-        let began = CACurrentMediaTime()
+        var lastMove: CFTimeInterval
+        let began: CFTimeInterval
         var repeatCount = 0
         var preview: KeyPreview?
         /// Finished (emitted or abandoned): never finished again.
         var finished = false
         /// Typed the moment the finger landed (keys with no long-press choices): nothing more to type on release.
         var typedOnDown = false
-        init(keyIndex: Int, start: CGPoint) { self.keyIndex = keyIndex; self.start = start; self.location = start }
+        /// On delete, while something is being composed: the swipe left that clears it (rounds/R3.md).
+        var clearSwipe: ClearSwipe?
+        init(keyIndex: Int, start: CGPoint, time: CFTimeInterval) {
+            self.keyIndex = keyIndex; self.start = start; self.location = start; self.began = time; self.lastMove = time
+        }
     }
-    private var tracked: [ObjectIdentifier: Tracked] = [:]
-    private var touchOrder: [ObjectIdentifier] = []
+    /// A finger on the keys: a real touch, or one the test bench feeds.
+    private enum TouchKey: Hashable { case touch(ObjectIdentifier), sample(Int) }
+    private var tracked: [TouchKey: Tracked] = [:]
+    private var touchOrder: [TouchKey] = []
 
     init(spatial: SpatialModel) {
         self.spatial = spatial
@@ -718,145 +732,174 @@ final class KeyboardView: UIView {
 
     // MARK: - Touches
 
-    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        for t in touches {
-            // Roll-over: a new finger finalises any key still held down that types (characters, 九宫格 keys, a space
-            // tap, return), so fast two-thumb typing keeps the order the keys went down in.
-            flushHeldKeys()
-            if hitRects.count != keyViews.count { layoutIfNeeded() }
-            let p = t.location(in: self)
-            guard let idx = keyIndex(at: p), idx < keyViews.count else { continue }
+    // UIKit's touches only read where and when; everything else is in began / moved / ended / cancelled below,
+    // which the test bench drives with recorded samples (feedForTests) — the same code either way.
 
-            let tr = Tracked(keyIndex: idx, start: p)
-            stats.began += 1
-            let id = ObjectIdentifier(t)
-            tracked[id] = tr
-            touchOrder.append(id)
-            let kv = keyViews[idx]
-            kv.pressed = true
-            lastKeyDown = CACurrentMediaTime()
-            onKeyDown?(kv.spec.action, p)
-            switch kv.spec.action {
-            case .char(let s) where kv.spec.alt == nil:
-                // A key with nothing to choose on a long press types the moment the finger lands, as the fastest
-                // input methods do: the time the finger rests on the glass is no longer added to every keystroke.
-                // The balloon still shows while it is held.
-                showPreview(tr, text: kv.spec.label)
-                tr.typedOnDown = true
-                stats.emitted += 1
-                if kv.spec.isLetter, let c = s.first {
-                    onAction?(.char(s), spatial.tap(x: Double(p.x), y: Double(p.y), hitKey: c))
-                } else {
-                    onAction?(.char(s), nil)
-                }
-            case .t9:
-                tr.typedOnDown = true
-                stats.emitted += 1
-                onAction?(kv.spec.action, nil)
-            case .char:
-                showPreview(tr, text: kv.spec.label)
-                tr.longPressTimer = Timer.scheduledTimer(withTimeInterval: 0.38, repeats: false) { [weak self, weak tr] _ in
-                    guard let self, let tr else { return }
-                    self.showAlt(tr)
-                }
-            case .delete:
-                onAction?(.delete, nil)
-                // a second finger on a delete already held deletes once; one repeat at a time
-                if tracked.values.contains(where: { $0 !== tr && $0.keyIndex == idx && !$0.finished }) { break }
-                tr.repeatTimer = Timer.scheduledTimer(withTimeInterval: 0.42, repeats: false) { [weak self, weak tr] _ in
-                    guard let self, let tr else { return }
-                    self.startDeleteRepeat(tr)
-                }
-            case .shift:
-                onAction?(.shift, nil)
-            case .emoji:
-                // held: the keyboard settings (and the tap that follows is not an emoji tap)
-                tr.longPressTimer = Timer.scheduledTimer(withTimeInterval: 0.45, repeats: false) { [weak self, weak tr] _ in
-                    guard let self, let tr else { return }
-                    tr.altShown = true
-                    self.onAction?(.settings, nil)
-                }
-            default:
-                break
-            }
-        }
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        for t in touches { began(.touch(ObjectIdentifier(t)), at: t.location(in: self), time: CACurrentMediaTime()) }
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        for t in touches {
-            guard let tr = tracked[ObjectIdentifier(t)], tr.keyIndex < keyViews.count else { continue }
-            let p = t.location(in: self)
-            let prev = tr.location
-            tr.location = p
-            let kv = keyViews[tr.keyIndex]
-            switch kv.spec.action {
-            case .space:
-                // Drag on the space bar moves the cursor (Gboard / iOS trackpad): the caps go blank, one character
-                // per ~9 pt when slow, finer steps when the finger moves fast, so a long jump needs no second swipe.
-                let dx = p.x - prev.x
-                let now = CACurrentMediaTime()
-                let speed = abs(dx) / CGFloat(max(now - tr.lastMove, 1.0 / 120))
-                tr.lastMove = now
-                // a quick tap on space while typing fast may slide a little: only a clear drag (22 pt), or a shorter
-                // one after holding for a moment, moves the cursor — otherwise it is a space
-                let held = now - tr.began
-                let threshold: CGFloat = held > 0.3 ? 12 : 22
-                if !tr.dragging && abs(p.x - tr.start.x) > threshold && (canMoveCursor?() ?? true) {
-                    tr.dragging = true
-                    tr.dragAccum = 0
-                    setCursorMode(true, except: tr.keyIndex)
-                    onFeedback?(.cursorMode, p)
-                }
-                if tr.dragging {
-                    tr.dragAccum += dx
-                    let step: CGFloat = speed > 900 ? 3.5 : speed > 450 ? 5.5 : 9
-                    while abs(tr.dragAccum) >= step {
-                        let dir = tr.dragAccum > 0 ? 1 : -1
-                        onCursorMove?(dir)
-                        tr.dragAccum -= CGFloat(dir) * step
-                    }
-                }
-            case .char where tr.altShown:
-                // the first choice stays selected until the finger actually slides
-                if let popup = tr.altPopup, abs(p.x - tr.altAnchorX) > 6 {
-                    let i = popup.index(at: p.x)
-                    if i != popup.selected { popup.selected = i; onFeedback?(.altMoved, p) }
-                }
-            case .char where !tr.altShown && !tr.typedOnDown:
-                // Slide to a neighbouring character key before release (keys typed on landing stay typed).
-                if let idx = keyIndex(at: p), idx < keyViews.count, idx != tr.keyIndex, case .char = keyViews[idx].spec.action {
-                    kv.pressed = false
-                    tr.longPressTimer?.invalidate()
-                    tr.keyIndex = idx
-                    keyViews[idx].pressed = true
-                    tr.preview?.removeFromSuperview(); tr.preview = nil   // never the old key's balloon over the new key
-                    showPreview(tr, text: keyViews[idx].spec.label)
-                    if keyViews[idx].spec.alt != nil {
-                        tr.longPressTimer = Timer.scheduledTimer(withTimeInterval: 0.38, repeats: false) { [weak self, weak tr] _ in
-                            guard let self, let tr else { return }
-                            self.showAlt(tr)
-                        }
-                    }
-                }
-            default:
-                break
-            }
-        }
+        for t in touches { moved(.touch(ObjectIdentifier(t)), at: t.location(in: self), time: CACurrentMediaTime()) }
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         // in the order the keys went down (a Set has none): two keys lifted together come out as typed
         let ordered = touches.sorted { a, b in
-            (touchOrder.firstIndex(of: ObjectIdentifier(a)) ?? .max) < (touchOrder.firstIndex(of: ObjectIdentifier(b)) ?? .max)
+            (touchOrder.firstIndex(of: .touch(ObjectIdentifier(a))) ?? .max) < (touchOrder.firstIndex(of: .touch(ObjectIdentifier(b))) ?? .max)
         }
-        for t in ordered {
-            let id = ObjectIdentifier(t)
-            guard let tr = tracked[id] else { continue }
-            tr.location = t.location(in: self)
-            finish(tr, emit: true)
-            tracked[id] = nil
-            touchOrder.removeAll { $0 == id }
+        for t in ordered { ended(.touch(ObjectIdentifier(t)), at: t.location(in: self), time: CACurrentMediaTime()) }
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        for t in touches { cancelled(.touch(ObjectIdentifier(t)), at: t.location(in: self), time: CACurrentMediaTime()) }
+    }
+
+    private func began(_ id: TouchKey, at p: CGPoint, time: CFTimeInterval) {
+        // Roll-over: a new finger finalises any key still held down that types (characters, 九宫格 keys, a space
+        // tap, return), so fast two-thumb typing keeps the order the keys went down in.
+        flushHeldKeys()
+        if hitRects.count != keyViews.count { layoutIfNeeded() }
+        guard let idx = keyIndex(at: p), idx < keyViews.count else { return }
+
+        let tr = Tracked(keyIndex: idx, start: p, time: time)
+        stats.began += 1
+        tracked[id] = tr
+        touchOrder.append(id)
+        let kv = keyViews[idx]
+        kv.pressed = true
+        lastKeyDown = time
+        onKeyDown?(kv.spec.action, p)
+        switch kv.spec.action {
+        case .char(let s) where kv.spec.alt == nil:
+            // A key with nothing to choose on a long press types the moment the finger lands, as the fastest
+            // input methods do: the time the finger rests on the glass is no longer added to every keystroke.
+            // The balloon still shows while it is held.
+            showPreview(tr, text: kv.spec.label)
+            tr.typedOnDown = true
+            stats.emitted += 1
+            if kv.spec.isLetter, let c = s.first {
+                onAction?(.char(s), spatial.tap(x: Double(p.x), y: Double(p.y), hitKey: c))
+            } else {
+                onAction?(.char(s), nil)
+            }
+        case .t9:
+            tr.typedOnDown = true
+            stats.emitted += 1
+            onAction?(kv.spec.action, nil)
+        case .char:
+            showPreview(tr, text: kv.spec.label)
+            tr.longPressTimer = schedule(after: 0.38, from: time) { [weak self, weak tr] _ in
+                guard let self, let tr else { return }
+                self.showAlt(tr)
+            }
+        case .delete:
+            // a swipe left from here clears the composition — only when there is one as the finger lands (read
+            // before this press takes a key of it away)
+            let composing = clearSwipeEnabled && (isComposing?() ?? false)
+            onAction?(.delete, nil)
+            if composing { tr.clearSwipe = ClearSwipe(start: p, keyLeft: kv.frame.minX, time: time) }
+            // a second finger on a delete already held deletes once; one repeat at a time
+            if tracked.values.contains(where: { $0 !== tr && $0.keyIndex == idx && !$0.finished }) { break }
+            tr.repeatTimer = schedule(after: 0.42, from: time) { [weak self, weak tr] _ in
+                guard let self, let tr else { return }
+                self.startDeleteRepeat(tr)
+            }
+        case .shift:
+            onAction?(.shift, nil)
+        case .emoji:
+            // held: the keyboard settings (and the tap that follows is not an emoji tap)
+            tr.longPressTimer = schedule(after: 0.45, from: time) { [weak self, weak tr] _ in
+                guard let self, let tr else { return }
+                tr.altShown = true
+                self.onAction?(.settings, nil)
+            }
+        default:
+            break
         }
+    }
+
+    private func moved(_ id: TouchKey, at p: CGPoint, time: CFTimeInterval) {
+        guard let tr = tracked[id], tr.keyIndex < keyViews.count else { return }
+        let prev = tr.location
+        tr.location = p
+        let kv = keyViews[tr.keyIndex]
+        switch kv.spec.action {
+        case .space:
+            // Drag on the space bar moves the cursor (Gboard / iOS trackpad): the caps go blank, one character
+            // per ~9 pt when slow, finer steps when the finger moves fast, so a long jump needs no second swipe.
+            let dx = p.x - prev.x
+            let now = time
+            let speed = abs(dx) / CGFloat(max(now - tr.lastMove, 1.0 / 120))
+            tr.lastMove = now
+            // a quick tap on space while typing fast may slide a little: only a clear drag (22 pt), or a shorter
+            // one after holding for a moment, moves the cursor — otherwise it is a space
+            let held = now - tr.began
+            let threshold: CGFloat = held > 0.3 ? 12 : 22
+            if !tr.dragging && abs(p.x - tr.start.x) > threshold && (canMoveCursor?() ?? true) {
+                tr.dragging = true
+                tr.dragAccum = 0
+                setCursorMode(true, except: tr.keyIndex)
+                onFeedback?(.cursorMode, p)
+            }
+            if tr.dragging {
+                tr.dragAccum += dx
+                let step: CGFloat = speed > 900 ? 3.5 : speed > 450 ? 5.5 : 9
+                while abs(tr.dragAccum) >= step {
+                    let dir = tr.dragAccum > 0 ? 1 : -1
+                    onCursorMove?(dir)
+                    tr.dragAccum -= CGFloat(dir) * step
+                }
+            }
+        case .delete:
+            followClearSwipe(tr, to: p, at: time)
+        case .char where tr.altShown:
+            // the first choice stays selected until the finger actually slides
+            if let popup = tr.altPopup, abs(p.x - tr.altAnchorX) > 6 {
+                let i = popup.index(at: p.x)
+                if i != popup.selected { popup.selected = i; onFeedback?(.altMoved, p) }
+            }
+        case .char where !tr.altShown && !tr.typedOnDown:
+            // Slide to a neighbouring character key before release (keys typed on landing stay typed).
+            if let idx = keyIndex(at: p), idx < keyViews.count, idx != tr.keyIndex, case .char = keyViews[idx].spec.action {
+                kv.pressed = false
+                tr.longPressTimer?.invalidate()
+                tr.keyIndex = idx
+                keyViews[idx].pressed = true
+                tr.preview?.removeFromSuperview(); tr.preview = nil   // never the old key's balloon over the new key
+                showPreview(tr, text: keyViews[idx].spec.label)
+                if keyViews[idx].spec.alt != nil {
+                    tr.longPressTimer = schedule(after: 0.38, from: time) { [weak self, weak tr] _ in
+                        guard let self, let tr else { return }
+                        self.showAlt(tr)
+                    }
+                }
+            }
+        default:
+            break
+        }
+    }
+
+    /// The finger on delete moved: arm or disarm the swipe that clears. Armed, the strip fades and held delete will
+    /// not start repeating (the press ends as a clear, or as the one delete it already was).
+    private func followClearSwipe(_ tr: Tracked, to p: CGPoint, at time: CFTimeInterval) {
+        guard var swipe = tr.clearSwipe else { return }
+        let changed = swipe.move(to: p, at: time)
+        tr.clearSwipe = swipe
+        guard changed else { return }
+        if swipe.armed { tr.repeatTimer?.invalidate(); tr.repeatTimer = nil }
+        onFeedback?(.clearArmed, p)
+        onClearPreview?(swipe.armed)
+    }
+
+    private func ended(_ id: TouchKey, at p: CGPoint, time: CFTimeInterval) {
+        guard let tr = tracked[id] else { return }
+        tr.location = p
+        // where the finger came up decides a swipe on delete (armed there or not)
+        if tr.keyIndex < keyViews.count, keyViews[tr.keyIndex].spec.action == .delete { followClearSwipe(tr, to: p, at: time) }
+        finish(tr, emit: true)
+        tracked[id] = nil
+        touchOrder.removeAll { $0 == id }
     }
 
     /// Keys a new finger finalises, so fast typing keeps the order it was typed in: characters, 九宫格 keys, return,
@@ -881,27 +924,79 @@ final class KeyboardView: UIView {
         touchOrder.removeAll { tracked[$0] == nil }
     }
 
-    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+    private func cancelled(_ id: TouchKey, at p: CGPoint, time: CFTimeInterval) {
         // iOS cancels keyboard touches it suspects belong to a system gesture (screen edges, the bottom bar, a
         // fast stroke). A press on a character key or a tap on space that was cancelled is still a keystroke:
-        // dropping it is what makes fast typing lose letters. Only a long-press menu or a cursor drag is abandoned.
-        for t in touches {
-            let id = ObjectIdentifier(t)
-            guard let tr = tracked[id] else { continue }
-            var keep = false
-            if tr.keyIndex < keyViews.count {
-                switch keyViews[tr.keyIndex].spec.action {
-                case .char, .t9: keep = !tr.altShown
-                case .space: keep = !tr.dragging
-                default: keep = false
-                }
+        // dropping it is what makes fast typing lose letters. Only a long-press menu or a cursor drag is abandoned
+        // (and a swipe on delete: it never clears when cancelled).
+        guard let tr = tracked[id] else { return }
+        var keep = false
+        if tr.keyIndex < keyViews.count {
+            switch keyViews[tr.keyIndex].spec.action {
+            case .char, .t9: keep = !tr.altShown
+            case .space: keep = !tr.dragging
+            default: keep = false
             }
-            let already = tr.typedOnDown
-            finish(tr, emit: keep)
-            if already { } else if keep { stats.cancelKept += 1 } else { stats.dropped += 1 }
-            tracked[id] = nil
-            touchOrder.removeAll { $0 == id }
         }
+        let already = tr.typedOnDown
+        finish(tr, emit: keep)
+        if already { } else if keep { stats.cancelKept += 1 } else { stats.dropped += 1 }
+        tracked[id] = nil
+        touchOrder.removeAll { $0 == id }
+    }
+
+    // MARK: - Test bench: recorded touches
+
+    /// The bench's clock: set once samples are fed; the keys' timers then fire as the samples' time passes them.
+    private var benchClock: CFTimeInterval?
+    private var benchTimers: [KeyTimer] = []
+    /// Swipes on delete let go while armed (cleared), this session.
+    private(set) var clearSwipes = 0
+
+    /// A timer for a held key: a run-loop timer, or on the bench one that the fed samples' clock fires.
+    private func schedule(after delay: CFTimeInterval, from time: CFTimeInterval, repeating: CFTimeInterval? = nil,
+                          commonModes: Bool = false, _ action: @escaping (KeyTimer) -> Void) -> KeyTimer {
+        guard benchClock != nil else {
+            return KeyTimer.scheduled(after: delay, repeating: repeating, commonModes: commonModes, action)
+        }
+        let kt = KeyTimer(fireAt: time + delay, interval: repeating, action: action)
+        benchTimers.append(kt)
+        return kt
+    }
+
+    private func advanceBenchClock(to t: CFTimeInterval) {
+        guard benchClock != nil else { return }
+        while true {
+            benchTimers.removeAll { !$0.isValid }
+            guard let next = benchTimers.filter({ $0.fireAt <= t }).min(by: { $0.fireAt < $1.fireAt }) else { break }
+            benchClock = next.fireAt
+            next.fire()
+        }
+        benchClock = t
+    }
+
+    /// Feed recorded touches (in this view's coordinates): the same began / moved / ended / cancelled as real ones.
+    func feedForTests(_ samples: [TouchSample]) {
+        if benchClock == nil { benchClock = samples.first?.time ?? 0 }
+        for s in samples {
+            advanceBenchClock(to: s.time)
+            switch s.phase {
+            case .began: began(.sample(s.id), at: s.point, time: s.time)
+            case .moved: moved(.sample(s.id), at: s.point, time: s.time)
+            case .ended: ended(.sample(s.id), at: s.point, time: s.time)
+            case .cancelled: cancelled(.sample(s.id), at: s.point, time: s.time)
+            }
+        }
+    }
+
+    /// Time passes on the bench with no finger moving (a key held still).
+    func advanceForTests(to t: CFTimeInterval) { advanceBenchClock(to: t) }
+
+    /// Where a key is (its cap, and the area that types it), for the bench to aim at.
+    func keyRectsForTests(_ action: KeyAction) -> (cap: CGRect, hit: CGRect)? {
+        layoutIfNeeded()
+        guard let i = keyViews.firstIndex(where: { $0.spec.action == action }), i < hitRects.count else { return nil }
+        return (keyViews[i].frame, hitRects[i])
     }
 
     override var isHidden: Bool { didSet { if isHidden && !oldValue { cancelAllTouches() } } }
@@ -929,6 +1024,10 @@ final class KeyboardView: UIView {
         tr.repeatTimer?.invalidate()
         tr.preview?.removeFromSuperview()
         tr.preview = nil
+        // a swipe on delete: lifted while armed, it clears; cancelled or put away, it never does
+        let clears = emit && tr.clearSwipe?.armed == true
+        if tr.clearSwipe?.armed == true { onClearPreview?(false) }
+        tr.clearSwipe = nil
         let chosen = tr.altPopup?.selected ?? 0
         tr.altPopup?.removeFromSuperview()
         tr.altPopup = nil
@@ -938,6 +1037,12 @@ final class KeyboardView: UIView {
         if !tracked.values.contains(where: { $0 !== tr && $0.keyIndex == tr.keyIndex && !$0.finished }) { kv.pressed = false }
         guard emit, !tr.typedOnDown else { return }
         stats.emitted += 1
+        if clears {
+            clearSwipes += 1
+            onFeedback?(.key(.clearInput), tr.location)
+            onClearSwipe?()
+            return
+        }
         switch kv.spec.action {
         case .char(let s):
             if tr.altShown, chosen < tr.altOptions.count {
@@ -963,7 +1068,9 @@ final class KeyboardView: UIView {
     /// stays controllable). Timers run in the common run-loop modes so they keep firing while a finger moves.
     private func startDeleteRepeat(_ tr: Tracked) {
         tr.repeatCount = 0
-        let t = Timer(timeInterval: 0.07, repeats: true) { [weak self, weak tr] timer in
+        // held delete has started: this press no longer swipes to clear
+        tr.clearSwipe = nil
+        tr.repeatTimer = schedule(after: 0.07, from: benchClock ?? CACurrentMediaTime(), repeating: 0.07, commonModes: true) { [weak self, weak tr] timer in
             guard let self, let tr else { timer.invalidate(); return }
             tr.repeatCount += 1
             if tr.repeatCount < 20 {
@@ -973,8 +1080,6 @@ final class KeyboardView: UIView {
                 self.onFeedback?(.deleteWord, nil)
             }
         }
-        RunLoop.main.add(t, forMode: .common)
-        tr.repeatTimer = t
     }
 
     /// Snapshot support: the space bar held and dragged — cursor mode, every other cap blank.
@@ -989,9 +1094,15 @@ final class KeyboardView: UIView {
     /// Snapshot support: show the balloon for a character key as if it were held.
     func demoPress(_ char: String) {
         guard let idx = keyViews.firstIndex(where: { $0.spec.action == .char(char) }) else { return }
-        let tr = Tracked(keyIndex: idx, start: keyViews[idx].center)
+        let tr = Tracked(keyIndex: idx, start: keyViews[idx].center, time: CACurrentMediaTime())
         keyViews[idx].pressed = true
         showPreview(tr, text: keyViews[idx].spec.label)
+    }
+
+    /// Snapshot support: a key drawn held down (delete, during a swipe that clears).
+    func demoHold(_ action: KeyAction) {
+        guard let idx = keyViews.firstIndex(where: { $0.spec.action == action }) else { return }
+        UIView.performWithoutAnimation { keyViews[idx].pressed = true }
     }
 
     // MARK: - Popups

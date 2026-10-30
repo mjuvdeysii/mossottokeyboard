@@ -15,6 +15,8 @@ enum FeedbackEvent: Equatable {
     case cursorMode, cursorStep
     /// Held delete, once it takes a word at a time: every word.
     case deleteWord
+    /// A swipe left off delete arms the clearing of the composition, or is drawn back (rounds/R3.md).
+    case clearArmed
     /// Mosto in the strip, tapped or double-tapped.
     case mosto
 }
@@ -60,7 +62,7 @@ enum FeedbackModel {
             return FeedbackResponse(kind: .impact, intensity: letter, sound: 1104)
         case .undoChip:
             return FeedbackResponse(kind: .impact, intensity: function, sound: 1155)
-        case .altShown, .altMoved, .cursorStep, .deleteWord:
+        case .altShown, .altMoved, .cursorStep, .deleteWord, .clearArmed:
             return FeedbackResponse(kind: .selection, intensity: 1, sound: nil)
         case .cursorMode:
             return FeedbackResponse(kind: .impact, intensity: function, sound: nil)
