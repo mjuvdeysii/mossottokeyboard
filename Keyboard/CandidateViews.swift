@@ -38,8 +38,8 @@ final class CandidateBarView: UIView {
     /// Pinyin above the candidates (when it is not written into the text field).
     var showsPreedit = false { didSet { setNeedsLayout() } }
 
-    static let font = Theme.font(20, .regular)
-    static let fixFont = Theme.font(10.5, .semibold)
+    static var font: UIFont { Theme.font(20, .regular) }
+    static var fixFont: UIFont { Theme.font(10.5, .semibold) }
 
     /// Under an auto-corrected first choice, what was corrected: the keys as typed → the spelling read (hap → hao),
     /// at most two syllables, else how many; English: the word as typed, struck through. Under the literal reading
@@ -483,6 +483,8 @@ final class SettingsPanelView: UIView {
     private let feedbackSwitch = UISwitch()
     private let soundSwitch = UISwitch()
     private let appearance = UISegmentedControl(items: ["自动", "日光", "夜灯"])
+    /// 风格: Mosto (the vinyl toy keys, Mosto in the strip) or 简洁 (no theme: plain keys in the system's greys).
+    private let styleControl = UISegmentedControl(items: ["Mosto", "简洁"])
     private let learnedLabel = UILabel()
     private let diagLabel = UILabel()
     private let note = UILabel()
@@ -500,7 +502,7 @@ final class SettingsPanelView: UIView {
             sc.widthAnchor.constraint(equalToConstant: 168).isActive = true
             for i in 0..<sc.numberOfSegments { sc.setWidth(84, forSegmentAt: i) }
         }
-        for sc in [schemeControl, layoutControl, numberControl, appearance] {
+        for sc in [schemeControl, layoutControl, numberControl, appearance, styleControl] {
             sc.selectedSegmentTintColor = Theme.selection
             sc.setTitleTextAttributes([.foregroundColor: Theme.selectionText, .font: Theme.font(14, .semibold)], for: .selected)
             sc.setTitleTextAttributes([.foregroundColor: Theme.keyText, .font: Theme.font(14, .medium)], for: .normal)
@@ -560,7 +562,7 @@ final class SettingsPanelView: UIView {
             row("按键震动", feedbackSwitch),
             row("按键音", soundSwitch),
         ], footer: "震动与按键音在按下的一瞬间发出（与系统键盘一样）；按键音跟随静音开关。")
-        section("外观", rows: [row("光线", appearance)], footer: "自动：跟随系统的浅色 / 深色模式。Mosto 不打字时待在候选栏左边：轻点他选颜文字，轻点两下切换日光 / 夜灯。日光下睁大眼睛、偶尔眨眼；夜灯下深紫底色，尾巴尖亮起金光。按键是他的软胶：空格上是他的翅膀，中 / 英 键戴着他的歪王冠，换行键是王冠的金色。")
+        section("外观", rows: [row("风格", styleControl), row("光线", appearance)], footer: "风格：Mosto 是软胶按键与 Mosto 本人；简洁是没有主题的素净按键，白天清爽、夜里低亮。光线自动：跟随系统的浅色 / 深色模式。Mosto 不打字时待在候选栏左边：轻点他选颜文字，轻点两下切换日光 / 夜灯。日光下睁大眼睛、偶尔眨眼；夜灯下深紫底色，尾巴尖亮起金光。按键是他的软胶：空格上是他的翅膀，中 / 英 键戴着他的歪王冠，换行键是王冠的金色。")
 
         learnedLabel.font = .systemFont(ofSize: 15)
         learnedLabel.textColor = Theme.secondaryText
@@ -582,7 +584,7 @@ final class SettingsPanelView: UIView {
         note.textColor = Theme.secondaryText
         stack.addArrangedSubview(inset(note))
 
-        for c in [schemeControl, layoutControl, appearance] {
+        for c in [schemeControl, layoutControl, appearance, styleControl] {
             c.addTarget(self, action: #selector(changed), for: .valueChanged)
             c.setContentHuggingPriority(.required, for: .horizontal)
         }
@@ -716,6 +718,7 @@ final class SettingsPanelView: UIView {
         feedbackSwitch.isOn = s.feedback
         soundSwitch.isOn = s.keySound
         appearance.selectedSegmentIndex = s.appearance
+        styleControl.selectedSegmentIndex = s.style
     }
 
     func setNote(_ text: String) { note.text = text }
@@ -732,6 +735,7 @@ final class SettingsPanelView: UIView {
         s.feedback = feedbackSwitch.isOn
         s.keySound = soundSwitch.isOn
         s.appearance = appearance.selectedSegmentIndex
+        s.style = styleControl.selectedSegmentIndex
         // until chosen here, the number pad follows the Chinese layout (shown at once when that changes)
         numberControl.selectedSegmentIndex = s.numberPad ? 1 : 0
         updateStatus()
@@ -806,6 +810,11 @@ final class KeyboardSettings {
         set { d.set(newValue, forKey: "numberPad") }
     }
     /// 0 自动 (follows the system's light / dark mode), 1 日光, 2 夜灯. (The old 3 "晚上" reads as 自动.)
+    /// 0 Mosto, 1 简洁 (无主题).
+    var style: Int {
+        get { d.object(forKey: "style") as? Int ?? 0 }
+        set { d.set(newValue, forKey: "style") }
+    }
     var appearance: Int {
         get { min(d.object(forKey: "appearance") as? Int ?? 0, 3) % 3 }
         set { d.set(newValue, forKey: "appearance") }

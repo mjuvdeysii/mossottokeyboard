@@ -34,6 +34,8 @@ enum SnapshotRenderer {
             Shot(name: "letters_composing", page: .letters, state: "composing", borders: true, panel: nil),
             Shot(name: "letters_predict", page: .letters, state: "predict", borders: true, panel: nil),
             Shot(name: "letters_undo", page: .letters, state: "undo", borders: true, panel: nil),
+            Shot(name: "plain_composing", page: .letters, state: "composing", borders: true, panel: nil),
+            Shot(name: "plain_numbers", page: .numbers, state: "idle", borders: true, panel: nil),
             Shot(name: "letters_guide", page: .letters, state: "idle", borders: true, panel: nil),
             Shot(name: "letters_shift", page: .letters, state: "shift", borders: true, panel: nil),
             Shot(name: "numbers", page: .numbers, state: "idle", borders: true, panel: nil),
@@ -72,6 +74,8 @@ enum SnapshotRenderer {
         for e in ["👍", "😭", "❤️", "🙏", "😂"] { EmojiPanelView.remember(e) }
         for night in [false, true] {
             for shot in shots {
+                Theme.plain = shot.name.hasPrefix("plain")   // 简洁 (无主题)
+                defer { Theme.plain = false }
                 // settings_full: the whole settings list at once (a tall frame), to review every section
                 let barH = shot.land ? Metrics.toolbarHeightLandscape : Metrics.toolbarHeight
                 let pitch = shot.land ? Metrics.rowPitchLandscape : Metrics.rowPitch
@@ -96,7 +100,7 @@ enum SnapshotRenderer {
                 let bar = CandidateBarView(frame: CGRect(x: inset, y: 0, width: width, height: barH))
                 root.addSubview(bar)
                 bar.mosto.setNight(night)
-                bar.showsMosto = true
+                bar.showsMosto = !Theme.plain
                 let kb = KeyboardView(spatial: SpatialModel.standard(width: Double(width)))
                 kb.frame = CGRect(x: inset, y: barH, width: width, height: 4 * pitch)
                 kb.overrideUserInterfaceStyle = night ? .dark : .light
@@ -158,7 +162,7 @@ enum SnapshotRenderer {
                     popup.selected = 1
                     kb.addSubview(popup)
                 } else if shot.panel == "yawn" {
-                    bar.showsMosto = true          // (by day too, to review the sprite on both glasses)
+                    bar.showsMosto = !Theme.plain          // (by day too, to review the sprite on both glasses)
                     bar.mosto.demoYawn()
                 } else if shot.panel == "emoji" || shot.panel == "kaomoji" {
                     let panel = EmojiPanelView(frame: root.bounds)
@@ -173,7 +177,7 @@ enum SnapshotRenderer {
                     kb.isHidden = true; bar.isHidden = true   // as in the keyboard: the panel replaces them
                     panel.setNight(night)
                     panel.setLearned("词库 1866491 条 · 已学习 0 个词")
-                    panel.setNote("键盘不联网，词库与学习记录只存在本机。")
+                    panel.setNote("词库与学习记录只存在本机，键盘全程离线工作。")
                 }
                 root.setNeedsLayout(); root.layoutIfNeeded()
                 kb.layoutIfNeeded(); bar.layoutIfNeeded()

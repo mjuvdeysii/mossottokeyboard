@@ -188,23 +188,31 @@ final class KeyView: UIView {
                        : CGRect(x: 0, y: 0, width: bounds.width, height: bounds.height - l)
     }
 
+    /// The style changed (Mosto / 简洁): colours, type and the cap's shape follow.
+    func themeChanged() {
+        hasApplied = false
+        apply(spec, borders: borders)
+    }
+
     private func layoutCap() {
         let l = min(Metrics.lip, bounds.height * 0.1)
         let f = faceRect
         CATransaction.begin(); CATransaction.setDisableActions(true)
+        lip.cornerRadius = Metrics.cornerRadius
+        face.cornerRadius = Metrics.cornerRadius
         lip.frame = CGRect(x: 0, y: l, width: bounds.width, height: bounds.height - l)
         lip.shadowPath = UIBezierPath(roundedRect: lip.bounds, cornerRadius: Metrics.cornerRadius).cgPath
         face.frame = f
         rim.frame = f
         rim.path = Self.rimPath(in: f.size)
-        if spec.action == .space, f.width > 120 {
+        if spec.action == .space, f.width > 120, !Theme.plain {
             wings.isHidden = blanked
             wings.frame = f
             wings.path = Self.wingsPath(in: f.size)
         } else {
             wings.isHidden = true
         }
-        if spec.action == .toggleLanguage, !blanked {
+        if spec.action == .toggleLanguage, !blanked, !Theme.plain {
             crown.isHidden = false
             crown.bounds = CGRect(x: 0, y: 0, width: 15, height: 9)
             crown.position = CGPoint(x: f.maxX - 9, y: f.minY + 1)
@@ -409,7 +417,7 @@ final class KeyPreview: UIView {
         shape.strokeColor = Theme.bubbleLip.resolvedColor(with: traitCollection).cgColor
         horns.frame = bounds
         horns.path = Self.hornsPath(cap)
-        horns.isHidden = top - 9 < limit.minY   // no room above for his horns
+        horns.isHidden = top - 9 < limit.minY || Theme.plain   // no room above for his horns (none in 简洁)
         CATransaction.commit()
         setNeedsLayout()
     }
@@ -512,6 +520,8 @@ final class KeyboardView: UIView {
     private(set) var context: LayoutContext?
     private var rows: [[KeySpec]] = []
     private var keyViews: [KeyView] = []
+    /// The style changed: every key redraws in it.
+    func themeChanged() { keyViews.forEach { $0.themeChanged() }; setNeedsLayout() }
     private var hitRects: [CGRect] = []
     private var globeButton: UIButton?
 

@@ -164,6 +164,11 @@ enum KeyboardTests {
             log(h.string == "你好", "quanpin.nihao → 你好", "text=\(h.string)")
             type(vc, "nh"); vc.handle(.space, tap: nil)
             log(h.string == "你好你好", "quanpin.abbreviation nh → 你好", "text=\(h.string)")
+            // 连续打字: a punctuation key commits the reading and follows it, the next words read on in context
+            type(vc, "womenzoule"); settle(vc); vc.handle(.char("，"), tap: nil)
+            log(h.string.hasSuffix("我们走了，") && h.marked == nil, "continuous.，commits the reading first", "text=\(h.string)")
+            type(vc, "mingtianjian"); settle(vc); vc.handle(.char("。"), tap: nil)
+            log(h.string.hasSuffix("明天见。"), "continuous.。 after the next words", "text=\(h.string)")
             type(vc, "jintianttianqihenhao"); settle(vc); vc.handle(.space, tap: nil)
             log(h.string.hasSuffix("今天天气很好"), "quanpin.one key too many: jintianttianqihenhao → 今天天气很好", "text=\(h.string)")
             log(vc.candidateBarForTests.undoTextForTests == "jintianttianqihenhao", "quanpin.undo chip offers the keys as typed",

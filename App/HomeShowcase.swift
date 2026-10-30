@@ -360,7 +360,7 @@ struct SetupCard: View {
                     }
                 }
                 SetupStep(n: 3, title: "震动与按键音（可选）") {
-                    Text("在键盘列表中点 Mosto键盘，开启“允许完全访问”。键盘本身不联网。")
+                    Text("在键盘列表中点 Mosto键盘，开启“允许完全访问”。键盘始终只在手机上运行。")
                         .font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 Button {
@@ -515,8 +515,8 @@ struct HomeFooter: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Label("测试版：功能可能变动，发送重要内容前请核对上屏文字。在 TestFlight 中截图即可提交反馈。", systemImage: "testtube.2")
-            Text("纯粹的输入法：不含 AI，不接入任何大模型或云端服务。候选来自装在 App 里的开源词库与统计数据（按词语在公开语料里出现的次数排序），全部在手机上计算。")
-            Text("键盘不联网。词库、你学过的词和触点习惯只存在这台设备上，不会上传。")
+            Text("纯粹的输入法：候选全部来自装在 App 里的开源词库与统计数据（按词语在公开语料里出现的次数排序），在手机上算出来，没有用到 AI 或任何大模型、云端服务。")
+            Text("词库、你学过的词和触点习惯都只存在这台设备上。")
         }
         .font(.caption).foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)

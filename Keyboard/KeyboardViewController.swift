@@ -452,6 +452,14 @@ final class KeyboardViewController: UIInputViewController {
     /// glass and stays readable on it; the keys (and Mosto) follow the light chosen: 自动 the glass's, 日光 / 夜灯
     /// their own. Night on a light system is violet vinyl keys on pale glass; day on a dark one, cream keys on dark.
     private func applyAppearance() {
+        // 风格: Mosto or 简洁 (无主题); every key and the strip redraw when it changes
+        let plain = KeyboardSettings.shared.style == 1
+        if plain != Theme.plain {
+            Theme.plain = plain
+            keyboard.themeChanged()
+            candidateBar.setNeedsLayout()
+            settingsPanel.setNeedsLayout()
+        }
         let sysDark = systemIsDark
         let mode = KeyboardSettings.shared.appearance
         let night = mode == 1 ? false : mode == 2 ? true : sysDark
@@ -473,7 +481,8 @@ final class KeyboardViewController: UIInputViewController {
         tintView.forcedNight = false
         tintView.forcedDay = false
         candidateBar.mosto.setNight(night)
-        candidateBar.showsMosto = true    // by day and at night: only his light follows the keyboard's
+        candidateBar.showsMosto = !Theme.plain    // by day and at night (only his light follows); none in 简洁
+        tintView.isHidden = Theme.plain
         settingsPanel.setNight(night)
     }
 
@@ -501,7 +510,7 @@ final class KeyboardViewController: UIInputViewController {
             + (memoryWarnings > 0 ? "，内存警告 \(memoryWarnings) 次" : "")
             + (safeMode ? "；上次启动未完成，本次以精简模式运行（无语言模型与中英混输），下次自动恢复" : ""))
         settingsPanel.setNote((hasFullAccess ? "" : "按键震动与按键音需在 设置 › 通用 › 键盘 › 键盘 › Mosto键盘 中开启“允许完全访问”。")
-            + "键盘不联网，词库与学习记录只存在本机。")
+            + "词库与学习记录只存在本机，键盘全程离线工作。")
         reconfigure()
         applyAppearance()
         if !taps.isEmpty { refresh() }

@@ -141,19 +141,23 @@ def crown(top, tilt=-14, material=None):
     root.location = (cx, 0.02, cz); root.rotation_euler = (math.radians(-6), math.radians(tilt), 0)
     return [root, *parts]
 
-def wing(name, s, material, down=0.0):
-    """A small bat wing behind the shoulder: a scalloped outline, given thickness and rounded."""
+def wing(name, s, material, down=0.0, spread=0.0):
+    """A small bat wing behind the shoulder: a scalloped outline, given thickness and rounded. `spread` opens it out
+    past the body's silhouette (the toy scene is seen from above the front, where folded wings hide)."""
     outline = [(0, 0), (0.08, 0.1), (0.2, 0.17), (0.3, 0.16), (0.27, 0.09), (0.21, 0.1), (0.17, 0.03), (0.11, 0.05), (0.06, -0.02)]
     verts = [(x, 0, z) for x, z in outline]
     o = _mesh(name, verts, [tuple(range(len(verts)))], material, sub=0)
     mod = o.modifiers.new("solid", "SOLIDIFY"); mod.thickness = 0.025; mod.offset = 0
     B.smooth(o, 2)
-    o.scale = (s * 1.4, 1, 1.4)
-    o.location = (s * 0.38, 0.22, 0.5)
-    o.rotation_euler = (math.radians(-10), math.radians(-s * 12 - s * 30 * down), math.radians(s * 28))
+    k = 1 + B.arg("--wingk", 0.45) * spread
+    o.scale = (s * 1.4 * k, 1, 1.4 * k)
+    o.location = (s * (0.38 + B.arg("--wingx", 0.08) * spread), 0.22 - B.arg("--wingy", -0.02) * spread, 0.5 + B.arg("--wingz", 0.09) * spread)
+    o.rotation_euler = (math.radians(-10 + B.arg("--wingtilt", 0) * spread),
+                        math.radians(-s * 12 - s * 30 * down - s * B.arg("--winglift", -5) * spread),
+                        math.radians(s * (28 - B.arg("--wingopen", 26) * spread)))
     return o
 
-def build_mosto(x=0.0, moss_eye=None, otto_eye=None, shut=None, glow=0.0, lean=0.0, perk=0.5, droop=0.0, hop=0.0, evil=0.0, yawn=0.0):
+def build_mosto(x=0.0, moss_eye=None, otto_eye=None, shut=None, glow=0.0, lean=0.0, perk=0.5, droop=0.0, hop=0.0, evil=0.0, yawn=0.0, spread=0.0):
     """moss_eye / otto_eye: the left and right eye — dicts of look, lid, pupil. shut: 'day' (blink).
     evil: 0..1, how strongly the gold irises and the tail tip glow (night).
     yawn: 0..1, his one slow yawn (the canon's: the fang shows, the wings droop) — the half of him that wants to rest."""
@@ -221,7 +225,7 @@ def build_mosto(x=0.0, moss_eye=None, otto_eye=None, shut=None, glow=0.0, lean=0
         p2 = (hx + s * (0.12 + 0.02 * perk), -0.07, bz + 0.27 + 0.03 * perk)
         parts.append(horn(f"mosto_horn{s}", p0, p1, p2, 0.065, M["gold"]))
     parts += crown(top, material=M["crown"])
-    parts += [wing("mosto_wingL", -1, M["mostoDeep"], down=yawn), wing("mosto_wingR", 1, M["mostoDeep"], down=yawn)]
+    parts += [wing("mosto_wingL", -1, M["mostoDeep"], down=yawn, spread=spread), wing("mosto_wingR", 1, M["mostoDeep"], down=yawn, spread=spread)]
     # the tail: from behind the right flank, a lively S, ending in a gold spade (named bead: the glow follows it)
     d = droop
     tx, ty, tz = 0.7 - 0.03 * d, 0.08, 0.6 - 0.12 * d
@@ -443,9 +447,10 @@ def toy_icon(path):
     legend("中", gx, gy - 0.02 * gs, gtop, gr, 0.56 * gs, ink, "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", on="key_gold_face")
     legend("A", lx, ly - 0.02 * ls, ltop, lr, 0.56 * ls, ink, "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", on="key_lav_face")
     # by night (the dark home-screen icon): his scheming squint, gold irises and the spade glowing
-    m = build_mosto(**STATES["night"]) if night else \
-        build_mosto(shut="day") if "--blink" in ARGS else \
-        build_mosto(moss_eye=dict(look=(0.1, 0.25)), otto_eye=dict(look=(-0.08, 0.1), lid=0.5))
+    sp = B.arg("--spread", 1.0)
+    m = build_mosto(**STATES["night"], spread=sp) if night else \
+        build_mosto(shut="day", spread=sp) if "--blink" in ARGS else \
+        build_mosto(moss_eye=dict(look=(0.1, 0.25)), otto_eye=dict(look=(-0.08, 0.1), lid=0.5), spread=sp)
     m.location = (0.02, -0.05, top - 0.02); m.scale = (B.arg("--ms", 1.55),) * 3
     m.rotation_euler = (0, 0, math.radians(-8))
     # a shadow catcher under the keys: they sit on something

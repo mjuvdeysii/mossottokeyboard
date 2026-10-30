@@ -115,26 +115,30 @@ struct UsageDetailView: View {
     }
 }
 
-/// Mosto at the top of the app: the designer toy of the app icon — Mosto on the keyboard's own vinyl key with the
-/// 中 and A keys — blinking now and then by day, scheming at night; the name, what the keyboard is, and what it is
-/// not (no AI, offline), on a warm cream card (the icon's colours) so the violet stands out.
+/// Mosto at the top of the app, as a poster: the designer toy of the app icon (Mosto on the keyboard's own key with
+/// the A and 中 keys) standing in the warm cone of a desk lamp — Moss & Otto's light — then the name set large, one
+/// line on what it does, the schemes, and who Mosto is. Pictures and type only.
 struct MostoHero: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var blink = false
     @State private var hop = false
 
-    /// Secondary text on the hero card: the system's secondary grey reads ~3.1:1 on the cream; this holds 4.5:1.
-    private var heroSecondary: Color { scheme == .dark ? Color.white.opacity(0.74) : Color(red: 0.36, green: 0.31, blue: 0.24) }
+    private var night: Bool { scheme == .dark }
+    /// Secondary text on the poster: ≥ 4.5:1 on the cream by day and on the violet at night.
+    private var soft: Color { night ? Color.white.opacity(0.74) : Color(red: 0.36, green: 0.31, blue: 0.24) }
+    private var ink: Color { night ? Color(red: 1.0, green: 0.95, blue: 0.86) : Color(red: 0.17, green: 0.10, blue: 0.38) }
+    private var accent: Color { night ? Color(red: 1.0, green: 0.78, blue: 0.40) : Color(red: 0.39, green: 0.24, blue: 0.75) }
 
     var body: some View {
-        VStack(spacing: 10) {
-            Image(uiImage: mostoImage(scheme == .dark ? "MostoToyNight" : (blink ? "MostoToyBlink" : "MostoToy")))
+        VStack(alignment: .leading, spacing: 0) {
+            Image(uiImage: mostoImage(night ? "MostoToyNight" : (blink ? "MostoToyBlink" : "MostoToy")))
                 .resizable().scaledToFit()
-                .frame(width: 210, height: 210)
+                .frame(width: 250, height: 250)
                 .scaleEffect(x: hop ? 1.05 : 1, y: hop ? 0.95 : 1, anchor: .bottom)
-                .offset(y: hop ? -4 : 0)
-                .padding(.top, -6).padding(.bottom, -16)
+                .offset(y: hop ? -5 : 0)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 6).padding(.bottom, -18)
                 .contentShape(Rectangle())
                 .onTapGesture {
                     guard !reduceMotion else { return }
@@ -144,37 +148,44 @@ struct MostoHero: View {
                     }
                 }
                 .accessibilityHidden(true)
-            VStack(spacing: 5) {
-                Text("Mosto键盘").font(.title2.weight(.bold))
-                Text("全拼 · 小鹤双拼 · 九宫格　按触点位置自动纠错")
-                    .font(.subheadline).foregroundStyle(heroSecondary)
-                    .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("MOSTO KEYBOARD")
+                    .font(.system(size: 11, weight: .bold, design: .rounded)).tracking(2.4)
+                    .foregroundStyle(accent)
+                Text("Mosto键盘")
+                    .font(.system(size: 34, weight: .heavy, design: .rounded))
+                    .foregroundStyle(ink)
+                Text("按偏了，也能打对。")
+                    .font(.system(size: 19, weight: .semibold, design: .rounded))
+                    .foregroundStyle(ink.opacity(0.88))
+                Text("全拼 · 小鹤双拼 · 九宫格")
+                    .font(.system(size: 14, weight: .medium, design: .rounded))
+                    .foregroundStyle(soft)
+                Rectangle().fill(accent.opacity(0.35)).frame(width: 28, height: 2).padding(.vertical, 6)
+                Text("Mosto，念快了像“魔头”：Moss 与 Otto 共同的另一面，住在键盘里的小魔王，歪戴小金冠。")
+                    .font(.footnote).foregroundStyle(soft)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            HStack(spacing: 6) {
-                HeroChip(symbol: "cpu", text: "不含 AI")
-                HeroChip(symbol: "wifi.slash", text: "不联网")
-                HeroChip(symbol: "iphone", text: "只在本机学习")
-            }
-            Text("Mosto，念快了像“魔头”：Moss 与 Otto 共同的另一面，住在键盘里的小魔王，歪戴小金冠。")
-                .font(.footnote).foregroundStyle(heroSecondary)
-                .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 8)
+            .padding(.horizontal, 22).padding(.bottom, 22)
         }
-        .padding(.horizontal, 16).padding(.bottom, 18).padding(.top, 4)
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .fill(scheme == .dark
-                      ? LinearGradient(colors: [Color(red: 0.22, green: 0.15, blue: 0.44), Color(red: 0.09, green: 0.07, blue: 0.22)], startPoint: .top, endPoint: .bottom)
-                      : LinearGradient(colors: [Color(red: 1.0, green: 0.97, blue: 0.89), Color(red: 0.98, green: 0.87, blue: 0.64)], startPoint: .top, endPoint: .bottom))
-                .overlay(
-                    // the pool of light behind his head, as on the icon
-                    RadialGradient(colors: [Color.white.opacity(scheme == .dark ? 0.10 : 0.55), .clear], center: UnitPoint(x: 0.5, y: 0.22), startRadius: 0, endRadius: 170)
-                        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-                )
-                .shadow(color: Color(red: 0.17, green: 0.10, blue: 0.38).opacity(scheme == .dark ? 0 : 0.10), radius: 14, y: 5)
+            ZStack {
+                LinearGradient(colors: night
+                               ? [Color(red: 0.20, green: 0.13, blue: 0.42), Color(red: 0.08, green: 0.06, blue: 0.20)]
+                               : [Color(red: 1.0, green: 0.96, blue: 0.86), Color(red: 0.98, green: 0.85, blue: 0.62)],
+                               startPoint: .top, endPoint: .bottom)
+                // the desk lamp's cone of light from above, falling on him
+                LampCone()
+                    .fill(LinearGradient(colors: [Color.white.opacity(night ? 0.0 : 0.55), Color(red: 1.0, green: 0.85, blue: 0.5).opacity(night ? 0.22 : 0.25), .clear],
+                                         startPoint: .top, endPoint: .bottom))
+                    .blur(radius: 14)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .shadow(color: Color(red: 0.17, green: 0.10, blue: 0.38).opacity(night ? 0 : 0.12), radius: 16, y: 6)
         )
         .padding(.top, 8)
+        .accessibilityElement(children: .combine)
         .task {
             // by day an occasional quick blink (5–9 s), as in the keyboard; never with Reduce Motion
             guard !reduceMotion else { return }
@@ -188,17 +199,16 @@ struct MostoHero: View {
     }
 }
 
-/// One of the hero's three plain facts, on a small frosted pill.
-struct HeroChip: View {
-    let symbol: String
-    let text: String
-    @Environment(\.colorScheme) private var scheme
-    var body: some View {
-        Label { Text(text).lineLimit(1).minimumScaleFactor(0.8) } icon: { Image(systemName: symbol).font(.system(size: 11, weight: .semibold)) }
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(scheme == .dark ? Color(red: 1.0, green: 0.86, blue: 0.55) : Color(red: 0.33, green: 0.21, blue: 0.69))
-            .padding(.horizontal, 9).padding(.vertical, 5)
-            .background(Capsule().fill(scheme == .dark ? Color.white.opacity(0.10) : Color.white.opacity(0.65)))
+/// A lamp's cone of light: narrow at the top centre, widening down to the floor.
+struct LampCone: Shape {
+    func path(in r: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: r.midX - r.width * 0.06, y: r.minY))
+        p.addLine(to: CGPoint(x: r.midX + r.width * 0.06, y: r.minY))
+        p.addLine(to: CGPoint(x: r.midX + r.width * 0.42, y: r.minY + r.height * 0.62))
+        p.addLine(to: CGPoint(x: r.midX - r.width * 0.42, y: r.minY + r.height * 0.62))
+        p.closeSubpath()
+        return p
     }
 }
 
