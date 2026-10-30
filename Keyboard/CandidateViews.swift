@@ -179,6 +179,8 @@ final class CandidateBarView: UIView {
     var onMostoShown: ((Bool) -> Void)?
 
     private func setMosto(_ on: Bool) {
+        // put away even when he was never asked for (a new strip starts with him hidden, 简洁 never shows him)
+        if !on, !mostoWanted { mosto.isHidden = true; return }
         guard on != mostoWanted else { return }
         mostoWanted = on
         onMostoShown?(on)

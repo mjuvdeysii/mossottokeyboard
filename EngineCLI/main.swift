@@ -50,6 +50,8 @@ if let v = env["MIXS"].flatMap(Double.init) { decoder.mixedSlipPenalty = v }
 if let v = env["AOP"].flatMap(Double.init) { decoder.abbreviationOverlapPenalty = v }
 if let v = env["CORR"].flatMap(Double.init) { decoder.correctionPenalty = v }
 if let v = env["SPW"].flatMap(Double.init) { decoder.spatialWeight = v }
+if let v = env["CORR"].flatMap(Double.init) { decoder.correctionPenalty = v }
+if let v = env["SPW"].flatMap(Double.init) { decoder.spatialWeight = v }
 if let v = env["SKM"].flatMap(Double.init) { decoder.slipMargin = v }
 if env["SKIP"] == "0" { decoder.skipEnabled = false }
 if let v = env["SKIPP"].flatMap(Double.init) { decoder.skipPenalty = v; decoder.xiaoheSkipPenalty = v }
@@ -521,7 +523,7 @@ case "bench", "gate":
             ("words.broken", 1.0, false),      // clean words changed by correction (%) — at most
             ("sentences.perfect", 86.0, true), // perfect keys, top-1 equals the intended sentence (%)
             ("sentences.on", 90.0, true),
-            ("sentences.true", 78.0, true),    // σ=0.22 touch noise, correction on, top-1 equals the intended sentence (%)
+            ("sentences.true", 81.0, true),    // σ=0.22 touch noise, correction on, top-1 equals the intended sentence (%)
             ("words.ms", 3.0, false),          // average decode time (ms) — at most
             ("en.kept", 99.0, true),            // English: correctly typed words left alone (%)
             ("en.on", 97.0, true),              // English: σ=0.22 touch noise, what space types is the word (%)
@@ -543,7 +545,7 @@ case "bench", "gate":
             ("words.broken", 1.0, false),
             ("sentences.perfect", 86.0, true),
             ("sentences.on", 92.0, true),
-            ("sentences.true", 80.0, true),
+            ("sentences.true", 83.0, true),
             ("sentences.ms", 16.0, false),     // CI runners vary 2–5× (1.2 ms locally)
             ("t9.words.top1", 66.0, true),
             ("t9.sentences.top1", 68.0, true),
