@@ -54,6 +54,7 @@ if let v = env["SKM"].flatMap(Double.init) { decoder.slipMargin = v }
 if env["SKIP"] == "0" { decoder.skipEnabled = false }
 if let v = env["SKIPP"].flatMap(Double.init) { decoder.skipPenalty = v; decoder.xiaoheSkipPenalty = v }
 if let v = env["SKIPD"].flatMap(Double.init) { decoder.skipDoublePenalty = v; decoder.xiaoheSkipDoublePenalty = v }
+if let v = env["XSKIPP"].flatMap(Double.init) { decoder.xiaoheSkipPenalty = v }
 if let v = env["T9PFX"].flatMap(Double.init) { decoder.t9PrefixExtra = v }
 if let v = env["T9MIN"].flatMap(Double.init) { decoder.t9MinWordScore = v }
 if let v = env["UW"].flatMap(Double.init) { decoder.userWeight = v }
@@ -122,6 +123,18 @@ func englishBench(_ ed: EnglishDecoder) -> [String: Double] {
 }
 
 switch args[2] {
+case "typos":   // EngineCLI <lexicon> typos <tsv>: scheme<TAB>keys<TAB>expected — r1.top1 / r1.top3 (a record, not a gate)
+    var t1 = 0, t3 = 0, total = 0
+    for line in (try! String(contentsOfFile: args[3], encoding: .utf8)).split(separator: "\n") where !line.hasPrefix("#") {
+        let f = line.split(separator: "\t").map(String.init); guard f.count == 3 else { continue }
+        decoder.scheme = f[0] == "xiaohe" ? .xiaohe : .quanpin
+        let r = decoder.decode(f[1].map { Tap.exact($0) })
+        let top = r.candidates.prefix(3).map { $0.text }
+        total += 1; if top.first == f[2] { t1 += 1 }; if top.contains(f[2]) { t3 += 1 }
+        if env["TYPO_DEBUG"] == "1" || top.first != f[2] { print(top.first == f[2] ? "  ok" : (top.contains(f[2]) ? "  top3" : "  MISS"), f[1], "→", top.first ?? "-", "| want", f[2]) }
+    }
+    print("r1.top1 \(t1)/\(total)  r1.top3 \(t3)/\(total)")
+
 case "entype":
     guard let en = decoder.english else { print("no english.bin"); exit(1) }
     let ed = EnglishDecoder(lexicon: en)
@@ -355,6 +368,14 @@ case "bench", "gate":
             return c
         }
         var rng = RNG(s: 7), ok = 0, top3 = 0, total = 0
+        // fix.caption.coverage: of the first candidates read with a correction, how many can say what was changed
+        var fixMarked = 0, fixSaid = 0
+        func countFix(_ c: Candidate?, _ letters: [Character]) {
+            guard let c, c.corrected else { return }
+            fixMarked += 1
+            if !decoder.fixes(for: c, taps: letters.map { Tap.exact($0) }).isEmpty { fixSaid += 1 }
+            else if env["FIX_DEBUG"] != nil { print("   ? no fix:", c.text, "|", String(letters)) }
+        }
         for (k, (t, ids)) in sentItems.enumerated() {
             var letters = Array(codeLetters(ids))
             guard letters.count >= 4 else { continue }
@@ -362,6 +383,7 @@ case "bench", "gate":
             letters.insert(k % 2 == 0 ? letters[p - 1] : neighbour(letters[p], &rng), at: p)
             let c = decoder.decode(letters.map { Tap.exact($0) }).candidates
             total += 1
+            countFix(c.first, letters)
             if c.first?.text == t { ok += 1 } else if env["EXTRA_DEBUG"] != nil { print("   +", t, "→", c.first?.text ?? "-", "|", String(letters)) }
             if c.prefix(3).contains(where: { $0.text == t }) { top3 += 1 }
         }
@@ -374,9 +396,12 @@ case "bench", "gate":
             letters.remove(at: 1 + Int(rng.next() * Double(letters.count - 2)))
             let c = decoder.decode(letters.map { Tap.exact($0) }).candidates
             mtotal += 1
+            countFix(c.first, letters)
             if c.first?.text == t { mok += 1 } else if env["MISS_DEBUG"] != nil { print("   -", t, "→", c.first?.text ?? "-", "|", String(letters)) }
         }
         metrics["missing.sentences.top1"] = 100 * Double(mok) / Double(max(mtotal, 1))
+        metrics["fix.caption.coverage"] = 100 * Double(fixSaid) / Double(max(fixMarked, 1))
+        print(String(format: "== corrections that say what changed: %.1f%% (%d of %d)", metrics["fix.caption.coverage"]!, fixSaid, fixMarked))
         if mtotal > 0 { print(String(format: "== one key missing: sentences top1 %.1f%%", metrics["missing.sentences.top1"]!)) }
         print(String(format: "== one key too many: sentences top1 %.1f%%  top3 %.1f%%  (n=%d)", metrics["extra.sentences.top1"]!, 100 * Double(top3) / Double(max(total, 1)), total))
     }
@@ -545,6 +570,7 @@ case "bench", "gate":
             ("fuzz.p99.ms", 40.0, false),      // random input: 99th-percentile decode time (ms) — at most
             ("extra.sentences.top1", 55.0, true),  // a sentence with one key too many still read right (%)
             ("mixed.sentences.top1", 72.0, true),  // an English word inside a Chinese sentence (%)
+            ("fix.caption.coverage", 98.0, true), // a corrected first candidate says what it changed (%)
         ] : [
             ("words.on", 97.0, true),
             ("words.broken", 1.0, false),
@@ -561,9 +587,10 @@ case "bench", "gate":
             ("learn.harm", 1.0, false),
             ("fuzz.bad", 0.0, false),
             ("fuzz.p99.ms", 100.0, false),
-            ("extra.sentences.top1", 78.0, true),
-            ("missing.sentences.top1", 45.0, true), // a sentence with one key left out still read right (%)
+            ("extra.sentences.top1", 85.0, true),
+            ("missing.sentences.top1", 49.0, true), // a sentence with one key left out still read right (%)
             ("mixed.sentences.top1", 78.0, true),
+            ("fix.caption.coverage", 98.0, true),
         ]
         print("scheme:", decoder.scheme == .xiaohe ? "小鹤双拼" : "全拼")
         var failed = false

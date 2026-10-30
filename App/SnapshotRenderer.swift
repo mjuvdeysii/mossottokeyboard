@@ -34,6 +34,8 @@ enum SnapshotRenderer {
             Shot(name: "letters_composing", page: .letters, state: "composing", borders: true, panel: nil),
             Shot(name: "letters_predict", page: .letters, state: "predict", borders: true, panel: nil),
             Shot(name: "letters_undo", page: .letters, state: "undo", borders: true, panel: nil),
+            // a long sentence with three keys put right: the one nearest the cursor, and how many
+            Shot(name: "letters_longfix", page: .letters, state: "longfix", borders: true, panel: nil),
             Shot(name: "plain_composing", page: .letters, state: "composing", borders: true, panel: nil),
             Shot(name: "plain_numbers", page: .numbers, state: "idle", borders: true, panel: nil),
             Shot(name: "letters_guide", page: .letters, state: "idle", borders: true, panel: nil),
@@ -95,12 +97,15 @@ enum SnapshotRenderer {
                 tint.night = night
                 tint.forcedNight = forced && night
                 tint.forcedDay = forced && !night
+                tint.isHidden = Theme.plain          // 简洁 has no lamp glow, as in the keyboard
                 root.addSubview(tint)
 
+                // Mosto is set up before the strip is on screen: he is simply there, as when the keyboard opens
+                // (on screen he would wait 0.6 s and fade in — after the picture is taken)
                 let bar = CandidateBarView(frame: CGRect(x: inset, y: 0, width: width, height: barH))
-                root.addSubview(bar)
                 bar.mosto.setNight(night)
                 bar.showsMosto = !Theme.plain
+                root.addSubview(bar)
                 let kb = KeyboardView(spatial: SpatialModel.standard(width: Double(width)))
                 kb.frame = CGRect(x: inset, y: barH, width: width, height: 4 * pitch)
                 kb.overrideUserInterfaceStyle = night ? .dark : .light
@@ -109,8 +114,10 @@ enum SnapshotRenderer {
                                            returnIsAccent: false, shifted: shot.state == "shift", capsLock: false,
                                            keyBorders: shot.borders, pinyinGrid: shot.name.hasPrefix("t9") || shot.name.hasSuffix("_t9"),
                                            xiaoheGuide: shot.name.hasSuffix("guide")))
-                var composing = candidates(["你好", "尼好", "泥好", "拟好", "你", "尼", "泥", "拟", "逆", "腻", "nihc"], correctedFirst: true)
-                composing[0].fixes = [Fix(typed: "hap", meant: "hao")]
+                // 九宫格 keys have no neighbours to slip onto: its first candidate carries no correction
+                let t9Shot = shot.name.hasPrefix("t9") || shot.name.hasSuffix("_t9")
+                var composing = candidates(["你好", "尼好", "泥好", "拟好", "你", "尼", "泥", "拟", "逆", "腻", "nihc"], correctedFirst: !t9Shot)
+                if !t9Shot { composing[0].fixes = [Fix(typed: "hap", meant: "hao")] }
                 switch shot.state {
                 case "composing": bar.update(preedit: "ni hao", candidates: composing)
                 case "en_typing": bar.update(preedit: "", candidates: [
@@ -118,6 +125,10 @@ enum SnapshotRenderer {
                       c.fixes = [Fix(typed: "teh", meant: "the")]; return c }(),
                     Candidate(text: "teh", tapCount: 0, syllables: [], corrected: false, score: 0),
                     Candidate(text: "tech", tapCount: 0, syllables: [], corrected: false, score: 0)])
+                case "longfix":
+                    var c = candidates(["孩子今天在幼儿园玩得很开心", "孩子今天在幼儿园玩得很开心那", "孩子"], correctedFirst: true)
+                    c[0].fixes = [Fix(typed: "tiam", meant: "tian"), Fix(typed: "yiu", meant: "you"), Fix(typed: "xn", meant: "xin")]
+                    bar.update(preedit: "hai zi jin tiam zai yiu er yuan wan de hen kai xn", candidates: c)
                 case "english": bar.update(preedit: "ios", candidates: candidates(["iOS", "戳死", "戳所", "戳三", "ios"], correctedFirst: false))
                 case "undo":
                     bar.setUndo("jintiantiaqi")
@@ -252,7 +263,12 @@ enum SnapshotRenderer {
             host.load(lexiconPath: kb.path(forResource: "lexicon", ofType: "bin"), englishPath: kb.path(forResource: "english", ofType: "bin"),
                       grammarPath: kb.path(forResource: "grammar", ofType: "gram"),
                       sentencePath: kb.path(forResource: "sentence", ofType: "gram"), userDictURL: nil)
-            var worst = 0.0
+            // the first key after the keyboard opens (engine just loaded, models paging in), then 400 more
+            let c0 = CACurrentMediaTime()
+            _ = host.decodeNow([Tap.exact("n")])
+            let cold = (CACurrentMediaTime() - c0) * 1000
+            let loaded = memoryFootprintMB()
+            var times: [Double] = []
             let letters = Array("abcdefghijklmnopqrstuvwxyz")
             var rng = SystemRandomNumberGenerator()
             for i in 0..<400 {
@@ -260,9 +276,12 @@ enum SnapshotRenderer {
                 let taps = (0..<n).map { _ in Tap.exact(letters[Int(rng.next() % 26)]) }
                 let t0 = CACurrentMediaTime()
                 _ = host.decodeNow(taps)
-                worst = max(worst, (CACurrentMediaTime() - t0) * 1000)
+                times.append((CACurrentMediaTime() - t0) * 1000)
             }
-            print(String(format: "FOOTPRINT before %.1f MB, after engine + 400 decodes %.1f MB, slowest decode %.1f ms", before, memoryFootprintMB(), worst))
+            times.sort()
+            let p99 = times[min(times.count - 1, Int(Double(times.count) * 0.99))]
+            print(String(format: "FOOTPRINT first decode %.1f ms (cold), warm p99 %.1f ms, max %.1f ms; memory before %.1f MB, engine loaded +%.1f MB, after 400 decodes +%.1f MB",
+                         cold, p99, times.last ?? 0, before, loaded - before, memoryFootprintMB() - before))
         } else {
             print("FOOTPRINT keyboard extension not found in \(Bundle.main.builtInPlugInsURL?.path ?? "-")")
         }

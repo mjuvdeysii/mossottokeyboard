@@ -96,8 +96,10 @@ public final class Decoder {
     /// A common word whose letters no pinyin spells (bug, email): reading it as Chinese needs a correction, so the
     /// word as typed is the likelier meaning.
     public var mixedForeignBonus = 3.0
-    /// 简拼 of one syllable between others typed in full, on the full keyboard.
-    public var midAbbreviationPenalty = 0.0
+    /// 简拼 of one syllable between others typed in full, on the full keyboard. A lone initial there is far more often
+    /// a slip or a key left out (开心 for kaixn, 火锅吧 for huoguobna) than a syllable abbreviated mid-sentence
+    /// (R1: 全拼 one key too many 81.0 → 87.5%, sentences as typed unchanged).
+    public var midAbbreviationPenalty = 6.0
     public var abbreviationOverlapPenalty = 8.0
     public var mixedSlipPenalty = 6.0
 
@@ -253,7 +255,7 @@ public final class Decoder {
     public var skipDoublePenalty = 8.0
     public var xiaoheSkipPenalty = 7.0
     /// 漏按了一个键 (全拼): a letter the keys left out — don for dong, tia for tian.
-    public var missingPenalty = 9.0
+    public var missingPenalty = 7.0
     /// How far below the best clean path a slip / left-out-key path may start and still be kept.
     public var slipMargin = 2.0
     public var xiaoheSkipDoublePenalty = 5.5
@@ -1001,12 +1003,24 @@ public final class Decoder {
         guard c.corrected, !c.syllables.isEmpty, !c.isEnglish else { return [] }
         let used = taps.prefix(c.tapCount).filter { $0.key != "'" }
         guard !used.contains(where: { $0.group }) else { return [] }
-        let typed = used.map { $0.key }
+        var typed = used.map { $0.key }
+        // 中英混输: the English words in the text were typed as they are — take their keys out, so only the pinyin is
+        // aligned (我用iPhone打字 for woyongiphonedazii: zii→zi)
+        var latin: [String] = [], run = ""
+        for ch in c.text { if ch.isASCII && ch.isLetter { run.append(ch) } else if !run.isEmpty { latin.append(run); run = "" } }
+        if !run.isEmpty { latin.append(run) }
+        for w in latin {
+            let lw = Array(w.lowercased())
+            guard lw.count <= typed.count else { continue }
+            if let at = (0...(typed.count - lw.count)).first(where: { Array(typed[$0..<$0 + lw.count]).map { Character($0.lowercased()) } == lw }) {
+                typed.removeSubrange(at..<at + lw.count)
+            }
+        }
         let spells = c.syllables.map { Array(spelling(of: $0)) }
         var target: [Character] = [], owner: [Int] = []
         for (k, sp) in spells.enumerated() { target += sp; owner += Array(repeating: k, count: sp.count) }
         let n = typed.count, m = target.count
-        guard n > 0, m > 0, n <= 40, m <= 60 else { return [] }
+        guard n > 0, m > 0, n <= 90, m <= 120 else { return [] }
         // edit distance, typed (rows) against the spelling (columns)
         var d = [[Int]](repeating: [Int](repeating: 0, count: m + 1), count: n + 1)
         for i in 0...n { d[i][0] = i }

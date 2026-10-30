@@ -38,6 +38,15 @@ let lessons: [Lesson] = [
            check: { t, _ in t.contains("不知道") }),
 ]
 
+/// 「了解」页演示卡（标题）→ 「上手」里可以直接去试的那一课（标题）。不在表里的卡（联想）没有「试一试」。
+let demoLessons: [String: String] = [
+    "按错了什么，改成了什么": "按错一个键",
+    "长句多按、漏按一个键": "长句漏按一个键",
+    "一键撤回": "长句漏按一个键",   // the undo lesson needs the sentence this one commits: start there
+    "中英混输": "中英混输",
+    "记住你的词": "只打声母",
+]
+
 /// The text area's state, and the guided run's progress.
 @MainActor
 final class PlaygroundModel: ObservableObject {
@@ -64,9 +73,14 @@ final class PlaygroundModel: ObservableObject {
         if lessons[step].check(all, kb.testState) {
             justPassed = true
             UINotificationFeedbackGenerator().notificationOccurred(.success)
+            let passed = step
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) { [weak self] in
-                guard let self else { return }
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { self.step = min(self.step + 1, lessons.count); self.justPassed = false }
+                // a jump or a skip in the meantime already moved on: then only the tick goes
+                guard let self, self.justPassed else { return }
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    if self.step == passed { self.step = min(passed + 1, lessons.count) }
+                    self.justPassed = false
+                }
             }
         }
     }
@@ -90,6 +104,19 @@ final class PlaygroundModel: ObservableObject {
     func skip() { withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { step = min(step + 1, lessons.count) } }
     func restart() { clear(); layout = 0; withAnimation { step = 0 } }
     func clear() { host.clear(); refresh() }
+
+    /// Straight to one lesson (「了解」页的「试一试」): the keys being composed dropped, the field empty, the practice
+    /// keyboard back on 全拼 (the lessons are written for it).
+    func jump(to lesson: Int) {
+        guard lessons.indices.contains(lesson) else { return }
+        keyboard?.handle(.clearInput, tap: nil)
+        host.clear()
+        keyboard?.textDidChange(nil)   // the word before is gone with the text: no ↩, no suggestions for it
+        if layout != 0 { layout = 0 }
+        justPassed = false
+        step = lesson
+        refresh()
+    }
 }
 
 /// The app's text area for the playground: FakeTextHost (the bench's model of a text field) that says when it changes.
@@ -136,7 +163,8 @@ struct KeyboardHostView: UIViewControllerRepresentable {
 // MARK: - Screen
 
 struct PlaygroundScreen: View {
-    @StateObject private var model = PlaygroundModel()
+    /// Owned by the app (AppNavigation), so 「了解」 can send someone straight to a lesson.
+    @ObservedObject var model: PlaygroundModel
 
     var body: some View {
         VStack(spacing: 0) {

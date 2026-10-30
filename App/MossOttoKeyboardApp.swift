@@ -18,20 +18,24 @@ let mostoTint = Color(UIColor { $0.userInterfaceStyle == .dark
 /// The companion app: Mosto, how to turn the keyboard on, a field to try it, how it works, and the fine print.
 /// Built from plain stacks (not Form), laid out like iOS Settings, so the same view also renders to an image in CI.
 struct ContentView: View {
+    @StateObject private var nav = AppNavigation()
+
     var body: some View {
-        TabView {
+        TabView(selection: $nav.tab) {
             NavigationStack {
-                PlaygroundScreen()
+                PlaygroundScreen(model: nav.playground)
                     .navigationTitle("上手")
                     .navigationBarTitleDisplayMode(.inline)
             }
             .tabItem { Label("上手", systemImage: "hand.tap") }
+            .tag(AppTab.playground)
             NavigationStack {
                 EnableScreen()
                     .navigationTitle("启用")
                     .navigationBarTitleDisplayMode(.inline)
             }
             .tabItem { Label("启用", systemImage: "keyboard") }
+            .tag(AppTab.enable)
             NavigationStack {
                 ScrollView { HomeContent(text: .constant("")) }
                     .background(Color(UIColor.systemGroupedBackground))
@@ -39,7 +43,9 @@ struct ContentView: View {
                     .navigationBarTitleDisplayMode(.inline)
             }
             .tabItem { Label("了解", systemImage: "sparkles") }
+            .tag(AppTab.about)
         }
+        .environment(\.appNavigation, nav)
         .tint(mostoTint)
         .task {
             // CI only: render the keyboard's real views to PNGs, then exit (SnapshotRenderer.swift)
@@ -48,6 +54,34 @@ struct ContentView: View {
                 SnapshotRenderer.run(in: scene)
             }
         }
+    }
+}
+
+/// The app's three tabs.
+enum AppTab: Hashable { case playground, enable, about }
+
+/// Which tab is showing, and the 上手 lessons' model, so a demo on 「了解」 can send someone straight to its lesson.
+@MainActor
+final class AppNavigation: ObservableObject {
+    @Published var tab: AppTab = .playground
+    let playground: PlaygroundModel
+
+    init() { playground = PlaygroundModel() }
+
+    /// 「试一试」 on a demo card: 上手, at the lesson that demo shows, with an empty field.
+    func tryDemo(_ title: String) {
+        guard let lesson = demoLessons[title], let i = lessons.firstIndex(where: { $0.title == lesson }) else { return }
+        playground.jump(to: i)
+        tab = .playground
+    }
+}
+
+/// The app's navigation, for the demo cards (none in the CI snapshot: the cards draw the same, their 试一试 does nothing).
+private struct AppNavigationKey: EnvironmentKey { static let defaultValue: AppNavigation? = nil }
+extension EnvironmentValues {
+    var appNavigation: AppNavigation? {
+        get { self[AppNavigationKey.self] }
+        set { self[AppNavigationKey.self] = newValue }
     }
 }
 

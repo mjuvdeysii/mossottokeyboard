@@ -47,18 +47,17 @@ final class CandidateBarView: UIView {
     static func caption(for c: Candidate) -> NSAttributedString? {
         guard c.corrected else { return nil }
         let out = NSMutableAttributedString()
-        let typedAttrs: [NSAttributedString.Key: Any] = [.font: fixFont, .foregroundColor: Theme.secondaryText]
-        let meantAttrs: [NSAttributedString.Key: Any] = [.font: fixFont, .foregroundColor: Theme.correctedMark]
-        if c.fixes.count > 2 {
-            out.append(NSAttributedString(string: "纠正 \(c.fixes.count) 处", attributes: meantAttrs))
-            return out
-        }
-        for (k, f) in c.fixes.enumerated() {
+        let typedAttrs: [NSAttributedString.Key: Any] = [.font: fixFont, .foregroundColor: Theme.captionTyped]
+        let meantAttrs: [NSAttributedString.Key: Any] = [.font: fixFont, .foregroundColor: Theme.captionMeant]
+        // more than two in a long sentence: the one nearest the cursor (the last), and how many more
+        let shown = c.fixes.count > 2 ? [c.fixes[c.fixes.count - 1]] : c.fixes
+        for (k, f) in shown.enumerated() {
             if k > 0 { out.append(NSAttributedString(string: "  ", attributes: typedAttrs)) }
             out.append(NSAttributedString(string: f.typed, attributes: typedAttrs))
             out.append(NSAttributedString(string: "→", attributes: typedAttrs))
             out.append(NSAttributedString(string: f.meant, attributes: meantAttrs))
         }
+        if c.fixes.count > 2 { out.append(NSAttributedString(string: " 等 \(c.fixes.count) 处", attributes: typedAttrs)) }
         return out.length > 0 ? out : NSAttributedString(string: "已纠错", attributes: meantAttrs)
     }
 

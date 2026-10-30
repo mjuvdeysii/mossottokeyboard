@@ -153,27 +153,43 @@ private struct LetterRow: View {
 
 /// A demo with its title and one short line under it.
 /// A demo that plays: the keys type into the field one by one, then the strip answers. It plays once when it first
-/// appears and again on every tap (still, with Reduce Motion).
+/// appears and again on every tap (still, with Reduce Motion). A demo with a lesson on 上手 (demoLessons) also has
+/// 「试一试」 next to the play mark: it opens that lesson with an empty field.
 private struct Demo<Visual: View>: View {
     let title: String
     let line: String
     @ViewBuilder var visual: Visual
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.appNavigation) private var nav
     @State private var reveal = 1.0
     @State private var run = 0
     @State private var played = false
+    private var tryable: Bool { demoLessons[title] != nil }
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             visual.environment(\.demoReveal, reveal)
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(title).font(.headline)
+                    Text(title).font(.headline).fixedSize(horizontal: false, vertical: true)
                     Text(line).font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 8)
-                if !reduceMotion {
-                    Image(systemName: "play.circle.fill").font(.system(size: 26)).foregroundStyle(mostoTint.opacity(reveal < 1 ? 0.35 : 1))
-                        .accessibilityHidden(true)
+                HStack(spacing: 8) {
+                    if tryable {
+                        // its own width, always whole: the title beside it wraps instead
+                        Button { tryIt() } label: {
+                            Text("试一试").font(.subheadline.weight(.semibold)).foregroundStyle(mostoTint)
+                                .lineLimit(1).fixedSize()
+                                .padding(.horizontal, 12).padding(.vertical, 5)
+                                .background(Capsule().fill(mostoTint.opacity(0.14)))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHidden(true)   // VoiceOver: one of the card's actions (the card reads as one)
+                    }
+                    if !reduceMotion {
+                        Image(systemName: "play.circle.fill").font(.system(size: 26)).foregroundStyle(mostoTint.opacity(reveal < 1 ? 0.35 : 1))
+                            .accessibilityHidden(true)
+                    }
                 }
             }
             .padding(.horizontal, 4)
@@ -186,6 +202,9 @@ private struct Demo<Visual: View>: View {
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
         .accessibilityHint("再演示一次")
+        .accessibilityActions {
+            if tryable { Button("试一试") { tryIt() } }
+        }
         .onAppear { if !played { played = true; play() } }
         .task(id: run) {
             guard run > 0, !reduceMotion else { reveal = 1; return }
@@ -198,6 +217,7 @@ private struct Demo<Visual: View>: View {
         }
     }
     private func play() { run += 1 }
+    private func tryIt() { nav?.tryDemo(title) }
 }
 
 struct FeatureShowcase: View {
@@ -215,7 +235,7 @@ struct FeatureShowcase: View {
                     LetterRow(hit: "w")
                 }
             }
-            Demo(title: "长句多按、漏按一个键", line: "中间少按了 n，整句照样读对，后面的字继续连上。") {
+            Demo(title: "长句多按、漏按一个键", line: "中间少按了 n，整句照样读对；多按一个键也一样。") {
                 Board {
                     FieldLine(marked: "jintiantiaqihenhao")
                     Strip(items: [
@@ -462,7 +482,7 @@ struct MoreList: View {
             VStack(spacing: 0) {
                 row("全部用法", detail: "每个键、每个手势的完整说明", icon: "book.pages", color: .indigo) { UsageDetailView() }
                 Divider().padding(.leading, 56)
-                row("小鹤双拼", detail: "每个字固定两键的双拼方案。全拼用户请先看清学习成本再决定；不切换也完全没关系，两种方案在这个键盘上功能相同。", icon: "keyboard", color: .purple) { XiaoheGuideView() }
+                row("小鹤双拼", detail: "每个字固定两键的双拼方案。两种方案在这个键盘上功能相同，全拼用户继续用全拼就好；想换之前，先看清学习成本。", icon: "keyboard", color: .purple) { XiaoheGuideView() }
                 ForEach(Array(LegalText.docs.enumerated()), id: \.offset) { _, doc in
                     Divider().padding(.leading, 56)
                     row(doc.title, detail: nil, icon: aboutIcon(doc.id), color: .gray) { LegalView(doc: doc) }
@@ -515,7 +535,7 @@ struct HomeFooter: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Label("测试版：功能可能变动，发送重要内容前请核对上屏文字。在 TestFlight 中截图即可提交反馈。", systemImage: "testtube.2")
-            Text("纯粹的输入法：候选全部来自装在 App 里的开源词库与统计数据（按词语在公开语料里出现的次数排序），在手机上算出来，没有用到 AI 或任何大模型、云端服务。")
+            Text("纯粹的输入法：候选全部来自装在 App 里的开源词库与统计数据（按词语在公开语料里出现的次数排序），在手机上算出来，全程离线。整个键盘只靠词库和统计工作。")
             Text("词库、你学过的词和触点习惯都只存在这台设备上。")
         }
         .font(.caption).foregroundStyle(.secondary)

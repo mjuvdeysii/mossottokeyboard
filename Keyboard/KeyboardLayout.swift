@@ -369,6 +369,10 @@ enum Theme {
     private static let mosto_guideText: UIColor = dyn(hex(0x5B4D8C), hex(0xDCD5F7))
     private static let plain_guideText: UIColor = dyn(hex(0x55555C), hex(0xD1D1D6))
     static var correctedMark: UIColor { plain ? plain_correctedMark : mosto_correctedMark }
+    /// The correction caption under the first candidate (typed → meant), small type on the tinted pill: both halves
+    /// at least 4.5 : 1 against the pill in every style and light.
+    static var captionTyped: UIColor { plain ? dyn(hex(0x5A5A60), hex(0xB4B4BA)) : dyn(hex(0x55488A), hex(0xC8BEEA)) }
+    static var captionMeant: UIColor { plain ? dyn(hex(0x0952B0), hex(0x7CC0FF)) : correctedMark }
     /// Behind the corrected first choice and the undo chip: a soft tint of the correction colour.
     private static let mosto_correctedMark: UIColor = dyn(hex(0x633EBF), hex(0xFFC45A))
     private static let plain_correctedMark: UIColor = dyn(hex(0x0A6CE0), hex(0x5EB0FF))

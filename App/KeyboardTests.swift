@@ -118,6 +118,7 @@ enum KeyboardTests {
         KeyboardViewController.keepsLearnedWords = false
         let saved = (KeyboardSettings.shared.scheme, KeyboardSettings.shared.pinyinGrid, KeyboardSettings.shared.english)
         scenarios(window)
+        tryFromDemo(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -257,6 +258,34 @@ enum KeyboardTests {
             type(vc, "64426"); vc.handle(.clearInput, tap: nil)
             log(h.string == "你好" && h.marked == nil && !vc.testState.composing, "t9.重输 drops the keys", "text=\(h.string)")
         } else { log(false, "t9.setup", "engine did not load") }
+    }
+
+    // MARK: - The app: 「了解」页演示卡的「试一试」
+
+    /// 试一试 on a demo card opens 上手 at that demo's lesson, with the field empty — also when something was being
+    /// typed there (the real keyboard typing into the playground's own text area, as in the app).
+    static func tryFromDemo(_ window: UIWindow) {
+        let missing = demoLessons.filter { pair in !lessons.contains { $0.title == pair.value } }
+        log(missing.isEmpty, "app.every 试一试 has its lesson", "missing=\(missing)")
+        let nav = AppNavigation()
+        let p = nav.playground
+        nav.tab = .about
+        guard let kb = makeKeyboard(scheme: 1, in: window) else { log(false, "app.setup", "engine did not load"); return }
+        let vc = kb.0
+        vc.hostOverride = p.host
+        p.keyboard = vc
+        type(vc, "nihao"); settle(vc); vc.handle(.space, tap: nil)
+        type(vc, "jintian"); settle(vc)
+        drain(0.05)
+        log(!p.host.string.isEmpty && vc.testState.composing, "app.something typed on 上手 before 试一试", "text=\(p.host.string)")
+        nav.tryDemo("长句多按、漏按一个键")
+        drain(0.05)
+        let title = p.step < lessons.count ? lessons[p.step].title : "(done)"
+        log(nav.tab == .playground, "app.试一试 opens 上手", "tab=\(nav.tab)")
+        log(title == "长句漏按一个键", "app.试一试 on 长句多按、漏按一个键 opens 长句漏按一个键", "lesson=\(title)")
+        log(p.host.string.isEmpty && p.before.isEmpty && p.marked.isEmpty && !vc.testState.composing && !p.justPassed,
+            "app.试一试 starts with an empty field", "text=\(p.host.string) before=\(p.before) marked=\(p.marked) keys=\(vc.testState.keys)")
+        p.keyboard = nil
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key
