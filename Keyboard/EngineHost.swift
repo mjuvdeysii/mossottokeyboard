@@ -102,6 +102,10 @@ final class EngineHost {
         d.correctionEnabled = was
         // what the first candidate corrected, for the strip to show (hap → hao)
         if !r.candidates.isEmpty, r.candidates[0].corrected { r.candidates[0].fixes = d.fixes(for: r.candidates[0], taps: taps) }
+        // the keys as typed read first, a correction second (kw → ke): that one says what it would change
+        if r.candidates.count > 1, !r.candidates[0].corrected, r.candidates[1].corrected {
+            r.candidates[1].fixes = d.fixes(for: r.candidates[1], taps: taps)
+        }
         // a word that has an emoji (哈哈 😂, 蛋糕 🎂): offered after the first few candidates, never before them
         if let first = r.candidates.first, first.tapCount == taps.count, let emoji = emojiHints[first.text] {
             let at = min(3, r.candidates.count)

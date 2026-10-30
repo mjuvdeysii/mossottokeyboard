@@ -358,6 +358,8 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         guard !isPrediction, i < candidates.count, i <= 1 else { return nil }
         let c = candidates[i]
         if i == 0 { return Self.caption(for: c) }
+        // the keys as typed first, a correction second: the second says what it changes (kw→ke)
+        if !candidates[0].corrected, c.corrected, !c.isEnglish { return Self.caption(for: c) }
         guard candidates[0].corrected, !c.corrected, !c.isEnglish, c.tapCount == candidates[0].tapCount else { return nil }
         return NSAttributedString(string: "原键", attributes: [.font: Self.fixFont, .foregroundColor: Theme.secondaryText])
     }

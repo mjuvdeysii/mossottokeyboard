@@ -63,8 +63,10 @@ public final class SpatialModel {
     /// Learned offset of each key on top of the overall one (fraction of key size): a thumb reaches the keys at the
     /// edges and the top row differently from those under it, so each key's centre moves where this user hits it.
     public var keyOffsets: [Character: (x: Double, y: Double)] = [:]
-    /// Alternatives below this probability are dropped.
-    public var minProbability: Double = 0.015
+    /// Alternatives below this probability are dropped. 0.005 (R4): a touch on the middle of a key still carries the
+    /// keys left and right of it (1.3 % each), so a slip that lands squarely on a neighbour can be read back; the
+    /// keys diagonally above and below (0.2 %) stay out.
+    public var minProbability: Double = 0.005
     public var maxAlternatives = 4
 
     public init(keys: [Key], keyWidth: Double, keyHeight: Double) {

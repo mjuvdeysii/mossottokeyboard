@@ -4,6 +4,8 @@ import Foundation
 //   EngineCLI <lexicon.bin> type <letters>        show candidates for exact keys
 //   EngineCLI <lexicon.bin> bench [sigma ...]     simulated-touch accuracy benchmark
 //   EngineCLI <lexicon.bin> codes                 dump syllable -> code table
+//   EngineCLI <lexicon.bin> slips <words|sentences|holdout> <quarter|edge|centre>   one key on a neighbour (R4), root causes
+//   EngineCLI <lexicon.bin> rare                  uncommon words typed on purpose kept first (rare.kept)
 
 struct RNG {
     var s: UInt64
@@ -83,6 +85,14 @@ if env["TAIL"] == "0" { decoder.tailSlipEnabled = false }
 if let v = env["TSE"].flatMap(Double.init) { decoder.tailSlipExtra = v }
 if env["DEDUPE"] == "0" { decoder.dedupeLastCharacter = false }
 if let v = env["DDK"].flatMap(Int.init) { decoder.dedupeKeep = v }
+// R4: the touch model's floor, corrected syllables in a class of their own, the corrected reading second
+if let v = env["MINP"].flatMap(Double.init) { model.minProbability = v }
+if let v = env["PM"].flatMap(Double.init) { decoder.pruneMargin = v }
+if env["SPLIT"] == "0" { decoder.correctionClasses = false }
+if let v = env["CMARGIN"].flatMap(Double.init) { decoder.correctionMargin = v }
+if let v = env["CKEEP"].flatMap(Int.init) { decoder.correctionKeep = v }
+if let v = env["CALT"].flatMap(Int.init) { decoder.correctionAlternatives = v }
+if let v = env["AMARGIN"].flatMap(Double.init) { decoder.alternateMargin = v }
 
 
 func codeLetters(_ ids: [UInt16]) -> String {
@@ -158,7 +168,221 @@ func englishBench(_ ed: EnglishDecoder) -> [String: Double] {
     return ["en.kept": 100 * Double(kept) / n, "en.on": 100 * Double(on) / n, "en.top3": 100 * Double(top3) / n, "en.ms": ms]
 }
 
+/// The gate's 1,500 common words (2–4 syllables, lexicon score ≥ 900, fixed seed).
+func gateWords() -> [(String, [UInt16])] {
+    var rng = RNG(s: 42)
+    var pool: [(String, [UInt16])] = []
+    for s in 0..<lex.syllables.count {
+        for i in lex.range(firstSyllable: UInt16(s)) {
+            let e = lex.entry(i)
+            if (2...4).contains(e.sylCount) && e.score >= 900 { pool.append((lex.text(e), lex.syllableIDs(e))) }
+        }
+    }
+    // the same words whatever order the lexicon file keeps them in
+    pool.sort { $0.1 != $1.1 ? $0.1.lexicographicallyPrecedes($1.1) : $0.0 < $1.0 }
+    var items: [(String, [UInt16])] = []
+    for _ in 0..<1500 { items.append(pool[Int(rng.next() * Double(pool.count))]) }
+    return items
+}
+
+/// Sentences with pinyin (text TAB syllables), from comma-separated files; lines with an unknown syllable are skipped.
+func loadSentences(_ files: String) -> [(String, [UInt16])] {
+    let tsv = files.split(separator: ",").compactMap { try? String(contentsOfFile: String($0), encoding: .utf8) }.joined(separator: "\n")
+    return tsv.split(separator: "\n").compactMap { line in
+        let p = line.split(separator: "\t"); guard p.count == 2 else { return nil }
+        let ids = p[1].split(separator: " ").compactMap { lex.id(of: String($0)) }
+        return ids.count == p[1].split(separator: " ").count ? (String(p[0]), ids) : nil
+    }
+}
+
+// MARK: - R4 按偏一个键 (slips): every key of every item replaced by each of its neighbours, the rest on key centres
+
+/// Neighbours on the standard keyboard: centre distance under 1.2 key widths / row pitches (left, right, diagonals).
+func neighbours(_ c: Character) -> [Character] {
+    guard let (cx, cy) = model.center(of: c) else { return [] }
+    return model.keys.filter { k in
+        let dx = (k.cx - cx) / model.keyWidth, dy = (k.cy - cy) / model.keyHeight
+        return k.char != c && (dx * dx + dy * dy).squareRoot() < 1.2
+    }.map { $0.char }
+}
+/// The touch draws for the key-edge depth (one sequence per run, in enumeration order).
+var slipRNG = RNG(s: 11)
+/// Where the finger lands when it was aimed at `intended` and hit `typed`:
+///   quarter — on `typed`, a quarter key from its centre toward `intended` (the main measure);
+///   centre  — on `typed`'s centre;
+///   edge    — the gate's touch noise (σ 0.22 key) aimed at `intended`, the first draw that lands on `typed`.
+func slipTap(intended: Character, typed: Character, depth: String) -> Tap {
+    let (ix, iy) = model.center(of: intended)!, (tx, ty) = model.center(of: typed)!
+    switch depth {
+    case "centre": return model.tap(x: tx, y: ty, hitKey: typed)
+    case "quarter": return model.tap(x: ix + 0.75 * (tx - ix), y: iy + 0.75 * (ty - iy), hitKey: typed)
+    default:
+        let sx = 0.22 * model.keyWidth, sy = 0.198 * model.keyHeight
+        for _ in 0..<200000 {
+            let x = ix + slipRNG.gauss() * sx, y = iy + slipRNG.gauss() * sy
+            if model.nearestKey(x: x, y: y) == typed { return model.tap(x: x, y: y, hitKey: typed) }
+        }
+        return model.tap(x: tx, y: ty, hitKey: typed)
+    }
+}
+/// The keys as typed read as something with no correction: 小鹤 every pair a syllable's code, 全拼 whole syllables.
+func legalKeys(_ keys: [Character]) -> Bool {
+    if decoder.scheme == .xiaohe {
+        guard keys.count % 2 == 0 else { return false }
+        var i = 0
+        while i + 1 < keys.count { if lex.codeToSyllables[String([keys[i], keys[i + 1]])] == nil { return false }; i += 2 }
+        return true
+    }
+    return decoder.pinyinSyllables(String(keys)) > 0
+}
+/// How common a syllable is (its most frequent single character); rare = the bottom fifth of syllables.
+let syllableCommonness: [Int] = (0..<lex.syllables.count).map { s in lex.singles(UInt16(s)).map { Int(lex.entry($0).score) }.max() ?? Int(Int16.min) }
+let rareSyllableCut = syllableCommonness.sorted()[syllableCommonness.count / 5]
+func lexiconScore(_ c: Candidate) -> Int? {
+    guard let s0 = c.syllables.first else { return nil }
+    for i in lex.range(firstSyllable: s0) {
+        let e = lex.entry(i)
+        if Int(e.sylCount) == c.syllables.count, lex.text(e) == c.text, lex.syllableIDs(e) == c.syllables { return Int(e.score) }
+    }
+    return nil
+}
+
+struct SlipCount {
+    var clean = 0, legal = 0, legal1 = 0, legal3 = 0, legalAny = 0, other = 0, other1 = 0, other3 = 0
+    var common = 0, common1 = 0, common3 = 0, uncommon = 0, uncommon1 = 0, uncommon3 = 0
+    var literalWin = 0, rareWin = 0
+    var buckets: [String: Int] = [:], examples: [String: [String]] = [:]
+    func pct(_ a: Int, _ b: Int) -> Double { 100 * Double(a) / Double(max(b, 1)) }
+}
+
+/// Enumerate the slips of `items` (only those the clean centre taps read right) at one touch depth. `split`: whether
+/// the keys as typed are another common word (words only); `diagnose`: the root-cause buckets (re-decodes the misses).
+func countSlips(_ items: [(String, [Character])], depth: String, split: Bool, diagnose: Bool) -> SlipCount {
+    let keepHits = model.adaptiveHits, keepCorr = decoder.correctionEnabled
+    model.adaptiveHits = false            // no learned offsets: the key under the finger is the key typed
+    decoder.correctionEnabled = true
+    slipRNG = RNG(s: 11)
+    defer { model.adaptiveHits = keepHits; decoder.correctionEnabled = keepCorr }
+    var r = SlipCount()
+    let keepPen = decoder.correctionPenalty, keepGCF = decoder.grammarCorrectedFactor, keepBeam = decoder.beam
+    for (text, keys) in items {
+        guard decoder.decode(keys.map(centreTap)).candidates.first?.text == text else { continue }
+        r.clean += 1
+        for p in 0..<keys.count {
+            for nb in neighbours(keys[p]) {
+                var v = keys; v[p] = nb
+                var taps = keys.map(centreTap)
+                taps[p] = slipTap(intended: keys[p], typed: nb, depth: depth)
+                let res = decoder.decode(taps), c = res.candidates
+                let top1 = c.first?.text == text, top3 = c.prefix(3).contains { $0.text == text }
+                guard legalKeys(v) else {
+                    r.other += 1; if top1 { r.other1 += 1 }; if top3 { r.other3 += 1 }
+                    if !top1, env["SLIP_DEBUG"] == "other" { print("   other", String(v), "→", c.first?.text ?? "-", c.first?.corrected == true ? "(corrected)" : "", "|", text, "|", res.preedit) }
+                    continue
+                }
+                r.legal += 1
+                if top1 { r.legal1 += 1 }; if top3 { r.legal3 += 1 }
+                if !top1, env["SLIP_DEBUG"] == "legal" { print("   legal", String(v), "→", c.prefix(3).map { $0.text }.joined(separator: "/"), "|", text, "|", res.preedit) }
+                if c.contains(where: { $0.text == text }) { r.legalAny += 1 }
+                if split {
+                    decoder.correctionEnabled = false
+                    let lit = decoder.decode(v.map { Tap.exact($0) }).candidates.first
+                    decoder.correctionEnabled = true
+                    if let lit, let s = lexiconScore(lit), s >= 900 { r.common += 1; if top1 { r.common1 += 1 }; if top3 { r.common3 += 1 } }
+                    else { r.uncommon += 1; if top1 { r.uncommon1 += 1 }; if top3 { r.uncommon3 += 1 } }
+                }
+                guard !top1, diagnose else { continue }
+                if let w = c.first, !w.corrected {
+                    r.literalWin += 1
+                    if w.syllables.contains(where: { syllableCommonness[Int($0)] <= rareSyllableCut }) { r.rareWin += 1 }
+                }
+                // the root cause, the first that applies
+                var b: String
+                if !taps[p].alternatives.contains(where: { $0.key == keys[p] }) { b = "1 cut (minProbability)" }
+                else if !c.contains(where: { $0.text == text }) {
+                    let keepPM = decoder.pruneMargin, keepCM = decoder.correctionMargin
+                    decoder.pruneMargin = 30; decoder.correctionMargin = 30
+                    let wide = decoder.decode(taps).candidates
+                    decoder.pruneMargin = keepPM; decoder.correctionMargin = keepCM
+                    if wide.first?.text == text { b = "2 syllable pruned (top1 once kept)" }
+                    else if wide.contains(where: { $0.text == text }) { b = "2b syllable pruned (listed once kept)" }
+                    else {
+                        decoder.beam = 16; let w2 = decoder.decode(taps).candidates; decoder.beam = keepBeam
+                        b = w2.contains(where: { $0.text == text }) ? "5 beam" : "6 not reached"
+                    }
+                } else {
+                    decoder.correctionPenalty = 0; decoder.grammarCorrectedFactor = 1
+                    let fair = decoder.decode(taps).candidates.first?.text == text
+                    decoder.correctionPenalty = keepPen; decoder.grammarCorrectedFactor = keepGCF
+                    if fair {
+                        decoder.correctionPenalty = 0
+                        let a = decoder.decode(taps).candidates.first?.text == text
+                        decoder.correctionPenalty = keepPen
+                        b = a ? "3a correctionPenalty" : "3b grammarCorrectedFactor"
+                    } else { b = "4 touch + prior (in list)" }
+                }
+                r.buckets[b, default: 0] += 1
+                if r.examples[b, default: []].count < 4 { r.examples[b, default: []].append("\(String(v))→\(c.first?.text ?? "-")|\(text)") }
+            }
+        }
+    }
+    return r
+}
+func slipItems(_ set: String) -> [(String, [Character])] {
+    switch set {
+    case "words":
+        var seen = Set<String>()
+        return gateWords().filter { seen.insert($0.0).inserted }.map { ($0.0, Array(codeLetters($0.1))) }
+    case "holdout": return loadSentences("EngineCLI/sentences3.tsv,EngineCLI/sentences4.tsv").map { ($0.0, Array(codeLetters($0.1))) }
+    default: return loadSentences("EngineCLI/sentences.tsv,EngineCLI/sentences2.tsv").map { ($0.0, Array(codeLetters($0.1))) }
+    }
+}
+
+/// rare.kept: uncommon words typed on purpose (2–3 syllables, lexicon score 600–899) that the keys read first with
+/// correction off, centre taps — the share still first with correction on (fixed step over the pool).
+func rareKept() -> (kept: Int, n: Int, examples: [String]) {
+    let keepHits = model.adaptiveHits, keepCorr = decoder.correctionEnabled
+    model.adaptiveHits = false
+    defer { model.adaptiveHits = keepHits; decoder.correctionEnabled = keepCorr }
+    var pool: [(String, [UInt16])] = []
+    for s in 0..<lex.syllables.count { for i in lex.range(firstSyllable: UInt16(s)) {
+        let e = lex.entry(i)
+        if (2...3).contains(e.sylCount) && e.score >= 600 && e.score < 900 { pool.append((lex.text(e), lex.syllableIDs(e))) }
+    } }
+    pool.sort { $0.1 != $1.1 ? $0.1.lexicographicallyPrecedes($1.1) : $0.0 < $1.0 }
+    let step = max(1, pool.count / 3000)
+    var n = 0, kept = 0, ex: [String] = []
+    for (k, (text, ids)) in pool.enumerated() where k % step == 0 {
+        let taps = codeLetters(ids).map(centreTap)
+        decoder.correctionEnabled = false
+        guard decoder.decode(taps).candidates.first?.text == text else { continue }
+        decoder.correctionEnabled = true
+        n += 1
+        let on = decoder.decode(taps).candidates.first?.text
+        if on == text { kept += 1 } else if ex.count < 8 { ex.append("\(text)→\(on ?? "-")") }
+    }
+    return (kept, n, ex)
+}
+
 switch args[2] {
+case "slips":   // EngineCLI <lexicon> slips <words|sentences|holdout> <quarter|edge|centre>: one key on a neighbour (R4)
+    let set = args.count > 3 ? args[3] : "words", depth = args.count > 4 ? args[4] : "quarter"
+    let t0 = Date()
+    let r = countSlips(slipItems(set), depth: depth, split: set == "words", diagnose: env["BUCKETS"] != "0")
+    print("slips \(set) \(depth) | \(decoder.scheme == .xiaohe ? "小鹤" : "全拼") | minProbability \(model.minProbability) | items read right on clean keys \(r.clean) | \(String(format: "%.0f s", Date().timeIntervalSince(t0)))")
+    print(String(format: "legal slips (the keys still spell something): n=%d  top1 %.1f%%  top3 %.1f%%  listed %.1f%%", r.legal, r.pct(r.legal1, r.legal), r.pct(r.legal3, r.legal), r.pct(r.legalAny, r.legal)))
+    print(String(format: "other slips (spell nothing):                  n=%d  top1 %.1f%%  top3 %.1f%%", r.other, r.pct(r.other1, r.other), r.pct(r.other3, r.other)))
+    if set == "words" {
+        print(String(format: "  legal, the keys as typed are another common word (score ≥ 900): n=%d  top1 %.1f%%  top3 %.1f%%", r.common, r.pct(r.common1, r.common), r.pct(r.common3, r.common)))
+        print(String(format: "  legal, the keys as typed are no common word:                   n=%d  top1 %.1f%%  top3 %.1f%%", r.uncommon, r.pct(r.uncommon1, r.uncommon), r.pct(r.uncommon3, r.uncommon)))
+    }
+    print("misses won by an uncorrected reading: \(r.literalWin), of which with a rare syllable (bottom fifth): \(r.rareWin)")
+    for (k, v) in r.buckets.sorted(by: { $0.key < $1.key }) { print("  bucket \(k): \(v)  e.g. \(r.examples[k]!.joined(separator: "  "))") }
+
+case "rare":
+    let r = rareKept()
+    print(String(format: "rare.kept %.2f%% (%d of %d)  %@", 100 * Double(r.kept) / Double(max(r.n, 1)), r.kept, r.n, r.examples.joined(separator: " ")))
+
 case "typos":   // EngineCLI <lexicon> typos <tsv>: scheme<TAB>keys<TAB>expected — r1.top1 / r1.top3 (a record, not a gate)
     let r = r1Typos(args[3], debug: true)
     print("r1.top1 \(r.top1)/\(r.total)  r1.top3 \(r.top3)/\(r.total)  r1.exact.top1 \(r.exact1)/\(r.total)  r1.exact.top3 \(r.exact3)/\(r.total)")
@@ -255,18 +479,7 @@ case "type":
 case "bench", "gate":
     var metrics: [String: Double] = [:]
     // Test items: common 2–4 syllable words sampled from the lexicon + everyday sentences.
-    var items: [(String, [UInt16])] = []
-    var rng = RNG(s: 42)
-    var pool: [(String, [UInt16])] = []
-    for s in 0..<lex.syllables.count {
-        for i in lex.range(firstSyllable: UInt16(s)) {
-            let e = lex.entry(i)
-            if (2...4).contains(e.sylCount) && e.score >= 900 { pool.append((lex.text(e), lex.syllableIDs(e))) }
-        }
-    }
-    // the same words whatever order the lexicon file keeps them in
-    pool.sort { $0.1 != $1.1 ? $0.1.lexicographicallyPrecedes($1.1) : $0.0 < $1.0 }
-    for _ in 0..<1500 { items.append(pool[Int(rng.next() * Double(pool.count))]) }
+    let items = gateWords()
     // Everyday sentences with pinyin (EngineCLI/sentences.tsv, generated with pypinyin and spot-checked).
     // two sets: the first written while tuning, the second (180 sentences of chat, work, shopping, children, travel)
     // kept apart and only measured — together they are the gate's sentences
@@ -669,6 +882,16 @@ case "bench", "gate":
             ("mixed.sentences.top1", 72.0, true),  // an English word inside a Chinese sentence (%)
             ("fix.caption.coverage", 98.0, true), // a corrected first candidate says what it changed (%)
             ("dedupe.pairs", 100.0, false),    // first three readings differing only in a last one-character word (at most two per sentence)
+            // R4 按偏一个键 (a quarter key onto a neighbour; the keys as typed still spell something = legal)
+            ("slip.words.legal.top1", 79.0, true),
+            ("slip.words.legal.top3", 96.5, true),
+            ("slip.words.other.top1", 96.5, true),   // control: the keys as typed spell nothing
+            ("slip.sent.legal.top1", 79.0, true),
+            ("slip.sent.legal.top3", 93.0, true),
+            ("slip.sent.other.top1", 96.0, true),
+            ("slip.words.edge.legal.top1", 85.5, true),   // on the key's edge (the gate's touch noise)
+            ("slip.words.centre.legal.top1", 40.5, true), // on the neighbour's centre
+            ("rare.kept", 99.5, true),         // uncommon words typed on purpose stay first (%)
         ] : [
             ("words.on", 97.0, true),
             ("words.broken", 1.0, false),
@@ -692,6 +915,13 @@ case "bench", "gate":
             ("extra.tail.top1", 71.0, true),   // one key too many after the last key still read right (%)
             ("extra.tail.top3", 90.0, true),   // … among the first three (%)
             ("dedupe.pairs", 100.0, false),
+            ("slip.words.legal.top1", 85.0, true),
+            ("slip.words.legal.top3", 97.5, true),
+            ("slip.words.other.top1", 97.5, true),
+            ("slip.sent.legal.top1", 85.0, true),
+            ("slip.sent.legal.top3", 95.0, true),
+            ("slip.sent.other.top1", 96.0, true),
+            ("rare.kept", 99.5, true),
         ]
         print("scheme:", decoder.scheme == .xiaohe ? "小鹤双拼" : "全拼")
         var failed = false
@@ -822,6 +1052,32 @@ case "bench", "gate":
             print(String(format: "== fuzz: 1500 inputs, invalid %d, decode p99 %.1f ms, slowest %.1f ms (%@)", bad.count, p99, worst, worstInput))
             for b in bad { print("   ", b) }
         }
+        // R4 按偏一个键: every key of the gate's words and sentences (those the clean centre taps read right) replaced
+        // by each neighbour, the touch a quarter key from the key hit toward the one meant (also on the key's edge and
+        // centre, words). legal = the keys as typed still spell something; other = they spell nothing (control).
+        // rare.kept: uncommon words typed on purpose stay first once correction is on. (`slips` has the root causes.)
+        if env["SLIPS"] != "0" {
+            let t0 = Date()
+            let words = slipItems("words"), sents = slipItems("sentences")
+            func put(_ name: String, _ r: SlipCount, other: Bool) {
+                metrics["slip.\(name).legal.top1"] = r.pct(r.legal1, r.legal)
+                metrics["slip.\(name).legal.top3"] = r.pct(r.legal3, r.legal)
+                if other { metrics["slip.\(name).other.top1"] = r.pct(r.other1, r.other) }
+                print(String(format: "== slips %@: legal n=%d top1 %.1f%% top3 %.1f%% | other n=%d top1 %.1f%%", name, r.legal,
+                             r.pct(r.legal1, r.legal), r.pct(r.legal3, r.legal), r.other, r.pct(r.other1, r.other)))
+            }
+            put("words", countSlips(words, depth: "quarter", split: false, diagnose: false), other: true)
+            put("sent", countSlips(sents, depth: "quarter", split: false, diagnose: false), other: true)
+            // the key's edge and centre: 小鹤 (全拼 in `slips`: its words take 2 ms each, the gate would double)
+            if decoder.scheme == .xiaohe {
+                put("words.edge", countSlips(words, depth: "edge", split: false, diagnose: false), other: false)
+                put("words.centre", countSlips(words, depth: "centre", split: false, diagnose: false), other: false)
+            }
+            let rk = rareKept()
+            metrics["rare.kept"] = 100 * Double(rk.kept) / Double(max(rk.n, 1))
+            print(String(format: "== rare words typed on purpose kept first: %.2f%% (%d of %d) %@ | slips %.0f s", metrics["rare.kept"]!, rk.kept, rk.n,
+                         rk.examples.joined(separator: " "), Date().timeIntervalSince(t0)))
+        }
         // Records (R2: measured and reported, not floors): R1 现场错例 with centre-of-key taps and the old exact reading,
         // two keys wrong in a sentence, 小鹤 one key left out
         if decoder.scheme == .quanpin {
@@ -832,6 +1088,7 @@ case "bench", "gate":
             print(String(format: "RECORD %@ %.2f", k, metrics[k] ?? .nan))
         }
         for (k, v, atLeast) in floors {
+            if env["SLIPS"] == "0", k.hasPrefix("slip.") || k == "rare.kept" { continue }
             let m = metrics[k] ?? .nan
             let ok = atLeast ? m >= v : m <= v
             print(String(format: "%@ %@ %.2f (%@ %.2f)", ok ? "PASS" : "FAIL", k, m, atLeast ? "≥" : "≤", v))

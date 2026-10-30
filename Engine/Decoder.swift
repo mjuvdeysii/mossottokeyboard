@@ -72,8 +72,10 @@ public final class Decoder {
     public var predictionGrammar: Grammar?
     public var grammarWeight = 0.7
     /// The language model weighs less on a word whose keys were corrected: it chooses between words the keys spell,
-    /// it does not talk the keyboard into changing keys to make a likelier phrase.
-    public var grammarCorrectedFactor = 0.5
+    /// it does not talk the keyboard into changing keys to make a likelier phrase. R4 grid (×correctionPenalty 1.5 /
+    /// 2.5 / 3.5): 0.6 with 1.5 — 0.7 and above lose two 中英混输 sentences (小鹤), 1.0 also sentences typed with
+    /// touch noise (88.85 → 87.54).
+    public var grammarCorrectedFactor = 0.6
     /// The text just before the cursor (a few characters), so the first word is also read in context.
     public var leftContext: [Character] = []
     /// Cost of reading the letters as English in Chinese mode (English is the less likely intent there).
@@ -128,6 +130,8 @@ public final class Decoder {
     }
     public var maxSyllableAlternatives = 6
     public var pruneMargin = 7.0
+    /// When the keys as typed lead, a corrected whole reading at most this far below comes second (0: off).
+    public var alternateMargin = 8.0
     public var beam = 4
     /// 九宫格 keeps more partial sentences per position (each key reads several ways; measured better, full keyboard not)
     public var t9Beam = 8
@@ -168,6 +172,8 @@ public final class Decoder {
         let corrected: Bool
         let kind: UInt8           // 0 full spelling, 1 half-typed last syllable, 2 abbreviation (initial only),
                                   // 3 full spelling with one key read as typed by mistake
+        /// 小鹤: exactly one of its keys read as another (not a key typed by mistake).
+        var oneEdit = false
     }
 
     struct Edge {
@@ -186,8 +192,13 @@ public final class Decoder {
 
     /// spans[i] = every syllable that can start at tap i.
     func spans(_ taps: [Tap]) -> [[Span]] {
-        scheme == .xiaohe ? xiaoheSpans(taps) : quanpinSpans(taps)
+        // the corrected class is for slips on the full keyboard; input with 九宫格 keys is pruned in one pool as before
+        // (there every key already reads all its letters, and the extra paths through it cost 2–4× the time)
+        classes = correctionClasses && correctionEnabled && !taps.contains { $0.group }
+        return scheme == .xiaohe ? xiaoheSpans(taps) : quanpinSpans(taps)
     }
+    /// Whether this decode keeps corrected syllables in their own class (set by `spans`).
+    private var classes = false
 
     private func alternatives(_ t: Tap) -> [(key: Character, logp: Double)] {
         t.group ? t.alternatives : correctionEnabled ? t.alternatives : [(t.key, 0.0)]
@@ -204,6 +215,57 @@ public final class Decoder {
         return Array(list.prefix(limit))
     }
 
+    /// 小鹤, full keyboard: the syllables of one position, kept in two classes. A syllable read from the keys as typed
+    /// is judged against the best such syllable (`pruneMargin`, at most `maxSyllableAlternatives`). A syllable read with
+    /// a key changed, or with one key typed by mistake, is its own class: judged against the best syllable here with
+    /// `correctionMargin`, at most `correctionAlternatives`, and the best `correctionKeep` with one key changed always
+    /// stay (when some word uses them) — the lexicon and the language model decide between them, not the touch alone.
+    /// R4: when the two keys as typed spell a syllable too (kw 剋 for ke 颗), the corrected syllable used to be cut
+    /// here before any word was looked at, whenever the touch gave its key less than ~5 %.
+    private func prunedByClass(_ best: [UInt16: Span]) -> [Span] {
+        // with correction off the keys are read as typed: the one pool as before (also with 九宫格 keys, see `spans`)
+        guard classes else { return pruned(best, limit: maxSyllableAlternatives + (skipEnabled ? 4 : 0)) }
+        var plain: [Span] = [], fixed: [Span] = []
+        var top = -Double.infinity
+        for s in best.values {
+            if s.corrected { fixed.append(s) } else { plain.append(s) }
+            top = max(top, s.spatial)
+        }
+        plain.sort { $0.spatial > $1.spatial }
+        var out: [Span] = []
+        if let ptop = plain.first?.spatial {
+            for s in plain where s.spatial >= ptop - pruneMargin && out.count < maxSyllableAlternatives { out.append(s) }
+        }
+        guard !fixed.isEmpty else { return out }
+        fixed.sort { $0.spatial > $1.spatial }
+        var kept: [Span] = []
+        if correctionKeep > 0 {
+            for s in fixed where s.oneEdit && syllableUsable[Int(s.id)] {
+                kept.append(s)
+                if kept.count >= correctionKeep { break }
+            }
+        }
+        // among themselves the corrected syllables are judged as before (`pruneMargin` from the best of them), so
+        // where the keys as typed spell nothing (no syllable as typed here) this is the old rule unchanged
+        let floor = max(fixed[0].spatial - pruneMargin, top - correctionMargin)
+        // a key typed by mistake: as far below the best as a slip path in 全拼 (`pruneMargin` + `slipMargin`)
+        let slipFloor = max(fixed[0].spatial - pruneMargin, top - min(correctionMargin, pruneMargin + slipMargin))
+        for s in fixed where kept.count < correctionAlternatives && s.spatial >= (s.kind == 3 ? slipFloor : floor) {
+            if !kept.contains(where: { $0.id == s.id }) { kept.append(s) }
+        }
+        return out + kept
+    }
+    /// Keep corrected syllables in a class of their own (`prunedByClass`); off: one pool, as before R4 (measurement).
+    public var correctionClasses = true
+    /// How far below the best syllable of a position a corrected syllable may score and still be kept (R4).
+    public var correctionMargin = 12.0
+    /// How many corrected syllables (one key changed) each position keeps whatever their score (R4).
+    public var correctionKeep = 2
+    /// At most this many corrected syllables per position (R4).
+    public var correctionAlternatives = 6
+    /// Whether some lexicon word starts with the syllable (built on first use).
+    private lazy var syllableUsable: [Bool] = (0..<lexicon.syllables.count).map { !lexicon.range(firstSyllable: UInt16($0)).isEmpty }
+
     private func xiaoheSpans(_ taps: [Tap]) -> [[Span]] {
         let n = taps.count
         var out = [[Span]](repeating: [], count: n)
@@ -212,10 +274,12 @@ public final class Decoder {
             for (ka, la) in alternatives(a) {
                 for (kb, lb) in alternatives(b) {
                     guard let ids = lexicon.codeToSyllables[String([ka, kb])] else { continue }
-                    let corrected = extra > 0 || isCorrection(ka, a) || isCorrection(kb, b)
+                    let ca = isCorrection(ka, a), cb = isCorrection(kb, b)
+                    let corrected = extra > 0 || ca || cb
                     let s = spatialWeight * (la + lb) - (corrected ? correctionPenalty : 0) - extra
                     for id in ids where (best[id]?.spatial ?? -.infinity) < s {
-                        best[id] = Span(end: end, id: id, spatial: s, corrected: corrected, kind: extra > 0 ? 3 : 0)
+                        best[id] = Span(end: end, id: id, spatial: s, corrected: corrected, kind: extra > 0 ? 3 : 0,
+                                        oneEdit: extra == 0 && ca != cb)
                     }
                 }
             }
@@ -232,9 +296,13 @@ public final class Decoder {
                 pair(b, taps[i + 2], end: i + 3, extra: skipCost(taps, i), into: &best)
             }
             // 九宫格: every syllable on the two keys is equally likely here; the words decide, so keep them all
-            out[i] = pruned(best, limit: a.group || b.group ? 96 : maxSyllableAlternatives + (skipEnabled ? 4 : 0))
+            out[i] = a.group || b.group ? pruned(best, limit: 96) : prunedByClass(best)
         }
-        if let t = taps.last {
+        // An even number of keys ends on half a syllable only after a key read as typed by mistake: with the corrected
+        // syllables kept (R4) that reading — a slip and an unfinished syllable at once — would outbid one key read as
+        // its neighbour (uzjg as 闪光 for 收成, 4 keys), so the dangling key is read only on an odd number of keys.
+        let dangling = n % 2 == 1 || !classes
+        if dangling, let t = taps.last {
             // a dangling first key: any syllable whose code starts with it (reached when the keys before it pair up)
             var best: [UInt16: Span] = [:]
             for (k, l) in alternatives(t) {
@@ -353,8 +421,20 @@ public final class Decoder {
                 }
                 // a slip or a left-out key costs more than the margin: those paths are judged among themselves
                 if let top = next.map({ $0.score }).max() {
-                    let margin = pruneMargin + slipMargin
-                    next = next.filter { $0.score >= top - (($0.skipped) ? margin : pruneMargin) }
+                    if classes {
+                        // R4: as for 小鹤's syllables — the keys as typed against the best such path, a path with a key
+                        // changed, typed by mistake or left out against the best path with `correctionMargin`
+                        // (and among themselves as before, from the best of them)
+                        let plainTop = next.lazy.filter { !$0.corrected }.map { $0.score }.max() ?? top
+                        let fixedTop = next.lazy.filter { $0.corrected }.map { $0.score }.max() ?? top
+                        next = next.filter {
+                            guard $0.corrected else { return $0.score >= plainTop - pruneMargin }
+                            return $0.score >= max(fixedTop - ($0.skipped ? pruneMargin + slipMargin : pruneMargin), top - correctionMargin)
+                        }
+                    } else {
+                        let margin = pruneMargin + slipMargin
+                        next = next.filter { $0.score >= top - (($0.skipped) ? margin : pruneMargin) }
+                    }
                 }
                 if next.count > 24 {
                     let plain = next.filter { !$0.skipped }.sorted { $0.score > $1.score }.prefix(20)
@@ -810,6 +890,13 @@ public final class Decoder {
                 let before = result.count
                 add(candidate(es, tapCount: n, corrected: false, score: lit.score), es)
                 if result.count > before, let st = stem(es) { stems[st, default: 0] += 1 }
+            } else if !first.1, correctionEnabled, alternateMargin > 0,
+                      let alt = fullCands.dropFirst().first(where: { $0.1 && $0.2 >= first.2 - alternateMargin }) {
+                // and the other way round (R4): when the keys as typed lead, the best corrected reading close behind
+                // them comes next — a key slipped onto a neighbour that spells something too (rfge 人格 for rfve 忍者)
+                let before = result.count
+                add(candidate(alt.0, tapCount: n, corrected: true, score: alt.2), alt.0)
+                if result.count > before, let st = stem(alt.0) { stems[st, default: 0] += 1 }
             }
         }
         for c in fullCands.dropFirst() { addWhole(c.0, corrected: c.1, score: c.2) }

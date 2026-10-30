@@ -15,7 +15,7 @@ concurrency:
 jobs:
   build:
     runs-on: macos-15
-    timeout-minutes: 40
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
       # the sentence model (万象, ~400 MB, CC BY 4.0) is not in git: cached here, fetched and checksummed when missing
