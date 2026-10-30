@@ -526,9 +526,9 @@ case "bench", "gate":
         let floors: [(String, Double, Bool)] = decoder.scheme == .xiaohe ? [
             ("words.on", 96.0, true),          // σ=0.22 touch noise, correction on, top-1 (%)
             ("words.broken", 1.0, false),      // clean words changed by correction (%) — at most
-            ("sentences.perfect", 89.0, true), // perfect keys, top-1 equals the intended sentence (%)
+            ("sentences.perfect", 91.0, true), // perfect keys, top-1 equals the intended sentence (%)
             ("sentences.on", 90.0, true),
-            ("sentences.true", 85.5, true),    // σ=0.22 touch noise, correction on, top-1 equals the intended sentence (%)
+            ("sentences.true", 87.5, true),    // σ=0.22 touch noise, correction on, top-1 equals the intended sentence (%)
             ("words.ms", 3.0, false),          // average decode time (ms) — at most
             ("en.kept", 99.0, true),            // English: correctly typed words left alone (%)
             ("en.on", 97.0, true),              // English: σ=0.22 touch noise, what space types is the word (%)
@@ -543,17 +543,17 @@ case "bench", "gate":
             ("learn.harm", 1.0, false),        // unseen sentences made worse by what was learned (points) — at most
             ("fuzz.bad", 0.0, false),          // random input: candidates that use no keys, too many, or have no text
             ("fuzz.p99.ms", 40.0, false),      // random input: 99th-percentile decode time (ms) — at most
-            ("extra.sentences.top1", 50.0, true),  // a sentence with one key too many still read right (%)
-            ("mixed.sentences.top1", 66.0, true),  // an English word inside a Chinese sentence (%)
+            ("extra.sentences.top1", 55.0, true),  // a sentence with one key too many still read right (%)
+            ("mixed.sentences.top1", 72.0, true),  // an English word inside a Chinese sentence (%)
         ] : [
             ("words.on", 97.0, true),
             ("words.broken", 1.0, false),
-            ("sentences.perfect", 89.0, true),
+            ("sentences.perfect", 91.0, true),
             ("sentences.on", 92.0, true),
-            ("sentences.true", 85.5, true),
+            ("sentences.true", 88.0, true),
             ("sentences.ms", 16.0, false),     // CI runners vary 2–5× (1.2 ms locally)
             ("t9.words.top1", 66.0, true),
-            ("t9.sentences.top1", 68.0, true),
+            ("t9.sentences.top1", 71.0, true),
             ("t9.sentences.ms", 150.0, false),
             ("learn.same", 95.0, true),
             ("userword.alone", 98.0, true),
@@ -561,9 +561,9 @@ case "bench", "gate":
             ("learn.harm", 1.0, false),
             ("fuzz.bad", 0.0, false),
             ("fuzz.p99.ms", 100.0, false),
-            ("extra.sentences.top1", 70.0, true),
+            ("extra.sentences.top1", 78.0, true),
             ("missing.sentences.top1", 45.0, true), // a sentence with one key left out still read right (%)
-            ("mixed.sentences.top1", 72.0, true),
+            ("mixed.sentences.top1", 78.0, true),
         ]
         print("scheme:", decoder.scheme == .xiaohe ? "小鹤双拼" : "全拼")
         var failed = false

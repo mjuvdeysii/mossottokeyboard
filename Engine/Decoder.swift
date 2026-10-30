@@ -68,7 +68,7 @@ public final class Decoder {
     public var grammar: Grammar?
     /// 联想 reads its own model when set (the sentence model's scores are not counts of what follows a context).
     public var predictionGrammar: Grammar?
-    public var grammarWeight = 1.0
+    public var grammarWeight = 0.7
     /// The language model weighs less on a word whose keys were corrected: it chooses between words the keys spell,
     /// it does not talk the keyboard into changing keys to make a likelier phrase.
     public var grammarCorrectedFactor = 0.5
@@ -142,7 +142,7 @@ public final class Decoder {
     public var unigramCenter = 10.0
     /// The model's counts are read against how much it has seen after the context (P(word | context) rather than
     /// a joint count): a common context no longer lends its own frequency to whatever follows it.
-    public var contextNormalisation = 0.6
+    public var contextNormalisation = 0.3
 
     public init(lexicon: Lexicon, user: UserDictionary? = nil) {
         self.lexicon = lexicon
