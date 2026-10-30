@@ -193,9 +193,10 @@ public final class Grammar {
     /// ln of everything the model counts right after a context node (its one-character continuations): what
     /// a joint count is divided by to read it as "how likely after this context". Cached per node.
     private var massCache: [Int: Double] = [:]
-    /// New contexts measured per decode at most (each is a scan of its node; right after launch none are cached,
-    /// and measuring them all held the first decodes up to a quarter second): the rest count as average.
-    public var massBudget = 24
+    /// New contexts measured per decode at most (each is a scan of its node). Unlimited: a capped budget made the
+    /// same keys read differently depending on what had been typed before (the contexts left over in the cache). The
+    /// keyboard's warm-up decode measures the common ones before the first key; a cold long sentence costs ~10 ms more.
+    public var massBudget = Int.max
     private var massSpent = 0
     public func resetMassBudget() { massSpent = 0 }
     func logMass(_ node: Int) -> Double {

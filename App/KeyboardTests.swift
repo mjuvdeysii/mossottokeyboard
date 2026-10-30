@@ -719,7 +719,7 @@ enum KeyboardTests {
             let kb = vc.keyboardViewForTests
             guard let d = kb.keyRectsForTests(.delete) else { log(false, "clearSwipe.\(name) setup", "no delete key"); return }
             let start = center(d.cap)
-            var valid = 0, recognised = 0, outside = 0, falseClears = 0, restored = 0, misses: [String] = []
+            var valid = 0, recognised = 0, outside = 0, falseClears = 0, restored = 0, misses: [String] = [], restoreDiff = ""
             reset(vc, h); type(vc, setup); settle(vc)
             let keys = vc.testState.keys, cands = vc.testState.candidates, taps = vc.tapsForTests
             for dx: CGFloat in [-48, -60, -90, -140] {
@@ -747,6 +747,9 @@ enum KeyboardTests {
                             vc.candidateBarForTests.undoTapForTests()
                             settle(vc)
                             if vc.tapsForTests == taps && vc.testState.candidates == cands { restored += 1 }
+                            else if restoreDiff.isEmpty {
+                                restoreDiff = "taps same: \(vc.tapsForTests == taps) keys \(vc.testState.keys) | was \(cands.prefix(6)) | now \(vc.testState.candidates.prefix(6))"
+                            }
                         }
                     }
                 }
@@ -758,7 +761,7 @@ enum KeyboardTests {
                     "cleared \(falseClears)")
             }
             log(restored == recognised, "clearSwipe.\(name): ↩ brings back the same keys and candidates after every clear (\(restored)/\(recognised))",
-                "restored=\(restored)")
+                "restored=\(restored) \(restoreDiff)")
             reset(vc, h)
         }
         grid("portrait", pr.a, pr.ha, setup: "nihao")
@@ -816,7 +819,7 @@ enum KeyboardTests {
             log(!vc.testState.composing && chip == "nihao", "clearSwipe.九宫格 重输 leaves the chip with the pinyin", "chip=\(chip ?? "nil")")
             vc.candidateBarForTests.undoTapForTests(); settle(vc)
             log(vc.testState.keys == "64426" && vc.testState.candidates == cands, "clearSwipe.九宫格 ↩ after 重输 brings the keys back",
-                "keys=\(vc.testState.keys)")
+                "keys=\(vc.testState.keys) was \(cands.prefix(6)) now \(vc.testState.candidates.prefix(6))")
             reset(vc, h)
         } else { log(false, "clearSwipe.九宫格 setup", "engine did not load") }
         pr.window2.rootViewController = nil

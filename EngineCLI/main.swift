@@ -71,6 +71,7 @@ if env["GRAMMAR"] != "0" {
     }
 }
 if let v = env["GW"].flatMap(Double.init) { decoder.grammarWeight = v }
+if let v = env["MASSB"].flatMap(Int.init) { decoder.grammar?.massBudget = v }
 if let v = env["MW"].flatMap(Double.init) { decoder.contextNormalisation = v }
 if let v = env["MB"].flatMap(Int.init) { decoder.grammar?.massBudget = v }
 if let v = env["MC"].flatMap(Double.init) { decoder.grammar?.massCenter = v }
