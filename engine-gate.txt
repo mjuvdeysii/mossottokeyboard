@@ -1,0 +1,41 @@
+scheme: 小鹤双拼
+PASS mixed.top1 10/10
+PASS odd.top1 4/4
+PASS userdict.roundtrip
+PASS xiaohe.keyguide
+PASS predict.model+user
+RECORD two.sentences.top1 21.31
+RECORD two.sentences.top3 23.93
+RECORD missing.sentences.top1 0.00
+PASS words.on 98.47 (≥ 96.00)
+PASS words.broken 0.08 (≤ 1.00)
+PASS sentences.perfect 92.13 (≥ 91.00)
+PASS sentences.on 95.08 (≥ 90.00)
+PASS sentences.true 89.18 (≥ 87.50)
+PASS words.ms 0.45 (≤ 3.00)
+PASS en.kept 99.87 (≥ 99.00)
+PASS en.on 99.13 (≥ 97.00)
+PASS en.top3 100.00 (≥ 98.00)
+PASS t9.words.top1 49.47 (≥ 47.00)
+PASS t9.sentences.top3 64.59 (≥ 55.00)
+PASS t9.sentences.ms 11.42 (≤ 20.00)
+PASS learn.same 98.36 (≥ 95.00)
+PASS userword.alone 100.00 (≥ 98.00)
+PASS userword.inside 97.66 (≥ 94.00)
+PASS adapt.after 83.20 (≥ 78.00)
+PASS learn.harm 0.00 (≤ 1.00)
+PASS fuzz.bad 0.00 (≤ 0.00)
+FAIL fuzz.p99.ms 41.09 (≤ 40.00)
+PASS extra.sentences.top1 81.64 (≥ 55.00)
+PASS mixed.sentences.top1 73.75 (≥ 72.00)
+PASS fix.caption.coverage 100.00 (≥ 98.00)
+PASS dedupe.pairs 9.00 (≤ 100.00)
+PASS slip.words.legal.top1 80.37 (≥ 79.00)
+PASS slip.words.legal.top3 97.61 (≥ 96.50)
+PASS slip.words.other.top1 97.93 (≥ 96.50)
+PASS slip.sent.legal.top1 80.16 (≥ 79.00)
+PASS slip.sent.legal.top3 94.36 (≥ 93.00)
+PASS slip.sent.other.top1 97.38 (≥ 96.00)
+PASS slip.words.edge.legal.top1 86.49 (≥ 85.50)
+PASS slip.words.centre.legal.top1 41.87 (≥ 40.50)
+PASS rare.kept 100.00 (≥ 99.50)

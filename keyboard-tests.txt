@@ -1,0 +1,138 @@
+ALL PASS (137 checks)
+PASS xiaohe.marked shows the keys
+PASS xiaohe.space commits 你好
+PASS xiaohe.odd keys: keyil → 可以了
+PASS xiaohe.delete takes back one key
+PASS xiaohe.delete all keys leaves the text
+PASS xiaohe.delete then deletes text
+PASS xiaohe.return commits the letters
+PASS xiaohe.tap the second candidate
+PASS xiaohe.中/英 mid-word commits the letters
+PASS quanpin.nihao → 你好
+PASS quanpin.abbreviation nh → 你好
+PASS style.简洁 types as before
+PASS style.back to Mosto
+PASS continuous.，commits the reading first
+PASS continuous.。 after the next words
+PASS quanpin.one key too many: jintianttianqihenhao → 今天天气很好
+PASS quanpin.undo chip offers the keys as typed
+PASS quanpin.undo chip puts the keys back
+PASS quanpin.after undo, space commits the keys read without correction
+PASS quanpin.one key left out: woxiangqumaidonxi → 我想去买东西
+PASS mixed.woyongiphonedazi → 我用iPhone打字
+PASS english.teh → the
+PASS english.delete undoes the correction
+PASS english.double space types a full stop
+PASS mixed.ok → OK
+PASS numbers.。 after a digit is a decimal point
+PASS predict.suggestions after 你好
+PASS predict.tap types the suggestion
+PASS emoji.蛋糕 offers 🎂 after the words
+PASS predict.a key ends the suggestions
+PASS moved.delete after moving the cursor deletes one character
+PASS mosto.tap mid-word commits the word first
+PASS t9.keys compose with the pinyin shown
+PASS t9.64426 → 你好
+PASS t9.重输 drops the keys
+PASS app.every 试一试 has its lesson
+PASS app.something typed on 上手 before 试一试
+PASS app.试一试 opens 上手
+PASS app.试一试 on 长句多按、漏按一个键 opens 长句漏按一个键
+PASS app.试一试 starts with an empty field
+PASS app.清空 lesson follows 撤回纠错
+PASS app.a clear before the jump leaves its ↩
+PASS clearSwipe.jump(to:) leaves no ↩ chip
+PASS app.清空 lesson: the swipe is the first step
+PASS app.清空 lesson: ↩ brings the keys back and passes
+PASS cursor.100 pt / 0.5 s: 8 characters (build 225's steps), 2 ticks, 1 cursor mode
+PASS cursor.300 pt / 0.25 s: 79 characters (build 225's steps), 3 ticks (≤ 3), gaps 100,100 ms (≥ 100)
+PASS cursor.50 pt/s for 1.2 s: 4 characters (build 225's steps), 1 ticks, 1.1 a second (want 1.9 ± 1), at most 1 in a second
+PASS cursor.100 pt/s for 1.2 s: 10 characters (build 225's steps), 3 ticks, 3.1 a second (want 3.7 ± 1), at most 3 in a second
+PASS cursor.200 pt/s for 1.2 s: 24 characters (build 225's steps), 8 ticks, 7.4 a second (want 7.4 ± 1), at most 8 in a second
+PASS cursor.400 pt/s for 1.2 s: 51 characters (build 225's steps), 11 ticks, 9.7 a second (want 10.0 ± 1), at most 10 in a second
+PASS cursor.800 pt/s for 1.2 s: 172 characters (build 225's steps), 12 ticks, 10.3 a second (want 10.0 ± 1), at most 10 in a second
+PASS cursor.1200 pt/s for 1.2 s: 405 characters (build 225's steps), 12 ticks, 10.3 a second (want 10.0 ± 1), at most 10 in a second
+PASS cursor.2000 pt/s for 1.2 s: 685 characters (build 225's steps), 12 ticks, 10.1 a second (want 10.0 ± 1), at most 10 in a second
+PASS cursor.still 0.3 s, then 9.5 pt: 1 character(s), 1 tick
+PASS cursor.turning back: the first character back ticks (1 tick on the way back)
+PASS cursor.at the end: 0 characters and 0 ticks; back 60 pt: 5 characters, 2 ticks
+PASS cursor.drag on space while composing: no cursor mode, 0 ticks, the space goes in as before
+PASS feedback.table letter
+PASS feedback.table 九宫格 key
+PASS feedback.table space
+PASS feedback.table delete
+PASS feedback.table return
+PASS feedback.table shift
+PASS feedback.table candidate
+PASS feedback.table undo chip
+PASS feedback.table other characters shown
+PASS feedback.table other character chosen
+PASS feedback.table cursor mode
+PASS feedback.table cursor step
+PASS feedback.table word delete
+PASS feedback.table clear armed
+PASS feedback.table clear
+PASS feedback.table Mosto
+PASS feedback.inside the app: allowed
+PASS feedback.a: one light tap and a click
+PASS feedback.delete: one firm tap and the delete click
+PASS feedback.Mosto: soft
+PASS feedback.no key is soft
+PASS feedback.震动 off: only the click
+PASS feedback.按键音 off: only the tap
+PASS feedback.without full access: nothing
+PASS feedback.diagnostics say 完全访问 未开
+PASS feedback.long press ，: the key (light + 1104), then 1 tick as the choices show, no other tap, one click
+PASS feedback.long press ，, slide to the second choice: 1 more tick
+PASS feedback.cursor drag 100 pt / 0.5 s: 2 ticks played, as the cursor group counted; space and cursor mode firm
+PASS feedback.candidate: nothing as the finger lands, one light tap and 1104 as it lifts and selects
+PASS feedback.slide 60 pt on the candidates, then lift: nothing felt, nothing typed
+PASS feedback.nihap (p toward o), space: 你好 goes in corrected, ↩ nihap offered
+PASS feedback.nihap, space: 5 light taps for the letters, then only the space key's firm tap and 1104 (nothing for the correction)
+PASS feedback.↩ after the correction: one firm tap and 1155
+PASS feedback.the correction, start to undo: nothing soft
+PASS strip.300 candidates: only the first screens are laid out, ⌄ shown
+PASS strip.300 candidates: scrolled to the end, the last is the keys as typed, the row's length is the items' widths
+PASS strip.one refresh of 300 candidates: median 0.812 ms (≤ 2.0 ms, 100 refreshes)
+PASS strip.another list starts from the beginning
+PASS strip.the same list again leaves the row where it was
+PASS strip.swipe left 30 pt from the first choice: nothing typed
+PASS strip.swipe left 30 pt from the first choice (scrolling): nothing typed
+PASS strip.swipe left 60 pt from the first choice: nothing typed
+PASS strip.swipe left 60 pt from the first choice (scrolling): nothing typed
+PASS strip.swipe left 120 pt from the first choice: nothing typed
+PASS strip.swipe left 120 pt from the first choice (scrolling): nothing typed
+PASS strip.slow slide 60 pt over 0.8 s: no 删除已学词语
+PASS strip.(control) a finger held still 0.6 s is a hold
+PASS strip.tap (6 pt drift, 0.25 s) types the word under the finger
+PASS strip.scrolled to the 9th, a tap types the 9th
+PASS strip.a tap while the row glides types nothing
+PASS strip.after scrolling, the next key starts the row from the beginning
+PASS strip.right 120 pt then left 120 pt on the strip: nothing typed, nothing cleared
+PASS clearSwipe.typing: 5000 keys (letters 82%, delete 8%, space 10%, seed 4d6f73746f523302): 0 clears, field as without the swipe
+PASS clearSwipe.delete dragged 30 pt left: one key deleted
+PASS clearSwipe.held 0.6 s then 80 pt left: held delete as before, no clear
+PASS clearSwipe.up-left Δx −60 Δy −40: no clear
+PASS clearSwipe.nothing composed: 60 pt left deletes one character
+PASS clearSwipe.from m to delete and back: as before, no clear
+PASS clearSwipe.space right 60 then left 60: as before (commits), no clear
+PASS clearSwipe.armed then cancelled by the system: one key deleted, no clear
+PASS clearSwipe.armed then back over delete: one key deleted, no clear, 2 ticks
+PASS clearSwipe.long press ， and slide: as before, no clear
+PASS clearSwipe.one finger still on delete, another sliding on the letters: as before, no clear
+PASS clearSwipe.portrait: 60/60 swipes inside the definition clear
+PASS clearSwipe.portrait: ↩ brings back the same keys and the same first twenty candidates after every clear (60/60)
+PASS feedback.swipe that clears: delete (firm + 1155), tick, clear (firm + 1156)
+PASS clearSwipe.cleared: the field keeps 你好, the chip shows jintian
+PASS feedback.↩ after a clear: firm + 1155
+PASS clearSwipe.after a clear, delete deletes a character and the chip goes
+PASS clearSwipe.after a clear, a letter starts a new composition and the chip goes
+PASS clearSwipe.a long composition: the chip reads woxian…ongxi
+PASS clearSwipe.landscape: 30/30 swipes inside the definition clear
+PASS clearSwipe.landscape: 30 grid swipes end within 12 pt of the key's edge (outside the definition) and do not clear
+PASS clearSwipe.landscape: ↩ brings back the same keys and the same first twenty candidates after every clear (30/30)
+PASS clearSwipe.九宫格: 60/60 swipes inside the definition clear
+PASS clearSwipe.九宫格: ↩ brings back the same keys and the same first twenty candidates after every clear (60/60)
+PASS clearSwipe.九宫格 重输 leaves the chip with the pinyin
+PASS clearSwipe.九宫格 ↩ after 重输 brings the keys back
+PASS fuzz.3600 random keys keep the field and the composition in step
