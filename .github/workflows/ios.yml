@@ -2,6 +2,13 @@ name: iOS
 # Every push to main: compile the keyboard on the newest Xcode, run the engine benchmark, then
 # (when the App Store Connect secrets are set) archive, sign and upload the build to TestFlight.
 # A short build report is pushed to the ci-logs branch.
+#
+#   build ──────────────────┬─> testflight (main only; needs build AND engine-slips)
+#   engine-slips (小鹤, 全拼) ─┤
+#                           └─> report (always: merges both reports, pushes ci-logs)
+#
+# engine-slips runs the gate's slip.* and rare.kept measurements (rounds/R5.md 3d) beside the build, in full; the
+# build's own gate skips them (SLIPS=0). A FAIL in either stops the TestFlight upload.
 on:
   push:
     branches: [main]
@@ -58,19 +65,30 @@ jobs:
           c.sort(key=lambda t:(t[0],t[1]['name'])); print(c[-1][1]['udid'])")
           echo "::notice title=Simulator::$DEV"
           xcrun simctl boot "$DEV" || true
+          # Debug (the snapshots and keyboard tests rely on #if DEBUG) with the Release compiler settings
+          # (-O, whole module, exclusivity unchecked): FOOTPRINT times the engine TestFlight ships (rounds/R5.md 3a)
           xcodebuild build -project MossOttoKeyboard.xcodeproj -scheme MossOttoKeyboard -configuration Debug \
-            -destination "id=$DEV" -derivedDataPath build/dd CODE_SIGNING_ALLOWED=NO > snap-build.log 2>&1 || { tail -30 snap-build.log; exit 1; }
+            -destination "id=$DEV" -derivedDataPath build/dd CODE_SIGNING_ALLOWED=NO \
+            SWIFT_OPTIMIZATION_LEVEL=-O SWIFT_COMPILATION_MODE=wholemodule OTHER_SWIFT_FLAGS=-enforce-exclusivity=unchecked \
+            > snap-build.log 2>&1 || { tail -30 snap-build.log; exit 1; }
           APP=$(find build/dd/Build/Products -maxdepth 3 -name MossOttoKeyboard.app | head -1)
           xcrun simctl install "$DEV" "$APP"
           echo "app: $APP"
+          # FOOTPRINT's typing set (the gate's first 100 sentences): in the app's Documents, and by path in case the
+          # simulator lets the app read the checkout
+          PRE=$(xcrun simctl get_app_container "$DEV" app.mossling.keyboard data 2>/dev/null) && mkdir -p "$PRE/Documents" \
+            && cat EngineCLI/sentences.tsv EngineCLI/sentences2.tsv > "$PRE/Documents/footprint-sentences.tsv" \
+            || echo "::warning::FOOTPRINT sentences not placed in the app container"
           # the app's console (exceptions, crashes) goes into the log, so a renderer failure shows its cause
-          xcrun simctl launch --console-pty "$DEV" app.mossling.keyboard -renderKeyboardSnapshots > app-console.log 2>&1 &
+          xcrun simctl launch --console-pty "$DEV" app.mossling.keyboard -renderKeyboardSnapshots \
+            -footprintSentences "$PWD/EngineCLI/sentences.tsv" > app-console.log 2>&1 &
           sleep 3
           DATA=$(xcrun simctl get_app_container "$DEV" app.mossling.keyboard data)
           for i in $(seq 1 60); do ls "$DATA"/Documents/snapshots/night_app_home3.png >/dev/null 2>&1 && break; sleep 2; done
           # then the memory measurement the renderer prints last
           for i in $(seq 1 240); do grep -q "SNAPSHOTS" app-console.log 2>/dev/null && break; sleep 2; done
           echo "-- footprint --"; grep -E "^FOOTPRINT" app-console.log || echo "::warning::FOOTPRINT line missing"
+          grep -E "^FOOTPRINT" app-console.log | head -1 | sed 's/^/::notice title=FOOTPRINT::/' || true
           echo "-- app console (tail) --"; tail -60 app-console.log || true
           echo "-- crash reports --"
           for f in $(ls -t ~/Library/Logs/DiagnosticReports/*MossOtto* 2>/dev/null | head -2); do head -120 "$f"; done
@@ -80,12 +98,12 @@ jobs:
           # the keyboard test bench (the real controller against a simulated text field): a FAIL blocks the release
           cp "$DATA"/Documents/keyboard-tests.txt report/keyboard-tests.txt 2>/dev/null || echo "FAIL keyboard tests did not run" > report/keyboard-tests.txt
           head -5 report/keyboard-tests.txt
-      - name: Engine quality gate (blocks the release on regression)
+      - name: Engine quality gate (blocks the release on regression; slips run in the engine-slips job)
         run: |
           set -o pipefail
           mkdir -p report
-          /tmp/engine-cli Keyboard/Resources/lexicon.bin gate | grep -E "scheme|PASS|FAIL|RECORD" | tee report/engine-gate.txt
-          SCHEME=quanpin /tmp/engine-cli Keyboard/Resources/lexicon.bin gate | grep -E "scheme|PASS|FAIL|RECORD" | tee -a report/engine-gate.txt
+          SLIPS=0 /tmp/engine-cli Keyboard/Resources/lexicon.bin gate | grep -E "scheme|PASS|FAIL|RECORD" | tee report/engine-gate.txt
+          SLIPS=0 SCHEME=quanpin /tmp/engine-cli Keyboard/Resources/lexicon.bin gate | grep -E "scheme|PASS|FAIL|RECORD" | tee -a report/engine-gate.txt
       - name: Keyboard test bench (blocks the release on failure)
         run: |
           cat report/keyboard-tests.txt 2>/dev/null | head -60 || true
@@ -101,18 +119,98 @@ jobs:
           } > report/build.txt
           cat report/build.txt | head -40
           grep -E "error:" build.log 2>/dev/null | sort -u | head -40 | while IFS= read -r l; do echo "::error::$l"; done
-      - name: Publish report to ci-logs branch
+      # the report job merges this with engine-slips and pushes it to ci-logs
+      - uses: actions/upload-artifact@v4
         if: always()
+        with:
+          name: report-build
+          path: report
+          retention-days: 7
+
+  engine-slips:
+    # rounds/R5.md 3d: the gate's slip.* and rare.kept, every variant and depth, one scheme per runner. Measurement
+    # only (nothing here goes into the keyboard); a FAIL blocks the TestFlight upload like the build's gate.
+    runs-on: macos-15
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        scheme: [xiaohe, quanpin]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: Keyboard/Resources/sentence.gram
+          key: sentence-gram-e34500ab44626dc0
+      - name: Sentence model
+        run: Tools/fetch_sentence_model.sh Keyboard/Resources/sentence.gram
+      - name: Xcode
+        run: |
+          X=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1); sudo xcode-select -s "$X"; xcodebuild -version
+      - name: Engine CLI
+        run: swiftc -O -enforce-exclusivity=unchecked Engine/*.swift EngineCLI/main.swift -o /tmp/engine-cli
+      - name: Engine slips gate (blocks the release on regression)
+        run: |
+          set -o pipefail
+          mkdir -p report
+          if [ "${{ matrix.scheme }}" = quanpin ]; then export SCHEME=quanpin; fi
+          SLIPS_ONLY=1 /tmp/engine-cli Keyboard/Resources/lexicon.bin gate \
+            | grep -E "scheme|PASS|FAIL|RECORD|^== (slips|rare)" | tee report/engine-slips-${{ matrix.scheme }}.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: report-slips-${{ matrix.scheme }}
+          path: report
+          retention-days: 7
+
+  report:
+    # One ci-logs commit for the run: the build's report with each scheme's slip.* / rare.kept lines put back at
+    # the end of that scheme in engine-gate.txt (where the single gate printed them), plus engine-slips-*.txt.
+    needs: [build, engine-slips]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: report-*
+          path: /tmp/artifacts
+      - name: Publish report to ci-logs branch
         continue-on-error: true
         run: |
-          cp -r report /tmp/report
+          mkdir -p /tmp/out
+          if [ -d /tmp/artifacts/report-build ]; then cp -r /tmp/artifacts/report-build/. /tmp/out/; else echo "BUILD REPORT MISSING (build job: ${{ needs.build.result }})" > /tmp/out/build.txt; fi
+          for s in xiaohe quanpin; do
+            cp /tmp/artifacts/report-slips-$s/engine-slips-$s.txt /tmp/out/ 2>/dev/null || echo "FAIL engine-slips $s left no report (${{ needs.engine-slips.result }})" > /tmp/out/engine-slips-$s.txt
+          done
+          python3 - <<'PY'
+          import os, re
+          out = "/tmp/out"
+          gate = os.path.join(out, "engine-gate.txt")
+          lines = open(gate, encoding="utf-8").read().splitlines() if os.path.exists(gate) else []
+          def slips(s):
+              text = open(os.path.join(out, f"engine-slips-{s}.txt"), encoding="utf-8").read().splitlines()
+              got = [l for l in text if re.match(r"(PASS|FAIL) (slip\.|rare\.kept)", l)]
+              return got or [f"FAIL engine-slips {s}: no slip.* / rare.kept result (engine-slips-{s}.txt)"]
+          xs, qs = slips("xiaohe"), slips("quanpin")
+          qi = next((i for i, l in enumerate(lines) if l.startswith("scheme") and "全拼" in l), None)
+          if qi is None:
+              lines += ["-- engine-slips: 小鹤双拼 --"] + xs + ["-- engine-slips: 全拼 --"] + qs
+          else:
+              lines = lines[:qi] + xs + lines[qi:] + qs
+          open(gate, "w", encoding="utf-8").write("\n".join(lines) + "\n")
+          PY
+          cat /tmp/out/engine-gate.txt
           git config user.name "github-actions"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -q --orphan logs-tmp && git rm -rqf --cached . && find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
-          cp -r /tmp/report/. . && git add -A && git commit -qm "ci report ${GITHUB_SHA}" && git push -qf origin logs-tmp:ci-logs
+          cp -r /tmp/out/. . && git add -A && git commit -qm "ci report ${GITHUB_SHA}" && git push -qf origin logs-tmp:ci-logs
 
   testflight:
     # Needs repository secrets ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8, APPLE_TEAM_ID (same values as the other app).
-    needs: build
+    # engine-slips is part of the release gate: no upload until both pass.
+    needs: [build, engine-slips]
     if: github.ref == 'refs/heads/main'
     runs-on: macos-15
     timeout-minutes: 60
