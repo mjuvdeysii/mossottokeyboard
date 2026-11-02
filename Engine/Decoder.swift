@@ -211,8 +211,16 @@ public final class Decoder {
     /// 全拼 syllable boundaries set with 分词 ('): no syllable may run across one (positions in the filtered taps).
     private var boundaries = Set<Int>()
 
+    /// 剪枝时的全序：同分（spatial 相等）时按键号、再按终点排，不让字典的遍历顺序决定并列的顺序——
+    /// 否则同一个二进制两次解码可能给出不同的候选（R6 用 dump 对照时发现的）。
+    private static func nearer(_ a: Span, _ b: Span) -> Bool {
+        if a.spatial != b.spatial { return a.spatial > b.spatial }
+        if a.id != b.id { return a.id < b.id }
+        return a.end < b.end
+    }
+
     private func pruned(_ best: [UInt16: Span], limit: Int) -> [Span] {
-        var list = best.values.sorted { $0.spatial > $1.spatial }
+        var list = best.values.sorted(by: Self.nearer)
         if let top = list.first?.spatial { list = list.filter { $0.spatial >= top - pruneMargin } }
         return Array(list.prefix(limit))
     }
@@ -233,13 +241,13 @@ public final class Decoder {
             if s.corrected { fixed.append(s) } else { plain.append(s) }
             top = max(top, s.spatial)
         }
-        plain.sort { $0.spatial > $1.spatial }
+        plain.sort(by: Self.nearer)
         var out: [Span] = []
         if let ptop = plain.first?.spatial {
             for s in plain where s.spatial >= ptop - pruneMargin && out.count < maxSyllableAlternatives { out.append(s) }
         }
         guard !fixed.isEmpty else { return out }
-        fixed.sort { $0.spatial > $1.spatial }
+        fixed.sort(by: Self.nearer)
         var kept: [Span] = []
         if correctionKeep > 0 {
             for s in fixed where s.oneEdit && syllableUsable[Int(s.id)] {

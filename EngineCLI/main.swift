@@ -452,7 +452,80 @@ func missingSweep(_ set: String) -> (n: Int, top1: Int, top3: Int, keys: Int) {
     return (n, t1, t3, keys)
 }
 
+/// 输出逐字相同的对照（R6 方案第 2 项）：把门禁用到的每一类输入各解码一次，逐行打印前 10 个候选的
+/// 文本 / 键数 / 纠正标记。提速前后 `dump | shasum -a 256` 必须相同，否则那一项提速回退。
+func dumpLines() -> [String] {
+    var out: [String] = []
+    // 候选按 (分数, 文本, 键数) 排成规范序再打印：同分的并列由排序决定，不靠字典的遍历顺序，
+    // 否则同一个二进制两次运行的输出都不一样，逐字对照就没意义了。
+    func line(_ tag: String, _ taps: [Tap]) {
+        let cs = decoder.decode(taps).candidates
+            .sorted { a, b in
+                if a.score != b.score { return a.score > b.score }
+                if a.text != b.text { return a.text < b.text }
+                return a.tapCount < b.tapCount
+            }
+            .prefix(10)
+        let body = cs.map { String(format: "%@|%d|%d|%.6f", $0.text, $0.tapCount, $0.corrected ? 1 : 0, $0.score) }
+            .joined(separator: " ")
+        out.append("\(tag)\t\(body)")
+    }
+    decoder.correctionEnabled = true
+    for (w, ids) in gateWords() { line("word:\(w)", Array(codeLetters(ids)).map { Tap.exact($0) }) }
+    for (t, ids) in loadSentences("EngineCLI/sentences.tsv,EngineCLI/sentences2.tsv") { line("sent:\(t)", Array(codeLetters(ids)).map { Tap.exact($0) }) }
+    for (t, ids) in loadSentences("EngineCLI/sentences3.tsv,EngineCLI/sentences4.tsv") { line("hold:\(t)", Array(codeLetters(ids)).map { Tap.exact($0) }) }
+    for path in ["EngineCLI/mixed.tsv", "EngineCLI/mixed2.tsv"] {
+        guard let raw = try? String(contentsOfFile: path, encoding: .utf8) else { continue }
+        for row in raw.split(separator: "\n") {
+            let f = row.split(separator: "\t"); guard f.count == 2 else { continue }
+            let keys = f[1].split(separator: " ").map { tok -> String in
+                tok.hasPrefix("|") ? String(tok.dropFirst()) : lex.id(of: String(tok)).map { decoder.spelling(of: $0) } ?? String(tok)
+            }.joined()
+            line("mix:\(path):\(f[0])", keys.map { Tap.exact($0) })
+        }
+    }
+    // fuzz：与门禁同一组随机输入（同一个种子与同一套生成规则）
+    var rng = RNG(s: 7)
+    let letters = Array("abcdefghijklmnopqrstuvwxyz")
+    for i in 0..<1500 {
+        let n = i < 1400 ? 1 + Int(rng.next() * 16) : 24 + Int(rng.next() * 17)
+        var taps: [Tap] = []
+        for _ in 0..<n {
+            let r = rng.next()
+            if r < 0.05 { taps.append(Tap(key: "'", alternatives: [])) }
+            else if r < 0.25 { taps.append(Tap.t9(Character(String(2 + Int(rng.next() * 8))))) }
+            else {
+                let c = letters[Int(rng.next() * 26)]
+                taps.append(r < 0.6 ? Tap.exact(c) : noisyTaps(String(c), sigmaX: 0.3, sigmaY: 0.27, rng: &rng)[0])
+            }
+        }
+        line("fuzz:\(i)", taps)
+    }
+    // slips：句子的四分之一键变体，前 200 句（全量太久），逐键换邻居
+    var k = 0
+    for (t, ids) in loadSentences("EngineCLI/sentences.tsv") where k < 200 {
+        let letters = Array(codeLetters(ids))
+        var p = 0
+        while p < letters.count {
+            for nb in neighbours(letters[p]).prefix(2) {
+                var taps = letters.map { centreTap($0) }
+                taps[p] = slipTap(intended: letters[p], typed: nb, depth: "quarter")
+                line("slip:\(t):\(p):\(nb)", taps)
+            }
+            p += 2
+        }
+        k += 1
+    }
+    return out
+}
+
 switch args[2] {
+case "dump":   // EngineCLI <lexicon> dump   （输出经 shasum 比对；不进 CI）
+    let t0 = Date()
+    let lines = dumpLines()
+    for l in lines { print(l) }
+    FileHandle.standardError.write(Data("dump \(lines.count) lines  \(String(format: "%.0f s", Date().timeIntervalSince(t0)))\n".utf8))
+
 case "missing":   // EngineCLI <lexicon> missing <sentences|holdout>
     let set = args.count > 3 ? args[3] : "sentences"
     let t0 = Date()

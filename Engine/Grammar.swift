@@ -193,6 +193,10 @@ public final class Grammar {
     /// ln of everything the model counts right after a context node (its one-character continuations): what
     /// a joint count is divided by to read it as "how likely after this context". Cached per node.
     private var massCache: [Int: Double] = [:]
+    /// 上一代缓存（R6 方案第 2 项）：满了不清空，换到这一代，旧的整代丢弃。随机输入下反复重算是
+    /// logMass 的主要成本；两代把命中率抬起来，而输出与清空策略无关，逐字相同。
+    private var massCold: [Int: Double] = [:]
+    private let massCacheCap = 16_384
     /// New contexts measured per decode at most (each is a scan of its node). Unlimited: a capped budget made the
     /// same keys read differently depending on what had been typed before (the contexts left over in the cache). The
     /// keyboard's warm-up decode measures the common ones before the first key; a cold long sentence costs ~10 ms more.
@@ -201,13 +205,14 @@ public final class Grammar {
     public func resetMassBudget() { massSpent = 0 }
     func logMass(_ node: Int) -> Double {
         if let m = massCache[node] { return m }
+        if let m = massCold[node] { return m }
         guard massSpent < massBudget else { return massCenter }
         massSpent += 1
         var vals: [Double] = []
         for (_, _, v) in children(of: node) { if let v { vals.append(Double(v) / 10_000) } }
         let top = vals.max() ?? 0
         let m = vals.isEmpty ? 0 : top + log(vals.reduce(0) { $0 + exp($1 - top) })
-        if massCache.count > 4096 { massCache.removeAll(keepingCapacity: true) }
+        if massCache.count >= massCacheCap { massCold = massCache; massCache.removeAll(keepingCapacity: true) }
         massCache[node] = m
         return m
     }
