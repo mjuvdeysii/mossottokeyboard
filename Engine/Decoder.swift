@@ -266,6 +266,21 @@ public final class Decoder {
     /// At most this many corrected syllables per position (R4).
     public var correctionAlternatives = 6
     /// Whether some lexicon word starts with the syllable (built on first use).
+    /// 漏按：一个键可以当作哪些音节（编码的第一键或第二键），按该音节最常用单字的分数排序。
+    private lazy var keyToSyllables: [Character: [UInt16]] = {
+        var out: [Character: [UInt16]] = [:]
+        for id in 0..<UInt16(lexicon.syllables.count) {
+            let code = spelling(of: id)
+            guard code.count == 2 else { continue }
+            for ch in code { out[ch, default: []].append(id) }
+        }
+        let score = { (id: UInt16) -> Int in
+            self.lexicon.singles(id).map { Int(self.lexicon.entry($0).score) }.max() ?? Int(Int16.min)
+        }
+        for ch in out.keys { out[ch]?.sort { score($0) > score($1) } }
+        return out
+    }()
+
     private lazy var syllableUsable: [Bool] = (0..<lexicon.syllables.count).map { !lexicon.range(firstSyllable: UInt16($0)).isEmpty }
 
     private func xiaoheSpans(_ taps: [Tap]) -> [[Span]] {
@@ -323,6 +338,10 @@ public final class Decoder {
     /// twice — the commonest slip — than for a stray one).
     /// Measured per scheme (a sentence with one key too many read right: 全拼 0 → 74–76%, 小鹤 0 → 47–54%; clean
     /// sentences unchanged, noisy ones within a sentence or two): 小鹤's pairs need the cheaper slip to realign.
+    /// 漏按一个键（小鹤，R5 方案第 2 项）：由词驱动，只在组词时生成。
+    public var missingKeyEnabled = true
+    public var xiaoheMissingPenalty = 3.0
+    public var missingKeyAlternatives = 6
     public var skipEnabled = true
     public var skipPenalty = 9.0
     public var skipDoublePenalty = 8.0
@@ -767,6 +786,31 @@ public final class Decoder {
                         }
                     }
                 }
+                // 漏按一个键（R5 方案第 2 项）：下一个音节只对上一个键——但前提是词库里真有这样一对词。
+                // 只在组词时生成，所以 span 数由词候选数决定，不由键数决定。
+                if missingKeyEnabled, correctionEnabled, first.kind != 1, firstEnd < n, !taps[firstEnd].group {
+                    let keyChar = Character(taps[firstEnd].key.lowercased())
+                    for sid in (keyToSyllables[keyChar] ?? []).prefix(missingKeyAlternatives) {
+                        // 不因为「这里已有一个两键读法」就跳过：漏按之后那个两键读法多半是错的，
+                        // 单键读法必须同时在场，让词与语言模型去选（这正是按位置做时昂贵的同一个道理，
+                        // 只是这里被词候选限流）
+                        let follow = lexicon.followers(first: first.id, second: sid)
+                        guard !follow.pairs.isEmpty || !follow.longer.isEmpty else { continue }
+                        let code = spelling(of: sid)
+                        guard let at = code.firstIndex(of: keyChar) else { continue }
+                        let cut = at == code.startIndex ? 0.0 : -1.0
+                        let sp: Double = spatialWeight * cut - correctionPenalty - xiaoheMissingPenalty
+                        let second = Span(end: firstEnd + 1, id: sid, spatial: sp, corrected: true, kind: 4)
+                        for idx in follow.pairs {
+                            let base: Double = Double(lexicon.entry(idx).score) / 100 - wordPenalty
+                            if base + sp < minWord { break }
+                            guard accepts(i, second.end, 2, base + fsp + sp) else { break }
+                            insert(Edge(start: i, end: second.end, score: base + fsp + sp, corrected: true, entry: idx,
+                                        userText: nil, ids: [], cuts: [firstEnd, second.end], kinds: [first.kind, 4]))
+                        }
+                    }
+                }
+
                 if let user {
                     for u in user.candidates(first: first.id) {
                         let L = u.ids.count
