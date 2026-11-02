@@ -519,7 +519,60 @@ func dumpLines() -> [String] {
     return out
 }
 
+/// slips 与 rare.kept 的门槛单独一份：`gate` 与只跑 slips 的 CI 任务共用，防止两处阈值漂移（R6 方案第 3 项）。
+func slipFloors(_ scheme: PinyinScheme) -> [(String, Double, Bool)] {
+    scheme == .xiaohe ? [
+            ("slip.words.legal.top1", 79.0, true),
+            ("slip.words.legal.top3", 96.5, true),
+            ("slip.words.other.top1", 96.5, true),   // control: the keys as typed spell nothing
+            ("slip.sent.legal.top1", 79.0, true),
+            ("slip.sent.legal.top3", 93.0, true),
+            ("slip.sent.other.top1", 96.0, true),
+            ("slip.words.edge.legal.top1", 85.5, true),   // on the key's edge (the gate's touch noise)
+            ("slip.words.centre.legal.top1", 40.5, true), // on the neighbour's centre
+            ("rare.kept", 99.5, true),         // uncommon words typed on purpose stay first (%)
+    ] : [
+            ("slip.words.legal.top1", 85.0, true),
+            ("slip.words.legal.top3", 97.5, true),
+            ("slip.words.other.top1", 97.5, true),
+            ("slip.sent.legal.top1", 85.0, true),
+            ("slip.sent.legal.top3", 95.0, true),
+            ("slip.sent.other.top1", 96.0, true),
+            ("rare.kept", 99.5, true),
+    ]
+}
+
 switch args[2] {
+case "slipsgate":   // EngineCLI <lexicon> slipsgate —— 只算 slips 与 rare.kept 并判门槛（R6 方案第 3 项）
+    // 把 slips 从每次的门禁里拆到并行的 CI 任务：它本机占门禁 72% 的时间（136.5 s → 38.4 s），
+    // 而门槛一条不少，仍然全量测。
+    var metrics: [String: Double] = [:]
+    let words = slipItems("words"), sents = slipItems("sentences")
+    func put(_ name: String, _ r: SlipCount, other: Bool) {
+        metrics["slip.\(name).legal.top1"] = r.pct(r.legal1, r.legal)
+        metrics["slip.\(name).legal.top3"] = r.pct(r.legal3, r.legal)
+        if other { metrics["slip.\(name).other.top1"] = r.pct(r.other1, r.other) }
+        print(String(format: "== slips %@: legal n=%d top1 %.1f%% top3 %.1f%% | other n=%d top1 %.1f%%", name, r.legal,
+                     r.pct(r.legal1, r.legal), r.pct(r.legal3, r.legal), r.other, r.pct(r.other1, r.other)))
+    }
+    put("words", countSlips(words, depth: "quarter", split: false, diagnose: false), other: true)
+    put("sent", countSlips(sents, depth: "quarter", split: false, diagnose: false), other: true)
+    if decoder.scheme == .xiaohe {
+        put("words.edge", countSlips(words, depth: "edge", split: false, diagnose: false), other: false)
+        put("words.centre", countSlips(words, depth: "centre", split: false, diagnose: false), other: false)
+    }
+    let rare = rareKept()
+    metrics["rare.kept"] = 100 * Double(rare.kept) / Double(max(rare.n, 1))
+    print("scheme:", decoder.scheme == .xiaohe ? "小鹤双拼" : "全拼")
+    var failed = false
+    for (k, v, atLeast) in slipFloors(decoder.scheme) {
+        let m = metrics[k] ?? .nan
+        let ok = atLeast ? m >= v : m <= v
+        print(String(format: "%@ %@ %.2f (%@ %.2f)", ok ? "PASS" : "FAIL", k, m, atLeast ? "≥" : "≤", v))
+        if !ok { failed = true }
+    }
+    if failed { exit(1) }
+
 case "dump":   // EngineCLI <lexicon> dump   （输出经 shasum 比对；不进 CI）
     let t0 = Date()
     let lines = dumpLines()
@@ -1048,7 +1101,7 @@ case "bench", "gate":
     if args[2] == "gate" {
         // Regression gate for CI: the release does not go out if typing quality drops below these floors.
         // 小鹤双拼 and 全拼 each have their own floors (set a little under the measured values)
-        let floors: [(String, Double, Bool)] = decoder.scheme == .xiaohe ? [
+        let floors: [(String, Double, Bool)] = (decoder.scheme == .xiaohe ? [
             ("words.on", 96.0, true),          // σ=0.22 touch noise, correction on, top-1 (%)
             ("words.broken", 1.0, false),      // clean words changed by correction (%) — at most
             ("sentences.perfect", 91.0, true), // perfect keys, top-1 equals the intended sentence (%)
@@ -1072,16 +1125,6 @@ case "bench", "gate":
             ("mixed.sentences.top1", 72.0, true),  // an English word inside a Chinese sentence (%)
             ("fix.caption.coverage", 98.0, true), // a corrected first candidate says what it changed (%)
             ("dedupe.pairs", 100.0, false),    // first three readings differing only in a last one-character word (at most two per sentence)
-            // R4 按偏一个键 (a quarter key onto a neighbour; the keys as typed still spell something = legal)
-            ("slip.words.legal.top1", 79.0, true),
-            ("slip.words.legal.top3", 96.5, true),
-            ("slip.words.other.top1", 96.5, true),   // control: the keys as typed spell nothing
-            ("slip.sent.legal.top1", 79.0, true),
-            ("slip.sent.legal.top3", 93.0, true),
-            ("slip.sent.other.top1", 96.0, true),
-            ("slip.words.edge.legal.top1", 85.5, true),   // on the key's edge (the gate's touch noise)
-            ("slip.words.centre.legal.top1", 40.5, true), // on the neighbour's centre
-            ("rare.kept", 99.5, true),         // uncommon words typed on purpose stay first (%)
         ] : [
             ("words.on", 97.0, true),
             ("words.broken", 1.0, false),
@@ -1100,22 +1143,12 @@ case "bench", "gate":
             ("fuzz.p99.ms", 100.0, false),
             ("extra.sentences.top1", 84.0, true),
             ("missing.sentences.top1", 48.0, true), // a sentence with one key left out still read right (%)
-            // 全拼的这一条在扩集那次提交里写成 78.0，但全拼门禁当时从未执行过（pipefail 那个 bug），
-            // 所以从未被验证；扩集前的基线是 75.0。按本轮方案的规则「门槛 = 调参集实测值下 1 点」定在 76.5，
-            // 78.0 作为 RECORD 的追赶目标留在 rounds/R5.md。公开同指标的量产输入法最好成绩 71.14%（手心）。
             ("mixed.sentences.top1", 76.5, true),
             ("fix.caption.coverage", 98.0, true),
             ("extra.tail.top1", 71.0, true),   // one key too many after the last key still read right (%)
             ("extra.tail.top3", 90.0, true),   // … among the first three (%)
             ("dedupe.pairs", 100.0, false),
-            ("slip.words.legal.top1", 85.0, true),
-            ("slip.words.legal.top3", 97.5, true),
-            ("slip.words.other.top1", 97.5, true),
-            ("slip.sent.legal.top1", 85.0, true),
-            ("slip.sent.legal.top3", 95.0, true),
-            ("slip.sent.other.top1", 96.0, true),
-            ("rare.kept", 99.5, true),
-        ]
+        ]) + slipFloors(decoder.scheme)
         print("scheme:", decoder.scheme == .xiaohe ? "小鹤双拼" : "全拼")
         var failed = false
         // 中英混输: English words people type in Chinese chat lead; Chinese syllables keep their Chinese first.
@@ -1293,12 +1326,23 @@ case "bench", "gate":
             + ["mixed.holdout.top1", "mixed.slip.holdout.top1", "mixed.slip.holdout.top3"].filter({ metrics[$0] != nil }) {
             print(String(format: "RECORD %@ %.2f", k, metrics[k] ?? .nan))
         }
+        var judged = 0
         for (k, v, atLeast) in floors {
             if env["SLIPS"] == "0", k.hasPrefix("slip.") || k == "rare.kept" { continue }
             let m = metrics[k] ?? .nan
             let ok = atLeast ? m >= v : m <= v
             print(String(format: "%@ %@ %.2f (%@ %.2f)", ok ? "PASS" : "FAIL", k, m, atLeast ? "≥" : "≤", v))
+            judged += 1
             if !ok { failed = true }
+        }
+        // 诊断数（R6）：门禁自己数一遍——有几次重构让某几条门槛被静默丢掉，编译还过得去。
+        // 判定的条数必须与 floors 的条数相符（SLIPS=0 时除外），否则这次运行本身作废。
+        let expected = floors.count - (env["SLIPS"] == "0" ? floors.filter { $0.0.hasPrefix("slip.") || $0.0 == "rare.kept" }.count : 0)
+        if judged != expected {
+            print("FAIL gate.coverage \(judged)/\(expected) floors judged")
+            failed = true
+        } else {
+            print("PASS gate.coverage \(judged)/\(expected) floors judged")
         }
         if failed { exit(1) }
     }

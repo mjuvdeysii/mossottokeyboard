@@ -87,8 +87,8 @@ jobs:
           set -o pipefail
           mkdir -p report
           status=0
-          /tmp/engine-cli Keyboard/Resources/lexicon.bin gate | grep -E "scheme|PASS|FAIL|RECORD" | tee report/engine-gate.txt || status=1
-          SCHEME=quanpin /tmp/engine-cli Keyboard/Resources/lexicon.bin gate | grep -E "scheme|PASS|FAIL|RECORD" | tee -a report/engine-gate.txt || status=1
+          SLIPS=0 /tmp/engine-cli Keyboard/Resources/lexicon.bin gate | grep -E "scheme|PASS|FAIL|RECORD" | tee report/engine-gate.txt || status=1
+          SLIPS=0 SCHEME=quanpin /tmp/engine-cli Keyboard/Resources/lexicon.bin gate | grep -E "scheme|PASS|FAIL|RECORD" | tee -a report/engine-gate.txt || status=1
           exit $status
       - name: Keyboard test bench (blocks the release on failure)
         run: |
@@ -114,9 +114,36 @@ jobs:
           git checkout -q --orphan logs-tmp && git rm -rqf --cached . && find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
           cp -r /tmp/report/. . && git add -A && git commit -qm "ci report ${GITHUB_SHA}" && git push -qf origin logs-tmp:ci-logs
 
+  engine-slips:
+    # slips 拆出来并行跑（R6 方案第 3 项）：它本机占门禁 72% 的时间（136.5 s → 38.4 s），
+    # 门槛一条不少——两个方案都全量测。主任务用 SLIPS=0 跳过这部分。
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: Keyboard/Resources/sentence.gram
+          key: sentence-gram-e34500ab44626dc0
+      - name: Sentence model
+        run: Tools/fetch_sentence_model.sh Keyboard/Resources/sentence.gram
+      - name: Build engine CLI
+        run: |
+          set -o pipefail
+          swiftc -O -enforce-exclusivity=unchecked Engine/*.swift EngineCLI/main.swift -o /tmp/engine-cli
+      - name: Slips gate (blocks the release on regression)
+        run: |
+          set -o pipefail
+          status=0
+          /tmp/engine-cli Keyboard/Resources/lexicon.bin slipsgate | grep -E "scheme|PASS|FAIL" || status=1
+          SCHEME=quanpin /tmp/engine-cli Keyboard/Resources/lexicon.bin slipsgate | grep -E "scheme|PASS|FAIL" || status=1
+          exit $status
+
   testflight:
     # Needs repository secrets ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8, APPLE_TEAM_ID (same values as the other app).
-    needs: build
+    needs: [build, engine-slips]
     if: github.ref == 'refs/heads/main'
     runs-on: macos-15
     timeout-minutes: 60
