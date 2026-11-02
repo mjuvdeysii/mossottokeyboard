@@ -435,7 +435,32 @@ func mixSlipScore(_ path: String, depth: String) -> MixSlipResult {
     return r
 }
 
+/// 漏按一个键的全量枚举（R5 方案第 2 项）：每句每个内位删掉一个键，看首选 / 前三。
+/// 只在命令里跑，不进每次的 CI 门禁（门禁上的 missing.sentences 是每句随机一处）。
+func missingSweep(_ set: String) -> (n: Int, top1: Int, top3: Int, keys: Int) {
+    var n = 0, t1 = 0, t3 = 0, keys = 0
+    for (text, letters) in slipItems(set) {
+        guard letters.count >= 4 else { continue }
+        for p in 1..<(letters.count - 1) {
+            var l = letters; l.remove(at: p)
+            let c = decoder.decode(l.map { Tap.exact($0) }).candidates
+            n += 1; keys += 1
+            if c.first?.text == text { t1 += 1 }
+            if c.prefix(3).contains(where: { $0.text == text }) { t3 += 1 }
+        }
+    }
+    return (n, t1, t3, keys)
+}
+
 switch args[2] {
+case "missing":   // EngineCLI <lexicon> missing <sentences|holdout>
+    let set = args.count > 3 ? args[3] : "sentences"
+    let t0 = Date()
+    let r = missingSweep(set)
+    let pct = { (a: Int) in r.n > 0 ? 100 * Double(a) / Double(r.n) : 0 }
+    print(String(format: "missing %@ | %@ | variants %d  %.0f s", set, decoder.scheme == .xiaohe ? "小鹤" : "全拼", r.n, Date().timeIntervalSince(t0)))
+    print(String(format: "  top1 %.1f%%  top3 %.1f%%", pct(r.top1), pct(r.top3)))
+
 case "mixslips":   // EngineCLI <lexicon> mixslips <mixed.tsv|mixed2.tsv> <quarter|edge|centre>
     let path = args.count > 3 ? args[3] : "EngineCLI/mixed.tsv", depth = args.count > 4 ? args[4] : "quarter"
     let t0 = Date()
@@ -736,7 +761,7 @@ case "bench", "gate":
         }
         metrics["extra.sentences.top1"] = 100 * Double(ok) / Double(max(total, 1))
         // and with one key left out instead (小鹤 too, as a record: a pair missing a key shifts every pair after it)
-        var mok = 0, mtotal = 0
+        var mok = 0, m3 = 0, mtotal = 0
         for (t, ids) in sentItems {
             var letters = Array(codeLetters(ids))
             guard letters.count >= 4 else { continue }
@@ -746,8 +771,10 @@ case "bench", "gate":
             if decoder.scheme == .quanpin { countFix(c.first, letters) }
             countDup(c, letters.count)
             if c.first?.text == t { mok += 1 } else if env["MISS_DEBUG"] != nil { print("   -", t, "→", c.first?.text ?? "-", "|", String(letters)) }
+            if c.prefix(3).contains(where: { $0.text == t }) { m3 += 1 }
         }
         metrics["missing.sentences.top1"] = 100 * Double(mok) / Double(max(mtotal, 1))
+        metrics["missing.sentences.top3"] = 100 * Double(m3) / Double(max(mtotal, 1))
         // 句末多按: one key too many after the last key (全拼) — half the sentences the last key pressed twice, half a
         // neighbour of it brushed; perfect keys otherwise. extra.tail.top1 / top3 (%)
         if decoder.scheme == .quanpin {
@@ -802,7 +829,7 @@ case "bench", "gate":
         }
         metrics["fix.caption.coverage"] = 100 * Double(fixSaid) / Double(max(fixMarked, 1))
         print(String(format: "== corrections that say what changed: %.1f%% (%d of %d)", metrics["fix.caption.coverage"]!, fixSaid, fixMarked))
-        if mtotal > 0 { print(String(format: "== one key missing: sentences top1 %.1f%%", metrics["missing.sentences.top1"]!)) }
+        if mtotal > 0 { print(String(format: "== one key missing: sentences top1 %.1f%%  top3 %.1f%%  (n=%d)", metrics["missing.sentences.top1"]!, metrics["missing.sentences.top3"]!, mtotal)) }
         print(String(format: "== one key too many: sentences top1 %.1f%%  top3 %.1f%%  (n=%d)", metrics["extra.sentences.top1"]!, 100 * Double(top3) / Double(max(total, 1)), total))
     }
 
@@ -1189,7 +1216,7 @@ case "bench", "gate":
             let r = r1Typos(env["TYPOS"] ?? "EngineCLI/r1_typos.tsv", debug: env["TYPO_DEBUG"] != nil)
             print("RECORD r1.top1 \(r.top1)/\(r.total)  r1.top3 \(r.top3)/\(r.total)  r1.exact.top1 \(r.exact1)/\(r.total)  r1.exact.top3 \(r.exact3)/\(r.total)")
         }
-        for k in ["two.sentences.top1", "two.sentences.top3"] + (decoder.scheme == .xiaohe ? ["missing.sentences.top1"] : [])
+        for k in ["two.sentences.top1", "two.sentences.top3"] + (decoder.scheme == .xiaohe ? ["missing.sentences.top1", "missing.sentences.top3"] : [])
             + ["mixed.holdout.top1", "mixed.slip.holdout.top1", "mixed.slip.holdout.top3"].filter({ metrics[$0] != nil }) {
             print(String(format: "RECORD %@ %.2f", k, metrics[k] ?? .nan))
         }
