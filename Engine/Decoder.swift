@@ -1213,7 +1213,7 @@ public final class Decoder {
         // rank<24；这里直接拿词库前 4,000 个两字词，用 4-gram 的 ln(count) 判「模型见过没有」，
         // 见过且足够常见的直接排到最前（按配额，不与 continuations 的分数混算）。
         var direct: [(Double, String)] = []
-        if context.count >= 2 {
+        if context.count >= 1 {   // 单字前文也算：你→好吗、请→问 这类全靠它
             let ctx2 = Array(context.suffix(2))
             for w in twoCharWords {
                 if let v = grammar.logCount(ctx2 + w), v >= predictionDirectFloor { direct.append((v, String(w))) }
