@@ -544,10 +544,6 @@ func slipFloors(_ scheme: PinyinScheme) -> [(String, Double, Bool)] {
             ("slip.sent.other.top1", 96.0, true),
             ("slip.words.edge.legal.top1", 85.5, true),   // on the key's edge (the gate's touch noise)
             ("slip.words.centre.legal.top1", 40.5, true), // on the neighbour's centre
-            ("predict.top8", 10.0, true),   // 联想整词前八：30 条一条 3.3 分，实测 4/30=13.3%，门槛取 3/30；不带加权是 2/30=6.7%（会红）
-            ("missing.sentences.top1", 10.5, true),   // 漏按：实测 33/305；门槛 32/305，一句的分辨率
-            ("pref.effect", 100.0, true),      // 两条已知错例喂入偏好后必须读对（质检组 R8）
-            ("pref.roundtrip", 100.0, true),   // 写盘→新实例读回必须命中
             ("rare.kept", 99.5, true),         // uncommon words typed on purpose stay first (%)
     ] : [
             ("slip.words.legal.top1", 85.0, true),
@@ -1155,6 +1151,10 @@ case "bench", "gate":
             ("mixed.sentences.top1", 72.5, true),   // 58/80：网格上最近的一档，余量 0 句（R8 质检组标记）  // an English word inside a Chinese sentence (%)
             ("fix.caption.coverage", 98.0, true), // a corrected first candidate says what it changed (%)
             ("dedupe.pairs", 30.0, false),    // first three readings differing only in a last one-character word (at most two per sentence)
+            ("missing.sentences.top1", 10.5, true),   // 漏按：全量 14.5%、门禁抽样 33/305；门槛 32/305
+            ("predict.top8", 10.0, true),      // 联想整词前八：30 条 smoke，4/30；不带加权 2/30（会红）
+            ("pref.effect", 100.0, true),      // 两条已知错例喂入偏好后必须读对（质检组 R8）
+            ("pref.roundtrip", 100.0, true),   // 写盘→新实例读回必须命中
         ] : [
             ("words.on", 97.0, true),
             ("words.broken", 1.0, false),
