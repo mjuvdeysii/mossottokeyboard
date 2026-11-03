@@ -89,15 +89,6 @@ if let v = env["PREF"], !v.isEmpty {
     decoder.user = ud
 }
 // 上下文偏好的验收钩子（诊断 2026-11-03）：PREF="前文|词;..." 只用于测量，键盘里由用户的选择写入
-if let v = env["PREF"], !v.isEmpty {
-    let ud = UserDictionary(lexicon: lex, url: nil)
-    for pair in v.split(separator: ";") {
-        let f = pair.split(separator: "|", omittingEmptySubsequences: false)
-        guard f.count == 2 else { continue }
-        ud.learnPreference(context: String(f[0]), text: String(f[1]))
-    }
-    decoder.user = ud
-}
 if let v = env["UW"].flatMap(Double.init) { decoder.userWeight = v }
 // language model: grammar.gram next to the lexicon (GRAMMAR=path overrides, GRAMMAR=0 turns it off; GW weight)
 if env["GRAMMAR"] != "0" {
@@ -711,17 +702,6 @@ case "predbench":
     print(String(format: "predbench: points %d  top1 %.1f%%  top6 %.1f%%  next word in top6 %.1f%%  chars covered %.1f%%", points,
                  100 * Double(hit1) / Double(points), 100 * Double(hit6) / Double(points), 100 * Double(exact) / Double(points),
                  100 * Double(saved) / Double(total)))
-
-case "predict":
-    // stdin: one context per line → what tends to follow it
-    guard let g = decoder.grammar else { print("no grammar"); exit(1) }
-    while let line = readLine() {
-        let t0 = Date()
-        let c = decoder.predictions(after: Array(line))
-        _ = g
-        print(line, "→", c.joined(separator: " "),
-              String(format: "%.1f ms", Date().timeIntervalSince(t0) * 1000))
-    }
 
 case "codes":
     for s in lex.syllables { print(s, XiaoheScheme.code(for: s) ?? "-") }

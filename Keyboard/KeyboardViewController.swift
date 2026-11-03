@@ -1013,9 +1013,9 @@ final class KeyboardViewController: UIInputViewController {
         guard c.tapCount > 0, c.tapCount <= taps.count else { return }
         // 用户没有选首选、而是改了口径：把「这段前文之后他选了什么」记下来（诊断 2026-11-03）。
         if i > 0, !c.text.isEmpty {
-            let beforeField = host.documentContextBeforeInput ?? ""
-            let beforeParts = committedParts.map { $0.text }.joined()
-            engine.learnPreference(context: beforeField + beforeParts, text: c.text)
+            // 评审 R2：committedParts 已经被写进输入框，再拼一次会让键变成「们我们」——
+            // 学习时用的键必须与解码时查询的键一致，所以只取插入前的现场文本。
+            engine.learnPreference(context: host.documentContextBeforeInput ?? "", text: c.text)
         }
         insertCommitted(c.text)
         // Learn: the word itself and where this user's finger actually lands.

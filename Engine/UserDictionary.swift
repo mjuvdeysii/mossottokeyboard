@@ -123,10 +123,16 @@ public final class UserDictionary {
     /// 键是「光标前最后三个字|用户选的字词」，值是选过的次数。存在 userdict 旁边的独立文件里，
     /// 与真实词库分开：它只影响排序，不改变词库。
     private var prefs: [String: Int] = [:]
+    /// 只尝试读一次文件（评审 R1：文件不存在时 prefs 恒为空，热路径会每次 decode 重试 200+ 次 open()，
+    /// 20 个键的解码时间从 1.45 ms 涨到 3.01 ms）。
+    private var prefsLoaded = false
+    public var maxPrefs = 4000
     private lazy var prefsURL: URL? = url?.deletingLastPathComponent().appendingPathComponent("context-prefs.json")
 
     private func loadPrefs() {
-        guard prefs.isEmpty, let prefsURL, let data = try? Data(contentsOf: prefsURL),
+        guard !prefsLoaded else { return }
+        prefsLoaded = true
+        guard let prefsURL, let data = try? Data(contentsOf: prefsURL),
               let list = try? JSONDecoder().decode([String: Int].self, from: data) else { return }
         prefs = list
     }
@@ -137,13 +143,16 @@ public final class UserDictionary {
         loadPrefs()
         let ctx = String(context.suffix(3))
         prefs[ctx + "|" + text, default: 0] += 1
+        if prefs.count > maxPrefs {   // 只增不减会让每次改选都重写越来越大的文件（评审 R2）
+            for k in prefs.keys.sorted(by: { prefs[$0]! < prefs[$1]! }).prefix(prefs.count - maxPrefs) { prefs[k] = nil }
+        }
         guard let prefsURL, let data = try? JSONEncoder().encode(prefs) else { return }
         try? data.write(to: prefsURL, options: .atomic)
     }
 
     /// 0…1：这条偏好有多强（选过一次 0.5，两次以上 1）。
     public func preference(context: String, text: String) -> Double {
-        if prefs.isEmpty { loadPrefs() }
+        if !prefsLoaded { loadPrefs() }
         guard !prefs.isEmpty else { return 0 }
         let n = prefs[String(context.suffix(3)) + "|" + text] ?? 0
         return n <= 0 ? 0 : (n == 1 ? 0.5 : 1)

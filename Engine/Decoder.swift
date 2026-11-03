@@ -798,7 +798,9 @@ public final class Decoder {
                 }
                 // 漏按一个键（R5 方案第 2 项）：下一个音节只对上一个键——但前提是词库里真有这样一对词。
                 // 只在组词时生成，所以 span 数由词候选数决定，不由键数决定。
-                if missingKeyEnabled, correctionEnabled, first.kind != 1, firstEnd < n, !taps[firstEnd].group {
+                // 评审 R3/R4：漏按只在小鹤成立（小鹤每个音节两个键；全拼单键本身就是完整音节，
+                // 生成出来会把「我饿」读成「我的」），并让全拼白白多 22% 解码时间。
+                if missingKeyEnabled, correctionEnabled, scheme == .xiaohe, first.kind != 1, firstEnd < n, !taps[firstEnd].group {
                     let keyChar = Character(taps[firstEnd].key.lowercased())
                     for sid in (keyToSyllables[keyChar] ?? []).prefix(missingKeyAlternatives) {
                         // 不因为「这里已有一个两键读法」就跳过：漏按之后那个两键读法多半是错的，
