@@ -23,6 +23,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     /// tap bring the keys straight back under the thumb.
     private let returnButton = UIButton(type: .system)
     private var selected = -1
+    private var collectionFade: CAGradientLayer?
     private var deleteTimer: Timer?
     private let gear = UIButton(type: .system)
 
@@ -152,6 +153,15 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         collection.delegate = self
         collection.register(Cell.self, forCellWithReuseIdentifier: "e")
         collection.register(Header.self, forSupplementaryViewOfKind: UICollectionView.elementKindSectionHeader, withReuseIdentifier: "h")
+
+        // 底部渐隐：静止时最后一行不会被「拼音」条硬切一刀（设计组 R8 第 7 条）
+        let fade = CAGradientLayer()
+        fade.colors = [UIColor.clear.cgColor, UIColor.black.cgColor]
+        fade.locations = [0, 1]
+        fade.startPoint = CGPoint(x: 0.5, y: 0)
+        fade.endPoint = CGPoint(x: 0.5, y: 1)
+        collection.layer.mask = fade
+        collectionFade = fade
         addSubview(collection)
 
         let cfg = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
@@ -322,6 +332,11 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         // narrow phones: the gear gives its room to the tabs (settings stay a long press on the 表情 key away)
         gear.isHidden = b.width - 2 * side - 12 < 230
         bar.frame = CGRect(x: side + 6, y: b.height - barH, width: b.width - 2 * side - 12, height: barH - 4)
+        if let fade = collectionFade {
+            fade.frame = collection.bounds
+            let clearAt = max(0, 1 - 16 / max(collection.bounds.height, 1))   // 底部 16pt 渐隐
+            fade.locations = [NSNumber(value: clearAt), 1]
+        }
         collection.collectionViewLayout.invalidateLayout()
         updateSelection()
     }
