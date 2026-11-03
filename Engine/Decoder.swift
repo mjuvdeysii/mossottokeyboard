@@ -1071,8 +1071,25 @@ public final class Decoder {
         let rawText = taps.contains(where: { $0.group }) ? preedit.replacingOccurrences(of: " ", with: "") : raw
         promoteUserPhrases(taps, &result)
         promoteChatAbbreviation(taps, &result)
+        promoteDeReading(&result)
         add(Candidate(text: rawText, tapCount: n, syllables: [], corrected: false, score: -.infinity), [])
         return Result(candidates: result, preedit: preedit)
+    }
+
+    /// 的 / 得（诊断 2026-11-03，24 个错例里 2 条）：首选里「的」后面紧跟补语的开头时，
+    /// 若同一键数下存在把那个「的」写成「得」的读法，就把它提到第一。只换顺序，不改文本、不重排其余候选。
+    private static let deComplements: Set<Character> = ["太", "不", "很", "非", "特", "真", "挺", "好", "快", "慢", "更", "最", "多", "少"]
+    private func promoteDeReading(_ result: inout [Candidate]) {
+        guard let top = result.first, result.count > 1 else { return }
+        let chars = Array(top.text)
+        guard let pos = chars.indices.first(where: { i in
+            i + 1 < chars.count && chars[i] == "的" && Self.deComplements.contains(chars[i + 1])
+        }) else { return }
+        var want = chars; want[pos] = "得"
+        let target = String(want)
+        guard let k = result.firstIndex(where: { $0.text == target && $0.tapCount == top.tapCount }) else { return }
+        let c = result.remove(at: k)
+        result.insert(c, at: 0)
     }
 
     /// The keys that spell a syllable in the current scheme.
