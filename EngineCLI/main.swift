@@ -80,6 +80,8 @@ if let v = env["XSKIPP"].flatMap(Double.init) { decoder.xiaoheSkipPenalty = v }
 if let v = env["T9PFX"].flatMap(Double.init) { decoder.t9PrefixExtra = v }
 if let v = env["T9MIN"].flatMap(Double.init) { decoder.t9MinWordScore = v }
 if let v = env["PREDB"].flatMap(Double.init) { decoder.predictionWordBonus = v }
+if let v = env["PDF"].flatMap(Double.init) { decoder.predictionDirectFloor = v }
+if let v = env["PDQ"].flatMap(Int.init) { decoder.predictionDirectQuota = v }
 if let v = env["PREF"], !v.isEmpty {
     let ud = UserDictionary(lexicon: lex, url: nil)
     for pair in v.split(separator: ";") {

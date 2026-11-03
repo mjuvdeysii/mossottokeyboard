@@ -1173,6 +1173,21 @@ public final class Decoder {
     /// Next-word suggestions for the text before the cursor: what the language model has seen right after it (the
     /// longest context it knows first) — one character, or a two-character word the lexicon lists — best first.
     /// predbench (word boundaries of the sentence sets): the next word among the first six about one time in five.
+    /// 词库里的两字词，按词频取前 N 个（R9：联想的「模型知道却出不来」就是缺这一条直查路径）。
+    private lazy var twoCharWords: [[Character]] = {
+        var best: [(Int, [Character])] = []
+        let cap = 4000
+        for i in 0..<lexicon.entryCount {
+            let e = lexicon.entry(i)
+            guard e.sylCount == 2, e.textLength <= 6 else { continue }   // textLength 是 UTF-8 字节数
+            let t = Array(lexicon.text(e))
+            guard t.count == 2 else { continue }
+            best.append((Int(e.score), t))
+        }
+        best.sort { $0.0 > $1.0 }
+        return best.prefix(cap).map { $0.1 }
+    }()
+
     public func predictions(after context: [Character], limit: Int = 8) -> [String] {
         guard let grammar = predictionGrammar ?? grammar, let last = context.last, Grammar.isHan(last) else { return [] }
         _ = grammar
@@ -1194,6 +1209,18 @@ public final class Decoder {
             if chars.count == 2, wordScore(chars[0], chars[1]) != nil { score += predictionWordBonus }
             scored.append((t, score))
         }
+        // 两字词直查（R9 方案第 1 项）：continuations 只从「首字排前 24」的单字长词，绕不过 Grammar.swift 的
+        // rank<24；这里直接拿词库前 4,000 个两字词，用 4-gram 的 ln(count) 判「模型见过没有」，
+        // 见过且足够常见的直接排到最前（按配额，不与 continuations 的分数混算）。
+        var direct: [(Double, String)] = []
+        if context.count >= 2 {
+            let ctx2 = Array(context.suffix(2))
+            for w in twoCharWords {
+                if let v = grammar.logCount(ctx2 + w), v >= predictionDirectFloor { direct.append((v, String(w))) }
+            }
+            direct.sort { $0.0 > $1.0 }
+            if direct.count > predictionDirectQuota { direct = Array(direct.prefix(predictionDirectQuota)) }
+        }
         // 词与单字各留名额（R7 方案第 3 项）：词的加权不该把单字候选整个挤掉——
         // 门禁里就有一条「我们 → 候选里要有『在』」的要求。词最多 4 个，其余按分数补。
         let sorted = scored.sorted { $0.1 > $1.1 }
@@ -1210,13 +1237,27 @@ public final class Decoder {
         }
         // what this user wrote after the same words before comes first
         var out = user?.continuations(after: context) ?? []
-        for (t, _) in merged where !out.contains(t) { out.append(t) }
+        // 模型自己的前四条优先（那里有「我们 → 在」这类最高频单字），直查的两字词排在它们之后，
+        // 再其余。这样既补了「模型知道却出不来」的搭配，又不会把高频单字挤掉。
+        for (t, _) in merged.prefix(4) where !out.contains(t) { out.append(t) }
+        for (_, t) in direct.prefix(2) where !out.contains(t) { out.append(t) }
+        for (t, _) in merged.dropFirst(4) where !out.contains(t) { out.append(t) }
+        // 单字不能被词挤光（门禁里有一条「我们 → 候选里要有在」）：前八里若少于两个字，把最好的单字提上来。
+        let single = { (t: String) in t.count == 1 }
+        if out.prefix(8).filter(single).count < 2, let i = out.firstIndex(where: { single($0) && $0 != "" }) {
+            let ch = out.remove(at: i)
+            out.insert(ch, at: min(7, out.count))
+        }
         return Array(out.prefix(limit))
     }
     public var predictionSplitWord = 11.0
     public var predictionSplitPenalty = 3.0
     /// 联想里两字成词候选的加权（自然对数单位）
     public var predictionWordBonus = 6.0
+    /// 两字词直查的入选下限（自然对数；低于它的搭配模型基本没见过）
+    public var predictionDirectFloor = 10.0   // ln(count)：10 ≈ 该 4-gram 出现过 2.2 万次
+    /// 直查最多顶到最前的条数
+    public var predictionDirectQuota = 5
 
     /// 自造词 first: a phrase of the user's own (one the lexicon does not have) whose keys are exactly what was typed —
     /// spelled out, or by its initials (zzx for 张梓萱) — leads the candidates; one the keys begin (mosuotai for
