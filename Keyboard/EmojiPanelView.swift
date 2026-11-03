@@ -26,6 +26,14 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     private var deleteTimer: Timer?
     private let gear = UIButton(type: .system)
 
+    /// 底栏的 7 个目的地（设计评审 2026-11-03）：11 格挤 294pt 时每格 26.7pt，点错会落到空分类。
+    /// 旅行/物品/旗帜仍是列表分组，只是不占底栏。section 号 = sections 的下标（常用 0，分类 1…8，颜文字 10）。
+    static let tabDestinations: [(section: Int, name: String, symbol: String)] = [
+        (0, "常用", "clock"), (1, "笑脸与人物", "face.smiling"), (2, "动物与自然", "pawprint"),
+        (3, "食物与饮料", "fork.knife"), (4, "活动", "soccerball"), (7, "符号", "heart"),
+        (10, "Mosto 颜文字", ""),
+    ]
+
     static let categoryNames: [(String, String)] = [
         ("笑脸与人物", "face.smiling"), ("动物与自然", "pawprint"), ("食物与饮料", "fork.knife"), ("活动", "soccerball"),
         ("旅行与地点", "car"), ("物品", "lightbulb"), ("符号", "heart"), ("旗帜", "flag"),
@@ -177,44 +185,27 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         bar.axis = .horizontal
         bar.distribution = .fillEqually
         addSubview(bar)
-        let tabCfg = UIImage.SymbolConfiguration(pointSize: 17, weight: .medium)
-        for (i, (name, symbol)) in ([("常用", "clock")] + Self.categoryNames).enumerated() {
+        let tabCfg = UIImage.SymbolConfiguration(pointSize: 21, weight: .medium)
+        // 7 个目的地，每格在 402pt 上约 43pt、375pt 上约 39pt（设计评审：原来 11 格只有 26.7pt）。
+        for dest in Self.tabDestinations {
             let b = UIButton(type: .system)
-            b.setImage(UIImage(systemName: symbol, withConfiguration: tabCfg), for: .normal)
+            if !dest.symbol.isEmpty { b.setImage(UIImage(systemName: dest.symbol, withConfiguration: tabCfg), for: .normal) }
             b.tintColor = Theme.secondaryText
-            b.tag = i
-            b.accessibilityLabel = name
+            b.tag = dest.section
+            b.accessibilityLabel = dest.name
             b.layer.cornerRadius = 8
             b.layer.cornerCurve = .continuous
             b.addTarget(self, action: #selector(tabTapped(_:)), for: .touchUpInside)
             bar.addArrangedSubview(b)
             tabButtons.append(b)
         }
-        // the last tab: Mosto's face (his 颜文字)
-        let mosto = UIButton(type: .custom)
-        // drawn at the size of the other tab icons (a 24 pt face), so the button needs no insets
-        if let face = UIImage(named: "mosto_day", in: Bundle(for: EmojiPanelView.self), with: nil) {
-            let side: CGFloat = 26
-            let small = UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { _ in
-                let scale = min(side / face.size.width, side / face.size.height)
-                let w = face.size.width * scale, h = face.size.height * scale
-                face.draw(in: CGRect(x: (side - w) / 2, y: (side - h) / 2, width: w, height: h))
-            }
-            mosto.setImage(small, for: .normal)
+        // 颜文字 tab 用「颜」字：彩色位图混在单色图标行里是异物（设计组 R8）；脸留在列表头当品牌
+        if let kaomojiTab = tabButtons.last {
+            kaomojiTab.setImage(nil, for: .normal)
+            kaomojiTab.setTitle("颜", for: .normal)
+            kaomojiTab.titleLabel?.font = Theme.font(17, .semibold)
+            kaomojiTab.setTitleColor(Theme.secondaryText, for: .normal)
         }
-        mosto.tag = Self.categoryNames.count + 1
-        mosto.accessibilityLabel = Self.kaomojiName
-        mosto.layer.cornerRadius = 8
-        mosto.layer.cornerCurve = .continuous
-        mosto.addTarget(self, action: #selector(tabTapped(_:)), for: .touchUpInside)
-        bar.addArrangedSubview(mosto)
-        tabButtons.append(mosto)
-        // settings stay one long press away from here too (the 表情 key's long press opens them as well)
-        gear.setImage(UIImage(systemName: "gearshape", withConfiguration: tabCfg), for: .normal)
-        gear.tintColor = Theme.secondaryText
-        gear.accessibilityLabel = "设置"
-        gear.addTarget(self, action: #selector(settingsTapped), for: .touchUpInside)
-        bar.addArrangedSubview(gear)
 
         titleLabel.font = Theme.font(12, .bold)
         titleLabel.textColor = Theme.secondaryText
@@ -415,10 +406,21 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         guard s != selected, s < sections.count else { return }
         selected = s
         titleLabel.text = sections[s].name
-        for (i, b) in tabButtons.enumerated() {
-            b.tintColor = i == s ? Theme.keyText : Theme.secondaryText
-            b.backgroundColor = i == s ? Theme.functionKey : .clear
-            b.isEnabled = !sections[i].items.isEmpty
+        for b in tabButtons {
+            b.tintColor = b.tag == s ? Theme.keyText : Theme.secondaryText
+            b.setTitleColor(b.tag == s ? Theme.keyText : Theme.secondaryText, for: .normal)
+            // 选中不再用 1.46:1 的浅色填充（日光下几乎看不见）：图标加深 + 底下 2.5pt 短横线。
+            b.backgroundColor = .clear
+            b.viewWithTag(9011)?.removeFromSuperview()
+            if b.tag == s {
+                let line = UIView(frame: CGRect(x: (b.bounds.width - 18) / 2, y: b.bounds.height - 5, width: 18, height: 2.5))
+                line.tag = 9011
+                line.backgroundColor = Theme.keyText
+                line.layer.cornerRadius = 1.25
+                b.addSubview(line)
+            }
+            // 分类为空时按钮不可点（空分类点下去什么也不会发生，用户会以为键盘坏了）
+            b.isEnabled = b.tag < sections.count && !sections[b.tag].items.isEmpty
         }
     }
 
