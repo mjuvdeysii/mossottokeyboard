@@ -534,6 +534,31 @@ func dumpLines() -> [String] {
 }
 
 /// slips 与 rare.kept 的门槛单独一份：`gate` 与只跑 slips 的 CI 任务共用，防止两处阈值漂移（R6 方案第 3 项）。
+/// 漏按度量：每句删掉一个键（固定种子 11，与被它前后消耗多少随机数无关），
+/// 主门禁与并行的 missinggate 都用它，两个命令的结果才可比。
+func missingStats(_ sentItems: [(String, [UInt16])], debug: Bool,
+                  countDup: (([Candidate], Int) -> Void)? = nil,
+                  countFix: ((Candidate?, [Character]) -> Void)? = nil) -> (top1: Int, top3: Int, n: Int) {
+    // 全量枚举：句子的每个可删位置各删一次（本机约 12 s）。比「每句随机挑一个位置」稳，
+    // 而且 gate 与 missinggate 跑的是同一件事，两个命令的数字必然一致。
+    var ok = 0, t3 = 0, n = 0
+    for (t, ids) in sentItems {
+        let base = Array(codeLetters(ids))
+        guard base.count >= 4 else { continue }
+        for p in 1..<(base.count - 1) {
+            var letters = base
+            letters.remove(at: p)
+            let c = decoder.decode(letters.map { Tap.exact($0) }).candidates
+            n += 1
+            countFix?(c.first, letters)
+            countDup?(c, letters.count)
+            if c.first?.text == t { ok += 1 } else if debug { print("   -", t, "→", c.first?.text ?? "-", "|", String(letters)) }
+            if c.prefix(3).contains(where: { $0.text == t }) { t3 += 1 }
+        }
+    }
+    return (ok, t3, n)
+}
+
 func slipFloors(_ scheme: PinyinScheme) -> [(String, Double, Bool)] {
     scheme == .xiaohe ? [
             ("slip.words.legal.top1", 79.0, true),
@@ -579,6 +604,21 @@ case "predict":   // EngineCLI <lexicon> predict [tsv] —— 联想验收（R7 
     func pct(_ k: Int) -> String { String(format: "%.1f%%", n > 0 ? 100 * Double(k) / Double(n) : 0) }
     print("predict n=\(n)  整词第一 \(pct(hit1))  整词前三 \(pct(hit3))  整词前八 \(pct(hit8))  首字命中 \(pct(first))")
     for m in misses { print("   ✗", m) }
+
+case "missinggate":   // EngineCLI <lexicon> missinggate —— 只算漏按并判门槛（R10：门禁变慢后的拆分）
+    let items = loadSentences("EngineCLI/sentences.tsv,EngineCLI/sentences2.tsv")
+    let r = missingStats(items, debug: false)
+    let pct = 100 * Double(r.top1) / Double(max(r.n, 1))
+    print(String(format: "== one key missing: sentences top1 %.1f%%  top3 %.1f%%  (n=%d)", pct,
+                 100 * Double(r.top3) / Double(max(r.n, 1)), r.n))
+    var failed = false
+    for (k, v, atLeast) in [("missing.sentences.top1", 14.0, true)] {
+        let m = k.hasSuffix("top1") ? pct : 0
+        let ok = atLeast ? m >= v : m <= v
+        print(String(format: "%@ %@ %.2f (%@ %.2f)", ok ? "PASS" : "FAIL", k, m, atLeast ? "≥" : "≤", v))
+        if !ok { failed = true }
+    }
+    if failed { exit(1) }
 
 case "slipsgate":   // EngineCLI <lexicon> slipsgate —— 只算 slips 与 rare.kept 并判门槛（R6 方案第 3 项）
     // 把 slips 从每次的门禁里拆到并行的 CI 任务：它本机占门禁 72% 的时间（136.5 s → 38.4 s），
@@ -913,18 +953,9 @@ case "bench", "gate":
         }
         metrics["extra.sentences.top1"] = 100 * Double(ok) / Double(max(total, 1))
         // and with one key left out instead (小鹤 too, as a record: a pair missing a key shifts every pair after it)
-        var mok = 0, m3 = 0, mtotal = 0
-        for (t, ids) in sentItems {
-            var letters = Array(codeLetters(ids))
-            guard letters.count >= 4 else { continue }
-            letters.remove(at: 1 + Int(rng.next() * Double(letters.count - 2)))
-            let c = decoder.decode(letters.map { Tap.exact($0) }).candidates
-            mtotal += 1
-            if decoder.scheme == .quanpin { countFix(c.first, letters) }
-            countDup(c, letters.count)
-            if c.first?.text == t { mok += 1 } else if env["MISS_DEBUG"] != nil { print("   -", t, "→", c.first?.text ?? "-", "|", String(letters)) }
-            if c.prefix(3).contains(where: { $0.text == t }) { m3 += 1 }
-        }
+        // 全量枚举会让 dedupe 计数变成原来的十几倍，那条指标只由 extra 那一段喂（它的语义就是「多按一个键时」）
+        let miss = missingStats(sentItems, debug: env["MISS_DEBUG"] != nil, countDup: nil, countFix: decoder.scheme == .quanpin ? { countFix($0, $1) } : nil)
+        let (mok, m3, mtotal) = (miss.top1, miss.top3, miss.n)
         metrics["missing.sentences.top1"] = 100 * Double(mok) / Double(max(mtotal, 1))
         metrics["missing.sentences.top3"] = 100 * Double(m3) / Double(max(mtotal, 1))
         // 句末多按: one key too many after the last key (全拼) — half the sentences the last key pressed twice, half a
@@ -1150,8 +1181,8 @@ case "bench", "gate":
             ("extra.sentences.top1", 70.0, true),  // a sentence with one key too many still read right (%)
             ("mixed.sentences.top1", 72.5, true),   // 58/80：网格上最近的一档，余量 0 句（R8 质检组标记）  // an English word inside a Chinese sentence (%)
             ("fix.caption.coverage", 98.0, true), // a corrected first candidate says what it changed (%)
-            ("dedupe.pairs", 30.0, false),    // first three readings differing only in a last one-character word (at most two per sentence)
-            ("missing.sentences.top1", 10.5, true),   // 漏按：全量 14.5%、门禁抽样 33/305；门槛 32/305
+            ("dedupe.pairs", 8.0, false),    // first three readings differing only in a last one-character word (at most two per sentence)
+            ("missing.sentences.top1", 14.0, true),   // 漏按全量（3,966 个变体）：实测 14.55%，门槛 14.0
             ("predict.top8", 10.0, true),      // 联想整词前八：30 条 smoke，4/30；不带加权 2/30（会红）
             ("pref.effect", 100.0, true),      // 两条已知错例喂入偏好后必须读对（质检组 R8）
             ("pref.roundtrip", 100.0, true),   // 写盘→新实例读回必须命中
@@ -1177,7 +1208,7 @@ case "bench", "gate":
             ("fix.caption.coverage", 98.0, true),
             ("extra.tail.top1", 71.0, true),   // one key too many after the last key still read right (%)
             ("extra.tail.top3", 90.0, true),   // … among the first three (%)
-            ("dedupe.pairs", 90.0, false),   // 全拼实测 82（R8 质检组）
+            ("dedupe.pairs", 80.0, false),   // 全拼实测 71
         ]) + slipFloors(decoder.scheme)
         print("scheme:", decoder.scheme == .xiaohe ? "小鹤双拼" : "全拼")
         var failed = false
@@ -1418,7 +1449,8 @@ case "bench", "gate":
         // 质检组 R8：这五条断言以前不在计数里，删掉它们 coverage 仍是 N/N。
         // 现在它们也进 judged，coverage 才能反映「这次到底判了几条」。
         for a in assertions { if metrics[a] == nil { metrics[a] = 0; print("FAIL \(a) not judged"); failed = true } }
-        let expected = floors.count - (env["SLIPS"] == "0" ? floors.filter { $0.0.hasPrefix("slip.") || $0.0 == "rare.kept" }.count : 0) + assertions.count
+        let skippedSlips = env["SLIPS"] == "0" ? floors.filter { $0.0.hasPrefix("slip.") || $0.0 == "rare.kept" }.count : 0
+        let expected = floors.count - skippedSlips + assertions.count
         if judged != expected {
             print("FAIL gate.coverage \(judged)/\(expected) floors judged")
             failed = true
