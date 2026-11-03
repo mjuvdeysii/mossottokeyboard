@@ -350,8 +350,8 @@ public final class Decoder {
     /// sentences unchanged, noisy ones within a sentence or two): 小鹤's pairs need the cheaper slip to realign.
     /// 漏按一个键（小鹤，R5 方案第 2 项）：由词驱动，只在组词时生成。
     public var missingKeyEnabled = true
-    public var xiaoheMissingPenalty = 3.0
-    public var missingKeyAlternatives = 6
+    public var xiaoheMissingPenalty = 2.0
+    public var missingKeyAlternatives = 32
     public var skipEnabled = true
     public var skipPenalty = 9.0
     public var skipDoublePenalty = 8.0
