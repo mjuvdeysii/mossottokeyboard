@@ -85,7 +85,8 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     var showsPreedit = false { didSet { setNeedsLayout() } }
 
     static var font: UIFont { Theme.font(20, .regular) }
-    static var fixFont: UIFont { Theme.font(10.5, .semibold) }
+    /// 修正说明的最小字号：10.5 低于可读下限（HIG 的 11pt），量过对比度没问题但字太小，抬到 11。
+    static var fixFont: UIFont { Theme.font(11, .semibold) }
     /// Below this height (landscape) a caption sits beside its candidate, not under it.
     static let twoLineHeight: CGFloat = 44
 
