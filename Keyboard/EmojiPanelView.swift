@@ -43,6 +43,23 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         "( •̀ ω •́ )✧", "(⊙ˍ⊙)", "Σ(っ °Д °;)っ", "(╬▔皿▔)╯", "(ノへ￣、)", "(´▽`ʃ♡ƪ)",
         "♪(´▽｀)", "(～﹃～)~zZ", "(￣︶￣)↗", "(^_−)☆", "(´･ω･`)", "_(:з」∠)_",
         "(～￣▽￣)～", "щ(ﾟДﾟщ)", "(×_×)", "(〃＾▽＾〃)", "(´∀｀)♡", "(๑•́ ₃ •̀๑)",
+        // 高兴 / 兴奋
+        "ヽ(°〇°)ﾉ", "＼(^o^)／", "(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧", "(๑˃ᴗ˂)ﻭ", "٩(◕‿◕)۶", "(⌒▽⌒)☆",
+        "(o˘◡˘o)", "ヽ(・∀・)ﾉ", "(*≧ω≦*)", "(灬º‿º灬)♡",
+        // 难过 / 委屈
+        "(´；ω；`)", "(｡╯︵╰｡)", "(っ˘̩╭╮˘̩)っ", "(ಥ﹏ಥ)", "(ᗒᗣᗕ)՞", "(இ﹏இ`｡)",
+        // 生气 / 无语
+        "(＃`Д´)", "(눈_눈)", "(￣ヘ￣)", "(￣ω￣;)", "(；一_一)", "(・_・;)",
+        // 惊讶
+        "(°ロ°) !", "(⊙_⊙)", "Σ(°△°|||)︴", "(ﾟдﾟ)", "(O_O;)", "(◎_◎;)",
+        // 害羞 / 可爱
+        "(⁄ ⁄>⁄ ▽ ⁄<⁄ ⁄)", "(*/▽＼*)", "(๑´ㅂ`๑)", "(灬ºωº灬)", "(灬´ω`灬)",
+        // 加油 / 打气
+        "(๑•̀ㅂ•́)ง", "٩(ˊᗜˋ*)و", "(ง •̀_•́)ง", "ᕙ(⇀‸↼‶)ᕗ",
+        // 摸鱼 / 躺平
+        "(－_－) zzZ", "(￣o￣) zzZ", "_(┐「ε:)_", "(¯﹃¯)", "(´-ω-`)",
+        // 打招呼 / 告辞
+        "(・ω・)ノ", "( ´ ▽ ` )ﾉ", "ヾ(•ω•`)o", "(￣▽￣)ノ", "(*・ω・)ﾉ",
     ]
 
     final class Cell: UICollectionViewCell {
@@ -63,6 +80,9 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         override func layoutSubviews() {
             super.layoutSubviews()
             label.frame = contentView.bounds
+            // 字号跟着格子走：小屏每行多一格、格子变小，emoji 也相应缩小，不再留一圈空
+            let side = min(contentView.bounds.width, contentView.bounds.height)
+            label.font = .systemFont(ofSize: min(34, max(20, floor(side * 0.78))))
         }
         override var isHighlighted: Bool {
             didSet { contentView.backgroundColor = isHighlighted ? Theme.functionKey : .clear }
@@ -96,7 +116,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         layout.scrollDirection = .vertical
         layout.minimumInteritemSpacing = 0
         layout.minimumLineSpacing = 0
-        layout.sectionInset = UIEdgeInsets(top: 0, left: 4, bottom: 6, right: 4)
+        layout.sectionInset = UIEdgeInsets(top: 0, left: 4, bottom: 12, right: 4)
         layout.sectionHeadersPinToVisibleBounds = false
         collection = UICollectionView(frame: .zero, collectionViewLayout: layout)
         super.init(frame: frame)
@@ -142,7 +162,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         bar.axis = .horizontal
         bar.distribution = .fillEqually
         addSubview(bar)
-        let tabCfg = UIImage.SymbolConfiguration(pointSize: 15, weight: .regular)
+        let tabCfg = UIImage.SymbolConfiguration(pointSize: 17, weight: .medium)
         for (i, (name, symbol)) in ([("常用", "clock")] + Self.categoryNames).enumerated() {
             let b = UIButton(type: .system)
             b.setImage(UIImage(systemName: symbol, withConfiguration: tabCfg), for: .normal)
@@ -159,7 +179,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         let mosto = UIButton(type: .custom)
         // drawn at the size of the other tab icons (a 24 pt face), so the button needs no insets
         if let face = UIImage(named: "mosto_day", in: Bundle(for: EmojiPanelView.self), with: nil) {
-            let side: CGFloat = 24
+            let side: CGFloat = 26
             let small = UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { _ in
                 let scale = min(side / face.size.width, side / face.size.height)
                 let w = face.size.width * scale, h = face.size.height * scale
@@ -278,7 +298,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         // 8 across in portrait (as the iOS emoji keyboard), more in landscape
         let w = collection.bounds.width - 8
         guard w > 100 else { return 40 }      // not laid out yet: never a zero or negative item size
-        let across = max(8, Int(w / 46))
+        let across = max(8, Int(w / 42))
         return floor(w / CGFloat(across))
     }
 
@@ -286,16 +306,16 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         super.layoutSubviews()
         let b = bounds
         guard b.width > 100, b.height > 100 else { return }   // before the panel has its real frame
-        let barH: CGFloat = 40
+        let barH: CGFloat = 36
         titleLabel.frame = CGRect(x: 12, y: 0, width: b.width - 24, height: 24)
         collection.frame = CGRect(x: 0, y: 2, width: b.width, height: b.height - 2 - barH - 4)
-        let side: CGFloat = 56
+        let side: CGFloat = 48
         backButton.frame = CGRect(x: 4, y: b.height - barH - 2, width: side, height: barH - 4)
         deleteButton.frame = CGRect(x: b.width - side - 4, y: b.height - barH - 2, width: side, height: barH - 4)
         returnButton.frame = deleteButton.frame
         // narrow phones: the gear gives its room to the tabs (settings stay a long press on the 表情 key away)
-        gear.isHidden = b.width - 2 * side - 16 < 230
-        bar.frame = CGRect(x: side + 8, y: b.height - barH, width: b.width - 2 * side - 16, height: barH - 4)
+        gear.isHidden = b.width - 2 * side - 12 < 230
+        bar.frame = CGRect(x: side + 6, y: b.height - barH, width: b.width - 2 * side - 12, height: barH - 4)
         collection.collectionViewLayout.invalidateLayout()
         updateSelection()
     }
