@@ -15,7 +15,9 @@ concurrency:
 jobs:
   build:
     runs-on: macos-15
-    timeout-minutes: 55
+    # 门禁变慢了（漏按每位置 32 个候选：本机 136 s → 152 s，CI 从 22 分钟涨到 35+），
+    # 55 分钟已经贴边；先给到 90，同时 R10 记着「把漏按拆成并行任务」是下一版要做的。
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       # the sentence model (万象, ~400 MB, CC BY 4.0) is not in git: cached here, fetched and checksummed when missing
