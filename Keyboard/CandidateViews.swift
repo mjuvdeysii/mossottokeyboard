@@ -65,6 +65,9 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     /// What each pooled label shows now (so a label is only redrawn when it changes).
     private var poolKeys: [String] = []
     private var isPrediction = false
+    /// 联想态的行首标记：2pt 竖线 + 无障碍名「联想」。候选态不出现（Norman：状态要可见，
+    /// 但不要用装饰替代层级——一条线足够，不加底色不加图标）。
+    private let predictionMark = UIView()
     private var candidates: [Candidate] = []
     /// Candidates laid out so far (the row is laid out a screen or two ahead of what is shown), their widths, and
     /// measured widths by text and caption, kept through a composition.
@@ -110,6 +113,9 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         super.init(frame: frame)
         backgroundColor = Theme.touchable   // never fully clear: see Theme.touchable
         preedit.font = Theme.font(14, .medium)
+        predictionMark.isHidden = true
+        predictionMark.layer.cornerRadius = 1
+        addSubview(predictionMark)
         preedit.textColor = Theme.secondaryText
         addSubview(preedit)
         // the row scrolls with the system's own inertia and bounce; no scroll bar; a finger that lands highlights
@@ -234,6 +240,10 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
                 }
                 e.accessibilityTraits = .button
                 if i == 0, !isPrediction { e.accessibilityHint = "首选，空格上屏" }
+                if isPrediction {
+                    e.accessibilityLabel = "联想，" + candidates[i].text
+                    e.accessibilityHint = "轻点插入"
+                }
                 e.accessibilityFrameInContainerSpace = strip.convert(l.frame, to: self)
                 e.activate = { [weak self] in self?.onSelect?(i) }
                 out.append(e)
@@ -276,6 +286,8 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             || !zip(candidates, self.candidates).allSatisfy { $0.text == $1.text }
         self.candidates = candidates
         isPrediction = prediction
+        predictionMark.isHidden = !prediction
+        predictionMark.backgroundColor = Theme.captionMeant
         // widths are measured again from the cache (captions can change with the same words)
         widths = []
         if candidates.isEmpty || widthCache.count > 1500 { widthCache = [:] }
@@ -328,6 +340,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        predictionMark.frame = CGRect(x: 2, y: 12, width: 2, height: max(0, bounds.height - 24))
         let h = bounds.height
         let preH: CGFloat = showsPreedit ? min(20, h * 0.3) : 0
         preedit.frame = CGRect(x: 10, y: 2, width: bounds.width - 20, height: preH)
