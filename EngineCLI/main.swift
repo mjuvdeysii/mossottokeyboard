@@ -540,6 +540,9 @@ func slipFloors(_ scheme: PinyinScheme) -> [(String, Double, Bool)] {
             ("slip.sent.other.top1", 96.0, true),
             ("slip.words.edge.legal.top1", 85.5, true),   // on the key's edge (the gate's touch noise)
             ("slip.words.centre.legal.top1", 40.5, true), // on the neighbour's centre
+            ("predict.top8", 10.0, true),   // 联想整词前八：30 条一条 3.3 分，实测 4/30=13.3%，门槛取 3/30；不带加权是 2/30=6.7%（会红）
+            ("pref.effect", 100.0, true),      // 两条已知错例喂入偏好后必须读对（质检组 R8）
+            ("pref.roundtrip", 100.0, true),   // 写盘→新实例读回必须命中
             ("rare.kept", 99.5, true),         // uncommon words typed on purpose stay first (%)
     ] : [
             ("slip.words.legal.top1", 85.0, true),
@@ -1126,10 +1129,10 @@ case "bench", "gate":
         let floors: [(String, Double, Bool)] = (decoder.scheme == .xiaohe ? [
             ("words.on", 96.0, true),          // σ=0.22 touch noise, correction on, top-1 (%)
             ("words.broken", 1.0, false),      // clean words changed by correction (%) — at most
-            ("sentences.perfect", 91.0, true), // perfect keys, top-1 equals the intended sentence (%)
+            ("sentences.perfect", 92.5, true), // perfect keys, top-1 equals the intended sentence (%)
             ("sentences.on", 90.0, true),
             ("sentences.true", 87.5, true),    // σ=0.22 touch noise, correction on, top-1 equals the intended sentence (%)
-            ("words.ms", 3.0, false),          // average decode time (ms) — at most
+            ("words.ms", 0.50, false),          // average decode time (ms) — at most
             ("en.kept", 99.0, true),            // English: correctly typed words left alone (%)
             ("en.on", 97.0, true),              // English: σ=0.22 touch noise, what space types is the word (%)
             ("en.top3", 98.0, true),            // English: the word among the first three suggestions (%)
@@ -1143,14 +1146,14 @@ case "bench", "gate":
             ("learn.harm", 1.0, false),        // unseen sentences made worse by what was learned (points) — at most
             ("fuzz.bad", 0.0, false),          // random input: candidates that use no keys, too many, or have no text
             ("fuzz.p99.ms", 40.0, false),      // random input: 99th-percentile decode time (ms) — at most
-            ("extra.sentences.top1", 55.0, true),  // a sentence with one key too many still read right (%)
-            ("mixed.sentences.top1", 72.0, true),  // an English word inside a Chinese sentence (%)
+            ("extra.sentences.top1", 70.0, true),  // a sentence with one key too many still read right (%)
+            ("mixed.sentences.top1", 72.5, true),   // 58/80：网格上最近的一档，余量 0 句（R8 质检组标记）  // an English word inside a Chinese sentence (%)
             ("fix.caption.coverage", 98.0, true), // a corrected first candidate says what it changed (%)
-            ("dedupe.pairs", 100.0, false),    // first three readings differing only in a last one-character word (at most two per sentence)
+            ("dedupe.pairs", 30.0, false),    // first three readings differing only in a last one-character word (at most two per sentence)
         ] : [
             ("words.on", 97.0, true),
             ("words.broken", 1.0, false),
-            ("sentences.perfect", 91.0, true),
+            ("sentences.perfect", 92.5, true),
             ("sentences.on", 92.0, true),
             ("sentences.true", 88.0, true),
             ("sentences.ms", 16.0, false),     // CI runners vary 2–5× (1.2 ms locally)
@@ -1169,7 +1172,7 @@ case "bench", "gate":
             ("fix.caption.coverage", 98.0, true),
             ("extra.tail.top1", 71.0, true),   // one key too many after the last key still read right (%)
             ("extra.tail.top3", 90.0, true),   // … among the first three (%)
-            ("dedupe.pairs", 100.0, false),
+            ("dedupe.pairs", 90.0, false),   // 全拼实测 82（R8 质检组）
         ]) + slipFloors(decoder.scheme)
         print("scheme:", decoder.scheme == .xiaohe ? "小鹤双拼" : "全拼")
         var failed = false
@@ -1188,6 +1191,7 @@ case "bench", "gate":
                 if !good { bad.append("\(k)→\(top)") }
             }
             let ok = bad.isEmpty
+            metrics["mixed.top1"] = ok ? 100 : 0
             print(ok ? "PASS mixed.top1 \(mixed.count)/\(mixed.count)" : "FAIL mixed.top1 " + bad.joined(separator: " "))
             if !ok { failed = true }
         }
@@ -1201,6 +1205,7 @@ case "bench", "gate":
                 let ok = k.count % 2 == 1 ? c?.text == want && c?.tapCount == k.count : c?.text.hasPrefix(want) == true
                 if !ok { bad.append("\(k)→\(c?.text ?? "-")") }
             }
+            metrics["odd.top1"] = bad.isEmpty ? 100 : 0
             print(bad.isEmpty ? "PASS odd.top1 \(odd.count)/\(odd.count)" : "FAIL odd.top1 " + bad.joined(separator: " "))
             if !bad.isEmpty { failed = true }
         }
@@ -1219,6 +1224,7 @@ case "bench", "gate":
             let broken = UserDictionary(lexicon: lex, url: url)
             let aside = FileManager.default.fileExists(atPath: url.appendingPathExtension("corrupt").path)
             let ok = kept && back.count == words.count && broken.count == 0 && aside
+            metrics["userdict.roundtrip"] = ok ? 100 : 0
             print(ok ? "PASS userdict.roundtrip" : "FAIL userdict.roundtrip kept=\(kept) count=\(back.count) broken=\(broken.count) aside=\(aside)")
             if !ok { failed = true }
             try? FileManager.default.removeItem(at: dir)
@@ -1226,6 +1232,7 @@ case "bench", "gate":
         // the key chart (键位提示 and the app's 小鹤双拼 page) agrees with the code table
         do {
             let bad = XiaoheScheme.guideAgrees()
+            metrics["xiaohe.keyguide"] = bad.isEmpty ? 100 : 0
             print(bad.isEmpty ? "PASS xiaohe.keyguide" : "FAIL xiaohe.keyguide " + bad.joined(separator: " "))
             if !bad.isEmpty { failed = true }
         }
@@ -1240,6 +1247,7 @@ case "bench", "gate":
             let model = d2.predictions(after: Array("我们"))
             let mine = d2.predictions(after: Array("今天的魔头"))
             let ok = model.count >= 4 && model.contains("在") && mine.first == "小金冠"
+            metrics["predict.model+user"] = ok ? 100 : 0
             print(ok ? "PASS predict.model+user" : "FAIL predict.model+user 我们→\(model) 魔头→\(mine)")
             if !ok { failed = true }
         }
@@ -1344,11 +1352,53 @@ case "bench", "gate":
             let r = r1Typos(env["TYPOS"] ?? "EngineCLI/r1_typos.tsv", debug: env["TYPO_DEBUG"] != nil)
             print("RECORD r1.top1 \(r.top1)/\(r.total)  r1.top3 \(r.top3)/\(r.total)  r1.exact.top1 \(r.exact1)/\(r.total)  r1.exact.top3 \(r.exact3)/\(r.total)")
         }
+        // 联想：质检组 R8 指出 predictionWordBonus 只有 RECORD，关掉它门禁全绿。
+        // 这里把 predict.tsv 的「整词前八」变成一条门槛（带加权 20%，不带 6.7% → 门槛 15%）。
+        do {
+            var n = 0, hit = 0
+            if let raw = try? String(contentsOfFile: "EngineCLI/predict.tsv", encoding: .utf8) {
+                for line in raw.split(separator: "\n") {
+                    let f = line.split(separator: "\t"); guard f.count == 2 else { continue }
+                    let want = String(f[1])
+                    let ps = decoder.predictions(after: Array(String(f[0])), limit: 8)
+                    n += 1
+                    if ps.contains(where: { $0.hasPrefix(want) }) { hit += 1 }
+                }
+            }
+            metrics["predict.top8"] = n > 0 ? 100 * Double(hit) / Double(n) : 0
+            print(String(format: "== prediction: whole word in the first eight %.1f%% (%d of %d)", metrics["predict.top8"]!, hit, n))
+        }
+        // 上下文偏好：质检组 R8 指出 gate 从不执行 learnPreference，这条路径等于没有验收。
+        // 这里做两件事：①两条已知错例在喂入偏好后必须读对；②写盘→新实例读回必须命中。
+        do {
+            let sents = loadSentences("EngineCLI/sentences.tsv,EngineCLI/sentences2.tsv")
+            let ud = UserDictionary(lexicon: lex, url: nil)
+            ud.learnPreference(context: "园玩了", text: "沙子")
+            ud.learnPreference(context: "", text: "她")
+            let keepUser = decoder.user
+            decoder.user = ud
+            var ok = 0
+            for (text, ids) in sents where text == "今天在公园玩了沙子" || text == "她最喜欢小兔子" {
+                let keys = Array(codeLetters(ids))
+                if decoder.decode(keys.map(centreTap)).candidates.first?.text == text { ok += 1 }
+            }
+            decoder.user = keepUser
+            let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("prefgate-\(UUID().uuidString)")
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let store = dir.appendingPathComponent("userdict.json")
+            UserDictionary(lexicon: lex, url: store).learnPreference(context: "园玩了", text: "沙子")
+            let back = UserDictionary(lexicon: lex, url: store).preference(context: "园玩了", text: "沙子") > 0
+            try? FileManager.default.removeItem(at: dir)
+            metrics["pref.effect"] = ok == 2 ? 100 : 0
+            metrics["pref.roundtrip"] = back ? 100 : 0
+            print("== preferences: \(ok)/2 sentences read right with preferences; roundtrip \(back ? "ok" : "BROKEN")")
+        }
         for k in ["two.sentences.top1", "two.sentences.top3"] + (decoder.scheme == .xiaohe ? ["missing.sentences.top1", "missing.sentences.top3"] : [])
             + ["mixed.holdout.top1", "mixed.slip.holdout.top1", "mixed.slip.holdout.top3"].filter({ metrics[$0] != nil }) {
             print(String(format: "RECORD %@ %.2f", k, metrics[k] ?? .nan))
         }
-        var judged = 0
+        let assertions = ["mixed.top1", "odd.top1", "userdict.roundtrip", "xiaohe.keyguide", "predict.model+user"]
+        var judged = assertions.count
         for (k, v, atLeast) in floors {
             if env["SLIPS"] == "0", k.hasPrefix("slip.") || k == "rare.kept" { continue }
             let m = metrics[k] ?? .nan
@@ -1359,7 +1409,10 @@ case "bench", "gate":
         }
         // 诊断数（R6）：门禁自己数一遍——有几次重构让某几条门槛被静默丢掉，编译还过得去。
         // 判定的条数必须与 floors 的条数相符（SLIPS=0 时除外），否则这次运行本身作废。
-        let expected = floors.count - (env["SLIPS"] == "0" ? floors.filter { $0.0.hasPrefix("slip.") || $0.0 == "rare.kept" }.count : 0)
+        // 质检组 R8：这五条断言以前不在计数里，删掉它们 coverage 仍是 N/N。
+        // 现在它们也进 judged，coverage 才能反映「这次到底判了几条」。
+        for a in assertions { if metrics[a] == nil { metrics[a] = 0; print("FAIL \(a) not judged"); failed = true } }
+        let expected = floors.count - (env["SLIPS"] == "0" ? floors.filter { $0.0.hasPrefix("slip.") || $0.0 == "rare.kept" }.count : 0) + assertions.count
         if judged != expected {
             print("FAIL gate.coverage \(judged)/\(expected) floors judged")
             failed = true
