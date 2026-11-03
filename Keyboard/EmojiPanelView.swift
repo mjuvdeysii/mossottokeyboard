@@ -77,12 +77,26 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             accessibilityTraits = .keyboardKey
         }
         required init?(coder: NSCoder) { fatalError() }
+        /// 颜文字格子：按字数定字号，让长短不一的颜文字在屏幕上**看起来一样大**（原来固定 17pt 再自动缩，
+        /// 长的缩到 10pt、短的保持 17pt，于是有的偏大有的偏小）。
+        var isKaomoji = false
+
         override func layoutSubviews() {
             super.layoutSubviews()
             label.frame = contentView.bounds
-            // 字号跟着格子走：小屏每行多一格、格子变小，emoji 也相应缩小，不再留一圈空
+            applyFont()
+        }
+
+        private func applyFont() {
             let side = min(contentView.bounds.width, contentView.bounds.height)
-            label.font = .systemFont(ofSize: min(34, max(20, floor(side * 0.78))))
+            guard side > 4 else { return }
+            if isKaomoji {
+                let n = max(3, label.text?.count ?? 6)
+                // 一格约放得下 0.62×字号 个字符；按字数反推字号，再夹在 10–19 之间
+                label.font = .systemFont(ofSize: max(10, min(19, side * 1.5 / CGFloat(n))))
+            } else {
+                label.font = .systemFont(ofSize: min(34, max(20, floor(side * 0.78))))
+            }
         }
         override var isHighlighted: Bool {
             didSet { contentView.backgroundColor = isHighlighted ? Theme.functionKey : .clear }
@@ -329,7 +343,8 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         let c = collectionView.dequeueReusableCell(withReuseIdentifier: "e", for: indexPath) as! Cell
         let e = sections[indexPath.section].items[indexPath.item]
         c.label.text = e
-        c.label.font = isKaomoji(indexPath.section) ? .systemFont(ofSize: 17) : .systemFont(ofSize: 30)
+        c.isKaomoji = isKaomoji(indexPath.section)
+        c.setNeedsLayout()
         c.label.textColor = Theme.keyText
         c.accessibilityLabel = e
         return c
