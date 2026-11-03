@@ -154,6 +154,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         backButton.accessibilityLabel = "返回键盘"
         backButton.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
         deleteButton.setImage(UIImage(systemName: "delete.left", withConfiguration: cfg), for: .normal)
+        deleteButton.accessibilityLabel = "删除"
         // delete repeats while held, as the delete key does
         deleteButton.addTarget(self, action: #selector(deleteDown), for: .touchDown)
         deleteButton.addTarget(self, action: #selector(deleteUp), for: [.touchUpInside, .touchUpOutside, .touchCancel])
@@ -183,7 +184,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             b.tintColor = Theme.secondaryText
             b.tag = i
             b.accessibilityLabel = name
-            b.layer.cornerRadius = 7
+            b.layer.cornerRadius = 8
             b.layer.cornerCurve = .continuous
             b.addTarget(self, action: #selector(tabTapped(_:)), for: .touchUpInside)
             bar.addArrangedSubview(b)
@@ -203,7 +204,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         }
         mosto.tag = Self.categoryNames.count + 1
         mosto.accessibilityLabel = Self.kaomojiName
-        mosto.layer.cornerRadius = 7
+        mosto.layer.cornerRadius = 8
         mosto.layer.cornerCurve = .continuous
         mosto.addTarget(self, action: #selector(tabTapped(_:)), for: .touchUpInside)
         bar.addArrangedSubview(mosto)
