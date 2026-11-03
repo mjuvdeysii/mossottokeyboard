@@ -1187,15 +1187,34 @@ public final class Decoder {
                wordScore(context[context.count - 2], last) != nil {
                 score -= predictionSplitPenalty
             }
+            // 联想优先出「词」而不是单字（R7 方案第 3 项）：两字的候选如果是一个词库里有的词，加权。
+            // 真机上这才像普通输入法的联想——候选栏给的是「很好」「公园」，不是「很」「公」。
+            if chars.count == 2, wordScore(chars[0], chars[1]) != nil { score += predictionWordBonus }
             scored.append((t, score))
+        }
+        // 词与单字各留名额（R7 方案第 3 项）：词的加权不该把单字候选整个挤掉——
+        // 门禁里就有一条「我们 → 候选里要有『在』」的要求。词最多 4 个，其余按分数补。
+        let sorted = scored.sorted { $0.1 > $1.1 }
+        let words = sorted.filter { Array($0.0).count == 2 && wordScore(Array($0.0)[0], Array($0.0)[1]) != nil }
+        let rest = sorted.filter { !(Array($0.0).count == 2 && wordScore(Array($0.0)[0], Array($0.0)[1]) != nil) }
+        var merged: [(String, Double)] = []
+        var wi = 0, ri = 0
+        while merged.count < 40 && (wi < words.count || ri < rest.count) {
+            if wi < words.count, wi < 4, (ri >= rest.count || words[wi].1 >= rest[ri].1) {
+                merged.append(words[wi]); wi += 1
+            } else if ri < rest.count {
+                merged.append(rest[ri]); ri += 1
+            } else { break }
         }
         // what this user wrote after the same words before comes first
         var out = user?.continuations(after: context) ?? []
-        for (t, _) in scored.sorted(by: { $0.1 > $1.1 }) where !out.contains(t) { out.append(t) }
+        for (t, _) in merged where !out.contains(t) { out.append(t) }
         return Array(out.prefix(limit))
     }
     public var predictionSplitWord = 11.0
     public var predictionSplitPenalty = 3.0
+    /// 联想里两字成词候选的加权（自然对数单位）
+    public var predictionWordBonus = 6.0
 
     /// 自造词 first: a phrase of the user's own (one the lexicon does not have) whose keys are exactly what was typed —
     /// spelled out, or by its initials (zzx for 张梓萱) — leads the candidates; one the keys begin (mosuotai for

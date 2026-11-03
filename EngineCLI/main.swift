@@ -79,6 +79,7 @@ if let v = env["SKIPD"].flatMap(Double.init) { decoder.skipDoublePenalty = v; de
 if let v = env["XSKIPP"].flatMap(Double.init) { decoder.xiaoheSkipPenalty = v }
 if let v = env["T9PFX"].flatMap(Double.init) { decoder.t9PrefixExtra = v }
 if let v = env["T9MIN"].flatMap(Double.init) { decoder.t9MinWordScore = v }
+if let v = env["PREDB"].flatMap(Double.init) { decoder.predictionWordBonus = v }
 if let v = env["PREF"], !v.isEmpty {
     let ud = UserDictionary(lexicon: lex, url: nil)
     for pair in v.split(separator: ";") {
@@ -561,6 +562,29 @@ func slipFloors(_ scheme: PinyinScheme) -> [(String, Double, Bool)] {
 }
 
 switch args[2] {
+case "predict":   // EngineCLI <lexicon> predict [tsv] —— 联想验收（R7 方案第 3 项）
+    // 每条：「前文<TAB>期望的下一个词」。量的是首屏候选里有没有它——先记基线，不调参。
+    let path = args.count > 3 ? args[3] : "EngineCLI/predict.tsv"
+    guard let raw = try? String(contentsOfFile: path, encoding: .utf8) else { print("no corpus"); exit(1) }
+    var n = 0, hit1 = 0, hit3 = 0, hit8 = 0, first = 0
+    var misses: [String] = []
+    for line in raw.split(separator: "\n") {
+        let f = line.split(separator: "\t"); guard f.count == 2 else { continue }
+        let ctx = String(f[0]), want = String(f[1])
+        let ps = decoder.predictions(after: Array(ctx), limit: 8)
+        n += 1
+        // 「词」命中：候选里有整个下一个词；「首字」命中：第一个候选以它的第一个字开头
+        let word = ps.contains { $0.hasPrefix(want) }
+        let firstChar = ps.first.map { $0.hasPrefix(String(want.prefix(1))) } ?? false
+        if word && ps.first!.hasPrefix(want) { hit1 += 1 }
+        if word && ps.prefix(3).contains(where: { $0.hasPrefix(want) }) { hit3 += 1 }
+        if word { hit8 += 1 } else if misses.count < 6 { misses.append("\(ctx)→\(want) | \(ps.prefix(4).joined(separator: " "))") }
+        if firstChar { first += 1 }
+    }
+    func pct(_ k: Int) -> String { String(format: "%.1f%%", n > 0 ? 100 * Double(k) / Double(n) : 0) }
+    print("predict n=\(n)  整词第一 \(pct(hit1))  整词前三 \(pct(hit3))  整词前八 \(pct(hit8))  首字命中 \(pct(first))")
+    for m in misses { print("   ✗", m) }
+
 case "slipsgate":   // EngineCLI <lexicon> slipsgate —— 只算 slips 与 rare.kept 并判门槛（R6 方案第 3 项）
     // 把 slips 从每次的门禁里拆到并行的 CI 任务：它本机占门禁 72% 的时间（136.5 s → 38.4 s），
     // 而门槛一条不少，仍然全量测。
