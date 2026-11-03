@@ -105,8 +105,8 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         required init?(coder: NSCoder) { fatalError() }
         override func layoutSubviews() {
             super.layoutSubviews()
-            let m: CGFloat = mosto.isHidden ? 0 : 26
-            mosto.frame = CGRect(x: 6, y: (bounds.height - 26) / 2, width: 26, height: 26)
+            let m: CGFloat = mosto.isHidden ? 0 : 22
+            mosto.frame = CGRect(x: 6, y: (bounds.height - 22) / 2, width: 22, height: 22)
             label.frame = bounds.insetBy(dx: 10, dy: 0).offsetBy(dx: m, dy: 0)
         }
     }
@@ -116,7 +116,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         layout.scrollDirection = .vertical
         layout.minimumInteritemSpacing = 0
         layout.minimumLineSpacing = 0
-        layout.sectionInset = UIEdgeInsets(top: 0, left: 4, bottom: 12, right: 4)
+        layout.sectionInset = UIEdgeInsets(top: 0, left: 4, bottom: 18, right: 4)
         layout.sectionHeadersPinToVisibleBounds = false
         collection = UICollectionView(frame: .zero, collectionViewLayout: layout)
         super.init(frame: frame)
@@ -354,7 +354,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
 
     func collectionView(_ collectionView: UICollectionView, layout: UICollectionViewLayout, referenceSizeForHeaderInSection section: Int) -> CGSize {
         // the first section's name is the panel title; later ones get a small header where they begin
-        sections[section].items.isEmpty ? .zero : CGSize(width: collectionView.bounds.width, height: 26)
+        sections[section].items.isEmpty ? .zero : CGSize(width: collectionView.bounds.width, height: 20)
     }
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
