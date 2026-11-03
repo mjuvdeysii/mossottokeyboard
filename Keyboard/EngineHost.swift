@@ -164,6 +164,8 @@ final class EngineHost {
 
     func learn(syllables: [UInt16], text: String) { queue.async { self.userDict?.learn(syllables: syllables, text: text) } }
     func learn(parts: [(text: String, ids: [UInt16])]) { queue.async { self.userDict?.learn(parts: parts) } }
+    /// 用户在某个前文之后改了同音字：记下来，下次同一前文后提前（诊断 2026-11-03）。
+    func learnPreference(context: String, text: String) { queue.async { self.userDict?.learnPreference(context: context, text: text) } }
     func unlearn(syllables: [UInt16], text: String) { queue.async { self.userDict?.unlearn(syllables: syllables, text: text) } }
     func forget(syllables: [UInt16], text: String) {
         queue.async { self.userDict?.forget(syllables: syllables, text: text); self.userDict?.save() }

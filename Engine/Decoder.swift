@@ -71,6 +71,8 @@ public final class Decoder {
     /// 联想 reads its own model when set (the sentence model's scores are not counts of what follows a context).
     public var predictionGrammar: Grammar?
     public var grammarWeight = 0.7
+    /// 上下文偏好的最大提升（自然对数单位）：用户在同一前文后选过的字词，下次提前。
+    public var preferenceBoost = 20.0
     /// The language model weighs less on a word whose keys were corrected: it chooses between words the keys spell,
     /// it does not talk the keyboard into changing keys to make a likelier phrase. R4 grid (×correctionPenalty 1.5 /
     /// 2.5 / 3.5): 0.6 with 1.5 — 0.7 and above lose two 中英混输 sentences (小鹤), 1.0 also sentences typed with
@@ -889,6 +891,13 @@ public final class Decoder {
             // The model's counts are joint (how often context + word occur), so they already carry how common the
             // word is; the lexicon's frequency added on top counts that twice and lets 在 outvote 再 after 可以.
             // Where the model has the pair, part of the word's own frequency is taken back out.
+            // 上下文偏好：这段前文之后用户选过这个词（诊断 2026-11-03）。只影响排序，不改词库。
+            if let user, !edges[ei].corrected,
+               !(edges[ei].userText ?? "").isEmpty || edges[ei].entry >= 0 {
+                let word = edges[ei].userText ?? lexicon.text(lexicon.entry(edges[ei].entry))
+                let strength = user.preference(context: String(ctx), text: word)
+                if strength > 0 { lift += preferenceBoost * strength }
+            }
             if unigramDiscount > 0, !keypad, q > base, !edges[ei].corrected, edges[ei].entry >= 0 {
                 lift -= unigramDiscount * (Double(lexicon.entry(edges[ei].entry).score) / 100 - unigramCenter)
             }

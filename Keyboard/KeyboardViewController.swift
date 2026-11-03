@@ -1011,6 +1011,12 @@ final class KeyboardViewController: UIInputViewController {
         guard i < r.candidates.count else { return }
         let c = r.candidates[i]
         guard c.tapCount > 0, c.tapCount <= taps.count else { return }
+        // 用户没有选首选、而是改了口径：把「这段前文之后他选了什么」记下来（诊断 2026-11-03）。
+        if i > 0, !c.text.isEmpty {
+            let beforeField = host.documentContextBeforeInput ?? ""
+            let beforeParts = committedParts.map { $0.text }.joined()
+            engine.learnPreference(context: beforeField + beforeParts, text: c.text)
+        }
         insertCommitted(c.text)
         // Learn: the word itself and where this user's finger actually lands.
         if !c.syllables.isEmpty {

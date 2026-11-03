@@ -79,6 +79,24 @@ if let v = env["SKIPD"].flatMap(Double.init) { decoder.skipDoublePenalty = v; de
 if let v = env["XSKIPP"].flatMap(Double.init) { decoder.xiaoheSkipPenalty = v }
 if let v = env["T9PFX"].flatMap(Double.init) { decoder.t9PrefixExtra = v }
 if let v = env["T9MIN"].flatMap(Double.init) { decoder.t9MinWordScore = v }
+if let v = env["PREF"], !v.isEmpty {
+    let ud = UserDictionary(lexicon: lex, url: nil)
+    for pair in v.split(separator: ";") {
+        let f = pair.split(separator: "|", omittingEmptySubsequences: false); guard f.count == 2 else { continue }
+        ud.learnPreference(context: String(f[0]), text: String(f[1]))
+    }
+    decoder.user = ud
+}
+// 上下文偏好的验收钩子（诊断 2026-11-03）：PREF="前文|词;..." 只用于测量，键盘里由用户的选择写入
+if let v = env["PREF"], !v.isEmpty {
+    let ud = UserDictionary(lexicon: lex, url: nil)
+    for pair in v.split(separator: ";") {
+        let f = pair.split(separator: "|", omittingEmptySubsequences: false)
+        guard f.count == 2 else { continue }
+        ud.learnPreference(context: String(f[0]), text: String(f[1]))
+    }
+    decoder.user = ud
+}
 if let v = env["UW"].flatMap(Double.init) { decoder.userWeight = v }
 // language model: grammar.gram next to the lexicon (GRAMMAR=path overrides, GRAMMAR=0 turns it off; GW weight)
 if env["GRAMMAR"] != "0" {
