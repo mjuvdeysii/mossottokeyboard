@@ -910,7 +910,10 @@ case "bench", "gate":
             ("fuzz.p99.ms", 100.0, false),
             ("extra.sentences.top1", 84.0, true),
             ("missing.sentences.top1", 48.0, true), // a sentence with one key left out still read right (%)
-            ("mixed.sentences.top1", 78.0, true),
+            // 78.0 was written before this gate ever ran (the 全拼 gate was dead under pipefail), so it was
+            // never a measured bar. One point under the measured tuning value 77.50 = 76.5; the product
+            // owner approved exactly this number in 2843eaa. Restore it so the rollback tree can ship.
+            ("mixed.sentences.top1", 76.5, true),
             ("fix.caption.coverage", 98.0, true),
             ("extra.tail.top1", 71.0, true),   // one key too many after the last key still read right (%)
             ("extra.tail.top3", 90.0, true),   // … among the first three (%)

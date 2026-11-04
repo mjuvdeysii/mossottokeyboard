@@ -12,6 +12,11 @@ permissions:
 concurrency:
   group: ios-${{ github.ref }}
   cancel-in-progress: true
+# Explicit build number: this push restores the pre-takeover tree (dfc0dab) as
+# TestFlight 261. Using 100+run_number would skip 261 (last upload was 260) and
+# label the report/whats-new with a different number than the uploaded build.
+env:
+  BUILD_NUMBER: 261
 jobs:
   build:
     runs-on: macos-15
@@ -149,7 +154,7 @@ jobs:
           X=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1); sudo xcode-select -s "$X"
           mkdir -p ~/private_keys && printf '%s' "$ASC_KEY_P8" > ~/private_keys/AuthKey_$ASC_KEY_ID.p8
           AUTH=(-allowProvisioningUpdates -authenticationKeyPath "$HOME/private_keys/AuthKey_$ASC_KEY_ID.p8" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
-          BUILD=$((100 + ${{ github.run_number }}))
+          BUILD=${{ env.BUILD_NUMBER }}
           # Archive unsigned; signing happens at export with the account's cloud-managed distribution certificate,
           # so no new development certificate is created on each run.
           xcodebuild archive -project MossOttoKeyboard.xcodeproj -scheme MossOttoKeyboard -configuration Release \
@@ -181,7 +186,7 @@ jobs:
         continue-on-error: true
         run: |
           { echo "commit ${GITHUB_SHA}"
-            grep -q "EXPORT SUCCEEDED" export.log 2>/dev/null && echo "UPLOAD SUCCEEDED build $((100 + ${{ github.run_number }}))" || echo "UPLOAD NOT COMPLETED"
+            grep -q "EXPORT SUCCEEDED" export.log 2>/dev/null && echo "UPLOAD SUCCEEDED build ${{ env.BUILD_NUMBER }}" || echo "UPLOAD NOT COMPLETED"
             echo "-- archive --"; grep -E "error:|\*\* " archive.log 2>/dev/null | sed "s#$PWD/##" | sort -u | head -40
             echo "-- export/upload --"; grep -iE "error|warning|upload|\*\* " export.log 2>/dev/null | sort -u | head -60
           } > /tmp/testflight.txt
@@ -195,4 +200,4 @@ jobs:
         run: |
           # the report step above left an orphan branch checked out: read the files from this commit
           git show "${GITHUB_SHA}:Tools/asc.py" > /tmp/asc.py && git show "${GITHUB_SHA}:TESTFLIGHT.md" > /tmp/TESTFLIGHT.md
-          python3 /tmp/asc.py whats-new "$BUNDLE" "$((100 + ${{ github.run_number }}))" /tmp/TESTFLIGHT.md
+          python3 /tmp/asc.py whats-new "$BUNDLE" "${{ env.BUILD_NUMBER }}" /tmp/TESTFLIGHT.md
