@@ -155,13 +155,8 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         collection.register(Header.self, forSupplementaryViewOfKind: UICollectionView.elementKindSectionHeader, withReuseIdentifier: "h")
 
         // 底部渐隐：静止时最后一行不会被「拼音」条硬切一刀（设计组 R8 第 7 条）
-        let fade = CAGradientLayer()
-        fade.colors = [UIColor.clear.cgColor, UIColor.black.cgColor]
-        fade.locations = [0, 1]
-        fade.startPoint = CGPoint(x: 0.5, y: 0)
-        fade.endPoint = CGPoint(x: 0.5, y: 1)
-        collection.layer.mask = fade
-        collectionFade = fade
+        // build 256 的事故：给列表加过一层渐变遮罩，颜色写反（透明→黑）导致整片列表不可见。
+        // 渐隐只是装饰，不值得再冒一次「看不见」的风险——直接去掉，底部留白（18pt）已经在布局里。
         addSubview(collection)
 
         let cfg = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
@@ -335,7 +330,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         if let fade = collectionFade {
             fade.frame = collection.bounds
             let clearAt = max(0, 1 - 16 / max(collection.bounds.height, 1))   // 底部 16pt 渐隐
-            fade.locations = [NSNumber(value: clearAt), 1]
+            fade.locations = [0, NSNumber(value: clearAt), 1]
         }
         collection.collectionViewLayout.invalidateLayout()
         updateSelection()
