@@ -23,17 +23,8 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     /// tap bring the keys straight back under the thumb.
     private let returnButton = UIButton(type: .system)
     private var selected = -1
-    private var collectionFade: CAGradientLayer?
     private var deleteTimer: Timer?
     private let gear = UIButton(type: .system)
-
-    /// 底栏的 7 个目的地（设计评审 2026-11-03）：11 格挤 294pt 时每格 26.7pt，点错会落到空分类。
-    /// 旅行/物品/旗帜仍是列表分组，只是不占底栏。section 号 = sections 的下标（常用 0，分类 1…8，颜文字 10）。
-    static let tabDestinations: [(section: Int, name: String, symbol: String)] = [
-        (0, "常用", "clock"), (1, "笑脸与人物", "face.smiling"), (2, "动物与自然", "pawprint"),
-        (3, "食物与饮料", "fork.knife"), (4, "活动", "soccerball"), (7, "符号", "heart"),
-        (10, "Mosto 颜文字", ""),
-    ]
 
     static let categoryNames: [(String, String)] = [
         ("笑脸与人物", "face.smiling"), ("动物与自然", "pawprint"), ("食物与饮料", "fork.knife"), ("活动", "soccerball"),
@@ -52,23 +43,6 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         "( •̀ ω •́ )✧", "(⊙ˍ⊙)", "Σ(っ °Д °;)っ", "(╬▔皿▔)╯", "(ノへ￣、)", "(´▽`ʃ♡ƪ)",
         "♪(´▽｀)", "(～﹃～)~zZ", "(￣︶￣)↗", "(^_−)☆", "(´･ω･`)", "_(:з」∠)_",
         "(～￣▽￣)～", "щ(ﾟДﾟщ)", "(×_×)", "(〃＾▽＾〃)", "(´∀｀)♡", "(๑•́ ₃ •̀๑)",
-        // 高兴 / 兴奋
-        "ヽ(°〇°)ﾉ", "＼(^o^)／", "(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧", "(๑˃ᴗ˂)ﻭ", "٩(◕‿◕)۶", "(⌒▽⌒)☆",
-        "(o˘◡˘o)", "ヽ(・∀・)ﾉ", "(*≧ω≦*)", "(灬º‿º灬)♡",
-        // 难过 / 委屈
-        "(´；ω；`)", "(｡╯︵╰｡)", "(っ˘̩╭╮˘̩)っ", "(ಥ﹏ಥ)", "(ᗒᗣᗕ)՞", "(இ﹏இ`｡)",
-        // 生气 / 无语
-        "(＃`Д´)", "(눈_눈)", "(￣ヘ￣)", "(￣ω￣;)", "(；一_一)", "(・_・;)",
-        // 惊讶
-        "(°ロ°) !", "(⊙_⊙)", "Σ(°△°|||)︴", "(ﾟдﾟ)", "(O_O;)", "(◎_◎;)",
-        // 害羞 / 可爱
-        "(⁄ ⁄>⁄ ▽ ⁄<⁄ ⁄)", "(*/▽＼*)", "(๑´ㅂ`๑)", "(灬ºωº灬)", "(灬´ω`灬)",
-        // 加油 / 打气
-        "(๑•̀ㅂ•́)ง", "٩(ˊᗜˋ*)و", "(ง •̀_•́)ง", "ᕙ(⇀‸↼‶)ᕗ",
-        // 摸鱼 / 躺平
-        "(－_－) zzZ", "(￣o￣) zzZ", "_(┐「ε:)_", "(¯﹃¯)", "(´-ω-`)",
-        // 打招呼 / 告辞
-        "(・ω・)ノ", "( ´ ▽ ` )ﾉ", "ヾ(•ω•`)o", "(￣▽￣)ノ", "(*・ω・)ﾉ",
     ]
 
     final class Cell: UICollectionViewCell {
@@ -86,26 +60,9 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             accessibilityTraits = .keyboardKey
         }
         required init?(coder: NSCoder) { fatalError() }
-        /// 颜文字格子：按字数定字号，让长短不一的颜文字在屏幕上**看起来一样大**（原来固定 17pt 再自动缩，
-        /// 长的缩到 10pt、短的保持 17pt，于是有的偏大有的偏小）。
-        var isKaomoji = false
-
         override func layoutSubviews() {
             super.layoutSubviews()
             label.frame = contentView.bounds
-            applyFont()
-        }
-
-        private func applyFont() {
-            let side = min(contentView.bounds.width, contentView.bounds.height)
-            guard side > 4 else { return }
-            if isKaomoji {
-                let n = max(3, label.text?.count ?? 6)
-                // 一格约放得下 0.62×字号 个字符；按字数反推字号，再夹在 10–19 之间
-                label.font = .systemFont(ofSize: max(10, min(19, side * 1.5 / CGFloat(n))))
-            } else {
-                label.font = .systemFont(ofSize: min(34, max(20, floor(side * 0.78))))
-            }
         }
         override var isHighlighted: Bool {
             didSet { contentView.backgroundColor = isHighlighted ? Theme.functionKey : .clear }
@@ -128,8 +85,8 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         required init?(coder: NSCoder) { fatalError() }
         override func layoutSubviews() {
             super.layoutSubviews()
-            let m: CGFloat = mosto.isHidden ? 0 : 22
-            mosto.frame = CGRect(x: 6, y: (bounds.height - 22) / 2, width: 22, height: 22)
+            let m: CGFloat = mosto.isHidden ? 0 : 26
+            mosto.frame = CGRect(x: 6, y: (bounds.height - 26) / 2, width: 26, height: 26)
             label.frame = bounds.insetBy(dx: 10, dy: 0).offsetBy(dx: m, dy: 0)
         }
     }
@@ -139,7 +96,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         layout.scrollDirection = .vertical
         layout.minimumInteritemSpacing = 0
         layout.minimumLineSpacing = 0
-        layout.sectionInset = UIEdgeInsets(top: 0, left: 4, bottom: 18, right: 4)
+        layout.sectionInset = UIEdgeInsets(top: 0, left: 4, bottom: 6, right: 4)
         layout.sectionHeadersPinToVisibleBounds = false
         collection = UICollectionView(frame: .zero, collectionViewLayout: layout)
         super.init(frame: frame)
@@ -153,10 +110,6 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         collection.delegate = self
         collection.register(Cell.self, forCellWithReuseIdentifier: "e")
         collection.register(Header.self, forSupplementaryViewOfKind: UICollectionView.elementKindSectionHeader, withReuseIdentifier: "h")
-
-        // 底部渐隐：静止时最后一行不会被「拼音」条硬切一刀（设计组 R8 第 7 条）
-        // build 256 的事故：给列表加过一层渐变遮罩，颜色写反（透明→黑）导致整片列表不可见。
-        // 渐隐只是装饰，不值得再冒一次「看不见」的风险——直接去掉，底部留白（18pt）已经在布局里。
         addSubview(collection)
 
         let cfg = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
@@ -167,7 +120,6 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         backButton.accessibilityLabel = "返回键盘"
         backButton.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
         deleteButton.setImage(UIImage(systemName: "delete.left", withConfiguration: cfg), for: .normal)
-        deleteButton.accessibilityLabel = "删除"
         // delete repeats while held, as the delete key does
         deleteButton.addTarget(self, action: #selector(deleteDown), for: .touchDown)
         deleteButton.addTarget(self, action: #selector(deleteUp), for: [.touchUpInside, .touchUpOutside, .touchCancel])
@@ -190,27 +142,44 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         bar.axis = .horizontal
         bar.distribution = .fillEqually
         addSubview(bar)
-        let tabCfg = UIImage.SymbolConfiguration(pointSize: 21, weight: .medium)
-        // 7 个目的地，每格在 402pt 上约 43pt、375pt 上约 39pt（设计评审：原来 11 格只有 26.7pt）。
-        for dest in Self.tabDestinations {
+        let tabCfg = UIImage.SymbolConfiguration(pointSize: 15, weight: .regular)
+        for (i, (name, symbol)) in ([("常用", "clock")] + Self.categoryNames).enumerated() {
             let b = UIButton(type: .system)
-            if !dest.symbol.isEmpty { b.setImage(UIImage(systemName: dest.symbol, withConfiguration: tabCfg), for: .normal) }
+            b.setImage(UIImage(systemName: symbol, withConfiguration: tabCfg), for: .normal)
             b.tintColor = Theme.secondaryText
-            b.tag = dest.section
-            b.accessibilityLabel = dest.name
-            b.layer.cornerRadius = 8
+            b.tag = i
+            b.accessibilityLabel = name
+            b.layer.cornerRadius = 7
             b.layer.cornerCurve = .continuous
             b.addTarget(self, action: #selector(tabTapped(_:)), for: .touchUpInside)
             bar.addArrangedSubview(b)
             tabButtons.append(b)
         }
-        // 颜文字 tab 用「颜」字：彩色位图混在单色图标行里是异物（设计组 R8）；脸留在列表头当品牌
-        if let kaomojiTab = tabButtons.last {
-            kaomojiTab.setImage(nil, for: .normal)
-            kaomojiTab.setTitle("颜", for: .normal)
-            kaomojiTab.titleLabel?.font = Theme.font(17, .semibold)
-            kaomojiTab.setTitleColor(Theme.secondaryText, for: .normal)
+        // the last tab: Mosto's face (his 颜文字)
+        let mosto = UIButton(type: .custom)
+        // drawn at the size of the other tab icons (a 24 pt face), so the button needs no insets
+        if let face = UIImage(named: "mosto_day", in: Bundle(for: EmojiPanelView.self), with: nil) {
+            let side: CGFloat = 24
+            let small = UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { _ in
+                let scale = min(side / face.size.width, side / face.size.height)
+                let w = face.size.width * scale, h = face.size.height * scale
+                face.draw(in: CGRect(x: (side - w) / 2, y: (side - h) / 2, width: w, height: h))
+            }
+            mosto.setImage(small, for: .normal)
         }
+        mosto.tag = Self.categoryNames.count + 1
+        mosto.accessibilityLabel = Self.kaomojiName
+        mosto.layer.cornerRadius = 7
+        mosto.layer.cornerCurve = .continuous
+        mosto.addTarget(self, action: #selector(tabTapped(_:)), for: .touchUpInside)
+        bar.addArrangedSubview(mosto)
+        tabButtons.append(mosto)
+        // settings stay one long press away from here too (the 表情 key's long press opens them as well)
+        gear.setImage(UIImage(systemName: "gearshape", withConfiguration: tabCfg), for: .normal)
+        gear.tintColor = Theme.secondaryText
+        gear.accessibilityLabel = "设置"
+        gear.addTarget(self, action: #selector(settingsTapped), for: .touchUpInside)
+        bar.addArrangedSubview(gear)
 
         titleLabel.font = Theme.font(12, .bold)
         titleLabel.textColor = Theme.secondaryText
@@ -309,7 +278,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         // 8 across in portrait (as the iOS emoji keyboard), more in landscape
         let w = collection.bounds.width - 8
         guard w > 100 else { return 40 }      // not laid out yet: never a zero or negative item size
-        let across = max(8, Int(w / 42))
+        let across = max(8, Int(w / 46))
         return floor(w / CGFloat(across))
     }
 
@@ -317,21 +286,16 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         super.layoutSubviews()
         let b = bounds
         guard b.width > 100, b.height > 100 else { return }   // before the panel has its real frame
-        let barH: CGFloat = 36
+        let barH: CGFloat = 40
         titleLabel.frame = CGRect(x: 12, y: 0, width: b.width - 24, height: 24)
         collection.frame = CGRect(x: 0, y: 2, width: b.width, height: b.height - 2 - barH - 4)
-        let side: CGFloat = 48
+        let side: CGFloat = 56
         backButton.frame = CGRect(x: 4, y: b.height - barH - 2, width: side, height: barH - 4)
         deleteButton.frame = CGRect(x: b.width - side - 4, y: b.height - barH - 2, width: side, height: barH - 4)
         returnButton.frame = deleteButton.frame
         // narrow phones: the gear gives its room to the tabs (settings stay a long press on the 表情 key away)
-        gear.isHidden = b.width - 2 * side - 12 < 230
-        bar.frame = CGRect(x: side + 6, y: b.height - barH, width: b.width - 2 * side - 12, height: barH - 4)
-        if let fade = collectionFade {
-            fade.frame = collection.bounds
-            let clearAt = max(0, 1 - 16 / max(collection.bounds.height, 1))   // 底部 16pt 渐隐
-            fade.locations = [0, NSNumber(value: clearAt), 1]
-        }
+        gear.isHidden = b.width - 2 * side - 16 < 230
+        bar.frame = CGRect(x: side + 8, y: b.height - barH, width: b.width - 2 * side - 16, height: barH - 4)
         collection.collectionViewLayout.invalidateLayout()
         updateSelection()
     }
@@ -345,8 +309,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         let c = collectionView.dequeueReusableCell(withReuseIdentifier: "e", for: indexPath) as! Cell
         let e = sections[indexPath.section].items[indexPath.item]
         c.label.text = e
-        c.isKaomoji = isKaomoji(indexPath.section)
-        c.setNeedsLayout()
+        c.label.font = isKaomoji(indexPath.section) ? .systemFont(ofSize: 17) : .systemFont(ofSize: 30)
         c.label.textColor = Theme.keyText
         c.accessibilityLabel = e
         return c
@@ -371,7 +334,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
 
     func collectionView(_ collectionView: UICollectionView, layout: UICollectionViewLayout, referenceSizeForHeaderInSection section: Int) -> CGSize {
         // the first section's name is the panel title; later ones get a small header where they begin
-        sections[section].items.isEmpty ? .zero : CGSize(width: collectionView.bounds.width, height: 20)
+        sections[section].items.isEmpty ? .zero : CGSize(width: collectionView.bounds.width, height: 26)
     }
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
@@ -416,21 +379,10 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         guard s != selected, s < sections.count else { return }
         selected = s
         titleLabel.text = sections[s].name
-        for b in tabButtons {
-            b.tintColor = b.tag == s ? Theme.keyText : Theme.secondaryText
-            b.setTitleColor(b.tag == s ? Theme.keyText : Theme.secondaryText, for: .normal)
-            // 选中不再用 1.46:1 的浅色填充（日光下几乎看不见）：图标加深 + 底下 2.5pt 短横线。
-            b.backgroundColor = .clear
-            b.viewWithTag(9011)?.removeFromSuperview()
-            if b.tag == s {
-                let line = UIView(frame: CGRect(x: (b.bounds.width - 18) / 2, y: b.bounds.height - 5, width: 18, height: 2.5))
-                line.tag = 9011
-                line.backgroundColor = Theme.keyText
-                line.layer.cornerRadius = 1.25
-                b.addSubview(line)
-            }
-            // 分类为空时按钮不可点（空分类点下去什么也不会发生，用户会以为键盘坏了）
-            b.isEnabled = b.tag < sections.count && !sections[b.tag].items.isEmpty
+        for (i, b) in tabButtons.enumerated() {
+            b.tintColor = i == s ? Theme.keyText : Theme.secondaryText
+            b.backgroundColor = i == s ? Theme.functionKey : .clear
+            b.isEnabled = !sections[i].items.isEmpty
         }
     }
 

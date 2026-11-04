@@ -1011,12 +1011,6 @@ final class KeyboardViewController: UIInputViewController {
         guard i < r.candidates.count else { return }
         let c = r.candidates[i]
         guard c.tapCount > 0, c.tapCount <= taps.count else { return }
-        // 用户没有选首选、而是改了口径：把「这段前文之后他选了什么」记下来（诊断 2026-11-03）。
-        if i > 0, !c.text.isEmpty {
-            // 评审 R2：committedParts 已经被写进输入框，再拼一次会让键变成「们我们」——
-            // 学习时用的键必须与解码时查询的键一致，所以只取插入前的现场文本。
-            engine.learnPreference(context: host.documentContextBeforeInput ?? "", text: c.text)
-        }
         insertCommitted(c.text)
         // Learn: the word itself and where this user's finger actually lands.
         if !c.syllables.isEmpty {
@@ -1216,8 +1210,7 @@ final class KeyboardViewController: UIInputViewController {
 
     private func requestPredictions() {
         predictGeneration += 1
-        // 联想开关（设置 › 输入 › 联想）：关掉后上屏不再给下一个词的猜测
-        guard KeyboardSettings.shared.prediction, chinese, taps.isEmpty, enTaps.isEmpty, !emojiShown else { return }
+        guard chinese, taps.isEmpty, enTaps.isEmpty, !emojiShown else { return }
         let gen = predictGeneration
         engine.predict(after: host.documentContextBeforeInput ?? "") { [weak self] list in
             guard let self, gen == self.predictGeneration, self.taps.isEmpty, self.enTaps.isEmpty, self.chinese,

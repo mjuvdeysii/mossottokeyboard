@@ -71,8 +71,6 @@ public final class Decoder {
     /// 联想 reads its own model when set (the sentence model's scores are not counts of what follows a context).
     public var predictionGrammar: Grammar?
     public var grammarWeight = 0.7
-    /// 上下文偏好的最大提升（自然对数单位）：用户在同一前文后选过的字词，下次提前。
-    public var preferenceBoost = 20.0
     /// The language model weighs less on a word whose keys were corrected: it chooses between words the keys spell,
     /// it does not talk the keyboard into changing keys to make a likelier phrase. R4 grid (×correctionPenalty 1.5 /
     /// 2.5 / 3.5): 0.6 with 1.5 — 0.7 and above lose two 中英混输 sentences (小鹤), 1.0 also sentences typed with
@@ -213,16 +211,8 @@ public final class Decoder {
     /// 全拼 syllable boundaries set with 分词 ('): no syllable may run across one (positions in the filtered taps).
     private var boundaries = Set<Int>()
 
-    /// 剪枝时的全序：同分（spatial 相等）时按键号、再按终点排，不让字典的遍历顺序决定并列的顺序——
-    /// 否则同一个二进制两次解码可能给出不同的候选（R6 用 dump 对照时发现的）。
-    private static func nearer(_ a: Span, _ b: Span) -> Bool {
-        if a.spatial != b.spatial { return a.spatial > b.spatial }
-        if a.id != b.id { return a.id < b.id }
-        return a.end < b.end
-    }
-
     private func pruned(_ best: [UInt16: Span], limit: Int) -> [Span] {
-        var list = best.values.sorted(by: Self.nearer)
+        var list = best.values.sorted { $0.spatial > $1.spatial }
         if let top = list.first?.spatial { list = list.filter { $0.spatial >= top - pruneMargin } }
         return Array(list.prefix(limit))
     }
@@ -243,13 +233,13 @@ public final class Decoder {
             if s.corrected { fixed.append(s) } else { plain.append(s) }
             top = max(top, s.spatial)
         }
-        plain.sort(by: Self.nearer)
+        plain.sort { $0.spatial > $1.spatial }
         var out: [Span] = []
         if let ptop = plain.first?.spatial {
             for s in plain where s.spatial >= ptop - pruneMargin && out.count < maxSyllableAlternatives { out.append(s) }
         }
         guard !fixed.isEmpty else { return out }
-        fixed.sort(by: Self.nearer)
+        fixed.sort { $0.spatial > $1.spatial }
         var kept: [Span] = []
         if correctionKeep > 0 {
             for s in fixed where s.oneEdit && syllableUsable[Int(s.id)] {
@@ -350,8 +340,8 @@ public final class Decoder {
     /// sentences unchanged, noisy ones within a sentence or two): 小鹤's pairs need the cheaper slip to realign.
     /// 漏按一个键（小鹤，R5 方案第 2 项）：由词驱动，只在组词时生成。
     public var missingKeyEnabled = true
-    public var xiaoheMissingPenalty = 2.0
-    public var missingKeyAlternatives = 32
+    public var xiaoheMissingPenalty = 3.0
+    public var missingKeyAlternatives = 6
     public var skipEnabled = true
     public var skipPenalty = 9.0
     public var skipDoublePenalty = 8.0
@@ -798,9 +788,7 @@ public final class Decoder {
                 }
                 // 漏按一个键（R5 方案第 2 项）：下一个音节只对上一个键——但前提是词库里真有这样一对词。
                 // 只在组词时生成，所以 span 数由词候选数决定，不由键数决定。
-                // 评审 R3/R4：漏按只在小鹤成立（小鹤每个音节两个键；全拼单键本身就是完整音节，
-                // 生成出来会把「我饿」读成「我的」），并让全拼白白多 22% 解码时间。
-                if missingKeyEnabled, correctionEnabled, scheme == .xiaohe, first.kind != 1, firstEnd < n, !taps[firstEnd].group {
+                if missingKeyEnabled, correctionEnabled, first.kind != 1, firstEnd < n, !taps[firstEnd].group {
                     let keyChar = Character(taps[firstEnd].key.lowercased())
                     for sid in (keyToSyllables[keyChar] ?? []).prefix(missingKeyAlternatives) {
                         // 不因为「这里已有一个两键读法」就跳过：漏按之后那个两键读法多半是错的，
@@ -893,13 +881,6 @@ public final class Decoder {
             // The model's counts are joint (how often context + word occur), so they already carry how common the
             // word is; the lexicon's frequency added on top counts that twice and lets 在 outvote 再 after 可以.
             // Where the model has the pair, part of the word's own frequency is taken back out.
-            // 上下文偏好：这段前文之后用户选过这个词（诊断 2026-11-03）。只影响排序，不改词库。
-            if let user, !edges[ei].corrected,
-               !(edges[ei].userText ?? "").isEmpty || edges[ei].entry >= 0 {
-                let word = edges[ei].userText ?? lexicon.text(lexicon.entry(edges[ei].entry))
-                let strength = user.preference(context: String(ctx), text: word)
-                if strength > 0 { lift += preferenceBoost * strength }
-            }
             if unigramDiscount > 0, !keypad, q > base, !edges[ei].corrected, edges[ei].entry >= 0 {
                 lift -= unigramDiscount * (Double(lexicon.entry(edges[ei].entry).score) / 100 - unigramCenter)
             }
@@ -1073,25 +1054,8 @@ public final class Decoder {
         let rawText = taps.contains(where: { $0.group }) ? preedit.replacingOccurrences(of: " ", with: "") : raw
         promoteUserPhrases(taps, &result)
         promoteChatAbbreviation(taps, &result)
-        promoteDeReading(&result)
         add(Candidate(text: rawText, tapCount: n, syllables: [], corrected: false, score: -.infinity), [])
         return Result(candidates: result, preedit: preedit)
-    }
-
-    /// 的 / 得（诊断 2026-11-03，24 个错例里 2 条）：首选里「的」后面紧跟补语的开头时，
-    /// 若同一键数下存在把那个「的」写成「得」的读法，就把它提到第一。只换顺序，不改文本、不重排其余候选。
-    private static let deComplements: Set<Character> = ["太", "不", "很", "非", "特", "真", "挺", "好", "快", "慢", "更", "最", "多", "少"]
-    private func promoteDeReading(_ result: inout [Candidate]) {
-        guard let top = result.first, result.count > 1 else { return }
-        let chars = Array(top.text)
-        guard let pos = chars.indices.first(where: { i in
-            i + 1 < chars.count && chars[i] == "的" && Self.deComplements.contains(chars[i + 1])
-        }) else { return }
-        var want = chars; want[pos] = "得"
-        let target = String(want)
-        guard let k = result.firstIndex(where: { $0.text == target && $0.tapCount == top.tapCount }) else { return }
-        let c = result.remove(at: k)
-        result.insert(c, at: 0)
     }
 
     /// The keys that spell a syllable in the current scheme.
@@ -1189,48 +1153,15 @@ public final class Decoder {
                wordScore(context[context.count - 2], last) != nil {
                 score -= predictionSplitPenalty
             }
-            // 联想优先出「词」而不是单字（R7 方案第 3 项）：两字的候选如果是一个词库里有的词，加权。
-            // 真机上这才像普通输入法的联想——候选栏给的是「很好」「公园」，不是「很」「公」。
-            if chars.count == 2, wordScore(chars[0], chars[1]) != nil { score += predictionWordBonus }
             scored.append((t, score))
-        }
-        // 词与单字各留名额（R7 方案第 3 项）：词的加权不该把单字候选整个挤掉——
-        // 门禁里就有一条「我们 → 候选里要有『在』」的要求。词最多 4 个，其余按分数补。
-        let sorted = scored.sorted { $0.1 > $1.1 }
-        let words = sorted.filter { Array($0.0).count == 2 && wordScore(Array($0.0)[0], Array($0.0)[1]) != nil }
-        let rest = sorted.filter { !(Array($0.0).count == 2 && wordScore(Array($0.0)[0], Array($0.0)[1]) != nil) }
-        var merged: [(String, Double)] = []
-        var wi = 0, ri = 0
-        while merged.count < 40 && (wi < words.count || ri < rest.count) {
-            if wi < words.count, wi < 4, (ri >= rest.count || words[wi].1 >= rest[ri].1) {
-                merged.append(words[wi]); wi += 1
-            } else if ri < rest.count {
-                merged.append(rest[ri]); ri += 1
-            } else { break }
         }
         // what this user wrote after the same words before comes first
         var out = user?.continuations(after: context) ?? []
-        // 模型自己的前四条优先（那里有「我们 → 在」这类最高频单字），直查的两字词排在它们之后，
-        // 再其余。这样既补了「模型知道却出不来」的搭配，又不会把高频单字挤掉。
-        // 4-gram 计数很高的两字词先出（「今天天气 → 很好」这类），模型的前四条随后；
-        // 单字的保底由下面的 single 逻辑负责，所以「我们 → 在」不会被挤掉。
-        for (t, _) in merged where !out.contains(t) { out.append(t) }
-        // 单字不能被词挤光（门禁里有一条「我们 → 候选里要有在」）：前八里若少于两个字，把最好的单字提上来。
-        let single = { (t: String) in t.count == 1 }
-        if out.prefix(8).filter(single).count < 2, let i = out.firstIndex(where: { single($0) && $0 != "" }) {
-            let ch = out.remove(at: i)
-            out.insert(ch, at: min(7, out.count))
-        }
+        for (t, _) in scored.sorted(by: { $0.1 > $1.1 }) where !out.contains(t) { out.append(t) }
         return Array(out.prefix(limit))
     }
     public var predictionSplitWord = 11.0
     public var predictionSplitPenalty = 3.0
-    /// 联想里两字成词候选的加权（自然对数单位）
-    public var predictionWordBonus = 6.0
-    /// 两字词直查的入选下限（自然对数；低于它的搭配模型基本没见过）
-    public var predictionDirectFloor = 10.0   // ln(count)：10 ≈ 该 4-gram 出现过 2.2 万次
-    /// 直查最多顶到最前的条数
-    public var predictionDirectQuota = 5
 
     /// 自造词 first: a phrase of the user's own (one the lexicon does not have) whose keys are exactly what was typed —
     /// spelled out, or by its initials (zzx for 张梓萱) — leads the candidates; one the keys begin (mosuotai for
