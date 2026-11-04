@@ -1216,7 +1216,8 @@ final class KeyboardViewController: UIInputViewController {
 
     private func requestPredictions() {
         predictGeneration += 1
-        guard chinese, taps.isEmpty, enTaps.isEmpty, !emojiShown else { return }
+        // 联想开关（设置 › 输入 › 联想）：关掉后上屏不再给下一个词的猜测
+        guard KeyboardSettings.shared.prediction, chinese, taps.isEmpty, enTaps.isEmpty, !emojiShown else { return }
         let gen = predictGeneration
         engine.predict(after: host.documentContextBeforeInput ?? "") { [weak self] list in
             guard let self, gen == self.predictGeneration, self.taps.isEmpty, self.enTaps.isEmpty, self.chinese,
