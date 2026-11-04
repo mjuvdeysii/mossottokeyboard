@@ -1239,9 +1239,10 @@ public final class Decoder {
         var out = user?.continuations(after: context) ?? []
         // 模型自己的前四条优先（那里有「我们 → 在」这类最高频单字），直查的两字词排在它们之后，
         // 再其余。这样既补了「模型知道却出不来」的搭配，又不会把高频单字挤掉。
-        for (t, _) in merged.prefix(4) where !out.contains(t) { out.append(t) }
+        // 4-gram 计数很高的两字词先出（「今天天气 → 很好」这类），模型的前四条随后；
+        // 单字的保底由下面的 single 逻辑负责，所以「我们 → 在」不会被挤掉。
         for (_, t) in direct.prefix(2) where !out.contains(t) { out.append(t) }
-        for (t, _) in merged.dropFirst(4) where !out.contains(t) { out.append(t) }
+        for (t, _) in merged where !out.contains(t) { out.append(t) }
         // 单字不能被词挤光（门禁里有一条「我们 → 候选里要有在」）：前八里若少于两个字，把最好的单字提上来。
         let single = { (t: String) in t.count == 1 }
         if out.prefix(8).filter(single).count < 2, let i = out.firstIndex(where: { single($0) && $0 != "" }) {
