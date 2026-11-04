@@ -95,8 +95,6 @@ public final class Decoder {
     public var mixedPenalty = -3.0
     public var mixedCasedBonus = 5.0
     public var mixedMinZipf = 4.0
-    /// R5 (e)：句内英文词有一个键按到了相邻键时付的代价（pdg → PDF）。只在纠错开着、全键盘时生效。
-    public var mixedSlipEnglishPenalty = 1.0
     public var mixedPinyinPenalty = 4.0
     public var mixedRarePenalty = 5.0
     /// A common word whose letters no pinyin spells (bug, email): reading it as Chinese needs a correction, so the
@@ -266,21 +264,6 @@ public final class Decoder {
     /// At most this many corrected syllables per position (R4).
     public var correctionAlternatives = 6
     /// Whether some lexicon word starts with the syllable (built on first use).
-    /// 漏按：一个键可以当作哪些音节（编码的第一键或第二键），按该音节最常用单字的分数排序。
-    private lazy var keyToSyllables: [Character: [UInt16]] = {
-        var out: [Character: [UInt16]] = [:]
-        for id in 0..<UInt16(lexicon.syllables.count) {
-            let code = spelling(of: id)
-            guard code.count == 2 else { continue }
-            for ch in code { out[ch, default: []].append(id) }
-        }
-        let score = { (id: UInt16) -> Int in
-            self.lexicon.singles(id).map { Int(self.lexicon.entry($0).score) }.max() ?? Int(Int16.min)
-        }
-        for ch in out.keys { out[ch]?.sort { score($0) > score($1) } }
-        return out
-    }()
-
     private lazy var syllableUsable: [Bool] = (0..<lexicon.syllables.count).map { !lexicon.range(firstSyllable: UInt16($0)).isEmpty }
 
     private func xiaoheSpans(_ taps: [Tap]) -> [[Span]] {
@@ -338,10 +321,6 @@ public final class Decoder {
     /// twice — the commonest slip — than for a stray one).
     /// Measured per scheme (a sentence with one key too many read right: 全拼 0 → 74–76%, 小鹤 0 → 47–54%; clean
     /// sentences unchanged, noisy ones within a sentence or two): 小鹤's pairs need the cheaper slip to realign.
-    /// 漏按一个键（小鹤，R5 方案第 2 项）：由词驱动，只在组词时生成。
-    public var missingKeyEnabled = true
-    public var xiaoheMissingPenalty = 3.0
-    public var missingKeyAlternatives = 6
     public var skipEnabled = true
     public var skipPenalty = 9.0
     public var skipDoublePenalty = 8.0
@@ -703,35 +682,6 @@ public final class Decoder {
                                          ids: [], cuts: [j + 1], kinds: [0]))
                 reach[j + 1] = true
             }
-            // R5 (e)：整打的英文词，其中一个键按到了相邻键（pdg → PDF）。换后的词须是大写词或常用外来词、
-            // 且不是拼音；每个位置只取触点模型给出的前 2 个相邻键，长度 3–10，压住解码时间。
-            if correctionEnabled, i + 3 <= n {
-                for len in 3...min(10, n - i) {
-                    let end = i + len
-                    let typed: String = letters[i..<end].joined()
-                    if english.exact(typed) != nil { continue }
-                    for p in 0..<len {
-                        let alts: [(key: Character, logp: Double)] = Array(alternatives(taps[i + p]).prefix(2))
-                        for alt in alts {
-                            let k: Character = alt.key
-                            let l: Double = alt.logp
-                            if String(k) == letters[i + p] { continue }
-                            var cand: [Character] = Array(typed); cand[p] = k
-                            let spelled = String(cand)
-                            guard spelled != typed, let w = english.exact(spelled) else { continue }
-                            let cased = w.display != w.key
-                            if !cased { guard w.zipf >= mixedMinZipf, pinyinSyllables(spelled) == 0 else { continue } }
-                            let base: Double = mixedA + mixedB * w.zipf - wordPenalty - mixedPenalty
-                            let bonus: Double = cased ? mixedCasedBonus : 0
-                            let touch: Double = spatialWeight * l
-                            let score: Double = base + bonus + touch - correctionPenalty - mixedSlipEnglishPenalty
-                            englishEdges.append(Edge(start: i, end: end, score: score, corrected: true, entry: -1,
-                                                     userText: w.display, ids: [], cuts: [end], kinds: [0]))
-                            reach[end] = true
-                        }
-                    }
-                }
-            }
         }
 
         for i in 0..<n where reach[i] {
@@ -786,31 +736,6 @@ public final class Decoder {
                         }
                     }
                 }
-                // 漏按一个键（R5 方案第 2 项）：下一个音节只对上一个键——但前提是词库里真有这样一对词。
-                // 只在组词时生成，所以 span 数由词候选数决定，不由键数决定。
-                if missingKeyEnabled, correctionEnabled, first.kind != 1, firstEnd < n, !taps[firstEnd].group {
-                    let keyChar = Character(taps[firstEnd].key.lowercased())
-                    for sid in (keyToSyllables[keyChar] ?? []).prefix(missingKeyAlternatives) {
-                        // 不因为「这里已有一个两键读法」就跳过：漏按之后那个两键读法多半是错的，
-                        // 单键读法必须同时在场，让词与语言模型去选（这正是按位置做时昂贵的同一个道理，
-                        // 只是这里被词候选限流）
-                        let follow = lexicon.followers(first: first.id, second: sid)
-                        guard !follow.pairs.isEmpty || !follow.longer.isEmpty else { continue }
-                        let code = spelling(of: sid)
-                        guard let at = code.firstIndex(of: keyChar) else { continue }
-                        let cut = at == code.startIndex ? 0.0 : -1.0
-                        let sp: Double = spatialWeight * cut - correctionPenalty - xiaoheMissingPenalty
-                        let second = Span(end: firstEnd + 1, id: sid, spatial: sp, corrected: true, kind: 4)
-                        for idx in follow.pairs {
-                            let base: Double = Double(lexicon.entry(idx).score) / 100 - wordPenalty
-                            if base + sp < minWord { break }
-                            guard accepts(i, second.end, 2, base + fsp + sp) else { break }
-                            insert(Edge(start: i, end: second.end, score: base + fsp + sp, corrected: true, entry: idx,
-                                        userText: nil, ids: [], cuts: [firstEnd, second.end], kinds: [first.kind, 4]))
-                        }
-                    }
-                }
-
                 if let user {
                     for u in user.candidates(first: first.id) {
                         let L = u.ids.count
@@ -1240,7 +1165,6 @@ public final class Decoder {
         // aligned (我用iPhone打字 for woyongiphonedazii: zii→zi). A short word may also hide inside the pinyin (ok in
         // wokan…le ok): of every place the word's keys appear, the one that leaves the pinyin closest to its spelling.
         var latin: [String] = [], run = ""
-        var correctedEnglish: [Fix] = []
         for ch in c.text { if ch.isASCII && ch.isLetter { run.append(ch) } else if !run.isEmpty { latin.append(run); run = "" } }
         if !run.isEmpty { latin.append(run) }
         if !latin.isEmpty, typed.count <= 90, target.count <= 120 {
@@ -1255,22 +1179,6 @@ public final class Decoder {
                     if best == nil || dd < best!.d { best = (at, dd) }
                 }
                 if let b = best { typed.removeSubrange(b.at..<b.at + lw.count) }
-                else {
-                    // 被纠正的英文词（pdg → PDF）找不到完全相同的键：按最少改动对齐，小字写 pdg→pdf
-                    var near: (at: Int, bad: Int)?
-                    for at in 0...(typed.count - lw.count) {
-                        var bad = 0
-                        for (o, ch) in lw.enumerated() where Character(typed[at + o].lowercased()) != ch {
-                            bad += 1
-                            if bad > 1 { break }
-                        }
-                        if bad <= 1, near == nil || bad < near!.bad { near = (at: at, bad: bad) }
-                    }
-                    if let n2 = near {
-                        correctedEnglish.append(Fix(typed: String(typed[n2.at..<n2.at + lw.count]), meant: w))
-                        typed.removeSubrange(n2.at..<n2.at + lw.count)
-                    }
-                }
             }
         }
         let n = typed.count, m = target.count
@@ -1309,7 +1217,7 @@ public final class Decoder {
                 j -= 1
             }
         }
-        var out: [Fix] = correctedEnglish
+        var out: [Fix] = []
         for k in spells.indices where changed[k] {
             // a half-typed last syllable is shown as far as it was typed
             let meant = k == spells.count - 1 ? String(spells[k].prefix(endJ - lastStart)) : String(spells[k])

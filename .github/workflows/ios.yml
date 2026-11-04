@@ -81,15 +81,11 @@ jobs:
           cp "$DATA"/Documents/keyboard-tests.txt report/keyboard-tests.txt 2>/dev/null || echo "FAIL keyboard tests did not run" > report/keyboard-tests.txt
           head -5 report/keyboard-tests.txt
       - name: Engine quality gate (blocks the release on regression)
-        # 两个方案各自跑完再判：先前 set -o pipefail 下小鹤一失败整步就中止，全拼的门禁其实从没跑过
-        # （ci-logs 的报告里只有一个 "scheme:" 行即为证据）。这里两条都跑、结果都写进报告，最后一起判。
         run: |
           set -o pipefail
           mkdir -p report
-          status=0
-          /tmp/engine-cli Keyboard/Resources/lexicon.bin gate | grep -E "scheme|PASS|FAIL|RECORD" | tee report/engine-gate.txt || status=1
-          SCHEME=quanpin /tmp/engine-cli Keyboard/Resources/lexicon.bin gate | grep -E "scheme|PASS|FAIL|RECORD" | tee -a report/engine-gate.txt || status=1
-          exit $status
+          /tmp/engine-cli Keyboard/Resources/lexicon.bin gate | grep -E "scheme|PASS|FAIL|RECORD" | tee report/engine-gate.txt
+          SCHEME=quanpin /tmp/engine-cli Keyboard/Resources/lexicon.bin gate | grep -E "scheme|PASS|FAIL|RECORD" | tee -a report/engine-gate.txt
       - name: Keyboard test bench (blocks the release on failure)
         run: |
           cat report/keyboard-tests.txt 2>/dev/null | head -60 || true

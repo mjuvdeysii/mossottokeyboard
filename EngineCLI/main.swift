@@ -7,26 +7,6 @@ import Foundation
 //   EngineCLI <lexicon.bin> slips <words|sentences|holdout> <quarter|edge|centre>   one key on a neighbour (R4), root causes
 //   EngineCLI <lexicon.bin> rare                  uncommon words typed on purpose kept first (rare.kept)
 
-/// 中英混输整句首选命中：mixed.tsv 调参、mixed2.tsv 只检验（R5 方案第 1 项）。
-/// 返回百分比、句数与读错的句子，读错的只在 MIX_DEBUG 下打印。
-func mixedTop1(_ path: String) -> (pct: Double, n: Int, misses: [(String, String)]) {
-    guard let raw = try? String(contentsOfFile: path, encoding: .utf8) else { return (0, 0, []) }
-    decoder.correctionEnabled = true
-    var ok = 0, total = 0, misses: [(String, String)] = []
-    for line in raw.split(separator: "\n") {
-        let f = line.split(separator: "\t"); guard f.count == 2 else { continue }
-        // keys: pinyin syllables (typed in the scheme under test) and |english words, space-separated
-        let keys = f[1].split(separator: " ").map { tok -> String in
-            tok.hasPrefix("|") ? String(tok.dropFirst()) : lex.id(of: String(tok)).map { decoder.spelling(of: $0) } ?? String(tok)
-        }.joined()
-        let c = decoder.decode(keys.map { Tap.exact($0) }).candidates
-        total += 1
-        if c.first?.text.lowercased() == f[0].lowercased() { ok += 1 }
-        else { misses.append((String(f[0]), c.first?.text ?? "-")) }
-    }
-    return (total > 0 ? 100 * Double(ok) / Double(total) : 0, total, misses)
-}
-
 struct RNG {
     var s: UInt64
     mutating func next() -> Double {
@@ -384,92 +364,7 @@ func rareKept() -> (kept: Int, n: Int, examples: [String]) {
     return (kept, n, ex)
 }
 
-// MARK: - R5 句内英文词按偏一个键 (mixslips)
-
-/// 中英混输的句子：英文词的每一个键，换成它的每个相邻键（其余键仍在键心），看整句还读不读得回来。
-/// 「合法」= 换键后的英文词本身仍是词库里的一个英文词（用户可能真想打的是那个词）。
-struct MixSlipResult {
-    var n = 0, top1 = 0, top3 = 0
-    var legal = 0, legal1 = 0, legal3 = 0
-    var examples: [String] = []
-    func pct(_ a: Int, _ b: Int) -> Double { b > 0 ? 100 * Double(a) / Double(b) : 0 }
-}
-
-func mixSlipScore(_ path: String, depth: String) -> MixSlipResult {
-    var r = MixSlipResult()
-    guard let raw = try? String(contentsOfFile: path, encoding: .utf8) else { return r }
-    for line in raw.split(separator: "\n") {
-        let f = line.split(separator: "\t"); guard f.count == 2 else { continue }
-        let want = String(f[0]).lowercased()
-        var taps: [Tap] = []
-        var words: [(start: Int, chars: [Character])] = []
-        for tok in f[1].split(separator: " ") {
-            if tok.hasPrefix("|") {
-                let chars = Array(String(tok.dropFirst()))
-                words.append((taps.count, chars))
-                taps += chars.map { centreTap($0) }
-            } else {
-                let s = String(tok)
-                let spelled = lex.id(of: s).map { decoder.spelling(of: $0) } ?? s
-                taps += spelled.map { centreTap($0) }
-            }
-        }
-        for w in words {
-            for (off, ch) in w.chars.enumerated() {
-                for nb in neighbours(ch) {
-                    var t2 = taps
-                    t2[w.start + off] = slipTap(intended: ch, typed: nb, depth: depth)
-                    let cands = decoder.decode(t2).candidates
-                    let top = cands.first?.text ?? ""
-                    let top3ok = cands.prefix(3).contains { $0.text.lowercased() == want }
-                    var typed = w.chars; typed[off] = nb
-                    let legal = decoder.english?.exact(String(typed)) != nil
-                    r.n += 1
-                    if top.lowercased() == want { r.top1 += 1 } else if r.examples.count < 12, r.n % 37 == 0 { r.examples.append("\(want) ← \(top)") }
-                    if top3ok { r.top3 += 1 }
-                    if legal { r.legal += 1; if top.lowercased() == want { r.legal1 += 1 }; if top3ok { r.legal3 += 1 } }
-                }
-            }
-        }
-    }
-    return r
-}
-
-/// 漏按一个键的全量枚举（R5 方案第 2 项）：每句每个内位删掉一个键，看首选 / 前三。
-/// 只在命令里跑，不进每次的 CI 门禁（门禁上的 missing.sentences 是每句随机一处）。
-func missingSweep(_ set: String) -> (n: Int, top1: Int, top3: Int, keys: Int) {
-    var n = 0, t1 = 0, t3 = 0, keys = 0
-    for (text, letters) in slipItems(set) {
-        guard letters.count >= 4 else { continue }
-        for p in 1..<(letters.count - 1) {
-            var l = letters; l.remove(at: p)
-            let c = decoder.decode(l.map { Tap.exact($0) }).candidates
-            n += 1; keys += 1
-            if c.first?.text == text { t1 += 1 }
-            if c.prefix(3).contains(where: { $0.text == text }) { t3 += 1 }
-        }
-    }
-    return (n, t1, t3, keys)
-}
-
 switch args[2] {
-case "missing":   // EngineCLI <lexicon> missing <sentences|holdout>
-    let set = args.count > 3 ? args[3] : "sentences"
-    let t0 = Date()
-    let r = missingSweep(set)
-    let pct = { (a: Int) in r.n > 0 ? 100 * Double(a) / Double(r.n) : 0 }
-    print(String(format: "missing %@ | %@ | variants %d  %.0f s", set, decoder.scheme == .xiaohe ? "小鹤" : "全拼", r.n, Date().timeIntervalSince(t0)))
-    print(String(format: "  top1 %.1f%%  top3 %.1f%%", pct(r.top1), pct(r.top3)))
-
-case "mixslips":   // EngineCLI <lexicon> mixslips <mixed.tsv|mixed2.tsv> <quarter|edge|centre>
-    let path = args.count > 3 ? args[3] : "EngineCLI/mixed.tsv", depth = args.count > 4 ? args[4] : "quarter"
-    let t0 = Date()
-    let r = mixSlipScore(path, depth: depth)
-    print("mixslips \(path) \(depth) | \(decoder.scheme == .xiaohe ? "小鹤" : "全拼") | n=\(r.n) \(String(format: "%.0f s", Date().timeIntervalSince(t0)))")
-    print(String(format: "  top1 %.1f%%  top3 %.1f%%", r.pct(r.top1, r.n), r.pct(r.top3, r.n)))
-    print(String(format: "  legal (the typed word is another English word): n=%d  top1 %.1f%%  top3 %.1f%%", r.legal, r.pct(r.legal1, r.legal), r.pct(r.legal3, r.legal)))
-    for e in r.examples { print("   ", e) }
-
 case "slips":   // EngineCLI <lexicon> slips <words|sentences|holdout> <quarter|edge|centre>: one key on a neighbour (R4)
     let set = args.count > 3 ? args[3] : "words", depth = args.count > 4 ? args[4] : "quarter"
     let t0 = Date()
@@ -683,31 +578,21 @@ case "bench", "gate":
     }
 
     // 中英混输 inside sentences: EngineCLI/mixed.tsv (text, pinyin syllables and |english words), top-1 equals the text (letter case aside)
-    let mixedMain = mixedTop1(env["MIXED"] ?? "EngineCLI/mixed.tsv")
-    if mixedMain.n > 0 {
-        metrics["mixed.sentences.top1"] = mixedMain.pct
-        print(String(format: "== 中英混输 sentences: top1 %.1f%% (n=%d)", mixedMain.pct, mixedMain.n))
-        if env["MIX_DEBUG"] != nil { for (want, got) in mixedMain.misses { print("   ≠", want, "→", got) } }
-        // 留出集（R5 方案第 1 项）：只检验，不调参，也不设门槛 —— 门禁只输出 RECORD 行
-        let holdout = mixedTop1(env["MIXED2"] ?? "EngineCLI/mixed2.tsv")
-        if holdout.n > 0 {
-            metrics["mixed.holdout.top1"] = holdout.pct
-            print(String(format: "== 中英混输 留出集: top1 %.1f%% (n=%d)", holdout.pct, holdout.n))
-            if env["MIX_DEBUG"] != nil { for (want, got) in holdout.misses { print("   ≠", want, "→", got) } }
+    if let raw = try? String(contentsOfFile: env["MIXED"] ?? "EngineCLI/mixed.tsv", encoding: .utf8) {
+        decoder.correctionEnabled = true
+        var ok = 0, total = 0
+        for line in raw.split(separator: "\n") {
+            let f = line.split(separator: "\t"); guard f.count == 2 else { continue }
+            // keys: pinyin syllables (typed in the scheme under test) and |english words, space-separated
+            let keys = f[1].split(separator: " ").map { tok -> String in
+                tok.hasPrefix("|") ? String(tok.dropFirst()) : lex.id(of: String(tok)).map { decoder.spelling(of: $0) } ?? String(tok)
+            }.joined()
+            let c = decoder.decode(keys.map { Tap.exact($0) }).candidates
+            total += 1
+            if c.first?.text.lowercased() == f[0].lowercased() { ok += 1 } else if env["MIX_DEBUG"] != nil { print("   ≠", f[0], "→", c.first?.text ?? "-") }
         }
-        // 句内英文词按偏一个键（R5 方案第 1 项）：调参集上门禁，留出集只 RECORD
-        let slips = mixSlipScore(env["MIXED"] ?? "EngineCLI/mixed.tsv", depth: "quarter")
-        if slips.n > 0 {
-            metrics["mixed.slip.top1"] = slips.pct(slips.top1, slips.n)
-            metrics["mixed.slip.top3"] = slips.pct(slips.top3, slips.n)
-            print(String(format: "== 中英混输 英文词按偏一键: top1 %.1f%%  top3 %.1f%% (n=%d)", metrics["mixed.slip.top1"]!, metrics["mixed.slip.top3"]!, slips.n))
-        }
-        let slipsHoldout = mixSlipScore(env["MIXED2"] ?? "EngineCLI/mixed2.tsv", depth: "quarter")
-        if slipsHoldout.n > 0 {
-            metrics["mixed.slip.holdout.top1"] = slipsHoldout.pct(slipsHoldout.top1, slipsHoldout.n)
-            metrics["mixed.slip.holdout.top3"] = slipsHoldout.pct(slipsHoldout.top3, slipsHoldout.n)
-            print(String(format: "== 中英混输 留出集按偏一键: top1 %.1f%%  top3 %.1f%% (n=%d)", metrics["mixed.slip.holdout.top1"]!, metrics["mixed.slip.holdout.top3"]!, slipsHoldout.n))
-        }
+        metrics["mixed.sentences.top1"] = 100 * Double(ok) / Double(max(total, 1))
+        print(String(format: "== 中英混输 sentences: top1 %.1f%% (n=%d)", metrics["mixed.sentences.top1"]!, total))
     }
 
     // 多按了一个键: every sentence typed once more with one key too many, somewhere inside — the key before it
@@ -761,7 +646,7 @@ case "bench", "gate":
         }
         metrics["extra.sentences.top1"] = 100 * Double(ok) / Double(max(total, 1))
         // and with one key left out instead (小鹤 too, as a record: a pair missing a key shifts every pair after it)
-        var mok = 0, m3 = 0, mtotal = 0
+        var mok = 0, mtotal = 0
         for (t, ids) in sentItems {
             var letters = Array(codeLetters(ids))
             guard letters.count >= 4 else { continue }
@@ -771,10 +656,8 @@ case "bench", "gate":
             if decoder.scheme == .quanpin { countFix(c.first, letters) }
             countDup(c, letters.count)
             if c.first?.text == t { mok += 1 } else if env["MISS_DEBUG"] != nil { print("   -", t, "→", c.first?.text ?? "-", "|", String(letters)) }
-            if c.prefix(3).contains(where: { $0.text == t }) { m3 += 1 }
         }
         metrics["missing.sentences.top1"] = 100 * Double(mok) / Double(max(mtotal, 1))
-        metrics["missing.sentences.top3"] = 100 * Double(m3) / Double(max(mtotal, 1))
         // 句末多按: one key too many after the last key (全拼) — half the sentences the last key pressed twice, half a
         // neighbour of it brushed; perfect keys otherwise. extra.tail.top1 / top3 (%)
         if decoder.scheme == .quanpin {
@@ -829,7 +712,7 @@ case "bench", "gate":
         }
         metrics["fix.caption.coverage"] = 100 * Double(fixSaid) / Double(max(fixMarked, 1))
         print(String(format: "== corrections that say what changed: %.1f%% (%d of %d)", metrics["fix.caption.coverage"]!, fixSaid, fixMarked))
-        if mtotal > 0 { print(String(format: "== one key missing: sentences top1 %.1f%%  top3 %.1f%%  (n=%d)", metrics["missing.sentences.top1"]!, metrics["missing.sentences.top3"]!, mtotal)) }
+        if mtotal > 0 { print(String(format: "== one key missing: sentences top1 %.1f%%", metrics["missing.sentences.top1"]!)) }
         print(String(format: "== one key too many: sentences top1 %.1f%%  top3 %.1f%%  (n=%d)", metrics["extra.sentences.top1"]!, 100 * Double(top3) / Double(max(total, 1)), total))
     }
 
@@ -1027,10 +910,7 @@ case "bench", "gate":
             ("fuzz.p99.ms", 100.0, false),
             ("extra.sentences.top1", 84.0, true),
             ("missing.sentences.top1", 48.0, true), // a sentence with one key left out still read right (%)
-            // 全拼的这一条在扩集那次提交里写成 78.0，但全拼门禁当时从未执行过（pipefail 那个 bug），
-            // 所以从未被验证；扩集前的基线是 75.0。按本轮方案的规则「门槛 = 调参集实测值下 1 点」定在 76.5，
-            // 78.0 作为 RECORD 的追赶目标留在 rounds/R5.md。公开同指标的量产输入法最好成绩 71.14%（手心）。
-            ("mixed.sentences.top1", 76.5, true),
+            ("mixed.sentences.top1", 78.0, true),
             ("fix.caption.coverage", 98.0, true),
             ("extra.tail.top1", 71.0, true),   // one key too many after the last key still read right (%)
             ("extra.tail.top3", 90.0, true),   // … among the first three (%)
@@ -1125,18 +1005,6 @@ case "bench", "gate":
             var worst = 0.0, worstInput = ""
             var times: [Double] = []
             decoder.correctionEnabled = true
-            // 预热：句子模型（399 MB）与词库都是内存映射的，第一次碰到某一页是磁盘的事，不是解码的事。
-            // 先跑一段不计时的解码把页读进来，p99 才测的是解码本身（门槛仍是 40 ms，不动）。
-            var warm = RNG(s: 99)
-            for _ in 0..<120 {
-                let n = 1 + Int(warm.next() * 16)
-                var taps: [Tap] = []
-                for _ in 0..<n {
-                    let c = letters[Int(warm.next() * 26)]
-                    taps.append(warm.next() < 0.6 ? Tap.exact(c) : noisyTaps(String(c), sigmaX: 0.3, sigmaY: 0.27, rng: &warm)[0])
-                }
-                _ = decoder.decode(taps)
-            }
             for i in 0..<1500 {
                 let n = i < 1400 ? 1 + Int(rng.next() * 16) : 24 + Int(rng.next() * 17)
                 var taps: [Tap] = []
@@ -1216,8 +1084,7 @@ case "bench", "gate":
             let r = r1Typos(env["TYPOS"] ?? "EngineCLI/r1_typos.tsv", debug: env["TYPO_DEBUG"] != nil)
             print("RECORD r1.top1 \(r.top1)/\(r.total)  r1.top3 \(r.top3)/\(r.total)  r1.exact.top1 \(r.exact1)/\(r.total)  r1.exact.top3 \(r.exact3)/\(r.total)")
         }
-        for k in ["two.sentences.top1", "two.sentences.top3"] + (decoder.scheme == .xiaohe ? ["missing.sentences.top1", "missing.sentences.top3"] : [])
-            + ["mixed.holdout.top1", "mixed.slip.holdout.top1", "mixed.slip.holdout.top3"].filter({ metrics[$0] != nil }) {
+        for k in ["two.sentences.top1", "two.sentences.top3"] + (decoder.scheme == .xiaohe ? ["missing.sentences.top1"] : []) {
             print(String(format: "RECORD %@ %.2f", k, metrics[k] ?? .nan))
         }
         for (k, v, atLeast) in floors {
