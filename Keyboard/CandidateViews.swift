@@ -115,6 +115,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         backgroundColor = Theme.touchable   // never fully clear: see Theme.touchable
         preedit.font = Theme.font(14, .medium)
         predictionMark.isHidden = true
+        predictionMark.isUserInteractionEnabled = false   // 它只是一条指示线，绝不能挡住候选的点击
         predictionMark.layer.cornerRadius = 1
         addSubview(predictionMark)
         preedit.textColor = Theme.secondaryText
