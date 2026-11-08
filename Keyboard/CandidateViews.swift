@@ -182,6 +182,10 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         setNeedsLayout()
     }
 
+    /// 只读测试钩子：第 0 个候选当前的 caption 文本（联想态应为「联想」，候选态为纠错说明或 nil）。
+    var firstCaptionForTests: String? { captionFor(0)?.string }
+    /// 只读测试钩子：当前是否处于联想态。
+    var predictionMarkForTests: Bool { isPrediction }
     var undoTextForTests: String? { undoText }
     func undoTapForTests() { onUndo?() }
 
@@ -231,6 +235,9 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
                 if i < candidates.count, !isPrediction, let cap = Self.caption(for: candidates[i]) {
                     e.accessibilityValue = cap.string == "已纠错" ? "已纠错"
                         : "已纠错：" + candidates[i].fixes.map { "\($0.typed) 改为 \($0.meant)" }.joined(separator: "，")
+                } else if isPrediction {
+                    e.accessibilityValue = "联想，键盘猜的下一个词"
+                    e.accessibilityHint = "轻点插入"
                 }
                 e.accessibilityTraits = .button
                 if i == 0, !isPrediction { e.accessibilityHint = "首选，空格上屏" }
@@ -355,7 +362,12 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
 
     /// The caption a candidate carries: what the first choice corrected, or "原键" on the literal reading after it.
     private func captionFor(_ i: Int) -> NSAttributedString? {
-        guard !isPrediction, i < candidates.count, i <= 1 else { return nil }
+        // 联想态复用已有的 caption 行给一个「这是猜的」意符（Norman）：不加视图、
+        // 不加颜色、不碰遮罩；只占第 0 个候选下方那一行，格子宽度不变。
+        if isPrediction {
+            return i == 0 ? NSAttributedString(string: "联想", attributes: [.font: Self.fixFont, .foregroundColor: Theme.secondaryText]) : nil
+        }
+        guard i < candidates.count, i <= 1 else { return nil }
         let c = candidates[i]
         if i == 0 { return Self.caption(for: c) }
         // the keys as typed first, a correction second: the second says what it changes (kw→ke)

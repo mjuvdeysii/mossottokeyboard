@@ -75,7 +75,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         let mosto = UIImageView(image: UIImage(named: "mosto_day", in: Bundle(for: EmojiPanelView.self), with: nil))
         override init(frame: CGRect) {
             super.init(frame: frame)
-            label.font = Theme.font(12, .bold)
+            label.font = Theme.font(13, .bold)
             label.textColor = Theme.secondaryText
             addSubview(label)
             mosto.contentMode = .scaleAspectFit
@@ -286,7 +286,10 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         super.layoutSubviews()
         let b = bounds
         guard b.width > 100, b.height > 100 else { return }   // before the panel has its real frame
-        let barH: CGFloat = 40
+        // 底栏键帽 44pt（HIG 的最小可点尺寸）。原 40 → 键高 36pt，只有标准的 82%，
+        // 单手在表情页点「ABC」返回时容易落空。只改这一个常量：三键、分类条同高，
+        // 列表高度相应少 8pt，首行 emoji 顶边不变（深泽直人：无意识设计）。
+        let barH: CGFloat = 48
         titleLabel.frame = CGRect(x: 12, y: 0, width: b.width - 24, height: 24)
         collection.frame = CGRect(x: 0, y: 2, width: b.width, height: b.height - 2 - barH - 4)
         let side: CGFloat = 56
@@ -309,7 +312,10 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         let c = collectionView.dequeueReusableCell(withReuseIdentifier: "e", for: indexPath) as! Cell
         let e = sections[indexPath.section].items[indexPath.item]
         c.label.text = e
-        c.label.font = isKaomoji(indexPath.section) ? .systemFont(ofSize: 17) : .systemFont(ofSize: 30)
+        let kao = isKaomoji(indexPath.section)
+        c.label.font = kao ? .systemFont(ofSize: 17) : .systemFont(ofSize: 30)
+        // 颜文字长短差很大：下限从 10.2pt 抬到 13.6pt（Susan Kare：小字不能糊成一团）
+        c.label.minimumScaleFactor = kao ? 0.8 : 0.6
         c.label.textColor = Theme.keyText
         c.accessibilityLabel = e
         return c
@@ -327,14 +333,14 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
 
     func collectionView(_ collectionView: UICollectionView, layout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
         if isKaomoji(indexPath.section) {
-            return CGSize(width: max(60, floor((collectionView.bounds.width - 8) / 3)), height: 44)
+            return CGSize(width: max(60, floor((collectionView.bounds.width - 8) / 2)), height: 44)
         }
         return CGSize(width: cellSide, height: cellSide)
     }
 
     func collectionView(_ collectionView: UICollectionView, layout: UICollectionViewLayout, referenceSizeForHeaderInSection section: Int) -> CGSize {
         // the first section's name is the panel title; later ones get a small header where they begin
-        sections[section].items.isEmpty ? .zero : CGSize(width: collectionView.bounds.width, height: 26)
+        sections[section].items.isEmpty ? .zero : CGSize(width: collectionView.bounds.width, height: 28)
     }
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {

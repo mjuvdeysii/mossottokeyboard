@@ -651,7 +651,7 @@ final class KeyboardViewController: UIInputViewController {
             if handleCount % 40 == 0 { peakFootprint = max(peakFootprint, memoryFootprintMB()) }   // a few µs
         }
         candidateBar.dismissForget()
-        clearPredictions()
+        if action.endsSuggestions { clearPredictions() }
         // a clear can be taken back only until the next key
         cleared = nil
         let lastDelete = beforeDelete
@@ -1217,11 +1217,7 @@ final class KeyboardViewController: UIInputViewController {
                   !list.isEmpty else { return }
             self.predictions = list
             self.candidateBar.update(preedit: "", candidates: self.predictionCandidates(), prediction: true)
-            // left alone a while: the suggestions step aside and Mosto comes back to the strip
-            DispatchQueue.main.asyncAfter(deadline: .now() + 12) { [weak self] in
-                guard let self, gen == self.predictGeneration else { return }
-                self.clearPredictions()
-            }
+            // 联想只由用户下一个动作结束（打字/换语言/换字段），不再由键盘自己的 12 秒计时器清掉。
         }
     }
 

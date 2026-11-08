@@ -23,6 +23,20 @@ enum KeyAction: Equatable {
     case emoji
 }
 
+extension KeyAction {
+    /// 只有真正写/删字、改语言或换页面的动作才该让联想条消失。
+    /// .shift / .globe / 空 composition 下的 .page 与 .settings 不改变文本，
+    /// 不该让一条刚出现的联想凭空空掉（Krug：别让我想；Norman：状态变化要可归因）。
+    var endsSuggestions: Bool {
+        switch self {
+        case .char, .delete, .space, .ret, .t9, .clearInput, .deleteWord, .emoji, .toggleLanguage, .page, .settings:
+            return true
+        case .shift, .globe:
+            return false
+        }
+    }
+}
+
 enum KeyStyle { case normal, function, accent }
 
 struct KeySpec {

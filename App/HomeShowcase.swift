@@ -28,7 +28,7 @@ private struct Board<Content: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 0.17, alpha: 1) : UIColor(red: 0.89, green: 0.89, blue: 0.92, alpha: 1) }))
+                    .fill(Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 0.13, alpha: 1) : UIColor(red: 0.90, green: 0.91, blue: 0.93, alpha: 1) }))
             )
     }
 }
@@ -81,8 +81,8 @@ private struct Strip: View {
         HStack(spacing: 2) {
             if let undo {
                 HStack(spacing: 3) {
-                    Image(systemName: "arrow.uturn.backward").font(.system(size: 9, weight: .semibold))
-                    Text(undo).font(.system(size: 11, weight: .semibold, design: .rounded)).lineLimit(1)
+                    Image(systemName: "arrow.uturn.backward").font(.system(size: 14, weight: .semibold))
+                    Text(undo).font(.system(size: 14, weight: .semibold, design: .rounded)).lineLimit(1)
                 }
                 .foregroundStyle(Color.kbMark)
                 .padding(.horizontal, 7).padding(.vertical, 4)
@@ -91,20 +91,20 @@ private struct Strip: View {
             }
             ForEach(items) { c in
                 VStack(spacing: 0) {
-                    Text(c.text).font(.system(size: 16, design: .rounded)).foregroundStyle(Color.kbText).lineLimit(1)
+                    Text(c.text).font(.system(size: 20, design: .rounded)).foregroundStyle(Color.kbText).lineLimit(1)
                     if let t = c.typed, let m = c.meant {
                         (Text(t).foregroundColor(.kbSecondary) + Text("→").foregroundColor(.kbSecondary) + Text(m).foregroundColor(.kbMark))
-                            .font(.system(size: 9, weight: .semibold, design: .rounded)).lineLimit(1)
+                            .font(.system(size: 10.5, weight: .semibold, design: .rounded)).lineLimit(1)
                     } else if let n = c.note {
-                        Text(n).font(.system(size: 9, weight: .semibold, design: .rounded)).foregroundStyle(Color.kbSecondary)
+                        Text(n).font(.system(size: 10.5, weight: .semibold, design: .rounded)).foregroundStyle(Color.kbSecondary)
                     }
                 }
                 .padding(.horizontal, 7).padding(.vertical, 3)
-                .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(c.fixed ? Color.kbTint : .clear))
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(c.fixed ? Color.kbTint : .clear))
             }
             Spacer(minLength: 0)
         }
-        .frame(height: 36)
+        .frame(height: 44)
         .opacity(answered ? 1 : 0)
         .offset(y: answered ? 0 : 5)
         .animation(.easeOut(duration: 0.22), value: answered)

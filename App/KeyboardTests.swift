@@ -234,6 +234,28 @@ enum KeyboardTests {
             vc.handle(.space, tap: nil)
         } else { log(false, "predict.setup", "engine did not load") }
 
+        // 联想态意符与生命周期：用独立键盘，避免污染上面的联想链（Krug/Norman/Jef Raskin/Buxton）
+        if let kb = makeKeyboard(scheme: 1, in: window) {
+            let (vc, h) = kb
+            type(vc, "nihao"); settle(vc); vc.handle(.space, tap: nil)
+            let until = Date().addingTimeInterval(3)
+            repeat { drain(0.02) } while vc.testState.predictions.isEmpty && Date() < until
+            let p = vc.testState.predictions
+            let bar = vc.candidateBarForTests
+            log(h.string == "你好" && !p.isEmpty, "predict.marks setup", "text=\(h.string) predictions=\(p)")
+            log(bar.firstCaptionForTests == "联想" && bar.predictionMarkForTests,
+                "predict.strip marks these as guesses", "caption=\(bar.firstCaptionForTests ?? "nil")")
+            log(!(bar.firstCaptionForTests ?? "").contains("已纠错"),
+                "predict.a guess is never labelled as a correction", "caption=\(bar.firstCaptionForTests ?? "nil")")
+            drain(0.3)
+            vc.handle(.shift, tap: nil); vc.handle(.globe, tap: nil)
+            log(vc.testState.predictions == p, "predict.thinking and shift/globe keep the suggestions",
+                "predictions=\(vc.testState.predictions)")
+            vc.handle(.char("a"), tap: Tap.exact("a"))
+            log(vc.testState.predictions.isEmpty, "predict.a letter still ends the suggestions",
+                "predictions=\(vc.testState.predictions)")
+        } else { log(false, "predict.marks setup2", "engine did not load") }
+
         // The cursor moved away from the word just typed: a delete there is a delete, not an undo
         if let kb = makeKeyboard(scheme: 1, in: window) {
             let (vc, h) = kb
