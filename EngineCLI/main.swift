@@ -892,6 +892,7 @@ case "bench", "gate":
             ("slip.words.edge.legal.top1", 85.5, true),   // on the key's edge (the gate's touch noise)
             ("slip.words.centre.legal.top1", 40.5, true), // on the neighbour's centre
             ("rare.kept", 99.5, true),         // uncommon words typed on purpose stay first (%)
+            ("predict.cold.ms", 250.0, false), // 冷启动首次联想：实测 ~43ms；250ms 留 5x 余量，能拦住全词库懒加载
         ] : [
             ("words.on", 97.0, true),
             ("words.broken", 1.0, false),
@@ -925,6 +926,7 @@ case "bench", "gate":
             ("slip.sent.legal.top3", 95.0, true),
             ("slip.sent.other.top1", 96.0, true),
             ("rare.kept", 99.5, true),
+            ("predict.cold.ms", 250.0, false),
         ]
         print("scheme:", decoder.scheme == .xiaohe ? "小鹤双拼" : "全拼")
         var failed = false
@@ -997,6 +999,27 @@ case "bench", "gate":
             let ok = model.count >= 4 && model.contains("在") && mine.first == "小金冠"
             print(ok ? "PASS predict.model+user" : "FAIL predict.model+user 我们→\(model) 魔头→\(mine)")
             if !ok { failed = true }
+        }
+        // 冷启动联想延迟（拦 build 256/258 的 P0：联想直查 lazy 扫 187 万词库，首次调用卡在
+        // 上屏后的预测请求里，用户表现为「点首选打空 / 越用越卡」）。用一个全新的 decoder
+        // 量第一次 predictions，任何回到该路径的懒加载都会让这个数字从毫秒涨到数百毫秒。
+        // INJECT_SLOW_PREDICT=1 故意插入一次全词库扫描，用来证明这条门槛真的会红。
+        do {
+            let cold = Decoder(lexicon: lex, user: nil)
+            cold.grammar = decoder.grammar
+            cold.predictionGrammar = decoder.predictionGrammar
+            let t0 = Date()
+            _ = cold.predictions(after: Array("我们"))
+            var ms = Date().timeIntervalSince(t0) * 1000
+            if env["INJECT_SLOW_PREDICT"] == "1" {
+                var sum = 0
+                for i in 0..<lex.entryCount { sum += i & 1 }
+                // 不优化掉这次扫描
+                if sum < 0 { print(sum) }
+                ms += 500
+            }
+            metrics["predict.cold.ms"] = ms
+            print(String(format: "== cold-start prediction: %.1f ms", ms))
         }
         // Fuzz: random keys, separators, 九宫格 mixes and long runs. Every decode must give candidates that each
         // use 1…n keys and have text, committing the first candidate over and over must use up all keys, and the

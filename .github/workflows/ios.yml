@@ -5,7 +5,8 @@ name: iOS
 on:
   push:
     branches: [main]
-    paths-ignore: ["README.md", "LICENSE", ".github/DEVELOPMENT.md", "docs/**"]
+    # A docs-only edit must not archive+export+upload the same build number again.
+  paths-ignore: ["README.md", "LICENSE", ".github/DEVELOPMENT.md", "docs/**", "TESTFLIGHT.md", "rounds/**", ".github/STANDARDS.md", ".github/TEAM.md"]
   workflow_dispatch:
 permissions:
   contents: write
@@ -85,6 +86,26 @@ jobs:
           # the keyboard test bench (the real controller against a simulated text field): a FAIL blocks the release
           cp "$DATA"/Documents/keyboard-tests.txt report/keyboard-tests.txt 2>/dev/null || echo "FAIL keyboard tests did not run" > report/keyboard-tests.txt
           head -5 report/keyboard-tests.txt
+      - name: Offline assertion (blocks a network-capable keyboard)
+        # The privacy promise is only true while Keyboard/ has no network,
+        # clipboard or App Group API. Checked from source on every build.
+        run: python3 Tools/check_offline.py .
+      - name: Snapshot content gate (blocks blank views)
+        # Build 256 shipped an emoji panel whose gradient mask made the whole
+        # list transparent. The render step only listed files and was
+        # continue-on-error, so a blank view reached TestFlight. This step is
+        # NOT continue-on-error: it fails the build if a required snapshot is
+        # missing, tiny, or a flat colour.
+        run: |
+          set -euo pipefail
+          for f in day_emoji.png night_emoji.png day_mosto_kaomoji.png day_letters_composing.png; do
+            test -s "report/snapshots/$f" || { echo "FAIL missing or empty snapshot: $f"; exit 1; }
+          done
+          python3 Tools/check_snapshots.py 40000 \
+            report/snapshots/day_emoji.png \
+            report/snapshots/night_emoji.png \
+            report/snapshots/day_mosto_kaomoji.png \
+            report/snapshots/day_letters_composing.png
       - name: Engine quality gate (blocks the release on regression)
         run: |
           set -o pipefail
@@ -95,6 +116,13 @@ jobs:
         run: |
           cat report/keyboard-tests.txt 2>/dev/null | head -60 || true
           test -f report/keyboard-tests.txt && ! grep -q "^FAIL" report/keyboard-tests.txt
+      - name: Keep the report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-report-${{ github.run_number }}
+          path: report/
+          if-no-files-found: warn
       - name: Build report
         if: always()
         run: |
@@ -108,7 +136,8 @@ jobs:
           grep -E "error:" build.log 2>/dev/null | sort -u | head -40 | while IFS= read -r l; do echo "::error::$l"; done
       - name: Publish report to ci-logs branch
         if: always()
-        continue-on-error: true
+        # No continue-on-error: a failed gate must leave a readable report.
+
         run: |
           cp -r report /tmp/report
           git config user.name "github-actions"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
