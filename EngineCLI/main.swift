@@ -57,6 +57,9 @@ if env["SKIP"] == "0" { decoder.skipEnabled = false }
 if let v = env["SKIPP"].flatMap(Double.init) { decoder.skipPenalty = v; decoder.xiaoheSkipPenalty = v }
 if let v = env["SKIPD"].flatMap(Double.init) { decoder.skipDoublePenalty = v; decoder.xiaoheSkipDoublePenalty = v }
 if let v = env["XSKIPP"].flatMap(Double.init) { decoder.xiaoheSkipPenalty = v }
+if let v = env["XMISS"].flatMap(Int.init) { decoder.missingKeyEnabled = v != 0 }
+if let v = env["XMISSP"].flatMap(Double.init) { decoder.xiaoheMissingPenalty = v }
+if let v = env["XMISSA"].flatMap(Int.init) { decoder.missingKeyAlternatives = v }
 if let v = env["T9PFX"].flatMap(Double.init) { decoder.t9PrefixExtra = v }
 if let v = env["T9MIN"].flatMap(Double.init) { decoder.t9MinWordScore = v }
 if let v = env["UW"].flatMap(Double.init) { decoder.userWeight = v }
@@ -364,7 +367,31 @@ func rareKept() -> (kept: Int, n: Int, examples: [String]) {
     return (kept, n, ex)
 }
 
+/// 漏按全量枚举：每句的每个可删位置各删一次（不是抽样），用于按 R12 计划验收「全量 ≥12%」。
+func missingSweep(_ set: String) -> (n: Int, top1: Int, top3: Int) {
+    var n = 0, t1 = 0, t3 = 0
+    for (text, letters) in slipItems(set) {
+        guard letters.count >= 4 else { continue }
+        for p in 1..<(letters.count - 1) {
+            var l = letters; l.remove(at: p)
+            let c = decoder.decode(l.map { Tap.exact($0) }).candidates
+            n += 1
+            if c.first?.text == text { t1 += 1 }
+            if c.prefix(3).contains(where: { $0.text == text }) { t3 += 1 }
+        }
+    }
+    return (n, t1, t3)
+}
+
 switch args[2] {
+case "missing":   // EngineCLI <lexicon> missing <sentences|holdout> —— 全量枚举每个可删位置
+    let set = args.count > 3 ? args[3] : "sentences"
+    let t0 = Date()
+    let r = missingSweep(set)
+    let pct = { (a: Int) in r.n > 0 ? 100 * Double(a) / Double(r.n) : 0 }
+    print(String(format: "missing %@ | %@ | variants %d  %.0f s", set, decoder.scheme == .xiaohe ? "小鹤" : "全拼", r.n, Date().timeIntervalSince(t0)))
+    print(String(format: "  top1 %.1f%%  top3 %.1f%%", pct(r.top1), pct(r.top3)))
+
 case "slips":   // EngineCLI <lexicon> slips <words|sentences|holdout> <quarter|edge|centre>: one key on a neighbour (R4)
     let set = args.count > 3 ? args[3] : "words", depth = args.count > 4 ? args[4] : "quarter"
     let t0 = Date()
@@ -892,6 +919,7 @@ case "bench", "gate":
             ("slip.words.edge.legal.top1", 85.5, true),   // on the key's edge (the gate's touch noise)
             ("slip.words.centre.legal.top1", 40.5, true), // on the neighbour's centre
             ("rare.kept", 99.5, true),         // uncommon words typed on purpose stay first (%)
+            ("missing.sentences.top1", 9.0, true), // 小鹤漏按一键：kind-4 由词驱动，全量 14.4%/留出 12.7%
             ("predict.cold.ms", 250.0, false), // 冷启动首次联想：实测 ~43ms；250ms 留 5x 余量，能拦住全词库懒加载
         ] : [
             ("words.on", 97.0, true),
@@ -1110,7 +1138,7 @@ case "bench", "gate":
             let r = r1Typos(env["TYPOS"] ?? "EngineCLI/r1_typos.tsv", debug: env["TYPO_DEBUG"] != nil)
             print("RECORD r1.top1 \(r.top1)/\(r.total)  r1.top3 \(r.top3)/\(r.total)  r1.exact.top1 \(r.exact1)/\(r.total)  r1.exact.top3 \(r.exact3)/\(r.total)")
         }
-        for k in ["two.sentences.top1", "two.sentences.top3"] + (decoder.scheme == .xiaohe ? ["missing.sentences.top1"] : []) {
+        for k in ["two.sentences.top1", "two.sentences.top3"] {
             print(String(format: "RECORD %@ %.2f", k, metrics[k] ?? .nan))
         }
         for (k, v, atLeast) in floors {

@@ -260,6 +260,26 @@ public final class Decoder {
     /// How far below the best syllable of a position a corrected syllable may score and still be kept (R4).
     public var correctionMargin = 12.0
     /// How many corrected syllables (one key changed) each position keeps whatever their score (R4).
+    /// 漏按（小鹤）：一个键可以当作哪些音节的两键编码之一，按该音节最常用单字的分数排序。
+    /// 只遍历 414 个音节，不碰 187 万条词条——上一轮「点首选打空」的 P0 正是全词库懒加载。
+    private lazy var keyToSyllables: [Character: [UInt16]] = {
+        var out: [Character: [UInt16]] = [:]
+        for id in 0..<UInt16(lexicon.syllables.count) {
+            let code = spelling(of: id)
+            guard code.count == 2 else { continue }
+            for ch in code { out[ch, default: []].append(id) }
+        }
+        let score = { (id: UInt16) -> Int in
+            self.lexicon.singles(id).map { Int(self.lexicon.entry($0).score) }.max() ?? Int(Int16.min)
+        }
+        for ch in out.keys { out[ch]?.sort { score($0) > score($1) } }
+        return out
+    }()
+    /// 小鹤漏按一键：由词驱动，只在组词时生成（kind 4）。关掉它门禁里的漏按门槛必须变红。
+    public var missingKeyEnabled = true
+    public var xiaoheMissingPenalty = 2.0
+    public var missingKeyAlternatives = 32
+
     public var correctionKeep = 2
     /// At most this many corrected syllables per position (R4).
     public var correctionAlternatives = 6
@@ -736,6 +756,31 @@ public final class Decoder {
                         }
                     }
                 }
+                // 漏按一个键（小鹤，R5 方案第 2 项）：下一个音节只对上一个键——
+                // 但前提是词库里真有这样一对词（followers），所以 span 数由词候选数决定，
+                // 不是每个位置都生成，这正是上一轮朴素原型伤 extra.sentences 的原因。
+                // 只在小鹤生效：小鹤每个音节两键，全拼单键本就是完整音节。
+                if missingKeyEnabled, correctionEnabled, scheme == .xiaohe,
+                   first.kind != 1, firstEnd < n, !taps[firstEnd].group {
+                    let keyChar = Character(taps[firstEnd].key.lowercased())
+                    for sid in (keyToSyllables[keyChar] ?? []).prefix(missingKeyAlternatives) {
+                        let follow = lexicon.followers(first: first.id, second: sid)
+                        guard !follow.pairs.isEmpty || !follow.longer.isEmpty else { continue }
+                        let code = spelling(of: sid)
+                        guard let at = code.firstIndex(of: keyChar) else { continue }
+                        let cut = at == code.startIndex ? 0.0 : -1.0
+                        let sp: Double = spatialWeight * cut - correctionPenalty - xiaoheMissingPenalty
+                        let second = Span(end: firstEnd + 1, id: sid, spatial: sp, corrected: true, kind: 4)
+                        for idx in follow.pairs {
+                            let base: Double = Double(lexicon.entry(idx).score) / 100 - wordPenalty
+                            if base + sp < minWord { break }
+                            guard accepts(i, second.end, 2, base + fsp + sp) else { break }
+                            insert(Edge(start: i, end: second.end, score: base + fsp + sp, corrected: true, entry: idx,
+                                        userText: nil, ids: [], cuts: [firstEnd, second.end], kinds: [first.kind, 4]))
+                        }
+                    }
+                }
+
                 if let user {
                     for u in user.candidates(first: first.id) {
                         let L = u.ids.count
