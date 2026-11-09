@@ -656,16 +656,21 @@ final class KeyboardViewController: UIInputViewController {
         }
         candidateBar.dismissForget()
         if action.endsSuggestions { clearPredictions() }
-        // a clear can be taken back only until the next key
-        cleared = nil
+        // Shift and the globe change no text. Clearing the undo here dropped a correction the user
+        // could still take back, or the keys a swipe-to-clear could still restore, on a key that
+        // did not type anything.
+        let neutral = action == .shift || action == .globe
         let lastDelete = beforeDelete
-        beforeDelete = nil
-        let undo = undoable
-        undoable = nil
-        if action == .delete, let undo, undoCorrection(undo) { return }
-        let enUndoNow = enUndo
-        enUndo = nil
-        if action == .delete, let u = enUndoNow, undoEnglishCorrection(u) { return }
+        if !neutral {
+            cleared = nil
+            beforeDelete = nil
+            let undo = undoable
+            undoable = nil
+            if action == .delete, let undo, undoCorrection(undo) { return }
+            let enUndoNow = enUndo
+            enUndo = nil
+            if action == .delete, let u = enUndoNow, undoEnglishCorrection(u) { return }
+        }
         // English word state ends with anything that is not part of typing a word
         switch action {
         case .char, .space, .delete, .shift: break

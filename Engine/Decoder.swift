@@ -171,7 +171,8 @@ public final class Decoder {
         let spatial: Double       // includes correction / abbreviation / prefix costs
         let corrected: Bool
         let kind: UInt8           // 0 full spelling, 1 half-typed last syllable, 2 abbreviation (initial only),
-                                  // 3 full spelling with one key read as typed by mistake
+                                  // 3 full spelling with one key read as typed by mistake,
+                                  // 4 小鹤: the next syllable lost one of its two keys
         /// 小鹤: exactly one of its keys read as another (not a key typed by mistake).
         var oneEdit = false
     }
@@ -279,6 +280,40 @@ public final class Decoder {
     public var missingKeyEnabled = true
     public var xiaoheMissingPenalty = 2.0
     public var missingKeyAlternatives = 32
+    /// Set by the keyboard while a decode runs. Returns true when a newer keystroke has already
+    /// replaced this one: the decode stops and its result is thrown away, so a slow sentence does
+    /// not sit on the engine queue in front of the keys that followed it. Nil (the benchmarks) never stops.
+    public var shouldAbandon: (() -> Bool)?
+    private var abandoned = false
+    @inline(__always) private func stop() -> Bool {
+        if abandoned { return true }
+        if let shouldAbandon, shouldAbandon() { abandoned = true; return true }
+        return false
+    }
+    /// Drop a cancelled decode. `decode()` is the only entry that consults `shouldAbandon`.
+    /// Space, a candidate commit, 联想 and 九宫格拼音选择 must start here so a stale cancel
+    /// cannot hand them an empty result.
+    public func disarmAbandon() {
+        abandoned = false
+        shouldAbandon = nil
+    }
+    /// Syllables a leftover key can complete after `first`, kept once a pair of words actually exists.
+    /// Recomputed for every keystroke otherwise, and the random-input tail was missing the latency gate.
+    private var omissionCache: [UInt32: [UInt16]] = [:]
+
+    /// Second syllables of real two-character words that contain `key`, most common first.
+    /// The list depends only on the lexicon, so a keystroke that extends the same buffer does not search again.
+    private func omissionSeconds(first: UInt16, key: Character, limit: Int) -> [UInt16] {
+        let packed = UInt32(first) | (UInt32(key.asciiValue ?? 0) << 16) | (UInt32(limit) << 24)
+        if let hit = omissionCache[packed] { return hit }
+        var keep: [UInt16] = []
+        for sid in (keyToSyllables[key] ?? []).prefix(limit) {
+            if !lexicon.followers(first: first, second: sid).pairs.isEmpty { keep.append(sid) }
+        }
+        if omissionCache.count > 8000 { omissionCache.removeAll() }
+        omissionCache[packed] = keep
+        return keep
+    }
 
     public var correctionKeep = 2
     /// At most this many corrected syllables per position (R4).
@@ -307,6 +342,7 @@ public final class Decoder {
         // Every position may start a syllable: a key typed by mistake (one too many) shifts the pairs after it, and
         // the reading carries on from there instead of falling apart for the rest of the sentence.
         for i in 0..<max(0, n - 1) {
+            if stop() { return out }
             let a = taps[i], b = taps[i + 1]
             var best: [UInt16: Span] = [:]
             pair(a, b, end: i + 2, extra: 0, into: &best)
@@ -405,6 +441,7 @@ public final class Decoder {
         let n = taps.count
         var out = [[Span]](repeating: [], count: n)
         for i in 0..<n {
+            if stop() { return out }
             var best: [Int: Span] = [:]                       // key: end * 1024 + id
             func emit(_ s: Span) {
                 let k = s.end * 1024 + Int(s.id)
@@ -516,6 +553,8 @@ public final class Decoder {
     // MARK: - Decode
 
     public func decode(_ taps: [Tap]) -> Result {
+        abandoned = false
+        if stop() { return Result(candidates: [], preedit: "") }
         // 小鹤双拼, plain: with an odd number of keys the last one is the initial of the next syllable, not yet finished.
         // The candidates first carry the reading on through it — what was decoded so far plus the likeliest syllable
         // that key starts (可以 + l → 可以了, 你好 + m → 你好吗), so a long sentence keeps flowing and space commits all
@@ -524,9 +563,11 @@ public final class Decoder {
             boundaries = []
             let n = taps.count
             let r = decodeLetters(Array(taps.dropLast()))
+            if abandoned { return Result(candidates: [], preedit: "") }
             let raw = String(taps.map { $0.key })
             var cands = r.candidates.filter { $0.tapCount > 0 && $0.score > -.infinity && !$0.isEnglish }
             let full = decodeLetters(taps)
+            if abandoned { return Result(candidates: [], preedit: "") }
             var ahead: [Candidate] = []
             if !(taps.last!.group) {
                 let whole = full.candidates.filter { $0.tapCount == n && !$0.isEnglish && $0.score > -.infinity }
@@ -575,8 +616,10 @@ public final class Decoder {
 
     private func decodeLetters(_ taps: [Tap]) -> Result {
         guard !taps.isEmpty else { return Result(candidates: [], preedit: "") }
+        if stop() { return Result(candidates: [], preedit: "") }
         let n = taps.count
         let spansFrom = spans(taps)
+        if abandoned { return Result(candidates: [], preedit: "") }
         // index: start tap -> syllable id -> spans
         // groups[i]: the syllables that can start at tap i, each with its readings; slot[i * S + id] finds one
         // (a flat table rather than a dictionary per position: no hashing in the innermost loops)
@@ -676,6 +719,7 @@ public final class Decoder {
         let mixing = englishEnabled && mixedEnglish && english != nil && n >= 2 && !taps.contains(where: { $0.group })
         let letters = mixing ? taps.map { $0.key.lowercased() } : []
         for i in 0..<n where reach[i] {
+            if stop() { return Result(candidates: [], preedit: "") }
             for sp in spansFrom[i] { reach[sp.end] = true }
             guard mixing, let english else { continue }
             var word = ""
@@ -704,7 +748,13 @@ public final class Decoder {
             }
         }
 
+        // 漏按从按对的音节（kind 0）和「多按了一个键」的音节（kind 3）长出去。按偏到相邻键的那些
+        // 音节不再各猜一遍：随机长输入因此越过 40 ms 门禁（CI 47.9 ms）。漏按基准的键是按对的，
+        // 缺口靠 kind 0 / kind 3 对齐，用不到按偏的读法。
+        let recovering = missingKeyEnabled && correctionEnabled && scheme == .xiaohe && !taps.contains { $0.group }
+
         for i in 0..<n where reach[i] {
+            if stop() { return Result(candidates: [], preedit: "") }
             for first in spansFrom[i] {
                 let firstEnd = first.end
                 // a slip read into the letters of a common English word typed whole (bu·g for bug) pays more
@@ -756,27 +806,24 @@ public final class Decoder {
                         }
                     }
                 }
-                // 漏按一个键（小鹤，R5 方案第 2 项）：下一个音节只对上一个键——
-                // 但前提是词库里真有这样一对词（followers），所以 span 数由词候选数决定，
-                // 不是每个位置都生成，这正是上一轮朴素原型伤 extra.sentences 的原因。
-                // 只在小鹤生效：小鹤每个音节两键，全拼单键本就是完整音节。
-                if missingKeyEnabled, correctionEnabled, scheme == .xiaohe,
-                   first.kind != 1, firstEnd < n, !taps[firstEnd].group {
+                // 漏按一个键（小鹤）：下一个音节只剩下一个键。只保留词库里真有两字词的音节，边数由词决定。
+                if recovering, firstEnd < n, !taps[firstEnd].group,
+                   (first.kind == 0 && !first.corrected) || first.kind == 3 {
                     let keyChar = Character(taps[firstEnd].key.lowercased())
-                    for sid in (keyToSyllables[keyChar] ?? []).prefix(missingKeyAlternatives) {
+                    for sid in omissionSeconds(first: first.id, key: keyChar, limit: missingKeyAlternatives) {
                         let follow = lexicon.followers(first: first.id, second: sid)
-                        guard !follow.pairs.isEmpty || !follow.longer.isEmpty else { continue }
+                        guard !follow.pairs.isEmpty else { continue }
                         let code = spelling(of: sid)
                         guard let at = code.firstIndex(of: keyChar) else { continue }
                         let cut = at == code.startIndex ? 0.0 : -1.0
                         let sp: Double = spatialWeight * cut - correctionPenalty - xiaoheMissingPenalty
-                        let second = Span(end: firstEnd + 1, id: sid, spatial: sp, corrected: true, kind: 4)
+                        let secondEnd = firstEnd + 1
                         for idx in follow.pairs {
                             let base: Double = Double(lexicon.entry(idx).score) / 100 - wordPenalty
                             if base + sp < minWord { break }
-                            guard accepts(i, second.end, 2, base + fsp + sp) else { break }
-                            insert(Edge(start: i, end: second.end, score: base + fsp + sp, corrected: true, entry: idx,
-                                        userText: nil, ids: [], cuts: [firstEnd, second.end], kinds: [first.kind, 4]))
+                            guard accepts(i, secondEnd, 2, base + fsp + sp) else { break }
+                            insert(Edge(start: i, end: secondEnd, score: base + fsp + sp, corrected: true, entry: idx,
+                                        userText: nil, ids: [], cuts: [firstEnd, secondEnd], kinds: [first.kind, 4]))
                         }
                     }
                 }
@@ -861,6 +908,7 @@ public final class Decoder {
             var paths = [[Path]](repeating: [], count: n + 1)
             paths[0] = [Path(score: 0, edges: [], corrected: false)]
             for j in 1...n {
+                if stop() { return [] }
                 var cands: [Path] = []
                 for ei in ending[j] {
                     let e = edges[ei]
@@ -899,6 +947,7 @@ public final class Decoder {
         }
 
         let full = bestPaths(literalOnly: false)
+        if abandoned { return Result(candidates: [], preedit: "") }
         var fullCands = full.map { p in (p.edges.map { edges[$0] }, p.corrected, p.score) }
         // as many whole readings as the beam alone gave before duplicates were set aside
         var shown = Set(full.prefix(width).map { p in p.edges.map { text(edges[$0]) }.joined() })
@@ -930,11 +979,15 @@ public final class Decoder {
         if let first = fullCands.first {
             addWhole(first.0, corrected: first.1, score: first.2)
             // Gboard-style: when the top choice was auto-corrected, offer the literal reading next.
-            if first.1, correctionEnabled, let lit = bestPaths(literalOnly: true).first {
-                let es = lit.edges.map { edges[$0] }
-                let before = result.count
-                add(candidate(es, tapCount: n, corrected: false, score: lit.score), es)
-                if result.count > before, let st = stem(es) { stems[st, default: 0] += 1 }
+            if first.1, correctionEnabled {
+                let litPaths = bestPaths(literalOnly: true)
+                if abandoned { return Result(candidates: [], preedit: "") }
+                if let lit = litPaths.first {
+                    let es = lit.edges.map { edges[$0] }
+                    let before = result.count
+                    add(candidate(es, tapCount: n, corrected: false, score: lit.score), es)
+                    if result.count > before, let st = stem(es) { stems[st, default: 0] += 1 }
+                }
             } else if !first.1, correctionEnabled, alternateMargin > 0,
                       let alt = fullCands.dropFirst().first(where: { $0.1 && $0.2 >= first.2 - alternateMargin }) {
                 // and the other way round (R4): when the keys as typed lead, the best corrected reading close behind
@@ -1038,6 +1091,7 @@ public final class Decoder {
     /// spelling first, then the most common — as the left column of a phone keypad IME offers. Choosing one turns
     /// those keys into its exact letters, so the rest of the input decodes around it.
     public func t9SyllableChoices(_ taps: [Tap], limit: Int = 30) -> (start: Int, choices: [(text: String, keys: [Character])]) {
+        disarmAbandon()
         guard let start = taps.firstIndex(where: { $0.group }) else { return (0, []) }
         var digits: [Character] = []
         for t in taps[start...] { if t.group { digits.append(t.key) } else { break } }
@@ -1108,6 +1162,7 @@ public final class Decoder {
     /// longest context it knows first) — one character, or a two-character word the lexicon lists — best first.
     /// predbench (word boundaries of the sentence sets): the next word among the first six about one time in five.
     public func predictions(after context: [Character], limit: Int = 8) -> [String] {
+        disarmAbandon()
         guard let grammar = predictionGrammar ?? grammar, let last = context.last, Grammar.isHan(last) else { return [] }
         _ = grammar
         var scored: [(String, Double)] = []
@@ -1187,6 +1242,7 @@ public final class Decoder {
     /// as another, one key too many, one left out; the last syllable may still be half typed): the syllables that
     /// changed, as typed and as meant. Nothing for 九宫格 keys, abbreviations or more than three edits.
     public func fixes(for c: Candidate, taps: [Tap]) -> [Fix] {
+        disarmAbandon()
         guard c.corrected, !c.syllables.isEmpty, !c.isEnglish else { return [] }
         let used = taps.prefix(c.tapCount).filter { $0.key != "'" }
         guard !used.contains(where: { $0.group }) else { return [] }

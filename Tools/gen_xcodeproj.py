@@ -127,7 +127,7 @@ project_debug = {"SWIFT_OPTIMIZATION_LEVEL": '"-Onone"', "OTHER_SWIFT_FLAGS": '"
 common_target = {
     "CODE_SIGN_STYLE": "Automatic",
     "CURRENT_PROJECT_VERSION": "1",
-    "MARKETING_VERSION": "1.0",
+    "MARKETING_VERSION": "1.0.1",
     "GENERATE_INFOPLIST_FILE": "YES",
     "TARGETED_DEVICE_FAMILY": "1",
     "DEVELOPMENT_TEAM": '""',
