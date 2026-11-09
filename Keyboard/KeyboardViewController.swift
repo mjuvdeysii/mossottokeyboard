@@ -45,6 +45,9 @@ final class KeyboardViewController: UIInputViewController {
     /// The candidates last received from the engine, and for which state of `taps` (see `generation`).
     private var result: Decoder.Result?
     private var resultGeneration = -1
+    /// 用户点了候选但那一代解码还没回来：把点击存下来，等 show() 用它那一代的 result 执行。
+    /// 这样点击路径上永远没有 queue.sync，不会因引擎忙而卡住主线程、丢掉触摸（"点首选没反应"）。
+    private var pendingSelect: (index: Int, shown: Candidate)?
     /// Bumped whenever `taps` changes: a decode that comes back for an older generation is dropped.
     private var generation = 0
     /// The current keys are read as typed, without correction (right after an undone correction).
@@ -433,6 +436,7 @@ final class KeyboardViewController: UIInputViewController {
         hasMarkedText = false
         taps.removeAll()
         generation += 1
+        pendingSelect = nil
         result = nil
         committedParts.removeAll()
         syllablePicker.isHidden = true
@@ -988,6 +992,11 @@ final class KeyboardViewController: UIInputViewController {
         candidateBar.update(preedit: r.preedit, candidates: r.candidates)
         if !grid.isHidden { grid.show(r.candidates) }
         updateSyllablePicker(out.choices)
+        if let p = pendingSelect, gen == generation {
+            pendingSelect = nil
+            let s = p.index < r.candidates.count ? r.candidates[p.index] : p.shown
+            select(p.index, shown: s)
+        }
     }
 
     /// The candidates for exactly the keys typed now (a commit needs them): the last ones received when they are
@@ -1002,7 +1011,9 @@ final class KeyboardViewController: UIInputViewController {
     /// `shown`: the candidate the user saw and tapped; if the keys changed since it was shown, the same word is
     /// looked up in the current candidates (an index into a list that has changed would pick something else).
     private func select(_ index: Int, shown: Candidate? = nil) {
-        guard let r = currentResult() else { return }
+        // 点击路径：candidateTapped 已保证 result 是用户看到的那一代（未就绪时排队到 show() 再进来）。
+        // 这里只读缓存，绝不同步解码 —— queue.sync 会卡主线程、吞掉这次触摸。
+        guard let r = result else { return }
         var i = index
         if let shown, i >= r.candidates.count || r.candidates[i].text != shown.text || r.candidates[i].tapCount != shown.tapCount {
             guard let j = r.candidates.firstIndex(where: { $0.text == shown.text && $0.tapCount == shown.tapCount }) else { return }
@@ -1172,6 +1183,7 @@ final class KeyboardViewController: UIInputViewController {
         }
         taps.removeAll()
         generation += 1          // a decode still under way for these keys is dropped when it comes back
+        pendingSelect = nil
         syllablePicker.isHidden = true
         keyboard.setSideColumnHidden(false)
         result = nil
@@ -1203,7 +1215,23 @@ final class KeyboardViewController: UIInputViewController {
             return
         }
         // the word the user saw: the strip shows `result`
-        select(i, shown: result.flatMap { i < $0.candidates.count ? $0.candidates[i] : nil })
+        let shown = result.flatMap { i < $0.candidates.count ? $0.candidates[i] : nil }
+        if resultGeneration != generation || result == nil {
+            // 解码还在飞：绝不在这里同步等引擎（queue.sync 会卡主线程、吞掉这次触摸）。
+            // 存下这一次点击，等 show() 把这一代的候选显示出来后立刻执行。
+            if pendingSelect == nil {
+                pendingSelect = (i, shown ?? Candidate(text: "", tapCount: 0, syllables: [], corrected: false, score: 0))
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+                    guard let self, let p = self.pendingSelect else { return }
+                    self.pendingSelect = nil
+                    // 兜底：若那一代解码始终没回来，用当前显示的结果执行，不让点击凭空消失
+                    let s = self.result.flatMap { p.index < $0.candidates.count ? $0.candidates[p.index] : nil } ?? p.shown
+                    self.select(p.index, shown: s)
+                }
+            }
+            return
+        }
+        select(i, shown: shown)
     }
 
     // MARK: - 联想

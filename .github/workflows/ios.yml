@@ -85,6 +85,11 @@ jobs:
           # the keyboard test bench (the real controller against a simulated text field): a FAIL blocks the release
           cp "$DATA"/Documents/keyboard-tests.txt report/keyboard-tests.txt 2>/dev/null || echo "FAIL keyboard tests did not run" > report/keyboard-tests.txt
           head -5 report/keyboard-tests.txt
+      - name: No-sync-tap assertion (blocks the candidate-tap freeze)
+        # A candidate tap used to synchronously wait on the engine queue; when
+        # the queue was busy iOS dropped the touch ("点首选没反应"). The bench
+        # cannot reproduce that race, so the source structure is checked here.
+        run: python3 Tools/check_no_sync_tap.py Keyboard/KeyboardViewController.swift
       - name: Offline assertion (blocks a network-capable keyboard)
         # The privacy promise is only true while Keyboard/ has no network,
         # clipboard or App Group API. Checked from source on every build.

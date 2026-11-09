@@ -162,6 +162,23 @@ enum KeyboardTests {
             log(h.string.hasSuffix("wo") && h.marked == nil && vc.testState.english, "xiaohe.中/英 mid-word commits the letters", "text=\(h.string)")
         } else { log(false, "xiaohe.setup", "engine did not load") }
 
+        // "点首选没反应" 回归：解码还没回来（不 settle）就点第一个候选。
+        // 旧实现会走 currentResult() 的 queue.sync 同步解码；若引擎忙则主线程被卡、
+        // 且 shown 取自上一代 result 时 firstIndex 找不到会直接 return（什么都不上屏）。
+        // 新实现把点击排队，等 show() 用那一代结果执行 —— 点击永不阻塞，且一定有出路。
+        if let kb = makeKeyboard(scheme: 0, in: window) {
+            let (vc, h) = kb
+            type(vc, "nihc")
+            let t0 = CACurrentMediaTime()
+            vc.candidateTapped(0)                 // 故意不 settle：解码仍在飞
+            let blocked = (CACurrentMediaTime() - t0) * 1000
+            drain(0.3)                            // 让那一代解码回来、pending 执行
+            log(h.string == "你好", "xiaohe.tap first candidate before decode returns still commits",
+                "text=\(h.string) tapCost=\(String(format: "%.1f", blocked))ms")
+            log(blocked < 16, "xiaohe.tapping a candidate never blocks the main thread",
+                "tapCost=\(String(format: "%.1f", blocked))ms")
+        } else { log(false, "xiaohe.early tap setup", "engine did not load") }
+
         // 全拼 and English
         if let kb = makeKeyboard(scheme: 1, in: window) {
             let (vc, h) = kb
