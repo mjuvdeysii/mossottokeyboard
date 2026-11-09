@@ -127,7 +127,17 @@ final class EngineHost {
         queue.async {
             self.lock.lock(); let superseded = generation < self.latest; self.lock.unlock()
             if superseded { return }
+            // A key that arrived while this decode was queued, or one that arrives while it runs,
+            // makes it stop. The result is not shown: the newer decode is the one the user is waiting on.
+            self.decoder?.shouldAbandon = { [weak self] in
+                guard let self else { return true }
+                self.lock.lock(); defer { self.lock.unlock() }
+                return generation < self.latest
+            }
             let out = self.run(taps, literal: literal)
+            self.decoder?.shouldAbandon = nil
+            self.lock.lock(); let stale = generation < self.latest; self.lock.unlock()
+            if stale { return }
             self.lastOut = (generation, literal, out)
             DispatchQueue.main.async { done(out) }
         }
@@ -144,10 +154,13 @@ final class EngineHost {
     /// With `generation`, the background decode already queued for that generation is used when it has run.
     func decodeNow(_ taps: [Tap], literal: Bool = false, generation: Int? = nil) -> Output? {
         queue.sync {
+            // Space and any other synchronous commit. A decode cancelled by a newer key must not
+            // leak into this answer: clear the flag before the cache check and before decode().
+            self.decoder?.disarmAbandon()
             if let g = generation, let last = lastOut, last.generation == g, last.literal == literal, last.out != nil {
                 return last.out
             }
-            return run(taps, literal: literal)
+            return self.run(taps, literal: literal)
         }
     }
 
@@ -155,6 +168,7 @@ final class EngineHost {
     func predict(after context: String, done: @escaping ([String]) -> Void) {
         let ctx = Array(context.suffix(8))   // the model reads three; the user's own phrases may match more
         queue.async {
+            self.decoder?.disarmAbandon()
             let p = self.decoder?.predictions(after: ctx) ?? []
             DispatchQueue.main.async { done(p) }
         }

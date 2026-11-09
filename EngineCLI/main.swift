@@ -505,6 +505,53 @@ case "type":
         print(String(format: "%6.2f", c.score), c.text, "taps=\(c.tapCount)", c.corrected ? "[corrected \(fx)]" : "")
     }
 
+case "fuzz":
+    // The gate's random-input timing, on its own. Same estimator as the gate: 3 rounds, the smallest p99.
+    // XMISS=0 turns 小鹤漏按 off.
+    let letters = Array("abcdefghijklmnopqrstuvwxyz")
+    var roundP99: [Double] = []
+    var worst = 0.0
+    decoder.correctionEnabled = true
+    for _ in 0..<3 {
+        var rng = RNG(s: 7)
+        var times: [Double] = []
+        for i in 0..<1500 {
+            let n = i < 1400 ? 1 + Int(rng.next() * 16) : 24 + Int(rng.next() * 17)
+            var taps: [Tap] = []
+            for _ in 0..<n {
+                let r = rng.next()
+                if r < 0.05 { taps.append(Tap(key: "'", alternatives: [])) }
+                else if r < 0.25 { taps.append(Tap.t9(Character(String(2 + Int(rng.next() * 8))))) }
+                else {
+                    let c = letters[Int(rng.next() * 26)]
+                    taps.append(r < 0.6 ? Tap.exact(c) : noisyTaps(String(c), sigmaX: 0.3, sigmaY: 0.27, rng: &rng)[0])
+                }
+            }
+            var rest = taps, rounds = 0
+            while !rest.isEmpty && rounds <= taps.count {
+                var ms = Double.infinity
+                var r = Decoder.Result(candidates: [], preedit: "")
+                for _ in 0..<2 {
+                    let t0 = Date()
+                    r = decoder.decode(rest)
+                    if rest.contains(where: { $0.group }) { _ = decoder.t9SyllableChoices(rest) }
+                    ms = min(ms, Date().timeIntervalSince(t0) * 1000)
+                }
+                times.append(ms)
+                if ms > worst { worst = ms }
+                guard let first = r.candidates.first else { break }
+                rest.removeFirst(min(first.tapCount, rest.count))
+                rounds += 1
+            }
+        }
+        times.sort()
+        let p99 = times.isEmpty ? 0 : times[min(times.count - 1, Int(Double(times.count) * 0.99))]
+        roundP99.append(p99)
+    }
+    let best = roundP99.min() ?? 0
+    print(String(format: "fuzz best of %d rounds %.2f ms  (each: %@)  max %.2f ms", roundP99.count, best,
+                 roundP99.map { String(format: "%.2f", $0) }.joined(separator: " / "), worst))
+
 case "bench", "gate":
     var metrics: [String: Double] = [:]
     // Test items: common 2–4 syllable words sampled from the lexicon + everyday sentences.
@@ -1154,6 +1201,45 @@ case "bench", "gate":
         }
         for k in ["two.sentences.top1", "two.sentences.top3"] {
             print(String(format: "RECORD %@ %.2f", k, metrics[k] ?? .nan))
+        }
+        // A decode already running must be able to stop when a newer one has replaced it, and the
+        // decoder must still answer normally afterwards. Checked on a long buffer so the cut is visible.
+        do {
+            let taps = Array(String(repeating: "womenmintianzaijia", count: 3).map { Tap.exact($0) })
+            decoder.shouldAbandon = nil
+            let t0 = Date()
+            let whole = decoder.decode(taps)
+            let fullMs = Date().timeIntervalSince(t0) * 1000
+            var checks = 0
+            decoder.shouldAbandon = { checks += 1; return checks > 4 }
+            let t1 = Date()
+            let cut = decoder.decode(taps)
+            let cutMs = Date().timeIntervalSince(t1) * 1000
+            decoder.shouldAbandon = nil
+            let probe = decoder.scheme == .xiaohe ? "nihc" : "nihao"
+            let again = decoder.decode(Array(probe.map { Tap.exact($0) }))
+            // A cancelled decode must not poison space, 联想, 九宫格拼音选择, or the correction caption.
+            // Each of those entries clears the flag itself; the commit path does it through disarmAbandon
+            // (what decodeNow calls) before it decodes.
+            func answersAfter(_ body: () -> Void) -> Bool {
+                decoder.shouldAbandon = { true }
+                _ = decoder.decode([Tap.exact("a")])
+                body()
+                return decoder.decode(Array(probe.map { Tap.exact($0) })).candidates.first?.text == "你好"
+            }
+            let commitOK = answersAfter { decoder.disarmAbandon() }
+            let t9OK = answersAfter { _ = decoder.t9SyllableChoices([Tap.t9("6"), Tap.t9("4")]) }
+            let predOK = answersAfter { _ = decoder.predictions(after: Array("我们")) }
+            let fixOK = answersAfter {
+                _ = decoder.fixes(for: Candidate(text: "你", tapCount: 1, syllables: [], corrected: false, score: 0), taps: [Tap.exact("n")])
+            }
+            decoder.shouldAbandon = nil
+            let ok = cut.candidates.isEmpty && !whole.candidates.isEmpty && again.candidates.first?.text == "你好"
+                && cutMs + 0.05 < fullMs && commitOK && t9OK && predOK && fixOK
+            print(String(format: "%@ decode.abandons full %.2f ms, stopped %.2f ms, checks %d, commit %@, t9 %@, predict %@, fixes %@",
+                         ok ? "PASS" : "FAIL", fullMs, cutMs, checks,
+                         commitOK ? "ok" : "FAIL", t9OK ? "ok" : "FAIL", predOK ? "ok" : "FAIL", fixOK ? "ok" : "FAIL"))
+            if !ok { failed = true }
         }
         for (k, v, atLeast) in floors {
             if env["SLIPS"] == "0", k.hasPrefix("slip.") || k == "rare.kept" { continue }
