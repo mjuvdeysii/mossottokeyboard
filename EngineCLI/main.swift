@@ -367,6 +367,8 @@ func rareKept() -> (kept: Int, n: Int, examples: [String]) {
     return (kept, n, ex)
 }
 
+/// 注：#168 的 testflight job 曾被 runner 无步骤取消，与代码无关；空提交不触发
+/// `paths-ignore` 工作流，故以本文件的一次轻量改动重触发发布。
 /// 漏按全量枚举：每句的每个可删位置各删一次（不是抽样），用于按 R12 计划验收「全量 ≥12%」。
 func missingSweep(_ set: String) -> (n: Int, top1: Int, top3: Int) {
     var n = 0, t1 = 0, t3 = 0
