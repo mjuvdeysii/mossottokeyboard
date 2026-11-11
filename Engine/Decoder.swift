@@ -277,12 +277,11 @@ public final class Decoder {
     }()
     /// 小鹤漏按一键：由词驱动，只在组词时生成（kind 4）。关掉它门禁里的漏按门槛必须变红。
     public var missingKeyEnabled = true
-    public var xiaoheMissingPenalty = 2.0
-    public var missingKeyAlternatives = 32
+    public var xiaoheMissingPenalty =1.4
+    public var missingKeyAlternatives = 48
 
-    public var correctionKeep = 2
-    /// At most this many corrected syllables per position (R4).
-    public var correctionAlternatives = 6
+    public var correctionKeep = 6  /// At most this many corrected syllables per position (R4).
+    public var correctionAlternatives = 10
     /// Whether some lexicon word starts with the syllable (built on first use).
     private lazy var syllableUsable: [Bool] = (0..<lexicon.syllables.count).map { !lexicon.range(firstSyllable: UInt16($0)).isEmpty }
 
@@ -535,6 +534,7 @@ public final class Decoder {
                     ahead = Array(whole.filter { $0.text.hasPrefix(lead.text) && $0.text.count > lead.text.count }.prefix(2))
                 }
                 if ahead.isEmpty { ahead = Array(whole.prefix(1)) }
+                if let best = whole.first, (ahead.first == nil || best.score > ahead[0].score + 1.5) && !ahead.contains(where: { $0.text == best.text }) { ahead.insert(best, at: 0) }
             }
             cands.removeAll { c in ahead.contains { $0.text == c.text } }
             cands.insert(contentsOf: ahead, at: 0)
@@ -677,6 +677,7 @@ public final class Decoder {
         let letters = mixing ? taps.map { $0.key.lowercased() } : []
         for i in 0..<n where reach[i] {
             for sp in spansFrom[i] { reach[sp.end] = true }
+            if xiaohe && i + 3 <= n { reach[i + 3] = true }
             guard mixing, let english else { continue }
             var word = ""
             for j in i..<min(n, i + 16) {
@@ -689,7 +690,7 @@ public final class Decoder {
                 // rare one (costco, emoji) is kept for when nothing else reads those keys
                 guard cased || len >= 3 else { continue }
                 var cost = mixedPenalty
-                if !cased {
+                if !cased || j - i + 1 >= 3 {
                     let syl = pinyinSyllables(word)
                     if syl == 1 { continue }
                     if syl > 1 { cost += mixedPinyinPenalty }
@@ -768,7 +769,7 @@ public final class Decoder {
                         guard !follow.pairs.isEmpty || !follow.longer.isEmpty else { continue }
                         let code = spelling(of: sid)
                         guard let at = code.firstIndex(of: keyChar) else { continue }
-                        let cut = at == code.startIndex ? 0.0 : -1.0
+                        let cut = at == code.startIndex ? 0.0 : -0.4
                         let sp: Double = spatialWeight * cut - correctionPenalty - xiaoheMissingPenalty
                         let second = Span(end: firstEnd + 1, id: sid, spatial: sp, corrected: true, kind: 4)
                         for idx in follow.pairs {
