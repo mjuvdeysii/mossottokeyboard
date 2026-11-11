@@ -277,7 +277,7 @@ public final class Decoder {
     }()
     /// 小鹤漏按一键：由词驱动，只在组词时生成（kind 4）。关掉它门禁里的漏按门槛必须变红。
     public var missingKeyEnabled = true
-    public var xiaoheMissingPenalty =1.4
+    public var xiaoheMissingPenalty   = 1.4
     public var missingKeyAlternatives = 48
 
     public var correctionKeep = 6  /// At most this many corrected syllables per position (R4).
