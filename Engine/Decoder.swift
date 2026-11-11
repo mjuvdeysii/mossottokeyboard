@@ -677,7 +677,7 @@ public final class Decoder {
         let letters = mixing ? taps.map { $0.key.lowercased() } : []
         for i in 0..<n where reach[i] {
             for sp in spansFrom[i] { reach[sp.end] = true }
-            if xiaohe && i + 3 <= n { reach[i + 3] = true }
+            if scheme == .xiaohe && missingKeyEnabled && i + 3 <= n { reach[i + 3] = true }
             guard mixing, let english else { continue }
             var word = ""
             for j in i..<min(n, i + 16) {
