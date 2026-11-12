@@ -278,7 +278,7 @@ public final class Decoder {
     /// 小鹤漏按一键：由词驱动，只在组词时生成（kind 4）。关掉它门禁里的漏按门槛必须变红。
     public var missingKeyEnabled = true
     public var xiaoheMissingPenalty   = 1.4
-    public var missingKeyAlternatives =32
+    public var missingKeyAlternatives = 32 
 
     public var correctionKeep = 2  /// At most this many corrected syllables per position (R4).
     public var correctionAlternatives = 6
@@ -690,7 +690,7 @@ public final class Decoder {
                 // rare one (costco, emoji) is kept for when nothing else reads those keys
                 guard cased || len >= 3 else { continue }
                 var cost = mixedPenalty
-                if !cased 
+                if !cased {
                     let syl = pinyinSyllables(word)
                     if syl == 1 { continue }
                     if syl > 1 { cost += mixedPinyinPenalty }
