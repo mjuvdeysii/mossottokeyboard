@@ -1,0 +1,40 @@
+sentence model: Keyboard/Resources/sentence.gram
+preedit: ni hao da jia   (113.5 ms)
+-33.09 你好大家 taps=8 
+-38.31 你好大驾 taps=8 
+-38.99 你好大贾 taps=8 
+-39.78 拟好大家 taps=8 
+-21.25 你好大 taps=6 
+-13.28 你好 taps=4 
+-17.79 拟好 taps=4 
+-15.88 你会 taps=3 [corrected ]
+-15.98 你回 taps=3 [corrected ]
+-16.10 你还 taps=3 [corrected ]
+-16.95 你和 taps=3 [corrected ]
+-17.47 你很 taps=3 [corrected ]
+-18.04 nih taps=3 
+-18.79 你让 taps=3 [corrected h→rh]
+-18.80 你当 taps=3 [corrected h→dh]
+sentence model: Keyboard/Resources/sentence.gram
+
+== words: n=1500  perfect-keys top1 == intended text: 1269  avg decode 0.35 ms
+   (σ=0.22, correction on, top1 == intended text: 83.5%)
+touch σ=0.22 key | key error rate 2.7% | top1 correction OFF 86.5%  ON 98.5% | ON top3 99.7% | items with mistyped keys recovered 181/203 | clean items broken by correction 1/1297
+touch σ=0.30 key | key error rate 12.3% | top1 correction OFF 51.6%  ON 89.7% | ON top3 96.0% | items with mistyped keys recovered 579/726 | clean items broken by correction 7/774
+
+== sentences: n=305  perfect-keys top1 == intended text: 281  avg decode 1.02 ms
+   (σ=0.22, correction on, top1 == intended text: 89.2%)
+touch σ=0.22 key | key error rate 2.7% | top1 correction OFF 64.9%  ON 95.1% | ON top3 99.0% | items with mistyped keys recovered 96/108 | clean items broken by correction 3/197
+touch σ=0.30 key | key error rate 12.3% | top1 correction OFF 15.7%  ON 79.3% | ON top3 88.2% | items with mistyped keys recovered 197/259 | clean items broken by correction 1/46
+== 九宫格 words: top1 49.5%  top3 61.3%  2.93 ms
+== 九宫格 sentences: top1 47.9%  top3 64.6%  9.47 ms
+== 中英混输 sentences: top1 76.2% (n=80)
+== first three readings differing only in their last character: 6 pairs with one-character last words, 29 in all
+== two keys wrong (one too many or left out, in each half): sentences top1 35.7%  top3 41.6%  (n=305)
+== corrections that say what changed: 100.0% (302 of 302)
+== one key missing: sentences top1 16.4%
+== one key too many: sentences top1 83.9%  top3 86.6%  (n=305)
+== touch adaptation (thumbs off-centre): unseen words 76.6% → 83.2% after 1000 words (offset -0.09, 0.15)
+== 自造词: alone top1 100.0% (n=128) | inside its sentence 97.7% (n=128)
+== learning: picks/sentence 1.06 | typed again 98.4% | unseen after learning 89.5% (nothing learned 89.5%)
+== English: clean words kept 99.9% | touch σ=0.22: as typed 83.5%, with autocorrect 99.1% (fixed 236/247), suggestions top3 100.0% | 0.05 ms
