@@ -278,10 +278,10 @@ public final class Decoder {
     /// 小鹤漏按一键：由词驱动，只在组词时生成（kind 4）。关掉它门禁里的漏按门槛必须变红。
     public var missingKeyEnabled = true
     public var xiaoheMissingPenalty   = 1.4
-    public var missingKeyAlternatives = 48
+    public var missingKeyAlternatives =32
 
-    public var correctionKeep = 6  /// At most this many corrected syllables per position (R4).
-    public var correctionAlternatives = 10
+    public var correctionKeep = 2  /// At most this many corrected syllables per position (R4).
+    public var correctionAlternatives = 6
     /// Whether some lexicon word starts with the syllable (built on first use).
     private lazy var syllableUsable: [Bool] = (0..<lexicon.syllables.count).map { !lexicon.range(firstSyllable: UInt16($0)).isEmpty }
 
@@ -690,7 +690,7 @@ public final class Decoder {
                 // rare one (costco, emoji) is kept for when nothing else reads those keys
                 guard cased || len >= 3 else { continue }
                 var cost = mixedPenalty
-                if !cased || j - i + 1 >= 3 {
+                if !cased 
                     let syl = pinyinSyllables(word)
                     if syl == 1 { continue }
                     if syl > 1 { cost += mixedPinyinPenalty }
@@ -762,7 +762,7 @@ public final class Decoder {
                 // 不是每个位置都生成，这正是上一轮朴素原型伤 extra.sentences 的原因。
                 // 只在小鹤生效：小鹤每个音节两键，全拼单键本就是完整音节。
                 if missingKeyEnabled, correctionEnabled, scheme == .xiaohe,
-                   first.kind != 1, firstEnd < n, !taps[firstEnd].group {
+               first.kind == 0, !first.corrected, firstEnd < n, !taps[firstEnd].group {
                     let keyChar = Character(taps[firstEnd].key.lowercased())
                     for sid in (keyToSyllables[keyChar] ?? []).prefix(missingKeyAlternatives) {
                         let follow = lexicon.followers(first: first.id, second: sid)
