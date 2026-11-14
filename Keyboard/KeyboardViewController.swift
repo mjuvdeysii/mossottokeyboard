@@ -171,7 +171,7 @@ final class KeyboardViewController: UIInputViewController {
         }
         keyboard.reservedTop = { [weak self] in
             // while keys are being composed the strip belongs to the candidates: Mosto takes no touches from q / w
-            guard let self, !self.candidateBar.isHidden, self.taps.isEmpty else { return nil }
+            guard let self, !self.candidateBar.isHidden else { return nil }; if !self.taps.isEmpty || !self.enSuggestions.isEmpty || !self.predictions.isEmpty { return self.keyboard.bounds }
             let m = self.candidateBar.mosto
             guard !m.isHidden, m.alpha > 0.5 else { return nil }
             return self.candidateBar.convert(m.frame.insetBy(dx: -6, dy: 0), to: self.keyboard)
@@ -981,7 +981,7 @@ final class KeyboardViewController: UIInputViewController {
 
     private func show(_ out: EngineHost.Output, generation gen: Int) {
         guard !taps.isEmpty else { return }
-        let r = out.result
+        var r = out.result; let sc: (Candidate) -> Bool = { $0.text.count == 1 && !$0.syllables.isEmpty && !$0.isEnglish }; if !committedParts.isEmpty { r.candidates = r.candidates.filter(sc) + r.candidates.filter { !sc($0) } } else if taps.count >= 5, r.candidates.count > 2 { let t = r.candidates.dropFirst(2); r.candidates = Array(r.candidates.prefix(2)) + t.filter(sc) + t.filter { !sc($0) } }
         result = r
         resultGeneration = gen
         // 九宫格 keys have no single letter: the field shows the pinyin read from them
@@ -1016,7 +1016,7 @@ final class KeyboardViewController: UIInputViewController {
         guard let r = result else { return }
         var i = index
         if let shown, i >= r.candidates.count || r.candidates[i].text != shown.text || r.candidates[i].tapCount != shown.tapCount {
-            guard let j = r.candidates.firstIndex(where: { $0.text == shown.text && $0.tapCount == shown.tapCount }) else { return }
+            guard let j = r.candidates.firstIndex(where: { $0.text == shown.text && $0.tapCount == shown.tapCount }) else { if i < r.candidates.count { select(i) }; return }
             i = j
         }
         guard i < r.candidates.count else { return }
@@ -1043,7 +1043,7 @@ final class KeyboardViewController: UIInputViewController {
         taps.removeFirst(min(c.tapCount, taps.count))
         if !taps.isEmpty { engine.setContext(committedParts.map { $0.text }.joined().isEmpty ? c.text : committedParts.map { $0.text }.joined()) }
         if taps.isEmpty {
-            engine.learn(parts: committedParts)
+            engine.learn(parts: committedParts); if !committedParts.isEmpty { engine.save() }
             clearComposition()
             requestPredictions()
         } else {
