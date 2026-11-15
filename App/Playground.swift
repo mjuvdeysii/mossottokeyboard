@@ -70,7 +70,7 @@ final class PlaygroundModel: ObservableObject {
     var keyboard: KeyboardViewController?
 
     init() {
-        host.onChange = { [weak self] in self?.refresh() }
+        let s = KeyboardSettings.shared; layout = s.pinyinGrid ? 2 : (s.scheme == 0 ? 1 : 0); guide = s.xiaoheGuide; style = s.style; appearance = s.appearance; autocorrect = s.autocorrect; english = s.english; feedback = s.feedback; if UserDefaults.standard.bool(forKey: "onboardingDone") || KeyboardStatus.isAdded() { step = lessons.count; UserDefaults.standard.set(true, forKey: "onboardingDone") }; host.onChange = { [weak self] in self?.refresh() }
     }
 
     func refresh() {
@@ -105,7 +105,7 @@ final class PlaygroundModel: ObservableObject {
                 // a jump, a skip or another pass in the meantime already moved on: then only the tick goes
                 guard let self, self.justPassed, self.passCount == pass else { return }
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    if self.step == passed { self.step = min(passed + 1, lessons.count) }
+                    if self.step == passed { self.step = min(passed + 1, lessons.count); if self.step >= lessons.count { UserDefaults.standard.set(true, forKey: "onboardingDone") } }
                     self.justPassed = false
                     self.firstDone = false
                     self.firstKeys = nil
@@ -119,22 +119,22 @@ final class PlaygroundModel: ObservableObject {
         didSet { applyLayout() }
     }
     /// 小鹤键位提示 on the practice keyboard (the letters show their initial and finals).
-    @Published var guide = true {
+    @Published var style = 0 { didSet { applyLayout() } }; @Published var appearance = 0 { didSet { applyLayout() } }; @Published var autocorrect = true { didSet { applyLayout() } }; @Published var english = true { didSet { applyLayout() } }; @Published var feedback = true { didSet { applyLayout() } }; @Published var guide = false {
         didSet { applyLayout() }
     }
     func applyLayout() {
         let s = KeyboardSettings.shared
         s.scheme = layout == 1 ? 0 : 1
         s.pinyinGrid = layout == 2
-        s.xiaoheGuide = guide
+        s.xiaoheGuide = guide; s.style = style; s.appearance = appearance; s.autocorrect = autocorrect; s.english = english; s.feedback = feedback; s.keySound = feedback
         keyboard?.applySettings()
     }
 
     func skip() {
         firstDone = false; firstKeys = nil
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { step = min(step + 1, lessons.count) }
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { step = min(step + 1, lessons.count); if step >= lessons.count { UserDefaults.standard.set(true, forKey: "onboardingDone") } }
     }
-    func restart() { clear(); layout = 0; firstDone = false; firstKeys = nil; withAnimation { step = 0 } }
+        func skipAll() { firstDone = false; firstKeys = nil; UserDefaults.standard.set(true, forKey: "onboardingDone"); withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { step = lessons.count } }; func restart() { clear(); firstDone = false; firstKeys = nil; withAnimation { step = 0 } }
     func clear() { host.clear(); refresh() }
 
     /// Straight to one lesson (「了解」页的「试一试」): the keys being composed dropped, the field empty, the practice
@@ -240,7 +240,7 @@ struct LessonCard: View {
                         .frame(width: i == index ? 22 : 8, height: 8)
                 }
                 Spacer()
-                Button("跳过") { model.skip() }.font(.subheadline)
+                Button("下一步") { model.skip() }.font(.subheadline); Text("·").foregroundStyle(.tertiary); Button("跳过引导") { model.skipAll() }.font(.subheadline.weight(.semibold))
             }
             HStack(alignment: .firstTextBaseline) {
                 Text(l.title).font(.title3.weight(.bold))
@@ -313,10 +313,10 @@ private struct DoneCard: View {
     @ObservedObject var model: PlaygroundModel
     var body: some View {
         HStack(spacing: 12) {
-            Image(uiImage: mostoImage("Mosto")).resizable().scaledToFit().frame(width: 56, height: 56)
+            Image(uiImage: mostoImage(model.appearance == 2 ? "MostoNight" : "Mosto")).resizable().scaledToFit().frame(width: 48, height: 48)
             VStack(alignment: .leading, spacing: 4) {
-                Text("都会了").font(.title3.weight(.bold))
-                Text("随便打打试试。到“启用”里添加键盘，就能在所有 App 里用。").font(.subheadline).foregroundStyle(.secondary)
+                HStack { Text("键盘设置与试打").font(.headline.weight(.bold)); Spacer(); Button("重温引导") { model.restart() }.font(.caption.weight(.semibold)) }
+                Text("以下设置与所有 App 中的 Mosto键盘实时同步。").font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Picker("练习用的键盘", selection: $model.layout) {
                     Text("全拼").tag(0)
@@ -324,14 +324,14 @@ private struct DoneCard: View {
                     Text("九宫格").tag(2)
                 }
                 .pickerStyle(.segmented)
-                .padding(.vertical, 2)
+                .padding(.vertical, 2); HStack(spacing: 8) { Picker("风格", selection: $model.style) { Text("Mosto").tag(0); Text("简洁").tag(1) }.pickerStyle(.segmented); Picker("光线", selection: $model.appearance) { Text("自动").tag(0); Text("日光").tag(1); Text("夜灯").tag(2) }.pickerStyle(.segmented) }
                 if model.layout == 1 {
                     // 小鹤 on the practice keyboard: the guide on the keys, and a few words to try
                     Toggle("键位提示", isOn: $model.guide).font(.subheadline).tint(mostoTint)
                     Text("试试：nihc 你好 · vsgo 中国 · ulpb 双拼 · keyi 可以").font(.system(.footnote, design: .rounded))
                         .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
-                Button("再来一遍") { model.restart() }.font(.subheadline.weight(.semibold))
+                HStack(spacing: 8) { Toggle("自动纠错", isOn: $model.autocorrect); Toggle("中英混输", isOn: $model.english); Toggle("按键触感", isOn: $model.feedback) }.font(.caption.weight(.semibold)).tint(mostoTint).toggleStyle(.button)
             }
         }
         .padding(16)
