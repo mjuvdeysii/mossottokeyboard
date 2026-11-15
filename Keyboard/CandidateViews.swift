@@ -118,11 +118,11 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         strip.delegate = self
         strip.showsHorizontalScrollIndicator = false
         strip.showsVerticalScrollIndicator = false
-        strip.alwaysBounceHorizontal = true
+        strip.alwaysBounceHorizontal = false; strip.bounces = false
         strip.alwaysBounceVertical = false
         strip.decelerationRate = .normal
         strip.delaysContentTouches = false
-        strip.canCancelContentTouches = true
+        strip.canCancelContentTouches = false; strip.panGestureRecognizer.cancelsTouchesInView = false; strip.panGestureRecognizer.delaysTouchesBegan = false; strip.panGestureRecognizer.delaysTouchesEnded = false
         strip.scrollsToTop = false
         strip.contentInsetAdjustmentBehavior = .never
         strip.backgroundColor = .clear
@@ -302,7 +302,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     /// keyboard has been idle a moment, fading in rather than popping up — never flickering between words.
     /// Keys are being composed (the candidates may not have arrived yet): Mosto stays out of the way.
     var typing = false {
-        didSet { if typing != oldValue { setMosto(!typing && candidates.isEmpty && showsMosto && undoText == nil) } }
+        didSet { if typing != oldValue { setMosto(!typing && candidates.isEmpty && showsMosto && undoText == nil); setNeedsLayout() } }
     }
 
     /// Mosto is (about to be) shown or put away — his night light follows him.
@@ -356,7 +356,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         let inner = CGRect(origin: .zero, size: box.size)
         if strip.frame != inner { strip.frame = inner }
         // nothing to show: the strip takes no touches (they fall to the strip's own view, as before it scrolled)
-        stripBox.isHidden = candidates.isEmpty
+        stripBox.isHidden = candidates.isEmpty && !typing
         layoutCandidates()
     }
 
@@ -512,7 +512,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     }
 
     @objc private func stripPanned(_ g: UIPanGestureRecognizer) {
-        if g.state == .began { stripScrollBegan() }
+        if abs(g.translation(in: strip).x) > 22 { stripScrollBegan() }
     }
 
     /// The strip began to scroll under the finger: no tap, no hold.
@@ -528,17 +528,17 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     /// The candidate under a point of this view (an index into the full list), where the row shows it.
     private func candidateIndex(at p: CGPoint) -> Int? {
         let q = convert(p, to: strip)
-        guard q.y >= -8, q.x >= strip.bounds.minX, q.x < strip.bounds.maxX else { return nil }
-        return labels.firstIndex { $0.frame.minX <= q.x && q.x < $0.frame.maxX }
+        guard q.y >= -16, q.x >= strip.bounds.minX - 12, q.x < strip.bounds.maxX else { return nil }
+        return labels.firstIndex { ($0.frame.minX - 4) <= q.x && q.x < ($0.frame.maxX + 4) } ?? (!labels.isEmpty && q.x < labels[0].frame.maxX ? 0 : (typing && labels.isEmpty && p.x < 120 ? 0 : nil))
     }
 
     func stripTouch(_ phase: TouchSample.Phase, at p: CGPoint, time: CFTimeInterval) {
         switch phase {
         case .began:
             let idx = candidateIndex(at: p)
-            let text = idx.flatMap { $0 < candidates.count ? candidates[$0].text : nil }
+            let text = idx.flatMap { $0 < candidates.count ? candidates[$0].text : "" }
             // a finger that lands while the row is still gliding only stops it
-            let gliding = strip.glidingAtDown || strip.isDecelerating || benchGliding
+            let gliding = benchGliding || ((strip.glidingAtDown || strip.isDecelerating) && strip.contentOffset.x > 24 && abs(strip.panGestureRecognizer.velocity(in: strip).x) > 120)
             gesture.begin(index: idx, text: text, at: p, time: time, stoppingScroll: gliding, canHold: !isPrediction)
             longPressTimer?.invalidate()
             if idx != nil, !isPrediction, !gliding, !benchTouches {
@@ -552,7 +552,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             }
             setNeedsLayout()
         case .moved:
-            if gesture.move(to: p) {
+            if hypot(p.x - gesture.start.x, p.y - gesture.start.y) > 22, gesture.move(to: p) {
                 longPressTimer?.invalidate()
                 setNeedsLayout()
             }
@@ -560,12 +560,12 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             longPressTimer?.invalidate()
             let idx = candidateIndex(at: p)
             let current = idx.flatMap { $0 < candidates.count ? candidates[$0].text : nil }
-            let chosen = gesture.end(index: idx, currentText: current)
+            let chosen = gesture.end(index: gesture.index, currentText: gesture.text).map { idx ?? $0 }
             setNeedsLayout()
             if let chosen { onSelect?(chosen) }
         case .cancelled:
             longPressTimer?.invalidate()
-            gesture.cancel()
+            if !benchTouches, !gesture.slid, !gesture.held, time - gesture.began < 0.35, let c = gesture.end(index: gesture.index, currentText: gesture.text).map({ candidateIndex(at: p) ?? $0 }) { onSelect?(c) } else { gesture.cancel() }
             setNeedsLayout()
         }
     }
