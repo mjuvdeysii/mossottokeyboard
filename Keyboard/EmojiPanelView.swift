@@ -42,7 +42,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         "(✿◠‿◠)", "o(*￣▽￣*)ブ", "(っ´▽`)っ", "(づ｡◕‿‿◕｡)づ", "(ง •_•)ง", "ᕦ(ò_óˇ)ᕤ",
         "( •̀ ω •́ )✧", "(⊙ˍ⊙)", "Σ(っ °Д °;)っ", "(╬▔皿▔)╯", "(ノへ￣、)", "(´▽`ʃ♡ƪ)",
         "♪(´▽｀)", "(～﹃～)~zZ", "(￣︶￣)↗", "(^_−)☆", "(´･ω･`)", "_(:з」∠)_",
-        "(～￣▽￣)～", "щ(ﾟДﾟщ)", "(×_×)", "(〃＾▽＾〃)", "(´∀｀)♡", "(๑•́ ₃ •̀๑)", "(๑•̀ㅂ•́)و✧", "(｡•̀ᴗ-)✧", "(∪｡∪)｡｡｡zzz", "(￣o￣) . z Z", "ヾ(•ω•`)o", "(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧", "(´,,•ω•,,)♡", "(っ˘ω˘ς )", "(=｀ω´=)", "(￣▽￣)／", "╰(￣ω￣ｏ)", "( ´ ▽ ` )ﾉ",
+        "(~￣▽￣)~", "щ(゜Д゜щ)", "(x_x)", "(〃＾▽＾〃)", "(´∀`)♡", "(づ￣ ³￣)づ", "╰(￣ω￣ｏ)", "(=｀ω´=)", "(╭☞•́⍛•̀)╭☞", "(▀̿Ĺ̯▀̿ ̿)", "(￣▽￣)／", "( ￣▽￣)σ", "(๑•̀ㅂ•́)و✧", "(｡•̀ᴗ-)✧", "ヾ(•ω•`)o", "(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧", "ヽ(✿ﾟ▽ﾟ)ノ", "♪(^∇^*)", "(*^▽^*)", "٩( 'ω' )و", "( ´ ▽ ` )ﾉ", "(´,,•ω•,,)♡", "(✿◡‿◡)", "(｡･ω･｡)ﾉ♡", "(♡˙︶˙♡)", "(*╯3╰)", "(๑´ㅂ`๑)", "(つ´ω`)つ", "⊂(・▽・⊂)", "(｡•ㅅ•｡)♡", "(/▽＼)", "(っ˘ω˘ς )", "( ´･･)ﾉ(._.`)", "ヾ(´･ω･｀)ﾉ", "(｡･∀･)ﾉﾞ", "U•ェ•*U", "(ฅ´ω`ฅ)", "(▽◕ ᴥ ◕▽)", "(●—●)", "╮(￣▽￣)╭", "(⌐■_■)", "(￣_,￣ )", "(◔◡◔)", "(¬_¬ )", "( →_→)", "(←_← )", "┌( ಠ_ಠ)┘", "( ˙꒳˙ )", "(；′⌒`)", "(｡•́︿•̀｡)", "(´;ω;`)", "( >﹏<。)", "o(TヘTo)", "(；´д｀)ゞ", "(´-ω-`)", "orz", "OTZ", "(｡•́ - •̀｡)", "(╯‵□′)╯︵┻━┻", "(＃°Д°)", "(°ー°〃)", "(⊙_⊙)？", "∑(っ°Д°;)っ", "(╬ Ò﹏Ó)", "(｀⌒´メ)", "(⊙x⊙;)", "(∪｡∪)｡｡｡zzz", "(￣o￣) . z Z", "(:3[▓▓]", "(:3[＿＿]", "( -_-)旦~", "( ´_ゝ`)", "(￣.￣)", "(-_-) zzz", "(¦3[▓▓]", "(=_=)", "(￣﹃￣)", "( ˘ω˘ ) ｽﾔｧ…",
     ]
 
     final class Cell: UICollectionViewCell {
@@ -62,10 +62,10 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         required init?(coder: NSCoder) { fatalError() }
         override func layoutSubviews() {
             super.layoutSubviews()
-            label.frame = contentView.bounds.insetBy(dx: 3, dy: 2)
+            label.frame = contentView.bounds.insetBy(dx: 3, dy: 3); label.layer.cornerRadius = 9; label.clipsToBounds = true
         }
         override var isHighlighted: Bool {
-            didSet { contentView.backgroundColor = isHighlighted ? Theme.functionKey : (tag == 1 ? Theme.functionKey.withAlphaComponent(0.38) : .clear) }
+            didSet { contentView.backgroundColor = .clear; label.backgroundColor = tag == 1 ? (isHighlighted ? Theme.functionKey : Theme.functionKey.withAlphaComponent(0.42)) : (isHighlighted ? Theme.functionKey : .clear) }
         }
     }
 
@@ -77,7 +77,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             super.init(frame: frame)
             label.font = Theme.font(13, .bold)
             label.textColor = Theme.secondaryText
-            addSubview(label)
+            backgroundColor = Theme.touchable; addSubview(label)
             mosto.contentMode = .scaleAspectFit
             mosto.isHidden = true
             addSubview(mosto)
@@ -213,7 +213,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
 
     /// The emoji this iOS can draw: by the Emoji version each first appeared in (iOS 16.4 → 15.0, 17.4 → 15.1, 18.4 → 16.0).
     static var supportedEmojiVersion: Double {
-        if #available(iOS 18.4, *) { return 16.0 }
+        if #available(iOS 18.4, *) { return 17.0 }
         if #available(iOS 17.4, *) { return 15.1 }
         if #available(iOS 16.4, *) { return 15.0 }
         return 14.0
@@ -312,10 +312,10 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         let c = collectionView.dequeueReusableCell(withReuseIdentifier: "e", for: indexPath) as! Cell
         let e = sections[indexPath.section].items[indexPath.item]
         c.label.text = e
-        let kao = isKaomoji(indexPath.section); c.tag = kao ? 1 : 0; c.contentView.backgroundColor = kao ? Theme.functionKey.withAlphaComponent(0.38) : .clear
-        c.label.font = kao ? .systemFont(ofSize: 17) : .systemFont(ofSize: 30)
+        let kao = isKaomoji(indexPath.section); c.tag = kao ? 1 : 0; c.label.backgroundColor = kao ? Theme.functionKey.withAlphaComponent(0.42) : .clear
+        c.label.font = kao ? .systemFont(ofSize: 15, weight: .medium) : .systemFont(ofSize: 30)
         // 颜文字长短差很大：下限从 10.2pt 抬到 13.6pt（Susan Kare：小字不能糊成一团）
-        c.label.minimumScaleFactor = kao ? 0.8 : 0.6
+        c.label.minimumScaleFactor = kao ? 0.58 : 0.6
         c.label.textColor = Theme.keyText
         c.accessibilityLabel = e
         return c
@@ -333,7 +333,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
 
     func collectionView(_ collectionView: UICollectionView, layout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
         if isKaomoji(indexPath.section) {
-            return CGSize(width: max(60, floor((collectionView.bounds.width - 8) / 2)), height: 44)
+            return CGSize(width: max(60, floor((collectionView.bounds.width - 8) / 3)), height: 42)
         }
         return CGSize(width: cellSide, height: cellSide)
     }
