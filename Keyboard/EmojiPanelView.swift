@@ -42,7 +42,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         "(✿◠‿◠)", "o(*￣▽￣*)ブ", "(っ´▽`)っ", "(づ｡◕‿‿◕｡)づ", "(ง •_•)ง", "ᕦ(ò_óˇ)ᕤ",
         "( •̀ ω •́ )✧", "(⊙ˍ⊙)", "Σ(っ °Д °;)っ", "(╬▔皿▔)╯", "(ノへ￣、)", "(´▽`ʃ♡ƪ)",
         "♪(´▽｀)", "(～﹃～)~zZ", "(￣︶￣)↗", "(^_−)☆", "(´･ω･`)", "_(:з」∠)_",
-        "(～￣▽￣)～", "щ(ﾟДﾟщ)", "(×_×)", "(〃＾▽＾〃)", "(´∀｀)♡", "(๑•́ ₃ •̀๑)",
+        "(～￣▽￣)～", "щ(ﾟДﾟщ)", "(×_×)", "(〃＾▽＾〃)", "(´∀｀)♡", "(๑•́ ₃ •̀๑)", "(๑•̀ㅂ•́)و✧", "(｡•̀ᴗ-)✧", "(∪｡∪)｡｡｡zzz", "(￣o￣) . z Z", "ヾ(•ω•`)o", "(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧", "(´,,•ω•,,)♡", "(っ˘ω˘ς )", "(=｀ω´=)", "(￣▽￣)／", "╰(￣ω￣ｏ)", "( ´ ▽ ` )ﾉ",
     ]
 
     final class Cell: UICollectionViewCell {
@@ -62,10 +62,10 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         required init?(coder: NSCoder) { fatalError() }
         override func layoutSubviews() {
             super.layoutSubviews()
-            label.frame = contentView.bounds
+            label.frame = contentView.bounds.insetBy(dx: 3, dy: 2)
         }
         override var isHighlighted: Bool {
-            didSet { contentView.backgroundColor = isHighlighted ? Theme.functionKey : .clear }
+            didSet { contentView.backgroundColor = isHighlighted ? Theme.functionKey : (tag == 1 ? Theme.functionKey.withAlphaComponent(0.38) : .clear) }
         }
     }
 
@@ -97,7 +97,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         layout.minimumInteritemSpacing = 0
         layout.minimumLineSpacing = 0
         layout.sectionInset = UIEdgeInsets(top: 0, left: 4, bottom: 6, right: 4)
-        layout.sectionHeadersPinToVisibleBounds = false
+        layout.sectionHeadersPinToVisibleBounds = true
         collection = UICollectionView(frame: .zero, collectionViewLayout: layout)
         super.init(frame: frame)
         backgroundColor = Theme.touchable   // on the system glass (never fully clear: see Theme.touchable)
@@ -251,10 +251,10 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     /// `kaomoji`: open on Mosto 颜文字 (a tap on Mosto) instead of 常用.
     func load(kaomoji: Bool = false) {
         let recent = Self.recents()
-        sections = [Category(name: "常用", symbol: "clock", items: recent)] + Self.categories()
+        var cats = Self.categories(); let rk = (UserDefaults.standard.array(forKey: "recentKaomoji") as? [String]) ?? []; if !rk.isEmpty, let ki = cats.firstIndex(where: { $0.name == Self.kaomojiName }) { cats[ki].items = rk + cats[ki].items.filter { !rk.contains($0) } }; sections = [Category(name: "常用", symbol: "clock", items: recent)] + cats
         selected = -1
-        returnButton.isHidden = !kaomoji
-        deleteButton.isHidden = kaomoji
+        returnButton.isHidden = true; backButton.backgroundColor = kaomoji ? Theme.accentKey : Theme.functionKey; backButton.setTitleColor(kaomoji ? Theme.accentText : Theme.keyText, for: .normal)
+        deleteButton.isHidden = false
         collection.reloadData()
         guard bounds.width > 100, bounds.height > 100 else { return }   // shown with a frame later: load() runs again
         layoutIfNeeded()
@@ -312,7 +312,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         let c = collectionView.dequeueReusableCell(withReuseIdentifier: "e", for: indexPath) as! Cell
         let e = sections[indexPath.section].items[indexPath.item]
         c.label.text = e
-        let kao = isKaomoji(indexPath.section)
+        let kao = isKaomoji(indexPath.section); c.tag = kao ? 1 : 0; c.contentView.backgroundColor = kao ? Theme.functionKey.withAlphaComponent(0.38) : .clear
         c.label.font = kao ? .systemFont(ofSize: 17) : .systemFont(ofSize: 30)
         // 颜文字长短差很大：下限从 10.2pt 抬到 13.6pt（Susan Kare：小字不能糊成一团）
         c.label.minimumScaleFactor = kao ? 0.8 : 0.6
@@ -324,7 +324,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     func collectionView(_ collectionView: UICollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> UICollectionReusableView {
         let h = collectionView.dequeueReusableSupplementaryView(ofKind: kind, withReuseIdentifier: "h", for: indexPath) as! Header
         h.label.text = sections[indexPath.section].name
-        h.mosto.isHidden = !isKaomoji(indexPath.section)
+        let night = KeyboardSettings.shared.appearance == 2 || (KeyboardSettings.shared.appearance == 0 && traitCollection.userInterfaceStyle == .dark); h.mosto.image = UIImage(named: night ? "mosto_night" : "mosto_day", in: Bundle(for: EmojiPanelView.self), with: nil); h.mosto.isHidden = !isKaomoji(indexPath.section)
         h.setNeedsLayout()
         return h
     }
@@ -345,7 +345,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         let e = sections[indexPath.section].items[indexPath.item]
-        if !isKaomoji(indexPath.section) { Self.remember(e) }   // 常用 holds emoji (its cells are emoji-sized)
+        if !isKaomoji(indexPath.section) { Self.remember(e) } else { var rk = ((UserDefaults.standard.array(forKey: "recentKaomoji") as? [String]) ?? []).filter { $0 != e }; rk.insert(e, at: 0); UserDefaults.standard.set(Array(rk.prefix(18)), forKey: "recentKaomoji") }
         onEmoji?(e)
         collectionView.deselectItem(at: indexPath, animated: false)
     }
