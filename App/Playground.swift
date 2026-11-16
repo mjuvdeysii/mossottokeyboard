@@ -70,7 +70,7 @@ final class PlaygroundModel: ObservableObject {
     var keyboard: KeyboardViewController?
 
     init() {
-        let s = KeyboardSettings.shared; layout = s.pinyinGrid ? 2 : (s.scheme == 0 ? 1 : 0); guide = s.xiaoheGuide; style = s.style; appearance = s.appearance; autocorrect = s.autocorrect; english = s.english; feedback = s.feedback; if UserDefaults.standard.bool(forKey: "onboardingDone") || KeyboardStatus.isAdded() { step = lessons.count; UserDefaults.standard.set(true, forKey: "onboardingDone") }; host.onChange = { [weak self] in self?.refresh() }
+        let s = KeyboardSettings.shared; layout = s.pinyinGrid ? 2 : (s.scheme == 0 ? 1 : 0); guide = s.xiaoheGuide; numberPad = s.numberPad; style = s.style; appearance = s.appearance; autocorrect = s.autocorrect; english = s.english; feedback = s.feedback; keySound = s.keySound; if UserDefaults.standard.bool(forKey: "onboardingDone") || KeyboardStatus.isAdded() { step = lessons.count; UserDefaults.standard.set(true, forKey: "onboardingDone") }; host.onChange = { [weak self] in self?.refresh() }
     }
 
     func refresh() {
@@ -114,19 +114,32 @@ final class PlaygroundModel: ObservableObject {
         }
     }
 
-    /// The keyboard to practise on (this app's own copy of the settings: the keyboard in other apps is unaffected).
-    @Published var layout = 0 {   // 0 全拼, 1 小鹤双拼, 2 九宫格
-        didSet { applyLayout() }
-    }
-    /// 小鹤键位提示 on the practice keyboard (the letters show their initial and finals).
-    @Published var style = 0 { didSet { applyLayout() } }; @Published var appearance = 0 { didSet { applyLayout() } }; @Published var autocorrect = true { didSet { applyLayout() } }; @Published var english = true { didSet { applyLayout() } }; @Published var feedback = true { didSet { applyLayout() } }; @Published var guide = false {
-        didSet { applyLayout() }
-    }
+    /// 0 全拼, 1 小鹤双拼, 2 九宫格 (one three-way control: the three ways someone may want to type Chinese here).
+    @Published var layout = 0 { didSet { applyLayout() } }
+    @Published var style = 0 { didSet { applyLayout() } }
+    @Published var appearance = 0 { didSet { applyLayout() } }
+    @Published var autocorrect = true { didSet { applyLayout() } }
+    @Published var english = true { didSet { applyLayout() } }
+    @Published var feedback = true { didSet { applyLayout() } }
+    @Published var keySound = true { didSet { applyLayout() } }
+    @Published var numberPad = false { didSet { applyLayout() } }
+    @Published var keyboardVisible = true
+    /// 小鹤双拼's rhyme hints on the keys (off by default: a clean board for people who know the layout).
+    @Published var guide = false { didSet { applyLayout() } }
+
     func applyLayout() {
         let s = KeyboardSettings.shared
+        let prevGrid = s.pinyinGrid
         s.scheme = layout == 1 ? 0 : 1
         s.pinyinGrid = layout == 2
-        s.xiaoheGuide = guide; s.style = style; s.appearance = appearance; s.autocorrect = autocorrect; s.english = english; s.feedback = feedback; s.keySound = feedback
+        if s.pinyinGrid == prevGrid { s.numberPad = numberPad }
+        s.xiaoheGuide = guide
+        s.style = style
+        s.appearance = appearance
+        s.autocorrect = autocorrect
+        s.english = english
+        s.feedback = feedback
+        s.keySound = keySound
         keyboard?.applySettings()
     }
 
@@ -199,27 +212,42 @@ struct KeyboardHostView: UIViewControllerRepresentable {
 // MARK: - Screen
 
 struct PlaygroundScreen: View {
-    /// Owned by the app (AppNavigation), so 「了解」 can send someone straight to a lesson.
     @ObservedObject var model: PlaygroundModel
 
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 16) {
                     if model.step < lessons.count {
                         LessonCard(model: model, index: model.step)
+                        TextArea(model: model)
                     } else {
+                        TextArea(model: model)
                         DoneCard(model: model)
                     }
-                    TextArea(model: model)
                 }
-                .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 12)
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
+                .padding(.bottom, 20)
             }
             .scrollDismissesKeyboard(.never)
-            // (the CI snapshot run starts its own keyboards: none here)
-            Group { if SnapshotRenderer.requested { Color.clear } else { KeyboardHostView(model: model) } }
+
+            if model.keyboardVisible || model.step < lessons.count {
+                Divider()
+                Group {
+                    if SnapshotRenderer.requested {
+                        Color.clear
+                    } else {
+                        KeyboardHostView(model: model)
+                    }
+                }
                 .frame(height: 264)
-                .background(Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 0.10, alpha: 1) : UIColor(red: 0.82, green: 0.83, blue: 0.86, alpha: 1) }))
+                .background(Color(UIColor {
+                    $0.userInterfaceStyle == .dark
+                        ? UIColor(white: 0.10, alpha: 1)
+                        : UIColor(red: 0.82, green: 0.83, blue: 0.86, alpha: 1)
+                }))
+            }
         }
         .background(Color(UIColor.systemGroupedBackground))
     }
@@ -311,53 +339,202 @@ private struct KeyChips: View {
 
 private struct DoneCard: View {
     @ObservedObject var model: PlaygroundModel
+    private var isAdded: Bool { KeyboardStatus.isAdded() }
     var body: some View {
-        HStack(spacing: 12) {
-            Image(uiImage: mostoImage(model.appearance == 2 ? "MostoNight" : "Mosto")).resizable().scaledToFit().frame(width: 48, height: 48)
-            VStack(alignment: .leading, spacing: 4) {
-                HStack { Text("键盘设置与试打").font(.headline.weight(.bold)); Spacer(); Button("重温引导") { model.restart() }.font(.caption.weight(.semibold)) }
-                Text("以下设置与所有 App 中的 Mosto键盘实时同步。").font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Picker("练习用的键盘", selection: $model.layout) {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 12) {
+                Image(uiImage: mostoImage(model.appearance == 2 ? "MostoNight" : "Mosto"))
+                    .resizable().scaledToFit().frame(width: 48, height: 48)
+                    .padding(4)
+                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(mostoTint.opacity(0.12)))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text("Mosto 键盘控制台").font(.headline.weight(.bold))
+                        Text(isAdded ? "已启用" : "待启用")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(isAdded ? Color.green : Color.orange)
+                            .padding(.horizontal, 7).padding(.vertical, 2)
+                            .background(Capsule().fill((isAdded ? Color.green : Color.orange).opacity(0.15)))
+                    }
+                    Text("以下设置对所有 App 中的 Mosto键盘即时生效并跨版本持久保存。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 4)
+                Button("新手引导") { UISelectionFeedbackGenerator().selectionChanged(); model.restart() }
+                    .font(.caption.weight(.semibold)).buttonStyle(.bordered).controlSize(.small)
+            }
+            .padding(14)
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
+
+            Card(title: "输入方案与键盘布局") {
+                HStack(spacing: 12) {
+                    IconTile(symbol: "character.textbox")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("中文输入与布局").font(.subheadline.weight(.semibold))
+                        Text(model.layout == 1 ? "小鹤双拼 · 两键一字" : (model.layout == 2 ? "九宫格 · 左侧音节栏锁音" : "全拼 · 支持简拼与整句")).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+                Picker("输入方案", selection: $model.layout) {
                     Text("全拼").tag(0)
                     Text("小鹤双拼").tag(1)
                     Text("九宫格").tag(2)
                 }
                 .pickerStyle(.segmented)
-                .padding(.vertical, 2); HStack(spacing: 8) { Picker("风格", selection: $model.style) { Text("Mosto").tag(0); Text("简洁").tag(1) }.pickerStyle(.segmented); Picker("光线", selection: $model.appearance) { Text("自动").tag(0); Text("日光").tag(1); Text("夜灯").tag(2) }.pickerStyle(.segmented) }
                 if model.layout == 1 {
-                    // 小鹤 on the practice keyboard: the guide on the keys, and a few words to try
-                    Toggle("键位提示", isOn: $model.guide).font(.subheadline).tint(mostoTint)
-                    Text("试试：nihc 你好 · vsgo 中国 · ulpb 双拼 · keyi 可以").font(.system(.footnote, design: .rounded))
-                        .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Divider()
+                    HStack(spacing: 12) {
+                        IconTile(symbol: "graduationcap")
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("小鹤键位助记提示").font(.subheadline.weight(.semibold))
+                            Text("在键帽标注声韵母，记熟可关").font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Toggle("", isOn: $model.guide).labelsHidden().tint(mostoTint)
+                    }
                 }
-                HStack(spacing: 8) { Toggle("自动纠错", isOn: $model.autocorrect); Toggle("中英混输", isOn: $model.english); Toggle("按键触感", isOn: $model.feedback) }.font(.caption.weight(.semibold)).tint(mostoTint).toggleStyle(.button)
+                Divider()
+                HStack(spacing: 12) {
+                    IconTile(symbol: "number.square")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("123 数字键盘").font(.subheadline.weight(.semibold))
+                        Text(model.numberPad ? "点 123 打开九宫格大数字键" : "点 123 打开完整数字符号页").font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Picker("123", selection: $model.numberPad) {
+                        Text("完整页").tag(false)
+                        Text("九宫格").tag(true)
+                    }
+                    .pickerStyle(.segmented).frame(width: 140)
+                }
+            }
+
+            Card(title: "外观风格与光效") {
+                HStack(spacing: 12) {
+                    IconTile(symbol: "paintbrush.pointed")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("键盘风格").font(.subheadline.weight(.semibold))
+                        Text(model.style == 0 ? "3D 软胶键帽 + Mosto 陪伴" : "系统原生纯净毛玻璃").font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Picker("风格", selection: $model.style) {
+                        Text("Mosto").tag(0)
+                        Text("简洁").tag(1)
+                    }
+                    .pickerStyle(.segmented).frame(width: 140)
+                }
+                Divider()
+                HStack(spacing: 12) {
+                    IconTile(symbol: "sun.max")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("光线模式").font(.subheadline.weight(.semibold))
+                        Text("候选栏左上角亦可一键切换").font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Picker("光线", selection: $model.appearance) {
+                        Text("自动").tag(0)
+                        Text("日光").tag(1)
+                        Text(model.style == 1 ? "夜光" : "夜灯").tag(2)
+                    }
+                    .pickerStyle(.segmented).frame(width: 164)
+                }
+            }
+
+            Card(title: "智能纠错与按键触感") {
+                HStack(spacing: 12) {
+                    IconTile(symbol: "wand.and.stars")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("按触点位置自动纠错").font(.subheadline.weight(.semibold))
+                        Text("邻键误触、长句漏键自动修正，点 ↩️ 可撤回").font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Toggle("", isOn: $model.autocorrect).labelsHidden().tint(mostoTint)
+                }
+                Divider()
+                HStack(spacing: 12) {
+                    IconTile(symbol: "character.bubble")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("中英混输与智能标点").font(.subheadline.weight(.semibold))
+                        Text("中文态直出 iOS/OK，成对括号按空格跳出").font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Toggle("", isOn: $model.english).labelsHidden().tint(mostoTint)
+                }
+                Divider()
+                HStack(spacing: 12) {
+                    IconTile(symbol: "iphone.radiowaves.left.and.right")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("按键触感震动").font(.subheadline.weight(.semibold))
+                        Text("按下瞬间触发清脆微震（需开启完全访问）").font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Toggle("", isOn: $model.feedback).labelsHidden().tint(mostoTint)
+                }
+                Divider()
+                HStack(spacing: 12) {
+                    IconTile(symbol: "speaker.wave.2")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("系统按键音").font(.subheadline.weight(.semibold))
+                        Text("跟随手机静音开关播放原声按键音").font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Toggle("", isOn: $model.keySound).labelsHidden().tint(mostoTint)
+                }
             }
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
     }
 }
 
-/// What has been typed: the text, the keys being composed underlined (as a text field shows them), a cursor.
+/// Interactive sandbox text area with quick test hints and a one-tap fold/unfold toggle for the bottom keyboard.
 struct TextArea: View {
     @ObservedObject var model: PlaygroundModel
     @State private var blink = true
+
     var body: some View {
-        VStack(alignment: .trailing, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
+            if model.step >= lessons.count {
+                HStack {
+                    Label("实时试打沙盒", systemImage: "text.cursor")
+                        .font(.caption.weight(.bold)).foregroundStyle(.secondary)
+                    Spacer()
+                    if !model.before.isEmpty || !model.marked.isEmpty {
+                        Button("清空") { model.clear() }
+                            .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    }
+                    Button {
+                        UISelectionFeedbackGenerator().selectionChanged()
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) { model.keyboardVisible.toggle() }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: model.keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard")
+                            Text(model.keyboardVisible ? "收起键盘" : "唤出键盘")
+                        }
+                        .font(.caption.weight(.semibold)).foregroundStyle(mostoTint)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(Capsule().fill(mostoTint.opacity(0.12)))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
             (Text(model.before) + Text(model.marked).underline() + Text(blink ? "|" : " ").foregroundColor(mostoTint))
-                .font(.system(size: 20))
-                .frame(maxWidth: .infinity, minHeight: 72, alignment: .topLeading)
-                .overlay(alignment: .topLeading) {
-                    if model.before.isEmpty && model.marked.isEmpty {
-                        Text(model.ready ? "在下面的键盘上打字" : "键盘准备中…").font(.system(size: 20)).foregroundStyle(.tertiary).padding(.leading, 10)
+                .font(.system(size: 20, design: .rounded))
+                .frame(maxWidth: .infinity, minHeight: 56, alignment: .topLeading)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    if !model.keyboardVisible {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) { model.keyboardVisible = true }
                     }
                 }
-            if !model.before.isEmpty || !model.marked.isEmpty {
-                Button { model.clear() } label: { Label("清空", systemImage: "xmark.circle.fill").font(.caption.weight(.semibold)) }
-                    .foregroundStyle(.secondary)
-            }
+                .overlay(alignment: .topLeading) {
+                    if model.before.isEmpty && model.marked.isEmpty {
+                        Text(model.ready ? (model.layout == 1 ? "试试小鹤：nihc 你好 · wanan 晚安 · riqi 日期 · 长按 ，出《》" : "在这里直接试打：nihao 你好 · wanan 晚安 · riqi 日期 · 长按 ，出《》") : "正在准备键盘…")
+                            .font(.system(size: 15, design: .rounded))
+                            .foregroundStyle(.tertiary)
+                            .padding(.top, 2)
+                            .allowsHitTesting(false)
+                    }
+                }
         }
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
