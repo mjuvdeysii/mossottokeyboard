@@ -204,7 +204,7 @@ final class KeyboardViewController: UIInputViewController {
             self.clearingBySwipe = false
         }
 
-        candidateBar.onSelect = { [weak self] i in self?.feel(.candidate); self?.candidateTapped(i) }
+        candidateBar.onSelect = { [weak self] i in guard let self else { return }; self.feel(.candidate); if !self.grid.isHidden { self.showGrid(false) }; self.candidateTapped(i) }
         // the undo chip: after a clear, the keys it cleared; else the same as pressing delete right after the
         // corrected word went in
         candidateBar.onUndo = { [weak self] in
@@ -212,12 +212,12 @@ final class KeyboardViewController: UIInputViewController {
             self.feel(.undoChip); self.candidateBar.mosto.hop()
             if self.cleared != nil { self.restoreCleared() } else { self.handle(.delete, tap: nil) }
         }
-        candidateBar.onMostoShown = { [weak self] on in self?.tintView.lampLit = on }
+        candidateBar.onMostoShown = { [weak self] on in self?.tintView.lampLit = on; self?.updatePlainLightButton() }
         syllablePicker.isHidden = true
         keyboard.addSubview(syllablePicker)
         keyboard.overlay = syllablePicker
         syllablePicker.onPick = { [weak self] i in self?.pickSyllable(i) }
-        candidateBar.onExpand = { [weak self] in self?.showGrid(true) }
+        candidateBar.onExpand = { [weak self] in guard let self else { return }; self.feel(.key(.page(.letters))); self.showGrid(self.grid.isHidden) }
         candidateBar.onLongPress = { [weak self] i in self?.offerForget(i) }
         candidateBar.onSettings = { [weak self] in self?.showSettings(true) }
         candidateBar.onMostoTap = { [weak self] in
@@ -231,7 +231,7 @@ final class KeyboardViewController: UIInputViewController {
             guard let self else { return }
             self.feel(.mosto); self.candidateBar.mosto.hop()
             KeyboardSettings.shared.appearance = self.isNight ? 1 : 2
-            self.applyAppearance(); self.settingsPanel.load()
+            self.applyAppearance(animated: true); self.settingsPanel.load()
         }
         grid.onSelect = { [weak self] i in self?.feel(.candidate); self?.showGrid(false); self?.candidateTapped(i) }
         grid.onClose = { [weak self] in self?.showGrid(false) }
@@ -268,6 +268,7 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        LaunchGuard.succeeded()
         releaseSystemGestureDelays()
     }
 
@@ -296,6 +297,7 @@ final class KeyboardViewController: UIInputViewController {
         lastDocumentID = host.documentIdentifier
         hostEchoesMarked = 0
         lastEchoed = ""
+        userToggledModeInField = false
         forgetLastWord()
         afterLastKey = contextSnapshot()
         adaptToField()
@@ -468,10 +470,10 @@ final class KeyboardViewController: UIInputViewController {
                     userDictURL: Self.keepsLearnedWords ? dir?.appendingPathComponent("userdict.json") : nil, safe: safe,
                     emojiHintsPath: b.path(forResource: "emoji_hints", ofType: "txt"))
         // English mode reads the same file (read-only, safe to share between threads)
-        if !safe, let ep, let en = try? EnglishLexicon(path: ep) { english = EnglishDecoder(lexicon: en) }
+        if !safe, let ep { english = (engine.englishLexicon ?? (try? EnglishLexicon(path: ep))).map(EnglishDecoder.init) }
         safeMode = safe
-        // up and running for a few seconds: this launch counts as a good one
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { LaunchGuard.succeeded() }
+        // If we are still alive after 1.5s of real use, this launch succeeded.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { LaunchGuard.succeeded() }
     }
     private var safeMode = false
     private var commitsSinceSave = 0
@@ -505,7 +507,7 @@ final class KeyboardViewController: UIInputViewController {
     /// light is split: everything that sits on the glass — the candidate strip, the emoji page, settings — follows the
     /// glass and stays readable on it; the keys (and Mosto) follow the light chosen: 自动 the glass's, 日光 / 夜灯
     /// their own. Night on a light system is violet vinyl keys on pale glass; day on a dark one, cream keys on dark.
-    private func applyAppearance() {
+    private func applyAppearance(animated: Bool = false) {
         // 风格: Mosto or 简洁 (无主题); every key and the strip redraw when it changes
         let plain = KeyboardSettings.shared.style == 1
         if plain != Theme.plain {
@@ -521,7 +523,7 @@ final class KeyboardViewController: UIInputViewController {
         let glass: UIUserInterfaceStyle = .unspecified   // the strip, emoji page and settings follow the glass itself
         let keys: UIUserInterfaceStyle = mode == 0 ? .unspecified : (night ? .dark : .light)
         let changed = night != isNight || root.overrideUserInterfaceStyle != glass || keyboard.overrideUserInterfaceStyle != keys
-        if changed, root.window != nil {
+        if animated, changed, root.window != nil {
             // a short crossfade instead of a flash when the light changes under the keyboard
             let fade = CATransition()
             fade.type = .fade
@@ -538,7 +540,7 @@ final class KeyboardViewController: UIInputViewController {
         candidateBar.showsMosto = !Theme.plain    // by day and at night (only his light follows); none in 简洁
         tintView.isHidden = Theme.plain
         settingsPanel.setNight(night); updatePlainLightButton()
-    }; private func updatePlainLightButton() { let idle = taps.isEmpty && predictions.isEmpty && enSuggestions.isEmpty && candidateBar.undoTextForTests == nil && !emojiShown && settingsPanel.isHidden; mostoHintButton.isHidden = Theme.plain || !idle; mostoHintButton.setTitleColor(Theme.secondaryText, for: .normal); mostoHintButton.backgroundColor = Theme.functionKey.withAlphaComponent(0.45); if !Theme.plain && idle { candidateBar.mosto.isHidden = false; candidateBar.mosto.alpha = 1; candidateBar.bringSubviewToFront(candidateBar.mosto) }; plainLightButton.isHidden = !idle; plainLightButton.frame = CGRect(x: Theme.plain ? 8 : 104, y: 5, width: 62, height: 34); let cfg = UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold); plainLightButton.setImage(UIImage(systemName: isNight ? "moon.stars.fill" : "sun.max.fill", withConfiguration: cfg), for: .normal); plainLightButton.setTitle(isNight ? (Theme.plain ? " 夜光" : " 夜灯") : " 日光", for: .normal); plainLightButton.tintColor = isNight ? UIColor(red: 0.96, green: 0.78, blue: 0.32, alpha: 1) : Theme.secondaryText; plainLightButton.backgroundColor = Theme.functionKey.withAlphaComponent(0.45) }; @objc private func mostoHeld(_ g: UILongPressGestureRecognizer) { guard g.state == .began else { return }; feel(.mosto); candidateBar.mosto.demoYawn(); candidateBar.mosto.hop(); DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) { [weak self] in guard let self else { return }; self.candidateBar.mosto.setNight(self.isNight) } }
+    }; private func updatePlainLightButton() { let idle = taps.isEmpty && predictions.isEmpty && enSuggestions.isEmpty && candidateBar.undoTextForTests == nil && !emojiShown && settingsPanel.isHidden && grid.isHidden && !candidateBar.mosto.isHidden; mostoHintButton.isHidden = !(idle && !Theme.plain); mostoHintButton.setTitleColor(Theme.secondaryText, for: .normal); mostoHintButton.backgroundColor = Theme.functionKey.withAlphaComponent(0.45); if !Theme.plain && idle { candidateBar.mosto.isHidden = false; candidateBar.mosto.alpha = 1; candidateBar.bringSubviewToFront(candidateBar.mosto) }; plainLightButton.isHidden = !idle; plainLightButton.frame = CGRect(x: Theme.plain ? 8 : 104, y: 5, width: 62, height: 34); let cfg = UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold); plainLightButton.setImage(UIImage(systemName: isNight ? "moon.stars.fill" : "sun.max.fill", withConfiguration: cfg), for: .normal); plainLightButton.setTitle(isNight ? (Theme.plain ? " 夜光" : " 夜灯") : " 日光", for: .normal); plainLightButton.tintColor = isNight ? UIColor(red: 0.96, green: 0.78, blue: 0.32, alpha: 1) : Theme.secondaryText; plainLightButton.backgroundColor = Theme.functionKey.withAlphaComponent(0.45) }; @objc private func mostoHeld(_ g: UILongPressGestureRecognizer) { guard g.state == .began else { return }; feel(.mosto); candidateBar.mosto.demoYawn(); candidateBar.mosto.hop(); DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) { [weak self] in guard let self else { return }; self.candidateBar.mosto.setNight(self.isNight) } }
 
     func applySettings() {
         let s = KeyboardSettings.shared
@@ -588,21 +590,26 @@ final class KeyboardViewController: UIInputViewController {
 
     // MARK: - Field adaptation
 
+    private var userToggledModeInField = false
     private func adaptToField() {
+        let prevKind = lastFieldTraits.first
         lastFieldTraits = fieldTraits()
+        if lastFieldTraits.first != prevKind { userToggledModeInField = false }
         let proxy = host
-        switch proxy.keyboardType ?? .default {
+        if !userToggledModeInField {
+                                    switch proxy.keyboardType ?? .default {
         case .numberPad, .decimalPad, .phonePad, .asciiCapableNumberPad:
             page = .numpad   // digits-only fields (phone, code, amount) get the 九宫格 number pad
         case .numbersAndPunctuation:
             page = .numbers   // digits and punctuation: the full 123 page
-        case .emailAddress, .URL, .webSearch:
+        case .emailAddress, .URL, .asciiCapable, .twitter:
             page = .letters
             if taps.isEmpty { chinese = false }
         default:
             page = .letters
             // back in ordinary text: the language the user last chose there (an address bar switched to English)
             if taps.isEmpty { chinese = preferredChinese }
+        }
         }
         if !chinese { updateAutoShift() }
         reconfigure()
@@ -688,13 +695,13 @@ final class KeyboardViewController: UIInputViewController {
             shiftTapped()
         case .page(let p):
             if p != .letters, !taps.isEmpty { commitAll() }
-            page = p
+            page = p; userToggledModeInField = true
             reconfigure()
         case .toggleLanguage:
             if !taps.isEmpty { commitRaw() }
-            chinese.toggle()
+            chinese.toggle(); userToggledModeInField = true
             switch host.keyboardType ?? .default {
-            case .emailAddress, .URL, .webSearch: break
+            case .emailAddress, .URL, .asciiCapable, .twitter: break
             default: preferredChinese = chinese
             }
             shifted = false
@@ -981,7 +988,7 @@ final class KeyboardViewController: UIInputViewController {
 
     private func show(_ out: EngineHost.Output, generation gen: Int) {
         guard !taps.isEmpty else { return }
-        var r = out.result; let sc: (Candidate) -> Bool = { $0.text.count == 1 && !$0.syllables.isEmpty && !$0.isEnglish }; if !committedParts.isEmpty { r.candidates = r.candidates.filter(sc) + r.candidates.filter { !sc($0) } } else if taps.count >= 5, r.candidates.count > 2 { let t = r.candidates.dropFirst(2); r.candidates = Array(r.candidates.prefix(2)) + t.filter(sc) + t.filter { !sc($0) } } else if taps.count == 4, r.candidates.count > 3 { let t = r.candidates.dropFirst(3); r.candidates = Array(r.candidates.prefix(3)) + t.filter(sc) + t.filter { !sc($0) } }; var seen = Set<String>(); r.candidates = r.candidates.filter { seen.insert("\($0.text)#\($0.tapCount)").inserted }
+        var r = out.result; let sc: (Candidate) -> Bool = { $0.text.count == 1 && !$0.syllables.isEmpty && !$0.isEnglish }; if !committedParts.isEmpty { let topFull = r.candidates.prefix(1).filter { $0.tapCount == taps.count && !sc($0) }; let rest = r.candidates.dropFirst(topFull.count); r.candidates = Array(topFull) + rest.filter(sc) + rest.filter { !sc($0) } } else if taps.count == 2, r.candidates.count > 2 { let t = r.candidates.dropFirst(2); r.candidates = Array(r.candidates.prefix(2)) + t.filter(sc) + t.filter { !sc($0) } } else if taps.count == 4, r.candidates.count > 3 { let t = r.candidates.dropFirst(3); let s = t.filter(sc); r.candidates = Array(r.candidates.prefix(3)) + Array(s.prefix(2)) + t.filter { !sc($0) } + Array(s.dropFirst(2)) } else if taps.count >= 5, r.candidates.count > 3 { let t = r.candidates.dropFirst(2); let m = t.filter { !sc($0) }; let s = t.filter(sc); r.candidates = Array(r.candidates.prefix(2)) + Array(m.prefix(2)) + Array(s.prefix(2)) + Array(m.dropFirst(2)) + Array(s.dropFirst(2)) }; var seen = Set<String>(); r.candidates = r.candidates.filter { seen.insert($0.text).inserted }
         result = r
         resultGeneration = gen
         // 九宫格 keys have no single letter: the field shows the pinyin read from them
@@ -1271,7 +1278,7 @@ final class KeyboardViewController: UIInputViewController {
             else if taps.isEmpty, !predictions.isEmpty { grid.show(predictionCandidates()) }
             else if let r = result { grid.show(r.candidates) }
         }
-        grid.isHidden = !on
+        grid.isHidden = !on; candidateBar.gridExpanded = on; updatePlainLightButton()
         // panels sit on the same system glass as the keys (no opaque sheet stacked on it): hide what is underneath
         keyboard.isHidden = on || !settingsPanel.isHidden || emojiShown
     }
