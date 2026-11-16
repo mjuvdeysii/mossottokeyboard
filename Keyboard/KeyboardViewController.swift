@@ -19,7 +19,7 @@ final class KeyboardViewController: UIInputViewController {
     // system's, so 自动 can always read the real light / dark mode.
     private let root = UIView()
     private let tintView = AmbientLightView()
-    private let candidateBar = CandidateBarView(); private let plainLightButton = UIButton(type: .system); private var lastEmojiInserted = ""
+    private let candidateBar = CandidateBarView(); private let plainLightButton = UIButton(type: .system); private let mostoHintButton = UIButton(type: .system); private var lastEmojiInserted = ""
     private lazy var keyboard = KeyboardView(spatial: spatial)
     private let grid = CandidateGridView()
     private let settingsPanel = SettingsPanelView()
@@ -171,10 +171,10 @@ final class KeyboardViewController: UIInputViewController {
         }
         keyboard.reservedTop = { [weak self] in
             // while keys are being composed the strip belongs to the candidates: Mosto takes no touches from q / w
-            guard let self, !self.candidateBar.isHidden else { return nil }; if !self.taps.isEmpty || !self.enSuggestions.isEmpty || !self.predictions.isEmpty { return self.keyboard.bounds }
-            let m = self.candidateBar.mosto
-            if !self.plainLightButton.isHidden { return self.candidateBar.convert(self.plainLightButton.frame.insetBy(dx: -6, dy: -4), to: self.keyboard) }; guard !m.isHidden, m.alpha > 0.5 else { return nil }
-            return self.candidateBar.convert(m.frame.insetBy(dx: -6, dy: 0), to: self.keyboard)
+            guard let self, !self.candidateBar.isHidden else { return nil }; return self.keyboard.bounds
+            // full candidateBar height is always reserved for toolbar controls and candidates
+            // so Mosto, light pill, settings button, and candidates never trigger top-row keys
+            // under any state
         }
         keyboard.onCursorMove = { [weak self] d in
             guard let self, self.taps.isEmpty else { return false }
@@ -209,7 +209,7 @@ final class KeyboardViewController: UIInputViewController {
         // corrected word went in
         candidateBar.onUndo = { [weak self] in
             guard let self else { return }
-            self.feel(.undoChip)
+            self.feel(.undoChip); self.candidateBar.mosto.hop()
             if self.cleared != nil { self.restoreCleared() } else { self.handle(.delete, tap: nil) }
         }
         candidateBar.onMostoShown = { [weak self] on in self?.tintView.lampLit = on }
@@ -229,7 +229,7 @@ final class KeyboardViewController: UIInputViewController {
         candidateBar.onMostoDoubleTap = { [weak self] in
             // 日光 ⇄ 夜灯, from whatever light is showing now (自动 included); the settings page shows the choice
             guard let self else { return }
-            self.feel(.mosto)
+            self.feel(.mosto); self.candidateBar.mosto.hop()
             KeyboardSettings.shared.appearance = self.isNight ? 1 : 2
             self.applyAppearance(); self.settingsPanel.load()
         }
@@ -253,7 +253,7 @@ final class KeyboardViewController: UIInputViewController {
         }
 
         for v in [candidateBar, keyboard, grid, settingsPanel] as [UIView] { root.addSubview(v) }
-        grid.isHidden = true; plainLightButton.frame = CGRect(x: 8, y: 5, width: 34, height: 34); plainLightButton.layer.cornerRadius = 17; plainLightButton.accessibilityLabel = "切换日光与夜光"; plainLightButton.addAction(UIAction { [weak self] _ in self?.candidateBar.onMostoDoubleTap?() }, for: .touchUpInside); candidateBar.addSubview(plainLightButton); let lp = UILongPressGestureRecognizer(target: self, action: #selector(mostoHeld(_:))); lp.minimumPressDuration = 0.42; candidateBar.mosto.addGestureRecognizer(lp)
+        grid.isHidden = true; mostoHintButton.frame = CGRect(x: 6, y: 4, width: 92, height: 36); mostoHintButton.layer.cornerRadius = 18; mostoHintButton.titleLabel?.font = Theme.font(12, .semibold); mostoHintButton.setTitle("        颜文字", for: .normal); mostoHintButton.accessibilityLabel = "Mosto 颜文字"; mostoHintButton.addAction(UIAction { [weak self] _ in self?.candidateBar.onMostoTap?() }, for: .touchUpInside); let lp = UILongPressGestureRecognizer(target: self, action: #selector(mostoHeld(_:))); lp.minimumPressDuration = 0.42; mostoHintButton.addGestureRecognizer(lp); candidateBar.addSubview(mostoHintButton); candidateBar.bringSubviewToFront(candidateBar.mosto); candidateBar.mosto.isUserInteractionEnabled = false; plainLightButton.layer.cornerRadius = 17; plainLightButton.titleLabel?.font = Theme.font(12, .semibold); plainLightButton.accessibilityLabel = "切换日光与夜灯"; plainLightButton.addAction(UIAction { [weak self] _ in self?.candidateBar.onMostoDoubleTap?() }, for: .touchUpInside); candidateBar.addSubview(plainLightButton)
         settingsPanel.isHidden = true
         applySettings()
         let off = KeyboardSettings.shared.touchOffset
@@ -538,7 +538,7 @@ final class KeyboardViewController: UIInputViewController {
         candidateBar.showsMosto = !Theme.plain    // by day and at night (only his light follows); none in 简洁
         tintView.isHidden = Theme.plain
         settingsPanel.setNight(night); updatePlainLightButton()
-    }; private func updatePlainLightButton() { let idle = taps.isEmpty && predictions.isEmpty && enSuggestions.isEmpty && candidateBar.undoTextForTests == nil && !emojiShown && settingsPanel.isHidden; plainLightButton.isHidden = !Theme.plain || !idle; let cfg = UIImage.SymbolConfiguration(pointSize: 15, weight: .semibold); plainLightButton.setImage(UIImage(systemName: isNight ? "moon.stars.fill" : "sun.max.fill", withConfiguration: cfg), for: .normal); plainLightButton.tintColor = isNight ? UIColor(red: 0.96, green: 0.78, blue: 0.32, alpha: 1) : Theme.secondaryText; plainLightButton.backgroundColor = Theme.functionKey.withAlphaComponent(0.55) }; @objc private func mostoHeld(_ g: UILongPressGestureRecognizer) { guard g.state == .began else { return }; feel(.mosto); candidateBar.mosto.demoYawn(); candidateBar.mosto.hop(); DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) { [weak self] in guard let self else { return }; self.candidateBar.mosto.setNight(self.isNight) } }
+    }; private func updatePlainLightButton() { let idle = taps.isEmpty && predictions.isEmpty && enSuggestions.isEmpty && candidateBar.undoTextForTests == nil && !emojiShown && settingsPanel.isHidden; mostoHintButton.isHidden = Theme.plain || !idle; mostoHintButton.setTitleColor(Theme.secondaryText, for: .normal); mostoHintButton.backgroundColor = Theme.functionKey.withAlphaComponent(0.45); if !Theme.plain && idle { candidateBar.mosto.isHidden = false; candidateBar.mosto.alpha = 1; candidateBar.bringSubviewToFront(candidateBar.mosto) }; plainLightButton.isHidden = !idle; plainLightButton.frame = CGRect(x: Theme.plain ? 8 : 104, y: 5, width: 62, height: 34); let cfg = UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold); plainLightButton.setImage(UIImage(systemName: isNight ? "moon.stars.fill" : "sun.max.fill", withConfiguration: cfg), for: .normal); plainLightButton.setTitle(isNight ? (Theme.plain ? " 夜光" : " 夜灯") : " 日光", for: .normal); plainLightButton.tintColor = isNight ? UIColor(red: 0.96, green: 0.78, blue: 0.32, alpha: 1) : Theme.secondaryText; plainLightButton.backgroundColor = Theme.functionKey.withAlphaComponent(0.45) }; @objc private func mostoHeld(_ g: UILongPressGestureRecognizer) { guard g.state == .began else { return }; feel(.mosto); candidateBar.mosto.demoYawn(); candidateBar.mosto.hop(); DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) { [weak self] in guard let self else { return }; self.candidateBar.mosto.setNight(self.isNight) } }
 
     func applySettings() {
         let s = KeyboardSettings.shared
@@ -769,7 +769,7 @@ final class KeyboardViewController: UIInputViewController {
            prev.isASCII, prev.isNumber {
             out = s == "。" ? "." : ":"
         }
-        host.insertText(out)
+        let pairs: [String: String] = ["《": "《》", "（": "（）", "【": "【】", "「": "「」", "『": "『』"]; if let p = pairs[out] { host.insertText(p); host.adjustTextPosition(byCharacterOffset: -1) } else { host.insertText(out) }
         lastInsertedSpace = false
         if !chinese && [".", "!", "?"].contains(s) { updateAutoShift(); reconfigure() }
     }
