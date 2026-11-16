@@ -88,7 +88,7 @@ enum Metrics {
     static let gapX: CGFloat = 6
     static let gapY: CGFloat = 12
     /// The darker lip under each cap (the face sinks onto it when pressed).
-    static var lip: CGFloat { Theme.plain ? 1.5 : 3 }
+    static var lip: CGFloat { Theme.plain ? 1.5 : 3.5 }
     /// Soft vinyl caps: rounder than the system keyboard's.
     static var cornerRadius: CGFloat { Theme.plain ? 6 : 10 }
     static let letterFont: CGFloat = 24
@@ -162,8 +162,8 @@ enum Layouts {
         bottom += middleKeys(ctx)
         bottom.append(KeySpec(action: .space, label: ctx.chinese ? "空格" : "space", width: 0))
         bottom.append(ctx.chinese
-            ? KeySpec(action: .char("，"), label: "，", width: 1, alt: "。", style: .function, moreAlts: ["？", "！", "、", "…", "："])
-            : KeySpec(action: .char("."), label: ".", width: 1, alt: ",", style: .function, moreAlts: ["?", "!", "'", ":"]))
+            ? KeySpec(action: .char("，"), label: "，", width: 1, alt: "。", style: .function, moreAlts: ["？", "！", "、", "…", "《", "（"])
+            : KeySpec(action: .char("."), label: ".", width: 1, alt: ",", style: .function, moreAlts: ["?", "!", "'", "\"", "-"]))
         bottom.append(returnKey(ctx, width: ctx.showGlobe ? 1.75 : 2, wide: false))
         rows.append(bottom)
         return rows
@@ -184,11 +184,11 @@ enum Layouts {
     private static func numbers(_ ctx: LayoutContext) -> [[KeySpec]] {
         let row1 = charRow(topRowDigits)
         let row2 = ctx.chinese
-            ? charRow(["-", "/", "：", "；", "（", "）", "¥", "@", "“", "”"], alts: ["“": "‘", "”": "’", "¥": "￥"])
+            ? charRow(["-", "/", "：", "；", "（", "）", "¥", "@", "“", "”"], alts: ["-": "—", "/": "、", "：": ":", "；": ";", "（": "【", "）": "】", "¥": "$", "@": "#", "“": "「", "”": "」"])
             : charRow(["-", "/", ":", ";", "(", ")", "$", "&", "@", "\""])
         var row3: [KeySpec] = [KeySpec(action: .page(.symbols), label: "#+=", width: 1.5, style: .function)]
         row3 += ctx.chinese
-            ? charRow(["。", "，", "、", "？", "！", "."], width: sixth, alts: ["。": "…"])
+            ? charRow(["。", "，", "、", "？", "！", "."], width: sixth, alts: ["。": "…", "，": "；", "、": "·", "？": "?", "！": "!", ".": "…"])
             : charRow([".", ",", "?", "!", "'", "%"], width: sixth)
         row3.append(KeySpec(action: .delete, label: "", symbol: "delete.left", width: 1.5, style: .function))
         return [row1, row2, row3, bottomRow(ctx)]
@@ -249,7 +249,7 @@ enum Layouts {
             : charRow(["_", "\\", "|", "~", "<", ">", "€", "£", "¥", "•"], alts: ["~": "°"])
         var row3: [KeySpec] = [KeySpec(action: .page(.numbers), label: "123", width: 1.5, style: .function)]
         row3 += ctx.chinese
-            ? charRow(["…", "，", "^_^", "？", "！", "'"], width: sixth, alts: ["'": "’"])
+            ? charRow(["…", "，", "^_^", "？", "！", "'"], width: sixth, alts: ["…": "——", "^_^": "ψ(｀∇´)ψ", "'": "’"])
             : charRow([".", ",", "?", "!", "'", "`"], width: sixth)
         row3.append(KeySpec(action: .delete, label: "", symbol: "delete.left", width: 1.5, style: .function))
         return [row1, row2, row3, bottomRow(ctx)]
@@ -355,7 +355,7 @@ enum Theme {
     private static let mosto_bubbleLip: UIColor = dyn(hex(0xCDBFEB), hex(0x1B1248))
     private static let plain_bubbleLip: UIColor = dyn(hex(0xB3B6BD), hex(0x2B2B2E))
     static var wing: UIColor { plain ? plain_wing : mosto_wing }
-    private static let mosto_wing: UIColor = dyn(hex(0xB7A6E6), hex(0x2A1E66))
+    private static let mosto_wing: UIColor = dyn(hex(0xAE99E8), hex(0x6E59C9))
     private static let plain_wing: UIColor = UIColor.clear
     static var keyText: UIColor { plain ? plain_keyText : mosto_keyText }
     private static let mosto_keyText: UIColor = dyn(hex(0x2B1961), hex(0xFFF3DC))
@@ -366,7 +366,7 @@ enum Theme {
     private static let plain_functionText: UIColor = dyn(hex(0x111114), hex(0xFFFFFF))
     static var keyShadow: UIColor { plain ? plain_keyShadow : mosto_keyShadow }
     /// `a` moved `k` of the way towards `b` (opaque colours).
-    private static let mosto_keyShadow: UIColor = dyn(hex(0x2B1961, 0.14), UIColor(white: 0, alpha: 0.32))
+    private static let mosto_keyShadow: UIColor = dyn(hex(0x2B1961, 0.18), UIColor(white: 0, alpha: 0.40))
     private static let plain_keyShadow: UIColor = dyn(UIColor(white: 0, alpha: 0.10), UIColor(white: 0, alpha: 0.35))
     static func mix(_ a: UIColor, _ b: UIColor, _ k: CGFloat) -> UIColor {
         var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0, r2: CGFloat = 0, g2: CGFloat = 0, b2: CGFloat = 0, a2: CGFloat = 0
@@ -391,7 +391,7 @@ enum Theme {
     private static let mosto_correctedMark: UIColor = dyn(hex(0x633EBF), hex(0xFFC45A))
     private static let plain_correctedMark: UIColor = dyn(hex(0x0A6CE0), hex(0x5EB0FF))
     static var correctedTint: UIColor { plain ? plain_correctedTint : mosto_correctedTint }
-    private static let mosto_correctedTint: UIColor = dyn(hex(0x633EBF, 0.10), hex(0xFFC45A, 0.15))
+    private static let mosto_correctedTint: UIColor = dyn(hex(0x633EBF, 0.16), hex(0xFFC45A, 0.24))
     private static let plain_correctedTint: UIColor = dyn(hex(0x0A7CFF, 0.10), hex(0x0A84FF, 0.22))
     static var selection: UIColor { plain ? plain_selection : mosto_selection }
     private static let mosto_selection: UIColor = dyn(hex(0x633EBF), hex(0xE3B04F))
