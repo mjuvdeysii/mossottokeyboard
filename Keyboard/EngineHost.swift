@@ -28,56 +28,79 @@ final class EngineHost {
     private var lexicon: Lexicon?
     private var decoder: Decoder?
     private var userDict: UserDictionary?
+    private var readingsReady = false
+    private static var cachedEnglish: EnglishLexicon?
+    private static var cachedEmojiHints: [String: [String]]?
+    private static var cachedReadings: [Character: [UInt16]]?
     /// 表情联想: words → emoji (Unicode CLDR's Chinese annotations; Tools/build_emoji_hints.py)
     private var emojiHints: [String: [String]] = [:]; private static let kaomojiHints: [String: String] = ["开心": "ヾ(≧▽≦*)o", "高兴": "(≧∇≦)/", "哈哈": "(＾▽＾)", "哈哈哈": "ヾ(≧▽≦*)o", "笑死": "(≧∇≦)/", "嘿嘿": "(●'◡'●)", "晚安": "(∪｡∪)｡｡｡zzz", "困": "(￣o￣) . z Z", "好困": "(∪｡∪)｡｡｡zzz", "睡觉": "( ˘ω˘ ) ｽﾔｧ…", "抱抱": "(づ￣ ³￣)づ", "爱你": "(´,,•ω•,,)♡", "喜欢": "(´∀`)♡", "比心": "(｡•ㅅ•｡)♡", "卖萌": "(・ω・)", "委屈": "(｡•́︿•̀｡)", "难过": "QAQ", "哭": "( T_T )", "呜呜": "(´;ω;`)", "生气": "(╬▔皿▔)╯", "掀桌": "(╯°□°)╯︵ ┻━┻", "震惊": "Σ(っ °Д °;)っ", "无奈": "╮(╯▽╰)╭", "摊手": "╮(￣▽￣)╭", "加油": "(๑•̀ㅂ•́)و✧", "冲": "(ง •̀_•́)ง", "好的": "(｡•̀ᴗ-)✧", "收到": "(｡･∀･)ﾉﾞ", "谢谢": "(´▽`ʃ♡ƪ)", "摸鱼": "_(:3」∠)_", "躺平": "(:3[▓▓]", "好累": "_(:3」∠)_", "恶魔": "ψ(｀∇´)ψ", "魔头": "ψ(｀∇´)ψ", "小魔王": "Ψ(￣∀￣)Ψ"]
 
-    /// Load the lexicon, the learned words and the English list (memory-mapped files: quick, and off the main thread).
-    /// `safe`: after launches that ended early (a crash, or iOS ending the keyboard while it was starting), the
-    /// keyboard starts with the lexicon and learned words only — no language model, no English — so it stays up
-    /// rather than iOS falling back to the system keyboard again.
-    /// `sentencePath`: the sentence model (万象, a large modern corpus) that reads the keys; `grammarPath` then serves
-    /// 联想 only. Without it, `grammarPath` does both.
-    func load(lexiconPath: String?, englishPath: String?, grammarPath: String?, sentencePath: String? = nil, userDictURL: URL?,
-              safe: Bool = false, emojiHintsPath: String? = nil) {
-        queue.async {
-            if !safe, let hp = emojiHintsPath, let text = try? String(contentsOfFile: hp, encoding: .utf8) {
-                var t: [String: [String]] = [:]
-                for line in text.split(separator: "\n") {
-                    let parts = line.split(separator: "\t")
-                    if parts.count == 2 { t[String(parts[0])] = parts[1].split(separator: " ").map(String.init) }
+    private static func compactReadings(for lex: Lexicon) -> [Character: [UInt16]] {
+        if let cached = cachedReadings { return cached }
+        var t: [Character: [UInt16]] = [:]
+        t.reserveCapacity(3600)
+        autoreleasepool {
+            for sid in 0..<lex.syllables.count {
+                let range = lex.range(firstSyllable: UInt16(sid))
+                var i = range.lowerBound; let end = range.upperBound
+                while i < end {
+                    let e = lex.entry(i)
+                    if e.sylCount != 1 { break }
+                    if e.score >= 800, let ch = lex.text(e).first, (t[ch]?.count ?? 0) < 4 { t[ch, default: []].append(UInt16(sid)) }
+                    i += 1
                 }
-                self.emojiHints = t
+            }
+        }
+        if t.isEmpty { t["\0"] = [] }
+        cachedReadings = t
+        return t
+    }
+
+    /// Load the lexicon, the learned words and the English list (memory-mapped files: quick, and off the main thread).
+    func load(lexiconPath: String?, englishPath: String?, grammarPath: String?, sentencePath: String? = nil, userDictURL: URL?,
+              safe: Bool = false, emojiHintsPath: String? = nil, onEnglishLoaded: ((EnglishLexicon) -> Void)? = nil) {
+        queue.async {
+            if !safe, let hp = emojiHintsPath {
+                if let cached = Self.cachedEmojiHints {
+                    self.emojiHints = cached
+                } else if let text = try? String(contentsOfFile: hp, encoding: .utf8) {
+                    var t: [String: [String]] = [:]; t.reserveCapacity(1200)
+                    for line in text.split(separator: "\n") {
+                        let parts = line.split(separator: "\t")
+                        if parts.count == 2 { t[String(parts[0])] = parts[1].split(separator: " ").map(String.init) }
+                    }
+                    Self.cachedEmojiHints = t; self.emojiHints = t
+                }
             }
             guard let path = lexiconPath, let lex = try? Lexicon(path: path) else { return }
             self.lexicon = lex
             let ud = UserDictionary(lexicon: lex, url: userDictURL)
             self.userDict = ud
             let d = Decoder(lexicon: lex, user: ud)
-            if !safe, let ep = englishPath { d.english = try? EnglishLexicon(path: ep) }
+            self.readingsReady = safe
+            if safe { d.setReadings(["\0": []]) }
+            var enLex: EnglishLexicon?
+            if !safe, let ep = englishPath {
+                enLex = Self.cachedEnglish ?? (try? EnglishLexicon(path: ep))
+                Self.cachedEnglish = enLex
+                d.english = enLex
+            }
             if !safe, let gp = grammarPath { d.grammar = try? Grammar(path: gp) }
             if !safe, let sp = sentencePath, let sentence = try? Grammar(path: sp) {
                 d.predictionGrammar = d.grammar
                 d.grammar = sentence
             }
             self.decoder = d
-            self.lock.lock(); self.loaded = true; self.lock.unlock()
-            // warm up: the first real keystroke would otherwise pay for paging in the models (≈ 0.2 s)
+            self.lock.lock(); self.sharedEnglish = enLex; self.loaded = true; self.lock.unlock()
+            if let enLex { DispatchQueue.main.async { onEnglishLoaded?(enLex) } }
             if !safe {
-                self.queue.async {
-                    for s in ["wo", "nihao", "women", "shi", "de", "jintian"] { _ = d.decode(s.map { Tap.exact($0) }) }
-                    _ = d.predictions(after: Array("你好"))
-                }
+                self.queue.async { autoreleasepool { _ = d.decode([Tap.exact("w"), Tap.exact("o")]) } }
             }
-            // the character table 联想 uses: built beside the decoder's thread, never in front of a keystroke
-            DispatchQueue.global(qos: .utility).async {
-                let table = Decoder.readingsTable(lex)
-                self.queue.async { d.setReadings(table) }
             }
-        }
     }
 
-    /// Memory warning: write the learned words out now (nothing is lost if iOS ends the keyboard next).
-    func trim() { queue.async { self.userDict?.save() } }
+    /// Memory warning: write the learned words out now and release static caches if needed.
+    func trim() { queue.async { self.userDict?.save(); Self.cachedReadings = nil } }
 
     /// The text just before the cursor (the language model reads the first word in its context).
     func setContext(_ text: String) {
@@ -107,12 +130,12 @@ final class EngineHost {
             r.candidates[1].fixes = d.fixes(for: r.candidates[1], taps: taps)
         }
         // a word that has an emoji (哈哈 😂, 蛋糕 🎂): offered after the first few candidates, never before them
-        if let first = r.candidates.first, first.tapCount == taps.count {
-            let at = min(first.corrected ? 2 : 1, r.candidates.count); var items = Array((emojiHints[first.text] ?? []).prefix(2))
-            if let kao = Self.kaomojiHints[first.text] { items.insert(kao, at: min(1, items.count)) }; if first.text == "日期" { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; items.insert(f.string(from: Date()), at: 0) } else if first.text == "时间" { let f = DateFormatter(); f.dateFormat = "HH:mm"; items.insert(f.string(from: Date()), at: 0) }
-            let extra = items.filter { e in !r.candidates.contains { $0.text == e } }.map { Candidate(text: $0, tapCount: taps.count, syllables: [], corrected: false, score: first.score - 50) }
+        if let first = r.candidates.first, first.tapCount == taps.count, first.text.count >= 2 {
+            let isUtil = first.text == "日期" || first.text == "时间"; let at = min(isUtil ? 1 : 2, r.candidates.count); var items = Array((emojiHints[first.text] ?? []).prefix(1))
+            if let kao = Self.kaomojiHints[first.text] { items.append(kao) }; if first.text == "日期" { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; items.insert(f.string(from: Date()), at: 0) } else if first.text == "时间" { let f = DateFormatter(); f.dateFormat = "HH:mm"; items.insert(f.string(from: Date()), at: 0) }
+            let extra = items.prefix(2).filter { e in !r.candidates.contains { $0.text == e } }.map { Candidate(text: $0, tapCount: taps.count, syllables: [], corrected: false, score: first.score - 50) }
             if !extra.isEmpty { r.candidates.insert(contentsOf: extra, at: at) }
-            // inline emoji, Mosto kaomoji, and date/time placed at slot 1-2 so single-char promotion keeps them on screen 1
+            // inline emoji/kaomoji restrained to <=2 items at slot 2 (after top 2 words); date/time at slot 1
         }
         var choices: (start: Int, choices: [(text: String, keys: [Character])]) = (0, [])
         if taps.contains(where: { $0.group }) { choices = d.t9SyllableChoices(taps) }
@@ -135,8 +158,10 @@ final class EngineHost {
     private let lock = NSLock()
     private var latest = 0
     private var loaded = false
+    private var sharedEnglish: EnglishLexicon?
     /// The engine has loaded (the lexicon at least).
     var isLoaded: Bool { lock.lock(); defer { lock.unlock() }; return loaded }
+    var englishLexicon: EnglishLexicon? { lock.lock(); defer { lock.unlock() }; return sharedEnglish }
     // engine-queue state: the last background decode, so a commit that needs it right away does not decode again
     private var lastOut: (generation: Int, literal: Bool, out: Output?)?
 
@@ -155,7 +180,11 @@ final class EngineHost {
     func predict(after context: String, done: @escaping ([String]) -> Void) {
         let ctx = Array(context.suffix(8))   // the model reads three; the user's own phrases may match more
         queue.async {
-            var p = self.decoder?.predictions(after: ctx) ?? []; let tail = String(ctx); for (k, kao) in Self.kaomojiHints where tail.hasSuffix(k) { if !p.contains(kao) { p.insert(kao, at: min(2, p.count)) }; if let em = self.emojiHints[k]?.first, !p.contains(em) { p.insert(em, at: min(2, p.count)) }; break }
+            if !self.readingsReady, let lex = self.lexicon, let d = self.decoder {
+                self.readingsReady = true
+                d.setReadings(Self.compactReadings(for: lex))
+            }
+            var raw = self.decoder?.predictions(after: ctx) ?? []; var singles = 0; var p = raw.filter { if $0.count == 1 { singles += 1; return singles <= 2 }; return true }; let tail = String(ctx); if !p.isEmpty { for (k, kao) in Self.kaomojiHints.sorted(by: { $0.key.count > $1.key.count }) where tail.hasSuffix(k) { if let em = self.emojiHints[k]?.first, !p.contains(em) { p.insert(em, at: min(2, p.count)) }; if !p.contains(kao) { p.insert(kao, at: min(3, p.count)) }; break } }; p = Array(p.prefix(5))
             DispatchQueue.main.async { done(p) }
         }
     }
@@ -169,8 +198,7 @@ final class EngineHost {
         queue.async { self.userDict?.forget(syllables: syllables, text: text); self.userDict?.save() }
     }
     func resetLearning() { queue.async { self.userDict?.reset() } }
-    /// Written to disk; waits so the file is saved before the keyboard goes away.
-    func save() { queue.sync { self.userDict?.save() } }
+    func save() { queue.async { self.userDict?.save() } }
     func knows(syllables: [UInt16], text: String) -> Bool { queue.sync { userDict?.contains(syllables: syllables, text: text) ?? false } }
     /// Entries in the lexicon and words learned, for the settings page.
     func counts() -> (lexicon: Int, learned: Int) { queue.sync { (lexicon?.entryCount ?? 0, userDict?.count ?? 0) } }
