@@ -64,7 +64,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     private var pool: [UILabel] = []
     /// What each pooled label shows now (so a label is only redrawn when it changes).
     private var poolKeys: [String] = []
-    private var isPrediction = false
+    private var isPrediction = false; var gridExpanded = false { didSet { if gridExpanded != oldValue { setNeedsLayout(); layoutIfNeeded() } } }
     private var candidates: [Candidate] = []
     /// Candidates laid out so far (the row is laid out a screen or two ahead of what is shown), their widths, and
     /// measured widths by text and caption, kept through a composition.
@@ -164,7 +164,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    @objc private func expandTapped() { if candidates.isEmpty { onSettings?() } else { onExpand?() } }
+    @objc private func expandTapped() { if gridExpanded || !candidates.isEmpty { onExpand?() } else { onSettings?() } }
 
     /// The style changed (Mosto / 简洁): the colours set once at creation follow.
     func themeChanged() {
@@ -246,7 +246,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
                 out.append(e)
             }
             if !expandButton.isHidden {
-                expandButton.accessibilityLabel = candidates.isEmpty ? "键盘设置" : "全部候选"
+                expandButton.accessibilityLabel = (candidates.isEmpty && !gridExpanded) ? "键盘设置" : (gridExpanded ? "收起候选" : "全部候选")
                 out.append(expandButton)
             }
             return out
@@ -313,17 +313,17 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         if !on, !mostoWanted { mosto.isHidden = true; return }
         guard on != mostoWanted else { return }
         mostoWanted = on
-        onMostoShown?(on)
+        if !on { onMostoShown?(false) }
         mostoTimer?.invalidate(); mostoTimer = nil
         guard on else { mosto.layer.removeAllAnimations(); mosto.isHidden = true; return }
         // not on screen yet (the keyboard is being set up): simply there
-        if window == nil { mosto.alpha = 1; mosto.transform = .identity; mosto.isHidden = false; return }
+        if window == nil { mosto.alpha = 1; mosto.transform = .identity; mosto.isHidden = false; onMostoShown?(true); return }
         let reduce = UIAccessibility.isReduceMotionEnabled
-        mostoTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: false) { [weak self] _ in
+        mostoTimer = Timer.scheduledTimer(withTimeInterval: 0.42, repeats: false) { [weak self] _ in
             guard let self, self.mostoWanted else { return }
             self.mosto.alpha = 0
             if !reduce { self.mosto.transform = CGAffineTransform(scaleX: 0.92, y: 0.92) }
-            self.mosto.isHidden = false
+            self.mosto.isHidden = false; self.onMostoShown?(true)
             UIView.animate(withDuration: 0.28, delay: 0, usingSpringWithDamping: 0.68, initialSpringVelocity: 0.4, options: [.allowUserInteraction]) {
                 self.mosto.alpha = 1
                 self.mosto.transform = .identity
@@ -473,7 +473,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         let size = CGSize(width: total, height: rowH)
         if strip.contentSize != size { strip.contentSize = size }
         // ⌄: there are candidates past the edge (the full grid shows them all)
-        let idleGear = candidates.isEmpty && !typing && undoText == nil && window != nil; let sym = idleGear ? "slider.horizontal.3" : "chevron.down"; expandButton.setImage(UIImage(systemName: sym, withConfiguration: UIImage.SymbolConfiguration(pointSize: idleGear ? 15 : 17, weight: .regular)), for: .normal); expandButton.isHidden = !(total > viewW + 0.5 || idleGear)
+        let idleGear = candidates.isEmpty && !typing && undoText == nil && !gridExpanded && window != nil; let sym = idleGear ? "slider.horizontal.3" : (gridExpanded ? "chevron.up" : "chevron.down"); expandButton.setImage(UIImage(systemName: sym, withConfiguration: UIImage.SymbolConfiguration(pointSize: idleGear ? 15 : 17, weight: gridExpanded ? .semibold : .regular)), for: .normal); expandButton.tintColor = gridExpanded ? Theme.candidateText : Theme.secondaryText; expandButton.backgroundColor = gridExpanded ? Theme.functionKey.withAlphaComponent(0.45) : .clear; expandButton.layer.cornerRadius = 14; expandButton.isHidden = !((total > viewW + 0.5 && !isPrediction) || gridExpanded || idleGear)
         updateFade()
     }
 
@@ -763,11 +763,11 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let side: CGFloat = 56
-        collection.frame = CGRect(x: 0, y: 0, width: bounds.width - side, height: bounds.height)
-        let bh = (bounds.height - 18) / 2
-        closeButton.frame = CGRect(x: bounds.width - side + 4, y: 6, width: side - 10, height: bh)
-        deleteButton.frame = CGRect(x: bounds.width - side + 4, y: 12 + bh, width: side - 10, height: bh)
+        let side: CGFloat = 56; closeButton.isHidden = true; closeButton.frame = .zero
+        collection.frame = bounds; collection.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: 54, right: 0)
+        let bh: CGFloat = 42
+        deleteButton.frame = CGRect(x: bounds.width - side + 4, y: bounds.height - bh - 6, width: side - 10, height: bh)
+        bringSubviewToFront(deleteButton)
     }
 
     func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int { candidates.count }
@@ -1027,7 +1027,7 @@ final class SettingsPanelView: UIView {
         }
     }
 
-    private func row(_ text: String, _ control: UIView) -> UIView {
+    private func row(_ text: String, _ control: UIView, icon: String? = nil) -> UIView { var views: [UIView] = []; if let icon { let badge = UIView(); badge.backgroundColor = Theme.correctedTint; badge.layer.cornerRadius = 6; badge.translatesAutoresizingMaskIntoConstraints = false; badge.widthAnchor.constraint(equalToConstant: 26).isActive = true; badge.heightAnchor.constraint(equalToConstant: 26).isActive = true; let img = UIImageView(image: UIImage(systemName: icon, withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .semibold))); img.tintColor = Theme.selection; img.contentMode = .scaleAspectFit; img.translatesAutoresizingMaskIntoConstraints = false; badge.addSubview(img); NSLayoutConstraint.activate([img.centerXAnchor.constraint(equalTo: badge.centerXAnchor), img.centerYAnchor.constraint(equalTo: badge.centerYAnchor)]); views.append(badge) }
         let l = UILabel()
         l.text = text
         l.font = .systemFont(ofSize: 16)
@@ -1035,7 +1035,7 @@ final class SettingsPanelView: UIView {
         l.tag = Self.tagPrimary
         l.numberOfLines = 0
         l.setContentCompressionResistancePriority(.required, for: .horizontal)
-        let s = UIStackView(arrangedSubviews: [l, UIView(), control])
+        views.append(contentsOf: [l, UIView(), control]); let s = UIStackView(arrangedSubviews: views)
         s.alignment = .center
         s.spacing = 10
         return s
@@ -1137,7 +1137,7 @@ final class SettingsPanelView: UIView {
     }
     var diagnosticsText: String { diagLabel.text ?? "" }
 
-    @objc private func changed() {
+    private var resetConfirming = false; @objc private func changed() { if KeyboardSettings.shared.feedback { UISelectionFeedbackGenerator().selectionChanged() }
         let s = KeyboardSettings.shared
         s.scheme = schemeControl.selectedSegmentIndex
         s.pinyinGrid = layoutControl.selectedSegmentIndex == 1
@@ -1154,13 +1154,13 @@ final class SettingsPanelView: UIView {
         onChange?()
     }
 
-    @objc private func numberChanged() {
+    @objc private func numberChanged() { if KeyboardSettings.shared.feedback { UISelectionFeedbackGenerator().selectionChanged() }
         KeyboardSettings.shared.numberPad = numberControl.selectedSegmentIndex == 1
         onChange?()
     }
 
-    @objc private func closeTapped() { onClose?() }
-    @objc private func resetTapped() { onResetLearning?() }
+    @objc private func closeTapped() { if KeyboardSettings.shared.feedback { UISelectionFeedbackGenerator().selectionChanged() }; resetConfirming = false; resetButton.setTitle("清空已学习的词语与触点习惯", for: .normal); onClose?() }
+    @objc private func resetTapped() { if !resetConfirming { resetConfirming = true; if KeyboardSettings.shared.feedback { UINotificationFeedbackGenerator().notificationOccurred(.warning) }; resetButton.setTitle("确认清空？再点一次立即清空", for: .normal); DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in guard let self, self.resetConfirming else { return }; self.resetConfirming = false; self.resetButton.setTitle("清空已学习的词语与触点习惯", for: .normal) } } else { resetConfirming = false; if KeyboardSettings.shared.feedback { UINotificationFeedbackGenerator().notificationOccurred(.success) }; resetButton.setTitle("清空已学习的词语与触点习惯", for: .normal); onResetLearning?() } }
 
     override func layoutSubviews() {
         super.layoutSubviews()
