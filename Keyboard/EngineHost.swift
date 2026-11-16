@@ -29,7 +29,7 @@ final class EngineHost {
     private var decoder: Decoder?
     private var userDict: UserDictionary?
     /// 表情联想: words → emoji (Unicode CLDR's Chinese annotations; Tools/build_emoji_hints.py)
-    private var emojiHints: [String: [String]] = [:]
+    private var emojiHints: [String: [String]] = [:]; private static let kaomojiHints: [String: String] = ["开心": "ヾ(≧▽≦*)o", "高兴": "(≧∇≦)/", "哈哈": "(＾▽＾)", "哈哈哈": "ヾ(≧▽≦*)o", "笑死": "(≧∇≦)/", "嘿嘿": "(●'◡'●)", "晚安": "(∪｡∪)｡｡｡zzz", "困": "(￣o￣) . z Z", "好困": "(∪｡∪)｡｡｡zzz", "睡觉": "( ˘ω˘ ) ｽﾔｧ…", "抱抱": "(づ￣ ³￣)づ", "爱你": "(´,,•ω•,,)♡", "喜欢": "(´∀`)♡", "比心": "(｡•ㅅ•｡)♡", "卖萌": "(・ω・)", "委屈": "(｡•́︿•̀｡)", "难过": "QAQ", "哭": "( T_T )", "呜呜": "(´;ω;`)", "生气": "(╬▔皿▔)╯", "掀桌": "(╯°□°)╯︵ ┻━┻", "震惊": "Σ(っ °Д °;)っ", "无奈": "╮(╯▽╰)╭", "摊手": "¯\_(ツ)_/¯", "加油": "(๑•̀ㅂ•́)و✧", "冲": "(ง •̀_•́)ง", "好的": "(｡•̀ᴗ-)✧", "收到": "(｡･∀･)ﾉﾞ", "谢谢": "(´▽`ʃ♡ƪ)", "摸鱼": "_(:3」∠)_", "躺平": "(:3[▓▓]", "好累": "_(:3」∠)_", "恶魔": "ψ(｀∇´)ψ", "魔头": "ψ(｀∇´)ψ", "小魔王": "Ψ(￣∀￣)Ψ"]
 
     /// Load the lexicon, the learned words and the English list (memory-mapped files: quick, and off the main thread).
     /// `safe`: after launches that ended early (a crash, or iOS ending the keyboard while it was starting), the
@@ -107,12 +107,12 @@ final class EngineHost {
             r.candidates[1].fixes = d.fixes(for: r.candidates[1], taps: taps)
         }
         // a word that has an emoji (哈哈 😂, 蛋糕 🎂): offered after the first few candidates, never before them
-        if let first = r.candidates.first, first.tapCount == taps.count, let emoji = emojiHints[first.text] {
-            let at = min(3, r.candidates.count)
-            let extra = emoji.prefix(2).filter { e in !r.candidates.contains { $0.text == e } }.map {
-                Candidate(text: $0, tapCount: taps.count, syllables: [], corrected: false, score: first.score - 50)
-            }
-            r.candidates.insert(contentsOf: extra, at: at)
+        if let first = r.candidates.first, first.tapCount == taps.count {
+            let at = min(first.corrected ? 2 : 1, r.candidates.count); var items = Array((emojiHints[first.text] ?? []).prefix(2))
+            if let kao = Self.kaomojiHints[first.text] { items.insert(kao, at: min(1, items.count)) }; if first.text == "日期" { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; items.insert(f.string(from: Date()), at: 0) } else if first.text == "时间" { let f = DateFormatter(); f.dateFormat = "HH:mm"; items.insert(f.string(from: Date()), at: 0) }
+            let extra = items.filter { e in !r.candidates.contains { $0.text == e } }.map { Candidate(text: $0, tapCount: taps.count, syllables: [], corrected: false, score: first.score - 50) }
+            if !extra.isEmpty { r.candidates.insert(contentsOf: extra, at: at) }
+            // inline emoji, Mosto kaomoji, and date/time placed at slot 1-2 so single-char promotion keeps them on screen 1
         }
         var choices: (start: Int, choices: [(text: String, keys: [Character])]) = (0, [])
         if taps.contains(where: { $0.group }) { choices = d.t9SyllableChoices(taps) }
@@ -155,7 +155,7 @@ final class EngineHost {
     func predict(after context: String, done: @escaping ([String]) -> Void) {
         let ctx = Array(context.suffix(8))   // the model reads three; the user's own phrases may match more
         queue.async {
-            let p = self.decoder?.predictions(after: ctx) ?? []
+            var p = self.decoder?.predictions(after: ctx) ?? []; let tail = String(ctx); for (k, kao) in Self.kaomojiHints where tail.hasSuffix(k) { if !p.contains(kao) { p.insert(kao, at: min(2, p.count)) }; if let em = self.emojiHints[k]?.first, !p.contains(em) { p.insert(em, at: min(2, p.count)) }; break }
             DispatchQueue.main.async { done(p) }
         }
     }
