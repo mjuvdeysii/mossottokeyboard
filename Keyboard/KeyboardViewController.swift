@@ -766,7 +766,7 @@ final class KeyboardViewController: UIInputViewController {
         // (3.14, 12:30), never 3。14 or 12：30.
         var out = s
         if chinese, s == "。" || s == "：", let prev = host.documentContextBeforeInput?.last,
-           prev.isASCII, prev.isNumber {
+           prev.isASCII, (prev.isNumber || (s == "。" && prev.isLetter && (host.documentContextBeforeInput ?? "").contains("@"))) {
             out = s == "。" ? "." : ":"
         }
         let pairs: [String: String] = ["《": "《》", "（": "（）", "【": "【】", "「": "「」", "『": "『』"]; if let p = pairs[out] { host.insertText(p); host.adjustTextPosition(byCharacterOffset: -1) } else { host.insertText(out) }
@@ -799,7 +799,7 @@ final class KeyboardViewController: UIInputViewController {
             reconfigure()
             return
         }
-        proxy.insertText(" ")
+        if chinese, let next = proxy.documentContextAfterInput?.first, "》）】」』".contains(next) { proxy.adjustTextPosition(byCharacterOffset: 1); return }; proxy.insertText(" ")
         lastInsertedSpace = true
         if !chinese { updateAutoShift(); reconfigure() }
     }
@@ -1043,7 +1043,7 @@ final class KeyboardViewController: UIInputViewController {
         taps.removeFirst(min(c.tapCount, taps.count))
         if !taps.isEmpty { engine.setContext(committedParts.map { $0.text }.joined().isEmpty ? c.text : committedParts.map { $0.text }.joined()) }
         if taps.isEmpty {
-            let celebrate = c.text.count >= 4 || committedParts.count >= 2; engine.learn(parts: committedParts); if !committedParts.isEmpty { engine.trim() }; if celebrate, !Theme.plain { DispatchQueue.main.asyncAfter(deadline: .now() + 0.65) { [weak self] in self?.candidateBar.mosto.hop() } }
+            let full = committedParts.map { $0.text }.joined(); let sleepy = ["困", "睡", "晚安", "累", "哈欠", "熬夜"].contains { full.contains($0) || c.text.contains($0) }; let happy = c.text.count >= 4 || committedParts.count >= 2 || ["哈哈", "嘿嘿", "开心", "太好", "爱你", "恭喜", "谢谢", "棒"].contains { full.contains($0) || c.text.contains($0) }; engine.learn(parts: committedParts); if !committedParts.isEmpty { engine.trim() }; if !Theme.plain { DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) { [weak self] in guard let self else { return }; if sleepy { self.candidateBar.mosto.demoYawn(); self.candidateBar.mosto.hop(); DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in guard let self else { return }; self.candidateBar.mosto.setNight(self.isNight) } } else if happy { self.candidateBar.mosto.hop() } } }
             clearComposition()
             requestPredictions()
         } else {
