@@ -164,7 +164,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    @objc private func expandTapped() { onExpand?() }
+    @objc private func expandTapped() { if candidates.isEmpty { onSettings?() } else { onExpand?() } }
 
     /// The style changed (Mosto / 简洁): the colours set once at creation follow.
     func themeChanged() {
@@ -246,7 +246,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
                 out.append(e)
             }
             if !expandButton.isHidden {
-                expandButton.accessibilityLabel = "全部候选"
+                expandButton.accessibilityLabel = candidates.isEmpty ? "键盘设置" : "全部候选"
                 out.append(expandButton)
             }
             return out
@@ -319,12 +319,12 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         // not on screen yet (the keyboard is being set up): simply there
         if window == nil { mosto.alpha = 1; mosto.transform = .identity; mosto.isHidden = false; return }
         let reduce = UIAccessibility.isReduceMotionEnabled
-        mostoTimer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: false) { [weak self] _ in
+        mostoTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: false) { [weak self] _ in
             guard let self, self.mostoWanted else { return }
             self.mosto.alpha = 0
             if !reduce { self.mosto.transform = CGAffineTransform(scaleX: 0.92, y: 0.92) }
             self.mosto.isHidden = false
-            UIView.animate(withDuration: 0.35, delay: 0, options: [.curveEaseOut, .allowUserInteraction]) {
+            UIView.animate(withDuration: 0.28, delay: 0, usingSpringWithDamping: 0.68, initialSpringVelocity: 0.4, options: [.allowUserInteraction]) {
                 self.mosto.alpha = 1
                 self.mosto.transform = .identity
             } completion: { done in
@@ -473,7 +473,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         let size = CGSize(width: total, height: rowH)
         if strip.contentSize != size { strip.contentSize = size }
         // ⌄: there are candidates past the edge (the full grid shows them all)
-        expandButton.isHidden = !(total > viewW + 0.5)
+        let idleGear = candidates.isEmpty && !typing && undoText == nil && window != nil; let sym = idleGear ? "slider.horizontal.3" : "chevron.down"; expandButton.setImage(UIImage(systemName: sym, withConfiguration: UIImage.SymbolConfiguration(pointSize: idleGear ? 15 : 17, weight: .regular)), for: .normal); expandButton.isHidden = !(total > viewW + 0.5 || idleGear)
         updateFade()
     }
 
@@ -690,7 +690,7 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
             label.textColor = Theme.candidateText
             contentView.addSubview(label)
             // as the system keyboard's expanded candidates: plain text on the glass, a soft highlight when pressed
-            contentView.backgroundColor = .clear
+            contentView.backgroundColor = Theme.functionKey.withAlphaComponent(0.35)
             contentView.layer.cornerRadius = 8
             contentView.layer.cornerCurve = .continuous
             isAccessibilityElement = true
@@ -703,7 +703,7 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
             label.frame = contentView.bounds.insetBy(dx: 4, dy: 0)
         }
         override var isHighlighted: Bool {
-            didSet { contentView.backgroundColor = isHighlighted ? Theme.functionKey : .clear }
+            didSet { contentView.backgroundColor = isHighlighted ? Theme.functionKey : Theme.functionKey.withAlphaComponent(0.35) }
         }
     }
 
@@ -774,7 +774,7 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
 
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "c", for: indexPath) as! Cell
-        cell.label.text = candidates[indexPath.item].text
+        cell.label.text = candidates[indexPath.item].text; cell.contentView.backgroundColor = indexPath.item == 0 ? Theme.correctedTint : Theme.functionKey.withAlphaComponent(0.35)
         return cell
     }
 
@@ -882,19 +882,19 @@ final class SettingsPanelView: UIView {
             row("中文键盘", layoutControl),
             row("123 键", numberControl),
             row("中英混输", englishSwitch),
-        ], footer: "中文键盘：九宫格每个键代表它上面的几个字母，两种方案都能用（全拼更准），“分词”切开音节。\n123 键：打开完整的数字符号页，或九宫格数字键盘；未设置时跟随中文键盘。\n中英混输：打 ok、ios 直接出 OK、iOS。\n所有设置会一直记住，更新版本不会重置。")
+        ], footer: "九宫格下小鹤双拼与全拼均可使用（左侧选音节，“分词”切分）；打 ok、ios 直接出 OK、iOS。所有设置持久保存，更新不重置。")
         section("小鹤双拼", rows: [
             row("键位提示", guideSwitch),
-        ], footer: "学习用：小鹤双拼方案下，字母键上显示它代表的声母与韵母（zh、ch、sh 在 V、I、U）。记熟后可关掉。全拼方案下不显示。完整键位表与说明在 Mosto键盘 App 里。")
+        ], footer: "小鹤双拼方案下在键帽显示声韵母对应关系（zh/ch/sh 在 V/I/U），熟练后可随时关闭。")
         section("自动纠错", rows: [
             row("按触点位置纠错", correctionSwitch),
-        ], footer: "首选浅色底 = 已纠错，下方小字是改了哪里（hap→hao）；“原键”是按原样读的结果。上屏后点候选栏左侧 ↩ 或立刻按删除可撤回。英文模式同样按触点纠错：teh → the、dont → don't、im → I'm，空格时替换，删除可撤回。")
+        ], footer: "首选浅底色代表已按落点纠错，点左侧 ↩️ 或立即按删除可撤回原键；英文模式同样支持触点纠错与撤回。")
         section("键盘", rows: [
             row("按键震动", feedbackSwitch),
             row("按键音", soundSwitch),
             accessLabel,
         ], footer: "震动与按键音在按下的一瞬间发出（与系统键盘一样）；按键音跟随静音开关。")
-        section("外观", rows: [row("风格", styleControl), row("光线", appearance)], footer: "风格：Mosto 是软胶按键与 Mosto 本人；简洁是没有主题的素净按键，白天清爽、夜里低亮。光线自动：跟随系统的浅色 / 深色模式。Mosto 不打字时待在候选栏左边：轻点他选颜文字，轻点两下切换日光 / 夜灯。日光下睁大眼睛、偶尔眨眼；夜灯下深紫底色，尾巴尖亮起金光。按键是他的软胶：空格上是他的翅膀，中 / 英 键戴着他的歪王冠，换行键是王冠的金色。")
+        section("外观", rows: [row("风格", styleControl), row("光线", appearance)], footer: "Mosto 风格配备软胶键帽与小魔王互动（轻点选颜文字、双击切日光/夜灯、长按伸懒腰）；简洁风格在空闲左角同样提供日光/夜光一键切换，右角滑块图标可随时直达本设置页。")
 
         accessLabel.text = "按键震动与按键音需要允许完全访问：设置 › 通用 › 键盘 › 键盘 › Mosto键盘。"
         accessLabel.font = .systemFont(ofSize: 13)
