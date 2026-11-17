@@ -158,6 +158,14 @@ final class KeyboardViewController: UIInputViewController {
         view.backgroundColor = .clear
         root.backgroundColor = Theme.touchable   // never fully clear: iOS drops touches on transparent points
         view.addSubview(root)
+        view.clipsToBounds = true
+        root.clipsToBounds = true
+        if heightConstraint == nil {
+            let c = view.heightAnchor.constraint(equalToConstant: preferredHeight())
+            c.priority = UILayoutPriority(999)
+            c.isActive = true
+            heightConstraint = c
+        }
         tintView.isUserInteractionEnabled = false
         root.addSubview(tintView)
         loadEngine()
@@ -294,6 +302,7 @@ final class KeyboardViewController: UIInputViewController {
             c.isActive = true
             heightConstraint = c
         }
+        heightConstraint?.constant = preferredHeight()
         lastDocumentID = host.documentIdentifier
         hostEchoesMarked = 0
         lastEchoed = ""
@@ -538,7 +547,7 @@ final class KeyboardViewController: UIInputViewController {
         tintView.forcedDay = false
         candidateBar.mosto.setNight(night)
         candidateBar.showsMosto = !Theme.plain    // by day and at night (only his light follows); none in 简洁
-        tintView.isHidden = Theme.plain; root.backgroundColor = (Theme.plain && mode != 0) ? (night ? UIColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 0.96) : UIColor(red: 0.82, green: 0.83, blue: 0.86, alpha: 0.96)) : .clear
+        tintView.isHidden = Theme.plain; root.backgroundColor = Theme.plain ? (night ? UIColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 1) : UIColor(red: 0.82, green: 0.83, blue: 0.86, alpha: 1)) : .clear
         settingsPanel.setNight(night); updatePlainLightButton()
     }; private func updatePlainLightButton() { let idle = taps.isEmpty && predictions.isEmpty && enSuggestions.isEmpty && candidateBar.undoTextForTests == nil && !emojiShown && settingsPanel.isHidden && grid.isHidden && (Theme.plain || !candidateBar.mosto.isHidden); let isNight = Theme.night; let cfg = UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold); mostoHintButton.isHidden = !idle; mostoHintButton.isUserInteractionEnabled = idle; mostoHintButton.backgroundColor = Theme.functionKey.withAlphaComponent(Theme.plain ? 0.55 : 0.45); mostoHintButton.setTitleColor(Theme.secondaryText, for: .normal); mostoHintButton.tintColor = Theme.secondaryText; if Theme.plain { mostoHintButton.frame = CGRect(x: 86, y: 4, width: 78, height: 36); mostoHintButton.setImage(UIImage(systemName: "face.smiling", withConfiguration: cfg), for: .normal); mostoHintButton.setTitle(" 颜文字", for: .normal) } else { mostoHintButton.frame = CGRect(x: 6, y: 4, width: 92, height: 36); mostoHintButton.setImage(nil, for: .normal); mostoHintButton.setTitle("             颜文字", for: .normal) }; if idle { candidateBar.bringSubviewToFront(mostoHintButton); if !Theme.plain { candidateBar.bringSubviewToFront(candidateBar.mosto) } }; plainLightButton.frame = CGRect(x: Theme.plain ? 6 : 102, y: 4, width: 76, height: 36); plainLightButton.isHidden = !idle; plainLightButton.isUserInteractionEnabled = idle; guard idle else { return }; candidateBar.bringSubviewToFront(plainLightButton); plainLightButton.setImage(UIImage(systemName: isNight ? "moon.stars.fill" : "sun.max.fill", withConfiguration: cfg), for: .normal); plainLightButton.setTitle(isNight ? (Theme.plain ? " 夜光" : " 夜灯") : " 日光", for: .normal); plainLightButton.tintColor = isNight ? UIColor(red: 0.96, green: 0.78, blue: 0.32, alpha: 1) : Theme.secondaryText; plainLightButton.setTitleColor(Theme.secondaryText, for: .normal); plainLightButton.backgroundColor = Theme.functionKey.withAlphaComponent(Theme.plain ? 0.55 : 0.45) }; @objc private func mostoHeld(_ g: UILongPressGestureRecognizer) { guard g.state == .began else { return }; feel(.mosto); candidateBar.mosto.demoYawn(); candidateBar.mosto.hop(); DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) { [weak self] in guard let self else { return }; self.candidateBar.mosto.setNight(self.isNight) } }
 
