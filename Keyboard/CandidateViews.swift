@@ -907,13 +907,12 @@ final class SettingsPanelView: UIView {
         learnedLabel.textColor = Theme.secondaryText
         learnedLabel.tag = Self.tagSecondary
         learnedLabel.numberOfLines = 0
-        let reset = UIButton(type: .system)
-        reset.setTitle("清空已学习的词语与触点习惯", for: .normal)
-        reset.setTitleColor(.systemRed, for: .normal)
-        reset.titleLabel?.font = .systemFont(ofSize: 15)
-        reset.contentHorizontalAlignment = .leading
-        reset.addTarget(self, action: #selector(resetTapped), for: .touchUpInside)
-        section("学习", rows: [learnedLabel, reset], footer: nil)
+        resetButton.setTitle("清空已学习的词语与触点习惯", for: .normal)
+        resetButton.setTitleColor(.systemRed, for: .normal)
+        resetButton.titleLabel?.font = .systemFont(ofSize: 15)
+        resetButton.contentHorizontalAlignment = .leading
+        resetButton.addTarget(self, action: #selector(resetTapped), for: .touchUpInside)
+        section("学习", rows: [learnedLabel, resetButton], footer: nil)
         diagLabel.font = .monospacedDigitSystemFont(ofSize: 13, weight: .regular)
         diagLabel.textColor = Theme.secondaryText
         diagLabel.tag = Self.tagSecondary
@@ -1137,6 +1136,7 @@ final class SettingsPanelView: UIView {
     }
     var diagnosticsText: String { diagLabel.text ?? "" }
 
+    private let resetButton = UIButton(type: .system)
     private var resetConfirming = false; @objc private func changed() { if KeyboardSettings.shared.feedback { UISelectionFeedbackGenerator().selectionChanged() }
         let s = KeyboardSettings.shared
         s.scheme = schemeControl.selectedSegmentIndex
