@@ -681,6 +681,10 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
     private let closeButton = UIButton(type: .system)
     private let deleteButton = UIButton(type: .system)
 
+
+    func themeChanged() {
+        collection.reloadData()
+    }
     final class Cell: UICollectionViewCell {
         let label = UILabel()
         override init(frame: CGRect) {
