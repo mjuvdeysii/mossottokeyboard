@@ -191,6 +191,11 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
 
     required init?(coder: NSCoder) { fatalError() }
 
+    func themeChanged() {
+        applyLips()
+        collection.reloadData()
+    }
+
     /// The bar's keys are vinyl caps like the keyboard's: a darker lip under each (a hard, unblurred shadow).
     private func applyLips() {
         for (b, lip) in [(backButton, Theme.functionLip), (deleteButton, Theme.functionLip), (returnButton, Theme.accentLip)] {
@@ -201,6 +206,23 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             b.layer.cornerRadius = Metrics.cornerRadius
         }
         backButton.backgroundColor = Theme.functionKey
+        if let kaomojiTab = tabButtons.last {
+            if Theme.plain {
+                let cfg = UIImage.SymbolConfiguration(pointSize: 16, weight: .medium)
+                kaomojiTab.setImage(UIImage(systemName: "face.smiling", withConfiguration: cfg), for: .normal)
+                kaomojiTab.tintColor = Theme.text
+                kaomojiTab.setTitle(nil, for: .normal)
+            } else if let face = UIImage(named: "mosto_day", in: Bundle(for: EmojiPanelView.self), with: nil) {
+                let side: CGFloat = 24
+                let small = UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { _ in
+                    let scale = min(side / face.size.width, side / face.size.height)
+                    let w = face.size.width * scale, h = face.size.height * scale
+                    face.draw(in: CGRect(x: (side - w) / 2, y: (side - h) / 2, width: w, height: h))
+                }
+                kaomojiTab.setImage(small, for: .normal)
+                kaomojiTab.setTitle(nil, for: .normal)
+            }
+        }
         deleteButton.backgroundColor = Theme.functionKey
     }
 
@@ -323,8 +345,8 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
 
     func collectionView(_ collectionView: UICollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> UICollectionReusableView {
         let h = collectionView.dequeueReusableSupplementaryView(ofKind: kind, withReuseIdentifier: "h", for: indexPath) as! Header
-        h.label.text = sections[indexPath.section].name
-        let night = KeyboardSettings.shared.appearance == 2 || (KeyboardSettings.shared.appearance == 0 && traitCollection.userInterfaceStyle == .dark); h.mosto.image = UIImage(named: night ? "mosto_night" : "mosto_day", in: Bundle(for: EmojiPanelView.self), with: nil); h.mosto.isHidden = !isKaomoji(indexPath.section)
+        h.label.text = (isKaomoji(indexPath.section) && Theme.plain) ? "常用颜文字" : sections[indexPath.section].name
+        let night = KeyboardSettings.shared.appearance == 2 || (KeyboardSettings.shared.appearance == 0 && traitCollection.userInterfaceStyle == .dark); h.mosto.image = UIImage(named: night ? "mosto_night" : "mosto_day", in: Bundle(for: EmojiPanelView.self), with: nil); h.mosto.isHidden = !isKaomoji(indexPath.section) || Theme.plain
         h.setNeedsLayout()
         return h
     }
