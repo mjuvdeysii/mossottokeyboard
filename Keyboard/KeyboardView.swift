@@ -158,7 +158,7 @@ final class KeyView: UIView {
         CATransaction.begin(); CATransaction.setDisableActions(true)
         // a little fall-off towards the lip gives the cap its volume
         let b = bottom.resolvedColor(with: t), u = under.resolvedColor(with: t)
-        face.colors = [top.resolvedColor(with: t).cgColor, b.cgColor, Theme.mix(b, u, pressed ? 0.04 : 0.10).cgColor]
+        face.colors = Theme.plain ? [b.cgColor, b.cgColor, b.cgColor] : [top.resolvedColor(with: t).cgColor, b.cgColor, Theme.mix(b, u, pressed ? 0.04 : 0.10).cgColor]
         lip.backgroundColor = u.cgColor
         lip.shadowColor = Theme.keyShadow.resolvedColor(with: t).cgColor
         lip.shadowOpacity = pressed ? 0 : 1
@@ -467,9 +467,9 @@ final class AltPopup: UIView {
         self.reversed = reversed
         super.init(frame: CGRect(x: 0, y: 0, width: cell * CGFloat(options.count) + 8, height: height))
         isUserInteractionEnabled = false
-        backgroundColor = Theme.bubble
+        backgroundColor = Theme.bubble; layer.shadowColor = (Theme.plain ? UIColor.black : Theme.deepViolet).cgColor
         layer.cornerRadius = 10
-        layer.shadowColor = Theme.deepViolet.cgColor
+        layer.shadowColor = (Theme.plain ? UIColor.black : Theme.deepViolet).cgColor
         layer.shadowOpacity = 0.30
         layer.shadowRadius = 3
         layer.shadowOffset = CGSize(width: 0, height: 1)
