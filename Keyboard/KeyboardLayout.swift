@@ -88,9 +88,9 @@ enum Metrics {
     static let gapX: CGFloat = 6
     static let gapY: CGFloat = 12
     /// The darker lip under each cap (the face sinks onto it when pressed).
-    static var lip: CGFloat { Theme.plain ? 1.5 : 3.5 }
+    static var lip: CGFloat { Theme.plain ? 1.0 : 3.5 }
     /// Soft vinyl caps: rounder than the system keyboard's.
-    static var cornerRadius: CGFloat { Theme.plain ? 6 : 10 }
+    static var cornerRadius: CGFloat { Theme.plain ? 6.5 : 10 }
     static let letterFont: CGFloat = 24
     static let symbolFont: CGFloat = 24
     static let functionFont: CGFloat = 16
@@ -346,7 +346,7 @@ enum Theme {
     private static let plain_accentText: UIColor = UIColor.white
     static var keyHighlight: UIColor { plain ? plain_keyHighlight : mosto_keyHighlight }
     private static let mosto_keyHighlight: UIColor = dyn(UIColor(white: 1, alpha: 0.95), UIColor(white: 1, alpha: 0.16))
-    private static let plain_keyHighlight: UIColor = dyn(UIColor(white: 1, alpha: 0), UIColor(white: 1, alpha: 0.10))
+    private static let plain_keyHighlight: UIColor = dyn(UIColor(white: 1, alpha: 0.55), UIColor(white: 1, alpha: 0.12))
     static var bubble: UIColor { plain ? plain_bubble : mosto_bubble }
     private static let mosto_bubble: UIColor = dyn(hex(0xFFFDF8), hex(0x52429E))
     private static let plain_bubble: UIColor = dyn(hex(0xFFFFFF), hex(0x6A6A6E))
