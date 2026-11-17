@@ -210,7 +210,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             if Theme.plain {
                 let cfg = UIImage.SymbolConfiguration(pointSize: 16, weight: .medium)
                 kaomojiTab.setImage(UIImage(systemName: "face.smiling", withConfiguration: cfg), for: .normal)
-                kaomojiTab.tintColor = Theme.text
+                kaomojiTab.tintColor = Theme.keyText
                 kaomojiTab.setTitle(nil, for: .normal)
             } else if let face = UIImage(named: "mosto_day", in: Bundle(for: EmojiPanelView.self), with: nil) {
                 let side: CGFloat = 24
