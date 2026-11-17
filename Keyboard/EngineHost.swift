@@ -32,6 +32,9 @@ final class EngineHost {
     private static var cachedEnglish: EnglishLexicon?
     private static var cachedEmojiHints: [String: [String]]?
     private static var cachedReadings: [Character: [UInt16]]?
+    private static var cachedLexicon: Lexicon?
+    private static var cachedGrammar: Grammar?
+    private static var cachedSentence: Grammar?
     /// 表情联想: words → emoji (Unicode CLDR's Chinese annotations; Tools/build_emoji_hints.py)
     private var emojiHints: [String: [String]] = [:]; private static let kaomojiHints: [String: String] = ["开心": "ヾ(≧▽≦*)o", "高兴": "(≧∇≦)/", "哈哈": "(＾▽＾)", "哈哈哈": "ヾ(≧▽≦*)o", "笑死": "(≧∇≦)/", "嘿嘿": "(●'◡'●)", "晚安": "(∪｡∪)｡｡｡zzz", "困": "(￣o￣) . z Z", "好困": "(∪｡∪)｡｡｡zzz", "睡觉": "( ˘ω˘ ) ｽﾔｧ…", "抱抱": "(づ￣ ³￣)づ", "爱你": "(´,,•ω•,,)♡", "喜欢": "(´∀`)♡", "比心": "(｡•ㅅ•｡)♡", "卖萌": "(・ω・)", "委屈": "(｡•́︿•̀｡)", "难过": "QAQ", "哭": "( T_T )", "呜呜": "(´;ω;`)", "生气": "(╬▔皿▔)╯", "掀桌": "(╯°□°)╯︵ ┻━┻", "震惊": "Σ(っ °Д °;)っ", "无奈": "╮(╯▽╰)╭", "摊手": "╮(￣▽￣)╭", "加油": "(๑•̀ㅂ•́)و✧", "冲": "(ง •̀_•́)ง", "好的": "(｡•̀ᴗ-)✧", "收到": "(｡･∀･)ﾉﾞ", "谢谢": "(´▽`ʃ♡ƪ)", "摸鱼": "_(:3」∠)_", "躺平": "(:3[▓▓]", "好累": "_(:3」∠)_", "恶魔": "ψ(｀∇´)ψ", "魔头": "ψ(｀∇´)ψ", "小魔王": "Ψ(￣∀￣)Ψ"]
 
@@ -72,7 +75,8 @@ final class EngineHost {
                     Self.cachedEmojiHints = t; self.emojiHints = t
                 }
             }
-            guard let path = lexiconPath, let lex = try? Lexicon(path: path) else { return }
+            guard let path = lexiconPath, let lex = Self.cachedLexicon ?? (try? Lexicon(path: path)) else { return }
+            Self.cachedLexicon = lex
             self.lexicon = lex
             let ud = UserDictionary(lexicon: lex, url: userDictURL)
             self.userDict = ud
@@ -85,8 +89,9 @@ final class EngineHost {
                 Self.cachedEnglish = enLex
                 d.english = enLex
             }
-            if !safe, let gp = grammarPath { d.grammar = try? Grammar(path: gp) }
-            if !safe, let sp = sentencePath, let sentence = try? Grammar(path: sp) {
+            if !safe, let gp = grammarPath { d.grammar =Self.cachedGrammar ?? ( try? Grammar(path: gp)); Self.cachedGrammar = d.grammar) }
+            if !safe, let sp = sentencePath, let sentence = Self.cachedSentence ?? (try? Grammar(path: sp)) {
+                Self.cachedSentence = sentence
                 d.predictionGrammar = d.grammar
                 d.grammar = sentence
             }
