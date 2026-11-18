@@ -10,6 +10,7 @@ Requires: pip install pyjwt cryptography
 """
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -73,7 +74,8 @@ def check_app(bundle):
 def whats_new(bundle, build, path, wait_minutes=25):
     """TestFlight 'What to Test' for this build, from a text file (zh-Hans; ≤ 4000 characters). The build appears in
     App Store Connect a few minutes after upload: wait for it."""
-    text = open(path, encoding="utf-8").read().strip()[:4000]; import re; text = re.sub(r'[\U00010000-\U0010ffff\u2600-\u27bf\ufe0f]', '', text)[:3800]
+    text = open(path, encoding="utf-8").read().strip()[:4000]
+    text = re.sub(r'[\U00010000-\U0010ffff\u2600-\u27bf\ufe0f]', '', text)[:3800]
     q = urllib.parse.urlencode({"filter[bundleId]": bundle})
     app = [a for a in call("GET", f"/apps?{q}").get("data", []) if a["attributes"]["bundleId"] == bundle][0]
     deadline = time.time() + wait_minutes * 60
@@ -82,10 +84,12 @@ def whats_new(bundle, build, path, wait_minutes=25):
         q = urllib.parse.urlencode({"filter[app]": app["id"], "filter[version]": str(build), "limit": 1})
         data = call("GET", f"/builds?{q}").get("data", [])
         if data:
-            build_id = data[0]["id"]; break
+            build_id = data[0]["id"]
+            break
         time.sleep(30)
     if not build_id:
-        print(f"::warning title=What to Test::build {build} not in App Store Connect after {wait_minutes} min"); return
+        print(f"::warning title=What to Test::build {build} not in App Store Connect after {wait_minutes} min")
+        return
     locs = call("GET", f"/builds/{build_id}/betaBuildLocalizations").get("data", [])
     mine = [l for l in locs if l["attributes"].get("locale") == "zh-Hans"]
     try:
