@@ -92,8 +92,8 @@ def whats_new(bundle, build, path, wait_minutes=25):
       if mine:
             call("PATCH", f"/betaBuildLocalizations/{mine[0]['id']}",
                  {"data": {"type": "betaBuildLocalizations", "id": mine[0]["id"], "attributes": {"whatsNew": text}}})
-        else:
-            call("POST", "/betaBuildLocalizations",
+      else:
+          call("POST", "/betaBuildLocalizations",
                  {"data": {"type": "betaBuildLocalizations", "attributes": {"locale": "zh-Hans", "whatsNew": text},
                            "relationships": {"build": {"data": {"type": "builds", "id": build_id}}}}})
         print(f"::notice title=What to Test::set for build {build}")
