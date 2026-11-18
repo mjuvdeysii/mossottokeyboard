@@ -36,7 +36,7 @@ final class EngineHost {
     private static var cachedGrammar: Grammar?
     private static var cachedSentence: Grammar?
     /// 表情联想: words → emoji (Unicode CLDR's Chinese annotations; Tools/build_emoji_hints.py)
-    private var emojiHints: [String: [String]] = [:]; private static let kaomojiHints: [String: String] = ["开心": "ヾ(≧▽≦*)o", "高兴": "(≧∇≦)/", "哈哈": "(＾▽＾)", "哈哈哈": "ヾ(≧▽≦*)o", "笑死": "(≧∇≦)/", "嘿嘿": "(●'◡'●)", "晚安": "(∪｡∪)｡｡｡zzz", "困": "(￣o￣) . z Z", "好困": "(∪｡∪)｡｡｡zzz", "睡觉": "( ˘ω˘ ) ｽﾔｧ…", "抱抱": "(づ￣ ³￣)づ", "爱你": "(´,,•ω•,,)♡", "喜欢": "(´∀`)♡", "比心": "(｡•ㅅ•｡)♡", "卖萌": "(・ω・)", "委屈": "(｡•́︿•̀｡)", "难过": "QAQ", "哭": "( T_T )", "呜呜": "(´;ω;`)", "生气": "(╬▔皿▔)╯", "掀桌": "(╯°□°)╯︵ ┻━┻", "震惊": "Σ(っ °Д °;)っ", "无奈": "╮(╯▽╰)╭", "摊手": "╮(￣▽￣)╭", "加油": "(๑•̀ㅂ•́)و✧", "冲": "(ง •̀_•́)ง", "好的": "(｡•̀ᴗ-)✧", "收到": "(｡･∀･)ﾉﾞ", "谢谢": "(´▽`ʃ♡ƪ)", "摸鱼": "_(:3」∠)_", "躺平": "(:3[▓▓]", "好累": "_(:3」∠)_", "恶魔": "ψ(｀∇´)ψ", "魔头": "ψ(｀∇´)ψ", "小魔王": "Ψ(￣∀￣)Ψ"]
+    private var emojiHints: [String: [String]] = [:]; private static let kaomojiHints: [String: String] = ["开心": "ヾ(≧▽≦*)o", "高兴": "(≧∇≦)/", "哈哈": "(＾▽＾)", "哈哈哈": "ヾ(≧▽≦*)o", "笑死": "(≧∇≦)/", "嘿嘿": "(●'◡'●)", "晚安": "(∪｡∪)｡｡｡zzz", "困": "(￣o￣) . z Z", "好困": "(∪｡∪)｡｡｡zzz", "睡觉": "( ˘ω˘ ) ｽﾔｧ…", "抱抱": "(づ￣ ³￣)づ", "爱你": "(´,,•ω•,,)♡", "喜欢": "(´∀`)♡", "比心": "(｡•ㅅ•｡)♡", "卖萌": "(・ω・)", "委屈": "(｡•́︿•̀｡)", "难过": "QAQ", "哭": "( T_T )", "呜呜": "(´;ω;`)", "生气": "(╬▔皿▔)╯", "掀桌": "(╯°□°)╯︵ ┻━┻", "震惊": "Σ(っ °Д °;)っ", "无奈": "╮(╯▽╰)╭", "摊手": "╮(￣▽￣)╭", "加油": "(๑•̀ㅂ•́)و✧", "冲": "(ง •̀_•́)ง", "好的": "(｡•̀ᴗ-)✧", "收到": "(｡･∀･)ﾉﾞ", "谢谢": "(´▽`ʃ♡ƪ)", "摸鱼": "_(:3」∠)_", "躺平": "(:3[▓▓]", "好累": "_(:3」∠)_", "恶魔": "ψ(｀∇´)ψ", "魔头": "ψ(｀∇´)ψ", "小魔王": "Ψ(￣∀￣)Ψ", "可爱": "(｡･ω･｡)ﾉ♡", "女儿": "(づ｡◕‿‿◕｡)づ", "宝宝": "ヾ(≧▽≦*)o"]
 
     private static func compactReadings(for lex: Lexicon) -> [Character: [UInt16]] {
         if let cached = cachedReadings { return cached }
@@ -142,8 +142,8 @@ final class EngineHost {
         }
         // a word that has an emoji (哈哈 😂, 蛋糕 🎂): offered after the first few candidates, never before them
         if let first = r.candidates.first, first.tapCount == taps.count, first.text.count >= 2 {
-            let isUtil = first.text == "日期" || first.text == "时间"; let at = min(isUtil ? 1 : 2, r.candidates.count); var items = Array((emojiHints[first.text] ?? []).prefix(1))
-            if let kao = Self.kaomojiHints[first.text] { items.append(kao) }; if first.text == "日期" { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; items.insert(f.string(from: Date()), at: 0) } else if first.text == "时间" { let f = DateFormatter(); f.dateFormat = "HH:mm"; items.insert(f.string(from: Date()), at: 0) }
+            let isUtil = first.text == "日期" || first.text == "时间" || first.text == "星期"; let at = min(isUtil ? 1 : 2, r.candidates.count); var items = Array((emojiHints[first.text] ?? []).prefix(1))
+            if let kao = Self.kaomojiHints[first.text] { items.append(kao) }; if first.text == "日期" { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; items.insert(f.string(from: Date()), at: 0) } else if first.text == "时间" { let f = DateFormatter(); f.dateFormat = "HH:mm"; items.insert(f.string(from: Date()), at: 0) } else if first.text == "星期" { let wd = Calendar.current.component(.weekday, from: Date()); let wds = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"]; if wd >= 1 && wd <= 7 { items.insert(wds[wd - 1], at: 0) } }
             let extra = items.prefix(2).filter { e in !r.candidates.contains { $0.text == e } }.map { Candidate(text: $0, tapCount: taps.count, syllables: [], corrected: false, score: first.score - 50) }
             if !extra.isEmpty { r.candidates.insert(contentsOf: extra, at: at) }
             // inline emoji/kaomoji restrained to <=2 items at slot 2 (after top 2 words); date/time at slot 1
