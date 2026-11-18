@@ -89,11 +89,17 @@ final class EngineHost {
                 Self.cachedEnglish = enLex
                 d.english = enLex
             }
-            if !safe, let gp = grammarPath { d.grammar =Self.cachedGrammar ?? ( try? Grammar(path: gp)); Self.cachedGrammar = d.grammar) }
-            if !safe, let sp = sentencePath, let sentence = Self.cachedSentence ?? (try? Grammar(path: sp)) {
-                Self.cachedSentence = sentence
-                d.predictionGrammar = d.grammar
-                d.grammar = sentence
+            if !safe, let gp = grammarPath {
+                let g = Self.cachedGrammar ?? (try? Grammar(path: gp))
+                Self.cachedGrammar = g
+                d.grammar = g
+            }
+            if !safe, let sp = sentencePath {
+                if let sentence = Self.cachedSentence ?? (try? Grammar(path: sp)) {
+                    Self.cachedSentence = sentence
+                    d.predictionGrammar = d.grammar
+                    d.grammar = sentence
+                }
             }
             self.decoder = d
             self.lock.lock(); self.sharedEnglish = enLex; self.loaded = true; self.lock.unlock()
