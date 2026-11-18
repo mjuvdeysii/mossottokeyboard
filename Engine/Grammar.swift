@@ -192,23 +192,28 @@ public final class Grammar {
 
     /// ln of everything the model counts right after a context node (its one-character continuations): what
     /// a joint count is divided by to read it as "how likely after this context". Cached per node.
+    private let massLock = NSLock()
     private var massCache: [Int: Double] = [:]
     /// New contexts measured per decode at most (each is a scan of its node). Unlimited: a capped budget made the
     /// same keys read differently depending on what had been typed before (the contexts left over in the cache). The
     /// keyboard's warm-up decode measures the common ones before the first key; a cold long sentence costs ~10 ms more.
     public var massBudget = Int.max
     private var massSpent = 0
-    public func resetMassBudget() { massSpent = 0 }
+    public func resetMassBudget() {massLock.lock();  massSpent = 0; massLock.unlock() }
     func logMass(_ node: Int) -> Double {
-        if let m = massCache[node] { return m }
-        guard massSpent < massBudget else { return massCenter }
+        massLock.lock()
+        if let m = massCache[node] { massLock.unlock(); return m }
+        guard massSpent < massBudget else { massLock.unlock(); return massCenter }
         massSpent += 1
+        massLock.unlock()
         var vals: [Double] = []
         for (_, _, v) in children(of: node) { if let v { vals.append(Double(v) / 10_000) } }
         let top = vals.max() ?? 0
         let m = vals.isEmpty ? 0 : top + log(vals.reduce(0) { $0 + exp($1 - top) })
+        massLock.lock()
         if massCache.count > 4096 { massCache.removeAll(keepingCapacity: true) }
         massCache[node] = m
+        massLock.unlock()
         return m
     }
     public var massWeight = 0.0
