@@ -94,12 +94,11 @@ def whats_new(bundle, build, path, wait_minutes=25):
     mine = [l for l in locs if l["attributes"].get("locale") == "zh-Hans"]
     try:
       if mine:
-            call("PATCH", f"/betaBuildLocalizations/{mine[0]['id']}",
-                 {"data": {"type": "betaBuildLocalizations", "id": mine[0]["id"], "attributes": {"whatsNew": text}}})
-      else:
-          call("POST", "/betaBuildLocalizations",
-                 {"data": {"type": "betaBuildLocalizations", "attributes": {"locale": "zh-Hans", "whatsNew": text},
-                           "relationships": {"build": {"data": {"type": "builds", "id": build_id}}}}})
+      patch_body = {"data": {"type": "betaBuildLocalizations", "id": mine[0]["id"], "attributes": {"whatsNew": text}}}
+      call("PATCH", f"/betaBuildLocalizations/{mine[0]['id']}", patch_body)
+        else:
+            post_body = {"data": {"type": "betaBuildLocalizations", "attributes": {"locale": "zh-Hans", "whatsNew": text}, "relationships": {"build": {"data": {"type": "builds", "id": build_id}}}}}
+          call("POST", "/betaBuildLocalizations", post_body)
         print(f"::notice title=What to Test::set for build {build}")
     except Exception as e:
       print(f"::warning title=What to Test::ASC whatsNew skipped: {e}")
