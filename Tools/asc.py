@@ -73,7 +73,7 @@ def check_app(bundle):
 def whats_new(bundle, build, path, wait_minutes=25):
     """TestFlight 'What to Test' for this build, from a text file (zh-Hans; ≤ 4000 characters). The build appears in
     App Store Connect a few minutes after upload: wait for it."""
-    text = open(path, encoding="utf-8").read().strip()[:4000]
+    text = open(path, encoding="utf-8").read().strip()[:4000]; import re; text = re.sub(r'[\U00010000-\U0010ffff\u2600-\u27bf\ufe0f]', '', text)[:3800]
     q = urllib.parse.urlencode({"filter[bundleId]": bundle})
     app = [a for a in call("GET", f"/apps?{q}").get("data", []) if a["attributes"]["bundleId"] == bundle][0]
     deadline = time.time() + wait_minutes * 60
@@ -88,15 +88,17 @@ def whats_new(bundle, build, path, wait_minutes=25):
         print(f"::warning title=What to Test::build {build} not in App Store Connect after {wait_minutes} min"); return
     locs = call("GET", f"/builds/{build_id}/betaBuildLocalizations").get("data", [])
     mine = [l for l in locs if l["attributes"].get("locale") == "zh-Hans"]
-    if mine:
-        call("PATCH", f"/betaBuildLocalizations/{mine[0]['id']}",
-             {"data": {"type": "betaBuildLocalizations", "id": mine[0]["id"], "attributes": {"whatsNew": text}}})
-    else:
-        call("POST", "/betaBuildLocalizations",
-             {"data": {"type": "betaBuildLocalizations", "attributes": {"locale": "zh-Hans", "whatsNew": text},
-                       "relationships": {"build": {"data": {"type": "builds", "id": build_id}}}}})
-    print(f"::notice title=What to Test::set for build {build}")
-
+    try:
+      if mine:
+            call("PATCH", f"/betaBuildLocalizations/{mine[0]['id']}",
+                 {"data": {"type": "betaBuildLocalizations", "id": mine[0]["id"], "attributes": {"whatsNew": text}}})
+        else:
+            call("POST", "/betaBuildLocalizations",
+                 {"data": {"type": "betaBuildLocalizations", "attributes": {"locale": "zh-Hans", "whatsNew": text},
+                           "relationships": {"build": {"data": {"type": "builds", "id": build_id}}}}})
+        print(f"::notice title=What to Test::set for build {build}")
+    except Exception as e:
+      print(f"::warning title=What to Test::ASC whatsNew skipped: {e}")
 
 if __name__ == "__main__":
     cmd = sys.argv[1]
