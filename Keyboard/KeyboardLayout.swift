@@ -316,19 +316,19 @@ enum Theme {
     private static let plain_keyTop: UIColor = dyn(hex(0xFFFFFF), hex(0x606064))
     static var keyLip: UIColor { plain ? plain_keyLip : mosto_keyLip }
     private static let mosto_keyLip: UIColor = dyn(hex(0xCDBFEB), hex(0x1B1248))
-    private static let plain_keyLip: UIColor = dyn(hex(0xB3B6BD), hex(0x2B2B2E))
+    private static let plain_keyLip: UIColor = dyn(hex(0xD8DAE0), hex(0x2B2B2E))
     static var keyPressed: UIColor { plain ? plain_keyPressed : mosto_keyPressed }
     private static let mosto_keyPressed: UIColor = dyn(hex(0xEDE6FA), hex(0x5A4AAE))
     private static let plain_keyPressed: UIColor = dyn(hex(0xE4E5E9), hex(0x75757A))
     static var functionKey: UIColor { plain ? plain_functionKey : mosto_functionKey }      // function face (lavender / deep violet)
     private static let mosto_functionKey: UIColor = dyn(hex(0xC7B8F0), hex(0x2D2168))
-    private static let plain_functionKey: UIColor = dyn(hex(0xADB2BC), hex(0x3A3A3D))
+    private static let plain_functionKey: UIColor = dyn(hex(0xFFFFFF), hex(0x46464A))
     static var functionTop: UIColor { plain ? plain_functionTop : mosto_functionTop }
     private static let mosto_functionTop: UIColor = dyn(hex(0xD3C6F6), hex(0x35286F))
-    private static let plain_functionTop: UIColor = dyn(hex(0xB3B8C1), hex(0x3E3E41))
+    private static let plain_functionTop: UIColor = dyn(hex(0xFFFFFF), hex(0x4C4C50))
     static var functionLip: UIColor { plain ? plain_functionLip : mosto_functionLip }
     private static let mosto_functionLip: UIColor = dyn(hex(0x9682D6), hex(0x120B33))
-    private static let plain_functionLip: UIColor = dyn(hex(0x8A8E96), hex(0x1E1E20))
+    private static let plain_functionLip: UIColor = dyn(hex(0xD8DAE0), hex(0x2B2B2E))
     static var functionPressed: UIColor { plain ? plain_functionPressed : mosto_functionPressed }
     private static let mosto_functionPressed: UIColor = dyn(hex(0xFFFDF8), hex(0x46378C))
     private static let plain_functionPressed: UIColor = dyn(hex(0xFFFFFF), hex(0x5A5A5E))
@@ -340,7 +340,7 @@ enum Theme {
     private static let plain_accentTop: UIColor = dyn(hex(0x2B8EFF), hex(0x2A93FF))
     static var accentLip: UIColor { plain ? plain_accentLip : mosto_accentLip }
     private static let mosto_accentLip: UIColor = dyn(hex(0xA9741F), hex(0x7C5112))
-    private static let plain_accentLip: UIColor = dyn(hex(0x0062CC), hex(0x0059B8))
+    private static let plain_accentLip: UIColor = dyn(hex(0x0A7CFF), hex(0x0A84FF))
     static var accentText: UIColor { plain ? plain_accentText : mosto_accentText }
     private static let mosto_accentText: UIColor = hex(0x2B1961)
     private static let plain_accentText: UIColor = UIColor.white
@@ -367,7 +367,7 @@ enum Theme {
     static var keyShadow: UIColor { plain ? plain_keyShadow : mosto_keyShadow }
     /// `a` moved `k` of the way towards `b` (opaque colours).
     private static let mosto_keyShadow: UIColor = dyn(hex(0x2B1961, 0.18), UIColor(white: 0, alpha: 0.40))
-    private static let plain_keyShadow: UIColor = dyn(UIColor(white: 0, alpha: 0.10), UIColor(white: 0, alpha: 0.35))
+    private static let plain_keyShadow: UIColor = dyn(UIColor(white: 0, alpha: 0.06), UIColor(white: 0, alpha: 0.28))
     static func mix(_ a: UIColor, _ b: UIColor, _ k: CGFloat) -> UIColor {
         var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0, r2: CGFloat = 0, g2: CGFloat = 0, b2: CGFloat = 0, a2: CGFloat = 0
         a.getRed(&r1, green: &g1, blue: &b1, alpha: &a1); b.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
