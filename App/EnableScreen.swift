@@ -66,7 +66,7 @@ private struct StatusCard: View {
                 .frame(width: 44)
             VStack(alignment: .leading, spacing: 3) {
                 Text(added ? "Mosto键盘已添加" : "还没有添加 Mosto键盘").font(.headline)
-                Text(added ? "打字时按 🌐 切换过来；在“上手”里可以先练一练。" : "照下面三步添加，大约半分钟。")
+                Text(added ? "打字时按 🌐 切换过来；在“上手”里可以先练一练。" : "照下面三步添加，大约半分钟；纯离线本地运行，保持默认权限即可使用。")
                     .font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
