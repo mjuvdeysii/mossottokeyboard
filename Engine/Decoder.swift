@@ -424,9 +424,9 @@ public final class Decoder {
             // walk the trie with every plausible key per tap
             struct State { let node: TrieNode; let score: Double; let corrected: Bool; var skipped = false }
             var states = [State(node: trie, score: 0, corrected: false)]
-            var jumped: [Int: [State]] = [:]
+            var j1: [State] = [], j2: [State] = []
             var pos = i
-            while pos < n && (!states.isEmpty || !jumped.isEmpty) {
+            while pos < n && (!states.isEmpty || !j1.isEmpty) {
                 var next: [State] = []
                 let t = taps[pos]
                 for st in states {
@@ -441,10 +441,10 @@ public final class Decoder {
                         next.append(State(node: st.node, score: st.score - skipCost(taps, pos), corrected: true, skipped: true))
                     }
                   // 相邻换位 (全拼): 两个相邻键顺序打反 (nihoa → nihao, womne → women, zhnog → zhong), once per syllable
-                   if transposeEnabled, !t.group, !st.skipped, pos + 1 < n, !taps[pos + 1].group,
+                   if transposeEnabled, !t.group, !st.skipped, st.node.children[t.key] == nil, pos + 1 < n, !taps[pos + 1].group,
                       t.key != taps[pos + 1].key, !boundaries.contains(pos + 1),
                     let c1 = st.node.children[taps[pos + 1].key], let c2 = c1.children[t.key] {
-                        jumped[pos + 2, default: []].append(State(node: c2, score: st.score - transposePenalty, corrected: true, skipped: true))
+                        j2.append(State(node: c2, score: st.score - transposePenalty, corrected: true, skipped: true))
                     }
                 }
                 // 漏按了一个键: a letter the keys skipped (don for dong, tia for tian), once per syllable like a slip
@@ -480,7 +480,8 @@ public final class Decoder {
                     next = Array(plain) + Array(slips)
                 }
                 pos += 1
-                if let j = jumped.removeValue(forKey: pos) { next += j }
+                if !j1.isEmpty { next += j1; j1.removeAll(keepingCapacity: true) }
+                swap(&j1, &j2)
                 for st in next {
                     let cost = st.score - (st.corrected ? correctionPenalty : 0)
                     for id in st.node.ids { emit(Span(end: pos, id: id, spatial: cost, corrected: st.corrected, kind: st.skipped ? 3 : 0)) }
