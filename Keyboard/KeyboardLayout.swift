@@ -81,12 +81,12 @@ struct LayoutContext: Equatable {
 /// Symbol third rows: 1.5 | 6 × 7/6 | 1.5. Every page fits on screen, nothing scrolls.
 enum Metrics {
     /// The system keyboard's candidate / prediction strip (no separate pinyin line: the pinyin goes into the field).
-    static var toolbarHeight: CGFloat { Theme.plain ? 42 : 48 }
-    static var rowPitch: CGFloat { Theme.plain ? 50 : 54 }
+    static let toolbarHeight: CGFloat = 44
+    static let rowPitch: CGFloat = 51
     static let rowPitchLandscape: CGFloat = 40
     static let toolbarHeightLandscape: CGFloat = 38
     static let gapX: CGFloat = 6
-    static var gapY: CGFloat { Theme.plain ? 10 : 12 }
+    static let gapY: CGFloat = 10
     /// The darker lip under each cap (the face sinks onto it when pressed).
     static var lip: CGFloat { Theme.plain ? 1.0 : 3.5 }
     /// Soft vinyl caps: rounder than the system keyboard's.
