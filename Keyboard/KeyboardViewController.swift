@@ -1297,6 +1297,7 @@ final class KeyboardViewController: UIInputViewController {
         if on { showEmoji(false); settingsPanel.load(); applySettings() }
         candidateBar.isHidden = on
         keyboard.isHidden = on || !grid.isHidden
+        updatePlainLightButton()
     }
 
     // MARK: - 表情
