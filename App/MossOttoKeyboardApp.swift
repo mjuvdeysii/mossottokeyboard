@@ -23,32 +23,30 @@ struct ContentView: View {
     var body: some View {
         TabView(selection: $nav.tab) {
             NavigationStack {
-                PlaygroundScreen(model: nav.playground)
+                FeaturesHubScreen()
+                    .navigationTitle("Mosto键盘")
+                    .navigationBarTitleDisplayMode(.inline)
+            }
+            .tabItem { Label("特性", systemImage: "sparkles") }
+            .tag(AppTab.features)
+            NavigationStack {
+                GuideHubScreen(segment: $nav.guideSegment, model: nav.playground)
                     .navigationTitle("上手")
                     .navigationBarTitleDisplayMode(.inline)
             }
             .tabItem { Label("上手", systemImage: "hand.tap") }
-            .tag(AppTab.playground)
+            .tag(AppTab.guide)
             NavigationStack {
-                EnableScreen()
-                    .navigationTitle("启用")
+                SettingsHubScreen()
+                    .navigationTitle("设置")
                     .navigationBarTitleDisplayMode(.inline)
             }
-            .tabItem { Label("启用", systemImage: "keyboard") }
-            .tag(AppTab.enable)
-            NavigationStack {
-                ScrollView { HomeContent(text: .constant("")) }
-                    .background(Color(UIColor.systemGroupedBackground))
-                    .navigationTitle("了解")
-                    .navigationBarTitleDisplayMode(.inline)
-            }
-            .tabItem { Label("了解", systemImage: "sparkles") }
-            .tag(AppTab.about)
+            .tabItem { Label("设置", systemImage: "gearshape") }
+            .tag(AppTab.settings)
         }
         .environment(\.appNavigation, nav)
         .tint(mostoTint)
         .task {
-            // CI only: render the keyboard's real views to PNGs, then exit (SnapshotRenderer.swift)
             if SnapshotRenderer.requested,
                let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first {
                 SnapshotRenderer.run(in: scene)
@@ -57,22 +55,240 @@ struct ContentView: View {
     }
 }
 
-/// The app's three tabs.
-enum AppTab: Hashable { case playground, enable, about }
+/// The app's three tabs: Features (home) -> Guide (enable + playground) -> Settings.
+enum AppTab: Hashable { case features, guide, settings }
 
-/// Which tab is showing, and the 上手 lessons' model, so a demo on 「了解」 can send someone straight to its lesson.
 @MainActor
 final class AppNavigation: ObservableObject {
-    @Published var tab: AppTab = .playground
+    @Published var tab: AppTab = .features
+    @Published var guideSegment: Int = KeyboardStatus.isAdded() ? 1 : 0
     let playground: PlaygroundModel
 
-    init() { playground = PlaygroundModel(); tab = KeyboardStatus.isAdded() ? .playground : .enable }
+    init() { playground = PlaygroundModel() }
 
-    /// 「试一试」 on a demo card: 上手, at the lesson that demo shows, with an empty field.
     func tryDemo(_ title: String) {
         guard let lesson = demoLessons[title], let i = lessons.firstIndex(where: { $0.title == lesson }) else { return }
         playground.jump(to: i)
-        tab = .playground
+        guideSegment = 1
+        tab = .guide
+    }
+}
+
+private struct FeatureItem: Identifiable {
+    let id: String
+    let icon: String
+    let title: String
+    let stat: String
+    let detail: String
+    let lessonTitle: String?
+}
+
+private let featureItems: [FeatureItem] = [
+    FeatureItem(id: "fix", icon: "wand.and.stars", title: "整句纠错", stat: "92.1% 整句 · 0.3ms",
+                detail: "按偏、漏键、多按与相邻打反（如 nihoa → 你好、inhc → 你好）自动联句修正，点候选栏 ↩ 或删除即可秒撤回。", lessonTitle: "按错一个键"),
+    FeatureItem(id: "scheme", icon: "keyboard", title: "双拼与全拼", stat: "小鹤 2 键 · 全拼默认",
+                detail: "同时内置全拼与纯小鹤双拼（每字固定 2 键、无形码），设置跨版本保留；可在键盘设置里随时切换并开启键位提示。", lessonTitle: nil),
+    FeatureItem(id: "mix", icon: "character.bubble", title: "混输与九宫格", stat: "免切英文 · 九宫格",
+                detail: "句子中直接夹打 ok、iOS、iPhone 自动识别大小写；中文全键盘与九宫格均支持完整纠错与联想。", lessonTitle: "中英混输"),
+    FeatureItem(id: "kaomoji", icon: "face.smiling", title: "颜文字与彩蛋", stat: "126 款 · 情绪联动",
+                detail: "内置 8 大情绪 126 款颜文字；输入日期、时间、星期自动动态输出，输入晚安、开心、可爱、宝宝等触发 Mosto 彩蛋。", lessonTitle: nil),
+    FeatureItem(id: "glass", icon: "square.on.square", title: "双风格质感", stat: "iOS 原生 · Mosto 潮玩",
+                detail: "简洁模式 1:1 复刻系统液态玻璃高度与纯净键帽；Mosto 模式采用 3D 软胶厚底沿与日/夜灯双光，一键切换。", lessonTitle: nil),
+    FeatureItem(id: "offline", icon: "lock.shield", title: "纯离线 · 零 AI", stat: "0 联网 · 0 追踪",
+                detail: "键盘扩展全程本机计算，不含任何网络请求、剪贴板读取或第三方 SDK，保持默认权限即可正常打字。", lessonTitle: nil),
+]
+
+/// Tab 1 (首屏): Zero-scroll single-screen Bento hub showcasing all keyboard features via tap-to-drill.
+private struct FeaturesHubScreen: View {
+    @Environment(\.appNavigation) private var nav
+    @Environment(\.scenePhase) private var phase
+    @State private var added = KeyboardStatus.isAdded()
+    @State private var previewPlain = false
+    @State private var selected: FeatureItem? = nil
+
+    private let cols = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
+
+    var body: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 12) {
+                Image(uiImage: mostoImage(previewPlain ? "MostoToyBlink" : "MostoToy"))
+                    .resizable().scaledToFit()
+                    .frame(width: 56, height: 56)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("按偏了，也能打对").font(.headline)
+                    Text(previewPlain ? "简洁模式 · 1:1 原生液态玻璃" : "Mosto 潮玩 · 3D 软胶双光")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 4)
+                Picker("", selection: $previewPlain) {
+                    Text("潮玩").tag(false)
+                    Text("简洁").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 104)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
+
+            LazyVGrid(columns: cols, spacing: 10) {
+                ForEach(featureItems) { item in
+                    Button { selected = item } label: {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Image(systemName: item.icon)
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .foregroundStyle(mostoTint)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
+                            }
+                            Spacer(minLength: 2)
+                            Text(item.title).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+                            Text(item.stat).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        .padding(12)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .frame(maxHeight: .infinity)
+
+            Button {
+                nav?.guideSegment = added ? 1 : 0
+                nav?.tab = .guide
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: added ? "checkmark.circle.fill" : "keyboard.badge.ellipsis")
+                        .foregroundStyle(added ? Color.green : mostoTint)
+                    Text(added ? "Mosto键盘已就绪 · 点击进入互动练手" : "尚未启用键盘 · 30 秒去完成添加")
+                        .font(.subheadline.weight(.medium)).foregroundStyle(.primary)
+                    Spacer()
+                    Image(systemName: "arrow.right").font(.caption.weight(.bold)).foregroundStyle(mostoTint)
+                }
+                .padding(.horizontal, 14).padding(.vertical, 12)
+                .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(UIColor.systemGroupedBackground))
+        .onChange(of: phase) { p in if p == .active { added = KeyboardStatus.isAdded() } }
+        .sheet(item: $selected) { item in
+            NavigationStack {
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack(spacing: 12) {
+                        Image(systemName: item.icon).font(.title2.weight(.semibold)).foregroundStyle(mostoTint)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.title).font(.title3.weight(.bold))
+                            Text(item.stat).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    Text(item.detail).font(.body).fixedSize(horizontal: false, vertical: true)
+                    if item.id == "scheme" {
+                        NavigationLink("查看完整小鹤双拼键位表与练习") { XiaoheGuideView() }
+                            .buttonStyle(.borderedProminent).tint(mostoTint)
+                    } else if let lessonTitle = item.lessonTitle {
+                        Button("在互动练手中试一试") {
+                            selected = nil
+                            nav?.tryDemo(lessonTitle)
+                        }
+                        .buttonStyle(.borderedProminent).tint(mostoTint)
+                    } else {
+                        NavigationLink("查看全部键盘用法") { UsageDetailView() }
+                            .buttonStyle(.borderedProminent).tint(mostoTint)
+                    }
+                    Spacer()
+                }
+                .padding(20)
+                .navigationTitle(item.title)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("完成") { selected = nil } } }
+            }
+            .presentationDetents([.medium, .large])
+        }
+    }
+}
+
+/// Tab 2 (中间): Segmented single-screen hub switching between Enable and Interactive Playground.
+private struct GuideHubScreen: View {
+    @Binding var segment: Int
+    @ObservedObject var model: PlaygroundModel
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Picker("", selection: $segment) {
+                Text("启用键盘").tag(0)
+                Text("互动练手").tag(1)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16).padding(.vertical, 8)
+            .background(Color(UIColor.systemGroupedBackground))
+
+            if segment == 0 {
+                EnableScreen()
+            } else {
+                PlaygroundScreen(model: model)
+            }
+        }
+    }
+}
+
+/// Tab 3 (设置): Zero-scroll native Settings center with direct drill-downs.
+private struct SettingsHubScreen: View {
+    @Environment(\.scenePhase) private var phase
+    @State private var added = KeyboardStatus.isAdded()
+
+    var body: some View {
+        List {
+            Section("键盘状态与快捷设置") {
+                HStack {
+                    Label("键盘启用状态", systemImage: added ? "checkmark.circle.fill" : "keyboard")
+                        .foregroundStyle(added ? .green : mostoTint)
+                    Spacer()
+                    Text(added ? "已添加" : "未添加").foregroundStyle(.secondary)
+                }
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    Link(destination: url) {
+                        Label("打开系统设置添加或管理键盘", systemImage: "arrow.up.forward.app")
+                    }
+                }
+                NavigationLink {
+                    UsageDetailView()
+                } label: {
+                    Label("键盘内偏好与全部用法（风格 / 方案 / 震动）", systemImage: "slider.horizontal.3")
+                }
+            }
+
+            Section("输入方案与隐私") {
+                NavigationLink {
+                    XiaoheGuideView()
+                } label: {
+                    Label("小鹤双拼键位表与学习成本", systemImage: "square.grid.3x3")
+                }
+                ForEach(LegalText.docs, id: \.id) {
+                    doc in
+                    NavigationLink {
+                        LegalView(doc: doc)
+                    } label: {
+                        Label(doc.title, systemImage: aboutIcon(doc.id))
+                    }
+                }
+            }
+
+            Section {
+                HStack {
+                    Text("Mosto键盘 1.0").font(.footnote).foregroundStyle(.secondary)
+                    Spacer()
+                    Text("纯离线 · 零 AI · 零共享容器").font(.footnote).foregroundStyle(.secondary)
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .onChange(of: phase) { p in if p == .active { added = KeyboardStatus.isAdded() } }
     }
 }
 
