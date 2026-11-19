@@ -524,6 +524,7 @@ final class KeyboardViewController: UIInputViewController {
             keyboard.themeChanged()
             candidateBar.themeChanged()
             settingsPanel.themeChanged(); grid.themeChanged(); emojiPanel.themeChanged()
+            heightConstraint?.constant = preferredHeight()
         }
         let sysDark = systemIsDark
         let mode = KeyboardSettings.shared.appearance
