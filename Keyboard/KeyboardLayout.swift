@@ -81,12 +81,12 @@ struct LayoutContext: Equatable {
 /// Symbol third rows: 1.5 | 6 × 7/6 | 1.5. Every page fits on screen, nothing scrolls.
 enum Metrics {
     /// The system keyboard's candidate / prediction strip (no separate pinyin line: the pinyin goes into the field).
-    static let toolbarHeight: CGFloat = 48
-    static let rowPitch: CGFloat = 54
+    static var toolbarHeight: CGFloat { Theme.plain ? 42 : 48 }
+    static var rowPitch: CGFloat { Theme.plain ? 50 : 54 }
     static let rowPitchLandscape: CGFloat = 40
     static let toolbarHeightLandscape: CGFloat = 38
     static let gapX: CGFloat = 6
-    static let gapY: CGFloat = 12
+    static var gapY: CGFloat { Theme.plain ? 10 : 12 }
     /// The darker lip under each cap (the face sinks onto it when pressed).
     static var lip: CGFloat { Theme.plain ? 1.0 : 3.5 }
     /// Soft vinyl caps: rounder than the system keyboard's.
@@ -310,28 +310,28 @@ enum Theme {
     private static let plain_separator: UIColor = dyn(UIColor(white: 0, alpha: 0.12), UIColor(white: 1, alpha: 0.12))
     static var key: UIColor { plain ? plain_key : mosto_key }              // letter face
     private static let mosto_key: UIColor = dyn(hex(0xFBF8FF), hex(0x46378C))
-    private static let plain_key: UIColor = dyn(hex(0xFFFFFF), hex(0x5A5A5E))
+    private static let plain_key: UIColor = dyn(hex(0xFFFFFF), hex(0x464646))
     static var keyTop: UIColor { plain ? plain_keyTop : mosto_keyTop }
     private static let mosto_keyTop: UIColor = dyn(hex(0xFFFFFF), hex(0x52429E))
-    private static let plain_keyTop: UIColor = dyn(hex(0xFFFFFF), hex(0x606064))
+    private static let plain_keyTop: UIColor = dyn(hex(0xFFFFFF), hex(0x464646))
     static var keyLip: UIColor { plain ? plain_keyLip : mosto_keyLip }
     private static let mosto_keyLip: UIColor = dyn(hex(0xCDBFEB), hex(0x1B1248))
     private static let plain_keyLip: UIColor = dyn(hex(0xD8DAE0), hex(0x2B2B2E))
     static var keyPressed: UIColor { plain ? plain_keyPressed : mosto_keyPressed }
     private static let mosto_keyPressed: UIColor = dyn(hex(0xEDE6FA), hex(0x5A4AAE))
-    private static let plain_keyPressed: UIColor = dyn(hex(0xE4E5E9), hex(0x75757A))
+    private static let plain_keyPressed: UIColor = dyn(hex(0xE5E5EA), hex(0x636366))
     static var functionKey: UIColor { plain ? plain_functionKey : mosto_functionKey }      // function face (lavender / deep violet)
     private static let mosto_functionKey: UIColor = dyn(hex(0xC7B8F0), hex(0x2D2168))
-    private static let plain_functionKey: UIColor = dyn(hex(0xFFFFFF), hex(0x46464A))
+    private static let plain_functionKey: UIColor = dyn(hex(0xFFFFFF), hex(0x464646))
     static var functionTop: UIColor { plain ? plain_functionTop : mosto_functionTop }
     private static let mosto_functionTop: UIColor = dyn(hex(0xD3C6F6), hex(0x35286F))
-    private static let plain_functionTop: UIColor = dyn(hex(0xFFFFFF), hex(0x4C4C50))
+    private static let plain_functionTop: UIColor = dyn(hex(0xFFFFFF), hex(0x464646))
     static var functionLip: UIColor { plain ? plain_functionLip : mosto_functionLip }
     private static let mosto_functionLip: UIColor = dyn(hex(0x9682D6), hex(0x120B33))
     private static let plain_functionLip: UIColor = dyn(hex(0xD8DAE0), hex(0x2B2B2E))
     static var functionPressed: UIColor { plain ? plain_functionPressed : mosto_functionPressed }
     private static let mosto_functionPressed: UIColor = dyn(hex(0xFFFDF8), hex(0x46378C))
-    private static let plain_functionPressed: UIColor = dyn(hex(0xFFFFFF), hex(0x5A5A5E))
+    private static let plain_functionPressed: UIColor = dyn(hex(0xE5E5EA), hex(0x636366))
     static var accentKey: UIColor { plain ? plain_accentKey : mosto_accentKey }         // the crown: matte gold
     private static let mosto_accentKey: UIColor = dyn(hex(0xE7B85A), hex(0xE3B04F))
     private static let plain_accentKey: UIColor = dyn(hex(0x0A7CFF), hex(0x0A84FF))
@@ -359,11 +359,11 @@ enum Theme {
     private static let plain_wing: UIColor = UIColor.clear
     static var keyText: UIColor { plain ? plain_keyText : mosto_keyText }
     private static let mosto_keyText: UIColor = dyn(hex(0x2B1961), hex(0xFFF3DC))
-    private static let plain_keyText: UIColor = dyn(hex(0x111114), hex(0xFFFFFF))
+    private static let plain_keyText: UIColor = dyn(hex(0x000000), hex(0xFFFFFF))
     static var functionText: UIColor { plain ? plain_functionText : mosto_functionText }
     /// The soft contact shadow under each cap.
     private static let mosto_functionText: UIColor = dyn(hex(0x2B1961), hex(0xD9CCFF))
-    private static let plain_functionText: UIColor = dyn(hex(0x111114), hex(0xFFFFFF))
+    private static let plain_functionText: UIColor = dyn(hex(0x000000), hex(0xFFFFFF))
     static var keyShadow: UIColor { plain ? plain_keyShadow : mosto_keyShadow }
     /// `a` moved `k` of the way towards `b` (opaque colours).
     private static let mosto_keyShadow: UIColor = dyn(hex(0x2B1961, 0.18), UIColor(white: 0, alpha: 0.40))
