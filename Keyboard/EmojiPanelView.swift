@@ -102,7 +102,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         super.init(frame: frame)
         backgroundColor = Theme.touchable   // on the system glass (never fully clear: see Theme.touchable)
         collection.backgroundColor = .clear
-        collection.contentInsetAdjustmentBehavior = .never
+        collection.contentInsetAdjustmentBehavior = .never; if #available(iOS 26.0, *) { collection.topEdgeEffect.isHidden = true; collection.bottomEdgeEffect.isHidden = true }
         collection.alwaysBounceHorizontal = false
         collection.showsHorizontalScrollIndicator = false
         collection.delaysContentTouches = false
