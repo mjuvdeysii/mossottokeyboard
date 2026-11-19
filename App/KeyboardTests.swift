@@ -312,7 +312,7 @@ enum KeyboardTests {
         log(missing.isEmpty, "app.every 试一试 has its lesson", "missing=\(missing)")
         let nav = AppNavigation()
         let p = nav.playground
-        nav.tab = .about
+        nav.tab = .features
         guard let kb = makeKeyboard(scheme: 1, in: window) else { log(false, "app.setup", "engine did not load"); return }
         let vc = kb.0
         vc.hostOverride = p.host
@@ -324,7 +324,7 @@ enum KeyboardTests {
         nav.tryDemo("长句多按、漏按一个键")
         drain(0.05)
         let title = p.step < lessons.count ? lessons[p.step].title : "(done)"
-        log(nav.tab == .playground, "app.试一试 opens 上手", "tab=\(nav.tab)")
+        log(nav.tab == .guide, "app.试一试 opens 上手", "tab=\(nav.tab)")
         log(title == "长句漏按一个键", "app.试一试 on 长句多按、漏按一个键 opens 长句漏按一个键", "lesson=\(title)")
         log(p.host.string.isEmpty && p.before.isEmpty && p.marked.isEmpty && !vc.testState.composing && !p.justPassed,
             "app.试一试 starts with an empty field", "text=\(p.host.string) before=\(p.before) marked=\(p.marked) keys=\(vc.testState.keys)")
