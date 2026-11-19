@@ -309,6 +309,10 @@ public final class Decoder {
             let a = taps[i], b = taps[i + 1]
             var best: [UInt16: Span] = [:]
             pair(a, b, end: i + 2, extra: 0, into: &best)
+            // 相邻换位 (小鹤): 两个键顺序打反 (inhc → nihc) — full keyboard only
+            if transposeEnabled, !a.group, !b.group, a.key != b.key {
+                pair(b, a, end: i + 2, extra: xiaoheTransposePenalty, into: &best)
+            }
             // one key too many: inside the syllable (a x b), or just before it (x a b) — full keyboard only
             if skipEnabled, i + 2 < n, !a.group, !b.group, !taps[i + 2].group {
                 pair(a, taps[i + 2], end: i + 3, extra: skipCost(taps, i + 1), into: &best)
@@ -346,6 +350,10 @@ public final class Decoder {
     public var xiaoheSkipPenalty = 7.0
     /// 漏按了一个键 (全拼): a letter the keys left out — don for dong, tia for tian.
     public var missingPenalty = 9.0
+    /// 相邻换位: two neighbouring keys typed in reverse order (全拼 nihoa → nihao, womne → women; 小鹤 inhc → nihc).
+    public var transposeEnabled = true
+    public var transposePenalty = 6.5
+    public var xiaoheTransposePenalty = 6.5
     /// 句末多按 (全拼): the last key read as one pressed by mistake after the words before it (gongyuann → 公园,
     /// fageiwoo → 发给我), at the cost of a slip (`skipCost`) plus a correction, weighed by the language model against
     /// reading that key as the initial of one more character (公园内, 方案吗). Inside a sentence a key is still never
@@ -412,8 +420,9 @@ public final class Decoder {
             // walk the trie with every plausible key per tap
             struct State { let node: TrieNode; let score: Double; let corrected: Bool; var skipped = false }
             var states = [State(node: trie, score: 0, corrected: false)]
+            var jumped: [Int: [State]] = [:]
             var pos = i
-            while pos < n && !states.isEmpty {
+            while pos < n && (!states.isEmpty || !jumped.isEmpty) {
                 var next: [State] = []
                 let t = taps[pos]
                 for st in states {
@@ -426,6 +435,12 @@ public final class Decoder {
                     // next syllable then starts on the following key); never as the syllable's first key
                     if skipEnabled, !t.group, !st.skipped, st.node !== trie {
                         next.append(State(node: st.node, score: st.score - skipCost(taps, pos), corrected: true, skipped: true))
+                    }
+                  // 相邻换位 (全拼): 两个相邻键顺序打反 (nihoa → nihao, womne → women, zhnog → zhong), once per syllable
+                   if transposeEnabled, !t.group, !st.skipped, pos + 1 < n, !taps[pos + 1].group,
+                      t.key != taps[pos + 1].key, !boundaries.contains(pos + 1),
+                    let c1 = st.node.children[taps[pos + 1].key], let c2 = c1.children[t.key] {
+                        jumped[pos + 2, default: []].append(State(node: c2, score: st.score - transposePenalty, corrected: true, skipped: true))
                     }
                 }
                 // 漏按了一个键: a letter the keys skipped (don for dong, tia for tian), once per syllable like a slip
@@ -461,6 +476,7 @@ public final class Decoder {
                     next = Array(plain) + Array(slips)
                 }
                 pos += 1
+                if let j = jumped.removeValue(forKey: pos) { next += j }
                 for st in next {
                     let cost = st.score - (st.corrected ? correctionPenalty : 0)
                     for id in st.node.ids { emit(Span(end: pos, id: id, spatial: cost, corrected: st.corrected, kind: st.skipped ? 3 : 0)) }
