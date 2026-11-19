@@ -66,7 +66,7 @@ final class AppNavigation: ObservableObject {
     @Published var tab: AppTab = .playground
     let playground: PlaygroundModel
 
-    init() { playground = PlaygroundModel() }
+    init() { playground = PlaygroundModel(); tab = KeyboardStatus.isAdded() ? .playground : .enable }
 
     /// 「试一试」 on a demo card: 上手, at the lesson that demo shows, with an empty field.
     func tryDemo(_ title: String) {
