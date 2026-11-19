@@ -48,6 +48,8 @@ jobs:
           xcodebuild build -project MossOttoKeyboard.xcodeproj -scheme MossOttoKeyboard -configuration Debug \
             -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO 2>&1 | tee build.log | grep -E "error:|warning:|\*\* " || true
           grep -q "BUILD SUCCEEDED" build.log
+          - name: Python scripts syntax gate
+        run: python3 -m py_compile Tools/asc.py Tools/check_no_sync_tap.py Tools/check_offline.py Tools/check_snapshots.py
       - name: Render keyboard snapshots (simulator, real UIKit views)
         continue-on-error: true
         timeout-minutes: 20
