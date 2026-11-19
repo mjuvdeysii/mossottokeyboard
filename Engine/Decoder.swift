@@ -309,9 +309,13 @@ public final class Decoder {
             let a = taps[i], b = taps[i + 1]
             var best: [UInt16: Span] = [:]
             pair(a, b, end: i + 2, extra: 0, into: &best)
-            // 相邻换位 (小鹤): 两个键顺序打反 (inhc → nihc) — full keyboard only
-            if transposeEnabled, !a.group, !b.group, a.key != b.key {
-                pair(b, a, end: i + 2, extra: xiaoheTransposePenalty, into: &best)
+            // 相邻换位 (小鹤): 两个键顺序打反 (inhc → nihc), literal keys only
+            if transposeEnabled, !a.group, !b.group, a.key != b.key,
+               let ids = lexicon.codeToSyllables[String([b.key, a.key])] {
+                let s = -correctionPenalty - xiaoheTransposePenalty
+                for id in ids where (best[id]?.spatial ?? -.infinity) < s {
+                    best[id] = Span(end: i + 2, id: id, spatial: s, corrected: true, kind: 3, oneEdit: false)
+                }
             }
             // one key too many: inside the syllable (a x b), or just before it (x a b) — full keyboard only
             if skipEnabled, i + 2 < n, !a.group, !b.group, !taps[i + 2].group {
@@ -353,7 +357,7 @@ public final class Decoder {
     /// 相邻换位: two neighbouring keys typed in reverse order (全拼 nihoa → nihao, womne → women; 小鹤 inhc → nihc).
     public var transposeEnabled = true
     public var transposePenalty = 6.5
-    public var xiaoheTransposePenalty = 6.5
+    public var xiaoheTransposePenalty = 8.2
     /// 句末多按 (全拼): the last key read as one pressed by mistake after the words before it (gongyuann → 公园,
     /// fageiwoo → 发给我), at the cost of a slip (`skipCost`) plus a correction, weighed by the language model against
     /// reading that key as the initial of one more character (公园内, 方案吗). Inside a sentence a key is still never
