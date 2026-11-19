@@ -93,10 +93,10 @@ final class KeyView: UIView {
             label.font = UIFont(name: "PingFangSC-Medium", size: Metrics.symbolFont) ?? Theme.font(Metrics.symbolFont, .medium)
         case .char: label.font = Theme.font(Metrics.symbolFont, .medium)
         case .t9(let d): label.font = Theme.font(d == "'" ? Metrics.functionFont : 20, .semibold)
-        default: label.font = Theme.font(Metrics.functionFont, .semibold)
+        default: label.font = Theme.font(Metrics.functionFont, Theme.plain ? .regular : .semibold)
         }
         if let name = spec.symbol {
-            icon.image = UIImage(systemName: name, withConfiguration: UIImage.SymbolConfiguration(pointSize: Metrics.iconSize, weight: .semibold))
+            icon.image = UIImage(systemName: name, withConfiguration: UIImage.SymbolConfiguration(pointSize: Metrics.iconSize, weight: Theme.plain ? .regular : .semibold))
             icon.isHidden = false
         } else {
             icon.image = nil
@@ -183,8 +183,8 @@ final class KeyView: UIView {
 
     /// The face rests on the lip; pressed, it sinks onto it (the lip all but disappears), as a soft toy key would.
     private var faceRect: CGRect {
-        let l = min(Metrics.lip, bounds.height * 0.1)
-        return pressed ? CGRect(x: 0, y: l - 0.5, width: bounds.width, height: bounds.height - l)
+        let l: CGFloat = Theme.plain ? 0 : min(Metrics.lip, bounds.height * 0.1)
+        return pressed ? CGRect(x: 0, y: Theme.plain ? 0 : l - 0.5, width: bounds.width, height: bounds.height - l)
                        : CGRect(x: 0, y: 0, width: bounds.width, height: bounds.height - l)
     }
 
@@ -195,13 +195,14 @@ final class KeyView: UIView {
     }
 
     private func layoutCap() {
-        let l = min(Metrics.lip, bounds.height * 0.1)
+        let l: CGFloat = Theme.plain ? 0 : min(Metrics.lip, bounds.height * 0.1)
+        let cr: CGFloat = Theme.plain ? 9.0 : Metrics.cornerRadius
         let f = faceRect
         CATransaction.begin(); CATransaction.setDisableActions(true)
-        lip.cornerRadius = Metrics.cornerRadius
-        face.cornerRadius = Metrics.cornerRadius
+        lip.cornerRadius = cr
+        face.cornerRadius = cr
         lip.frame = CGRect(x: 0, y: l, width: bounds.width, height: bounds.height - l)
-        lip.shadowPath = UIBezierPath(roundedRect: lip.bounds, cornerRadius: Metrics.cornerRadius).cgPath
+        lip.shadowPath = UIBezierPath(roundedRect: lip.bounds, cornerRadius: cr).cgPath
         face.frame = f
         rim.frame = f
         rim.path = Self.rimPath(in: f.size)
