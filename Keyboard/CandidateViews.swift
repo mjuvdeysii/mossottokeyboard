@@ -124,7 +124,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         strip.delaysContentTouches = false
         strip.canCancelContentTouches = false; strip.panGestureRecognizer.cancelsTouchesInView = false; strip.panGestureRecognizer.delaysTouchesBegan = false; strip.panGestureRecognizer.delaysTouchesEnded = false
         strip.scrollsToTop = false
-        strip.contentInsetAdjustmentBehavior = .never
+        strip.contentInsetAdjustmentBehavior = .never; if #available(iOS 26.0, *) { strip.topEdgeEffect.isHidden = true; strip.bottomEdgeEffect.isHidden = true; strip.leftEdgeEffect.isHidden = true; strip.rightEdgeEffect.isHidden = true }
         strip.backgroundColor = .clear
         strip.panGestureRecognizer.addTarget(self, action: #selector(stripPanned(_:)))
         stripBox.backgroundColor = .clear
@@ -720,7 +720,7 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         super.init(frame: frame)
         backgroundColor = Theme.touchable   // on the system glass, like the keys (never fully clear: see Theme.touchable)
         collection.backgroundColor = .clear
-        collection.contentInsetAdjustmentBehavior = .never
+        collection.contentInsetAdjustmentBehavior = .never; if #available(iOS 26.0, *) { collection.topEdgeEffect.isHidden = true; collection.bottomEdgeEffect.isHidden = true }
         collection.alwaysBounceHorizontal = false
         collection.showsHorizontalScrollIndicator = false
         collection.dataSource = self
@@ -878,7 +878,7 @@ final class SettingsPanelView: UIView {
         scroll.addSubview(stack)
         scroll.alwaysBounceHorizontal = false
         scroll.showsHorizontalScrollIndicator = false
-        scroll.contentInsetAdjustmentBehavior = .never   // no safe-area inset: the list starts under the header
+        scroll.contentInsetAdjustmentBehavior = .never; if #available(iOS 26.0, *) { scroll.topEdgeEffect.isHidden = true; scroll.bottomEdgeEffect.isHidden = true }   // no safe-area inset: the list starts under the header
         addSubview(scroll)
 
         section("输入", rows: [
@@ -1274,7 +1274,7 @@ final class SyllablePickerView: UIView {
         clipsToBounds = true
         scroll.showsHorizontalScrollIndicator = false
         scroll.alwaysBounceHorizontal = false
-        scroll.contentInsetAdjustmentBehavior = .never
+        scroll.contentInsetAdjustmentBehavior = .never; if #available(iOS 26.0, *) { scroll.topEdgeEffect.isHidden = true; scroll.bottomEdgeEffect.isHidden = true }
         addSubview(scroll)
         isAccessibilityElement = false
     }
