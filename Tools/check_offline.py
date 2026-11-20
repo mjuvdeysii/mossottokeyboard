@@ -18,7 +18,7 @@ ROOT = sys.argv[1] if len(sys.argv) > 1 else "."
 KEYBOARD = os.path.join(ROOT, "Keyboard")
 
 ALLOWED_SUITE_RX = re.compile(
-    r'\bsuiteName\s*:\s*(?:"group\.app\.mossling\.keyboard"|Self\.appGroupID|appGroupID)\b'
+    r'\bsuiteName\s*:\s*(?:"group\.app\.mossling\.keyboard"|(?:Self\.)?appGroupID\b)'
 )
 
 # An allowed escape hatch is a comment on the same line, e.g. a doc line that
