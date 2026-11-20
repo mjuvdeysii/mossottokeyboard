@@ -95,7 +95,7 @@ final class SystemFeedbackPlayer: FeedbackPlayer {
     private(set) var played = 0
     /// Click sounds are started off the main thread: AudioServicesPlaySystemSound can block for a few milliseconds
     /// (most of all on the first sound after the keyboard appears), and the key press must not wait for it.
-    private static let soundQueue = DispatchQueue(label: "mosto.keysound", qos: .userInteractive)
+    private static let soundQueue = DispatchQueue(label: "mosto.keysound", qos: .userInteractive, attributes: .concurrent)
 
     init(view: UIView) {
         self.view = view
