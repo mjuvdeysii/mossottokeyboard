@@ -81,8 +81,8 @@ struct LayoutContext: Equatable {
 /// Symbol third rows: 1.5 | 6 × 7/6 | 1.5. Every page fits on screen, nothing scrolls.
 enum Metrics {
     /// The system keyboard's candidate / prediction strip (no separate pinyin line: the pinyin goes into the field).
-    static let toolbarHeight: CGFloat = 44
-    static let rowPitch: CGFloat = 51
+    static let toolbarHeight: CGFloat = 42
+    static let rowPitch: CGFloat = 50
     static let rowPitchLandscape: CGFloat = 40
     static let toolbarHeightLandscape: CGFloat = 38
     static let gapX: CGFloat = 6
