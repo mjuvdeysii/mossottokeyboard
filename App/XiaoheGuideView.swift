@@ -68,7 +68,7 @@ struct XiaoheGuideContent: View {
             }
 
             Card(title: "学习模式") {
-                Text("键盘设置（按住 😊 键）› 小鹤双拼 › 键位提示：打开后，小鹤方案下每个字母键上会显示它代表的声母和韵母，不用另外看图。记熟后可以关掉。横屏时键帽太矮，只显示字母。")
+                Text("键盘设置（按住表情键）› 小鹤双拼 › 键位提示：打开后，小鹤方案下每个字母键上会显示它代表的声母和韵母，不用另外看图。记熟后可以关掉。横屏时键帽太矮，只显示字母。")
                     .font(.subheadline).fixedSize(horizontal: false, vertical: true)
             }
 
