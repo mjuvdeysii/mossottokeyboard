@@ -1178,15 +1178,35 @@ final class SettingsPanelView: UIView {
     }
 }
 
+extension Notification.Name {
+    static let mostoSettingsDidChange = Notification.Name("app.mossling.keyboard.settingsDidChange")
+}
+
 final class KeyboardSettings {
+    static let appGroupID = "group.app.mossling.keyboard"
     static let shared = KeyboardSettings()
-    private let d = UserDefaults.standard
+    private let d: UserDefaults
 
     /// Every choice is stored the moment it is made and only ever changed by the user: an update never resets it
     /// (the keyboard's defaults live in its own container, which iOS keeps across updates).
+    /// When the local App Group container is available, settings are migrated once from standard defaults so the
+    /// companion app and keyboard share preferences strictly on-device.
     /// A first install starts in 全拼. Earlier versions started in 小鹤双拼 without storing it: a keyboard that has
     /// been used before (it stored touch habits or any setting) keeps 小鹤双拼, written down now so it stays.
     private init() {
+        let standard = UserDefaults.standard
+        if let group = UserDefaults(suiteName: Self.appGroupID) {
+            if !group.bool(forKey: "migratedToAppGroup") {
+                let keys = ["scheme", "autocorrect", "xiaoheGuide", "english", "pinyinGrid", "numberPad", "style", "appearance", "feedback", "keySound", "keyOffsets", "offsetX", "offsetY"]
+                for k in keys where group.object(forKey: k) == nil {
+                    if let v = standard.object(forKey: k) { group.set(v, forKey: k) }
+                }
+                group.set(true, forKey: "migratedToAppGroup")
+            }
+            d = group
+        } else {
+            d = standard
+        }
         if d.object(forKey: "scheme") == nil {
             let usedBefore = ["offsetX", "keyOffsets", "appearance", "autocorrect", "english", "pinyinGrid", "feedback", "keySound"]
                 .contains { d.object(forKey: $0) != nil }
@@ -1194,56 +1214,60 @@ final class KeyboardSettings {
         }
     }
 
+    private func notify() {
+        NotificationCenter.default.post(name: .mostoSettingsDidChange, object: nil)
+    }
+
     /// 0 小鹤双拼, 1 全拼 (PinyinScheme raw value). First install: 全拼 (see init).
     var scheme: Int {
         get { d.object(forKey: "scheme") as? Int ?? 1 }
-        set { d.set(newValue, forKey: "scheme") }
+        set { d.set(newValue, forKey: "scheme"); notify() }
     }
     var autocorrect: Bool {
         get { d.object(forKey: "autocorrect") as? Bool ?? true }
-        set { d.set(newValue, forKey: "autocorrect") }
+        set { d.set(newValue, forKey: "autocorrect"); notify() }
     }
     /// 小鹤键位提示 (learning mode): letter keys show the initials and finals they stand for.
     var xiaoheGuide: Bool {
         get { d.object(forKey: "xiaoheGuide") as? Bool ?? false }
-        set { d.set(newValue, forKey: "xiaoheGuide") }
+        set { d.set(newValue, forKey: "xiaoheGuide"); notify() }
     }
     /// 中英混输: English words offered among the Chinese candidates.
     var english: Bool {
         get { d.object(forKey: "english") as? Bool ?? true }
-        set { d.set(newValue, forKey: "english") }
+        set { d.set(newValue, forKey: "english"); notify() }
     }
     /// Chinese typed on the 九宫格 pinyin keypad (on) or the full keyboard (off).
     var pinyinGrid: Bool {
         get { d.object(forKey: "pinyinGrid") as? Bool ?? false }
-        set { d.set(newValue, forKey: "pinyinGrid") }
+        set { d.set(newValue, forKey: "pinyinGrid"); notify() }
     }
     /// 123 opens the 九宫格 number pad (on) or the full numbers-and-symbols page (off). Until chosen in settings it
     /// follows the Chinese layout: typing on the 九宫格 means numbers on the keypad too.
     var numberPad: Bool {
         get { d.object(forKey: "numberPad") as? Bool ?? pinyinGrid }
-        set { d.set(newValue, forKey: "numberPad") }
+        set { d.set(newValue, forKey: "numberPad"); notify() }
     }
     /// 0 自动 (follows the system's light / dark mode), 1 日光, 2 夜灯. (The old 3 "晚上" reads as 自动.)
     /// 0 Mosto, 1 简洁 (无主题).
     var style: Int {
         get { d.object(forKey: "style") as? Int ?? 0 }
-        set { d.set(newValue, forKey: "style") }
+        set { d.set(newValue, forKey: "style"); notify() }
     }
     var appearance: Int {
         get { min(d.object(forKey: "appearance") as? Int ?? 0, 3) % 3 }
-        set { d.set(newValue, forKey: "appearance") }
+        set { d.set(newValue, forKey: "appearance"); notify() }
     }
     /// Haptic tap on key down (the key kept its old name: it used to switch sound and haptics together).
     var feedback: Bool {
         get { d.object(forKey: "feedback") as? Bool ?? true }
-        set { d.set(newValue, forKey: "feedback") }
+        set { d.set(newValue, forKey: "feedback"); notify() }
     }
     /// The system keyboard's click sounds on key down (follow the ring / silent switch). Until set on its own it
     /// follows the old combined switch.
     var keySound: Bool {
         get { d.object(forKey: "keySound") as? Bool ?? feedback }
-        set { d.set(newValue, forKey: "keySound") }
+        set { d.set(newValue, forKey: "keySound"); notify() }
     }
     /// Learned per-key touch offsets (SpatialModel.keyOffsetsList).
     var keyOffsets: [String: [Double]] {
