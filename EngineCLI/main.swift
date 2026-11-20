@@ -739,6 +739,23 @@ case "bench", "gate":
             print(String(format: "== two keys wrong (one too many or left out, in each half): sentences top1 %.1f%%  top3 %.1f%%  (n=%d)",
                          metrics["two.sentences.top1"]!, metrics["two.sentences.top3"]!, wn))
         }
+        // 相邻换位: two adjacent distinct keys swapped inside a sentence, both schemes. transpose.sentences.top1 / top3 (%)
+        do {
+            var rngS = RNG(s: 13), sok = 0, s3 = 0, sn = 0
+            for (t, ids) in sentItems {
+                var letters = Array(codeLetters(ids))
+                guard letters.count >= 4 else { continue }
+                let p = 1 + Int(rngS.next() * Double(letters.count - 3))
+                guard letters[p] != letters[p + 1] else { continue }
+                letters.swapAt(p, p + 1)
+                let c = decoder.decode(letters.map { Tap.exact($0) }).candidates
+                sn += 1
+                if c.first?.text == t { sok += 1 }
+                if c.prefix(3).contains(where: { $0.text == t }) { s3 += 1 }
+            }
+            metrics["transpose.sentences.top1"] = 100 * Double(sok) / Double(max(sn, 1))
+            metrics["transpose.sentences.top3"] = 100 * Double(s3) / Double(max(sn, 1))
+        }
         metrics["fix.caption.coverage"] = 100 * Double(fixSaid) / Double(max(fixMarked, 1))
         print(String(format: "== corrections that say what changed: %.1f%% (%d of %d)", metrics["fix.caption.coverage"]!, fixSaid, fixMarked))
         if mtotal > 0 { print(String(format: "== one key missing: sentences top1 %.1f%%", metrics["missing.sentences.top1"]!)) }
@@ -1152,7 +1169,7 @@ case "bench", "gate":
             let r = r1Typos(env["TYPOS"] ?? "EngineCLI/r1_typos.tsv", debug: env["TYPO_DEBUG"] != nil)
             print("RECORD r1.top1 \(r.top1)/\(r.total)  r1.top3 \(r.top3)/\(r.total)  r1.exact.top1 \(r.exact1)/\(r.total)  r1.exact.top3 \(r.exact3)/\(r.total)")
         }
-        for k in ["two.sentences.top1", "two.sentences.top3"] {
+        for k in ["two.sentences.top1", "two.sentences.top3", "transpose.sentences.top1", "transpose.sentences.top3"] {
             print(String(format: "RECORD %@ %.2f", k, metrics[k] ?? .nan))
         }
         for (k, v, atLeast) in floors {
