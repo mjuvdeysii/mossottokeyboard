@@ -699,6 +699,7 @@ public final class Decoder {
         for i in 0..<n where reach[i] {
             for sp in spansFrom[i] { reach[sp.end] = true }
             if scheme == .xiaohe && missingKeyEnabled && i + 3 <= n { reach[i + 3] = true }
+        if scheme == .xiaohe && transposeEnabled && correctionEnabled && i + 4 <= n { reach[i + 4] = true }
             guard mixing, let english else { continue }
             var word = ""
             for j in i..<min(n, i + 16) {
@@ -727,6 +728,28 @@ public final class Decoder {
         }
 
         for i in 0..<n where reach[i] {
+            // 跨音节换位 (小鹤): 词驱动 4 键跨界换位 (nhic → ni + hc = 你好)，只对两音节词库词生效
+            if scheme == .xiaohe, transposeEnabled, correctionEnabled, i + 4 <= n {
+                let a = taps[i], b = taps[i + 1], c = taps[i + 2], d = taps[i + 3]
+                if !a.group, !b.group, !c.group, !d.group, b.key != c.key,
+                   let s1s = lexicon.codeToSyllables[String([a.key, c.key])],
+                   let s2s = lexicon.codeToSyllables[String([b.key, d.key])] {
+                    let sp = -correctionPenalty - xiaoheTransposePenalty
+                    for s1 in s1s {
+                        for s2 in s2s {
+                            let follow = lexicon.followers(first: s1, second: s2)
+                            for idx in follow.pairs {
+                                let score = Double(lexicon.entry(idx).score) / 100
+                                if score < minWord { break }
+                                let base = score - wordPenalty
+                                guard accepts(i, i + 4, 2, base + sp) else { break }
+                                insert(Edge(start: i, end: i + 4, score: base + sp, corrected: true, entry: idx,
+                                            userText: nil, ids: [], cuts: [i + 2, i + 4], kinds: [3, 3]))
+                            }
+                        }
+                    }
+                   }
+            }
             for first in spansFrom[i] {
                 let firstEnd = first.end
                 // a slip read into the letters of a common English word typed whole (bu·g for bug) pays more
