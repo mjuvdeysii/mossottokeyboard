@@ -41,9 +41,9 @@ struct FeedbackResponse: Equatable {
 /// or the keyboard are firm, things that move in steps tick, and Mosto is soft. Nothing is felt for what the keyboard
 /// does on its own (corrections, suggestions, Mosto idling) — only for what a finger does.
 enum FeedbackModel {
-    static let letter: CGFloat = 0.6
+    static let letter: CGFloat = 0.88
     static let function: CGFloat = 1.0
-    static let mostoIntensity: CGFloat = 0.7
+    static let mostoIntensity: CGFloat = 0.85
 
     static func response(for event: FeedbackEvent) -> FeedbackResponse {
         switch event {
