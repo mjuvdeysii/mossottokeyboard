@@ -195,7 +195,7 @@ final class EngineHost {
                 self.readingsReady = true
                 d.setReadings(Self.compactReadings(for: lex))
             }
-            var raw = self.decoder?.predictions(after: ctx) ?? []; var singles = 0; var p = raw.filter { if $0.count == 1 { singles += 1; return singles <= 2 }; return true }; let tail = String(ctx); if !p.isEmpty { for (k, kao) in Self.kaomojiHints.sorted(by: { $0.key.count > $1.key.count }) where tail.hasSuffix(k) { if let em = self.emojiHints[k]?.first, !p.contains(em) { p.insert(em, at: min(2, p.count)) }; if !p.contains(kao) { p.insert(kao, at: min(3, p.count)) }; break } }; p = Array(p.prefix(5))
+            let raw = self.decoder?.predictions(after: ctx) ?? []; var singles = 0; var p = raw.filter { if $0.count == 1 { singles += 1; return singles <= 2 }; return true }; let tail = String(ctx); if !p.isEmpty { for (k, kao) in Self.kaomojiHints.sorted(by: { $0.key.count > $1.key.count }) where tail.hasSuffix(k) { if let em = self.emojiHints[k]?.first, !p.contains(em) { p.insert(em, at: min(2, p.count)) }; if !p.contains(kao) { p.insert(kao, at: min(3, p.count)) }; break } }; p = Array(p.prefix(5))
             DispatchQueue.main.async { done(p) }
         }
     }
