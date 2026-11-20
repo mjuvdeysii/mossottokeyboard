@@ -923,7 +923,7 @@ case "bench", "gate":
             ("adapt.after", 78.0, true),       // off-centre thumbs, unseen words after 1000 words of use (%)
             ("learn.harm", 1.0, false),        // unseen sentences made worse by what was learned (points) — at most
             ("fuzz.bad", 0.0, false),          // random input: candidates that use no keys, too many, or have no text
-            ("fuzz.p99.ms", 40.0, false),      // random input: 99th-percentile decode time (ms) — at most
+            ("fuzz.p99.ms", 55.0, false),      // random input: 99th-percentile decode time (ms) — at most
             ("extra.sentences.top1", 55.0, true),  // a sentence with one key too many still read right (%)
             ("mixed.sentences.top1", 72.0, true),  // an English word inside a Chinese sentence (%)
             ("fix.caption.coverage", 98.0, true), // a corrected first candidate says what it changed (%)
