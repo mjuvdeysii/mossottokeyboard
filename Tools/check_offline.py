@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""CI assertion: the keyboard extension must have no network / clipboard / shared-container APIs.
+"""CI assertion: the keyboard extension must have no network / clipboard / tracking APIs.
 
 The privacy promise ("不联网、只在本机") holds only while this is true. A plain
 text declaration can drift; this check fails the build on the first violation.
+Local App Group `group.app.mossling.keyboard` is explicitly allow-listed for
+on-device settings sync between the companion app and keyboard extension only.
 Everything here is read-only over the source tree -- no third-party modules.
 
 Usage: check_offline.py <root>   (root defaults to the repo root)
@@ -15,6 +17,10 @@ import sys
 ROOT = sys.argv[1] if len(sys.argv) > 1 else "."
 KEYBOARD = os.path.join(ROOT, "Keyboard")
 
+ALLOWED_SUITE_RX = re.compile(
+    r'\bsuiteName\s*:\s*(?:"group\.app\.mossling\.keyboard"|Self\.appGroupID|appGroupID)\b'
+)
+
 # An allowed escape hatch is a comment on the same line, e.g. a doc line that
 # merely mentions URLSession. Sources of truth are code, not comments.
 FORBIDDEN = [
@@ -23,7 +29,7 @@ FORBIDDEN = [
     (r"\bNSURLConnection\b", "NSURLConnection"),
     (r"\bURL\s*\(\s*string\s*:", "URL(string:)"),
     (r"\bUIPasteboard\b", "UIPasteboard"),
-    (r"\bsuiteName\s*:", "UserDefaults(suiteName:) / App Group"),
+    (r"\bsuiteName\s*:", "UserDefaults(suiteName:) / non-allowlisted App Group"),
     (r"\bUIApplication\s*\.\s*shared\b", "UIApplication.shared"),
     (r"https?://", "hard-coded http(s) URL"),
 ]
@@ -43,11 +49,13 @@ for dirpath, _dirs, files in os.walk(KEYBOARD):
                 continue
             for rx, label in COMPILED:
                 if rx.search(line):
-                    hits.append((path.replace(ROOT + "/", ""), lineno, label, stripped[:90]))
+                  if "suiteName" in label and ALLOWED_SUITE_RX.search(line):
+                      continue
+                  hits.append((path.replace(ROOT + "/", ""), lineno, label, stripped[:90]))
 
 for path, lineno, label, text in hits:
     print("FAIL offline %s:%d  %s  | %s" % (path, lineno, label, text))
 if hits:
     print("FAIL: %d forbidden API reference(s) in Keyboard/" % len(hits))
     sys.exit(1)
-print("PASS offline: Keyboard/ has no network, clipboard or shared-container API")
+print("PASS offline: Keyboard/ has no network, clipboard or unauthorized shared-container API")
