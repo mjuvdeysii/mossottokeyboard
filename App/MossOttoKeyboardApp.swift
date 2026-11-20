@@ -98,48 +98,234 @@ private let featureItems: [FeatureItem] = [
                 detail: "键盘扩展全程本机计算，不含任何网络请求、剪贴板读取或第三方 SDK，保持默认权限即可正常打字。", lessonTitle: nil),
 ]
 
-/// Tab 1 (首屏): Zero-scroll single-screen Bento hub showcasing all keyboard features via tap-to-drill.
+private enum StageMood: Int, CaseIterable {
+    case day = 0, night = 1, plain = 2
+    var label: String {
+        switch self { case .day: return "潮玩日光"; case .night: return "潮玩夜灯"; case .plain: return "原生简洁" }
+    }
+    var subtitle: String {
+        switch self {
+        case .day: return "软胶厚底沿 · 台灯暖光"
+        case .night: return "暗夜绒面 · 暖金微光"
+        case .plain: return "1:1 复刻 · 液态玻璃"
+        }
+    }
+}
+
+/// Custom hand-drawn SwiftUI vector miniature illustrations for each feature card (zero emoji, zero generic symbols).
+private struct FeatureGlyphArt: View {
+    let id: String
+    var large = false
+
+    var body: some View {
+        let s: CGFloat = large ? 64 : 34
+        Canvas { ctx, size in
+            let w = size.width, h = size.height
+            let violet = Color(red: 0.42, green: 0.28, blue: 0.78)
+            let gold = Color(red: 0.90, green: 0.68, blue: 0.24)
+            let ink = Color.primary.opacity(0.82)
+            let softFill = violet.opacity(0.14)
+            switch id {
+            case "fix":
+                let k1 = CGRect(x: w * 0.08, y: h * 0.34, width: w * 0.40, height: h * 0.50)
+                let k2 = CGRect(x: w * 0.52, y: h * 0.20, width: w * 0.40, height: h * 0.50)
+                ctx.fill(Path(roundedRect: k1, cornerRadius: w * 0.12), with: .color(softFill))
+                ctx.stroke(Path(roundedRect: k1, cornerRadius: w * 0.12), with: .color(violet), lineWidth: large ? 2.2 : 1.5)
+                ctx.fill(Path(roundedRect: k2, cornerRadius: w * 0.12), with: .color(gold.opacity(0.22)))
+                ctx.stroke(Path(roundedRect: k2, cornerRadius: w * 0.12), with: .color(gold), lineWidth: large ? 2.2 : 1.5)
+                var arc = Path()
+                arc.move(to: CGPoint(x: w * 0.26, y: h * 0.26))
+                arc.addQuadCurve(to: CGPoint(x: w * 0.72, y: h * 0.14), control: CGPoint(x: w * 0.48, y: h * 0.02))
+                ctx.stroke(arc, with: .color(violet), style: StrokeStyle(lineWidth: large ? 2.2 : 1.5, lineCap: .round))
+            case "scheme":
+                let box = CGRect(x: w * 0.10, y: h * 0.16, width: w * 0.80, height: h * 0.68)
+                let left = CGRect(x: w * 0.10, y: h * 0.16, width: w * 0.40, height: h * 0.68)
+                ctx.fill(Path(roundedRect: left, cornerRadius: w * 0.14), with: .color(violet.opacity(0.22)))
+                ctx.stroke(Path(roundedRect: box, cornerRadius: w * 0.16), with: .color(violet), lineWidth: large ? 2.2 : 1.5)
+                var div = Path()
+                div.move(to: CGPoint(x: w * 0.50, y: h * 0.24))
+                div.addLine(to: CGPoint(x: w * 0.50, y: h * 0.76))
+                ctx.stroke(div, with: .color(gold), style: StrokeStyle(lineWidth: large ? 2.0 : 1.4, lineCap: .round))
+            case "mix":
+                let back = CGRect(x: w * 0.34, y: h * 0.12, width: w * 0.54, height: h * 0.54)
+                let front = CGRect(x: w * 0.12, y: h * 0.34, width: w * 0.54, height: h * 0.54)
+                ctx.fill(Path(roundedRect: back, cornerRadius: w * 0.14), with: .color(gold.opacity(0.20)))
+                ctx.stroke(Path(roundedRect: back, cornerRadius: w * 0.14), with: .color(gold), lineWidth: large ? 2.0 : 1.4)
+                ctx.fill(Path(roundedRect: front, cornerRadius: w * 0.14), with: .color(softFill))
+                ctx.stroke(Path(roundedRect: front, cornerRadius: w * 0.14), with: .color(violet), lineWidth: large ? 2.2 : 1.5)
+            case "kaomoji":
+                var crown = Path()
+                crown.move(to: CGPoint(x: w * 0.24, y: h * 0.46))
+                crown.addLine(to: CGPoint(x: w * 0.30, y: h * 0.20))
+                crown.addLine(to: CGPoint(x: w * 0.44, y: h * 0.34))
+                crown.addLine(to: CGPoint(x: w * 0.50, y: h * 0.14))
+                crown.addLine(to: CGPoint(x: w * 0.56, y: h * 0.34))
+                crown.addLine(to: CGPoint(x: w * 0.70, y: h * 0.20))
+                crown.addLine(to: CGPoint(x: w * 0.76, y: h * 0.46))
+                crown.closeSubpath()
+                ctx.fill(crown, with: .color(gold.opacity(0.32)))
+                ctx.stroke(crown, with: .color(gold), style: StrokeStyle(lineWidth: large ? 2.2 : 1.5, lineJoin: .round))
+                var wing = Path()
+                wing.move(to: CGPoint(x: w * 0.12, y: h * 0.64))
+                wing.addQuadCurve(to: CGPoint(x: w * 0.50, y: h * 0.74), control: CGPoint(x: w * 0.30, y: h * 0.88))
+                wing.addQuadCurve(to: CGPoint(x: w * 0.88, y: h * 0.64), control: CGPoint(x: w * 0.70, y: h * 0.88))
+                ctx.stroke(wing, with: .color(violet), style: StrokeStyle(lineWidth: large ? 2.4 : 1.6, lineCap: .round))
+            case "glass":
+                let base = CGRect(x: w * 0.10, y: h * 0.34, width: w * 0.56, height: h * 0.52)
+                let lip = CGRect(x: w * 0.10, y: h * 0.42, width: w * 0.56, height: h * 0.44)
+                let top = CGRect(x: w * 0.34, y: h * 0.14, width: w * 0.56, height: h * 0.52)
+                ctx.fill(Path(roundedRect: lip, cornerRadius: w * 0.14), with: .color(violet.opacity(0.32)))
+                ctx.fill(Path(roundedRect: base, cornerRadius: w * 0.14), with: .color(softFill))
+                ctx.stroke(Path(roundedRect: base, cornerRadius: w * 0.14), with: .color(violet), lineWidth: large ? 2.0 : 1.4)
+                ctx.fill(Path(roundedRect: top, cornerRadius: w * 0.18), with: .color(Color.white.opacity(0.55)))
+                ctx.stroke(Path(roundedRect: top, cornerRadius: w * 0.18), with: .color(ink.opacity(0.45)), lineWidth: large ? 2.0 : 1.4)
+            default:
+                var shield = Path()
+                shield.move(to: CGPoint(x: w * 0.50, y: h * 0.12))
+                shield.addLine(to: CGPoint(x: w * 0.82, y: h * 0.24))
+                shield.addLine(to: CGPoint(x: w * 0.78, y: h * 0.58))
+                shield.addQuadCurve(to: CGPoint(x: w * 0.50, y: h * 0.88), control: CGPoint(x: w * 0.70, y: h * 0.78))
+                shield.addQuadCurve(to: CGPoint(x: w * 0.22, y: h * 0.58), control: CGPoint(x: w * 0.30, y: h * 0.78))
+                shield.addLine(to: CGPoint(x: w * 0.18, y: h * 0.24))
+                shield.closeSubpath()
+                ctx.fill(shield, with: .color(softFill))
+                ctx.stroke(shield, with: .color(violet), style: StrokeStyle(lineWidth: large ? 2.2 : 1.5, lineJoin: .round))
+                var check = Path()
+                check.move(to: CGPoint(x: w * 0.36, y: h * 0.52))
+                check.addLine(to: CGPoint(x: w * 0.47, y: h * 0.63))
+                check.addLine(to: CGPoint(x: w * 0.66, y: h * 0.40))
+                ctx.stroke(check, with: .color(gold), style: StrokeStyle(lineWidth: large ? 2.4 : 1.6, lineCap: .round, lineJoin: .round))
+            }
+        }
+        .frame(width: s, height: s)
+    }
+}
+
+/// Tactile miniature 3-keycap specimen showing 3D soft-vinyl vs iOS 27 Liquid Glass craft.
+private struct MiniKeySpecimen: View {
+    let mood: StageMood
+
+    var body: some View {
+        let keys = ["m", "o", "中"]
+        let isPlain = mood == .plain
+        let isNight = mood == .night
+        let faceColor: Color = isPlain ? .white : (isNight ? Color(red: 0.25, green: 0.20, blue: 0.38) : Color(red: 0.99, green: 0.97, blue: 0.93))
+        let lipColor: Color = isPlain ? Color.black.opacity(0.08) : (isNight ? Color(red: 0.14, green: 0.10, blue: 0.24) : Color(red: 0.82, green: 0.76, blue: 0.66))
+        let inkColor: Color = isNight ? Color(red: 1.0, green: 0.95, blue: 0.85) : Color(red: 0.16, green: 0.12, blue: 0.26)
+        HStack(spacing: 5) {
+            ForEach(keys, id: \.self) { label in
+                ZStack {
+                    RoundedRectangle(cornerRadius: isPlain ? 8 : 9, style: .continuous)
+                        .fill(lipColor)
+                        .offset(y: isPlain ? 1 : 3.5)
+                    RoundedRectangle(cornerRadius: isPlain ? 8 : 9, style: .continuous)
+                        .fill(faceColor)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: isPlain ? 8 : 9, style: .continuous)
+                                .stroke(isPlain ? Color.black.opacity(0.06) : Color.white.opacity(isNight ? 0.16 : 0.75), lineWidth: 0.8)
+                        )
+                    Text(label)
+                        .font(.system(size: label == "中" ? 12 : 14, weight: isPlain ? .regular : .medium, design: isPlain ? .default : .rounded))
+                        .foregroundStyle(inkColor)
+                }
+                .frame(width: 30, height: 32)
+            }
+        }
+    }
+}
+
+/// Tab 1 (首屏): Art-directed single-screen showcase with hand-drawn Mosto stage, tactile keycap specimen, and custom vector Bento cards.
 private struct FeaturesHubScreen: View {
     @Environment(\.appNavigation) private var nav
     @Environment(\.scenePhase) private var phase
     @State private var added = KeyboardStatus.isAdded()
-    @State private var previewPlain = false
+    @State private var mood: StageMood = .day
+    @State private var blink = false
+    @State private var hop = false
     @State private var selected: FeatureItem? = nil
 
     private let cols = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
 
+    private var stageBg: LinearGradient {
+        switch mood {
+        case .day:
+            return LinearGradient(colors: [Color(red: 0.98, green: 0.95, blue: 0.89), Color(red: 0.94, green: 0.91, blue: 0.97)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        case .night:
+            return LinearGradient(colors: [Color(red: 0.15, green: 0.11, blue: 0.27), Color(red: 0.24, green: 0.18, blue: 0.40)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        case .plain:
+            return LinearGradient(colors: [Color(red: 0.93, green: 0.94, blue: 0.96), Color(red: 0.88, green: 0.90, blue: 0.94)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        }
+    }
+
+    private var stageInk: Color { mood == .night ? Color(red: 1.0, green: 0.96, blue: 0.88) : Color(red: 0.16, green: 0.12, blue: 0.28) }
+    private var stageSub: Color { mood == .night ? Color.white.opacity(0.72) : Color.black.opacity(0.56) }
+
     var body: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 12) {
-                Image(uiImage: mostoImage(previewPlain ? "MostoToyBlink" : "MostoToy"))
-                    .resizable().scaledToFit()
-                    .frame(width: 56, height: 56)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("按偏了，也能打对").font(.headline)
-                    Text(previewPlain ? "简洁模式 · 1:1 原生液态玻璃" : "Mosto 潮玩 · 3D 软胶双光")
-                        .font(.caption).foregroundStyle(.secondary)
+        VStack(spacing: 11) {
+            VStack(spacing: 10) {
+                HStack(spacing: 12) {
+                    ZStack {
+                        RadialGradient(colors: [Color(red: 1.0, green: 0.84, blue: 0.48).opacity(mood == .night ? 0.38 : 0.45), .clear], center: .center, startRadius: 4, endRadius: 42)
+                            .frame(width: 82, height: 82)
+                        Image(uiImage: mostoImage(mood == .night ? "MostoToyNight" : (blink ? "MostoToyBlink" : "MostoToy")))
+                            .resizable().scaledToFit()
+                            .frame(width: 78, height: 78)
+                            .scaleEffect(x: hop ? 1.06 : 1, y: hop ? 0.94 : 1, anchor: .bottom)
+                            .offset(y: hop ? -4 : 0)
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.2, dampingFraction: 0.45)) { hop = true; blink = true }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.55)) { hop = false }
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.26) { blink = false }
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("按偏了，也能打对")
+                            .font(.headline.weight(.semibold))
+                            .foregroundStyle(stageInk)
+                        Text(mood.subtitle)
+                            .font(.caption)
+                            .foregroundStyle(stageSub)
+                        MiniKeySpecimen(mood: mood)
+                            .padding(.top, 2)
+                    }
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: 4)
-                Picker("", selection: $previewPlain) {
-                    Text("潮玩").tag(false)
-                    Text("简洁").tag(true)
+
+                HStack(spacing: 6) {
+                    ForEach(StageMood.allCases, id: \.self) { m in
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) { mood = m }
+                        } label: {
+                            Text(m.label)
+                                .font(.caption.weight(mood == m ? .semibold : .regular))
+                                .foregroundStyle(mood == m ? (mood == .night ? Color(red: 0.15, green: 0.11, blue: 0.27) : .white) : stageSub)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 6)
+                                .background(Capsule().fill(mood == m ? (mood == .night ? Color(red: 1.0, green: 0.85, blue: 0.50) : mostoTint) : Color.black.opacity(mood == .night ? 0.18 : 0.05)))
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
-                .pickerStyle(.segmented)
-                .frame(width: 104)
             }
-            .padding(.horizontal, 14).padding(.vertical, 10)
-            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(stageBg)
+                    .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(Color.white.opacity(mood == .night ? 0.12 : 0.65), lineWidth: 1))
+            )
 
             LazyVGrid(columns: cols, spacing: 10) {
                 ForEach(featureItems) { item in
                     Button { selected = item } label: {
                         VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Image(systemName: item.icon)
-                                    .font(.system(size: 18, weight: .semibold))
-                                    .foregroundStyle(mostoTint)
+                            HStack(alignment: .top) {
+                                FeatureGlyphArt(id: item.id)
                                 Spacer()
-                                Image(systemName: "chevron.right")
+                                Image(systemName: "arrow.up.right")
                                     .font(.caption2.weight(.semibold))
                                     .foregroundStyle(.tertiary)
                             }
@@ -149,7 +335,11 @@ private struct FeaturesHubScreen: View {
                         }
                         .padding(12)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
+                        .background(
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .fill(Color(UIColor.secondarySystemGroupedBackground))
+                                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Color.primary.opacity(0.05), lineWidth: 0.8))
+                        )
                     }
                     .buttonStyle(.plain)
                 }
@@ -161,14 +351,17 @@ private struct FeaturesHubScreen: View {
                 nav?.tab = .guide
             } label: {
                 HStack(spacing: 10) {
-                    Image(systemName: added ? "checkmark.circle.fill" : "keyboard.badge.ellipsis")
-                        .foregroundStyle(added ? Color.green : mostoTint)
+                    Circle()
+                        .fill(added ? Color.green : mostoTint)
+                        .frame(width: 8, height: 8)
                     Text(added ? "Mosto键盘已就绪 · 点击进入互动练手" : "尚未启用键盘 · 30 秒去完成添加")
                         .font(.subheadline.weight(.medium)).foregroundStyle(.primary)
                     Spacer()
-                    Image(systemName: "arrow.right").font(.caption.weight(.bold)).foregroundStyle(mostoTint)
+                    Text(added ? "去练手" : "去开启")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(mostoTint)
                 }
-                .padding(.horizontal, 14).padding(.vertical, 12)
+                .padding(.horizontal, 14).padding(.vertical, 11)
                 .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
             }
             .buttonStyle(.plain)
@@ -179,12 +372,14 @@ private struct FeaturesHubScreen: View {
         .onChange(of: phase) { p in if p == .active { added = KeyboardStatus.isAdded() } }
         .sheet(item: $selected) { item in
             NavigationStack {
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack(spacing: 12) {
-                        Image(systemName: item.icon).font(.title2.weight(.semibold)).foregroundStyle(mostoTint)
-                        VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack(spacing: 16) {
+                        FeatureGlyphArt(id: item.id, large: true)
+                            .padding(10)
+                            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(mostoTint.opacity(0.08)))
+                        VStack(alignment: .leading, spacing: 4) {
                             Text(item.title).font(.title3.weight(.bold))
-                            Text(item.stat).font(.caption).foregroundStyle(.secondary)
+                            Text(item.stat).font(.caption.weight(.medium)).foregroundStyle(mostoTint)
                         }
                     }
                     Text(item.detail).font(.body).fixedSize(horizontal: false, vertical: true)
@@ -345,7 +540,7 @@ struct UsageDetailContent: View {
                 Divider()
                 Usage(icon: "arrow.left.and.right", title: "光标、数字与标点", text: "按住空格左右拖动移动光标。123 打开数字符号页或九宫格数字键盘（键盘设置里选；用九宫格打字时默认九宫格数字，数字输入框也自动换成它）；长按“，”键可选：。？！、…：")
                 Divider()
-                Usage(icon: "face.smiling", title: "表情与键盘设置", text: "😊 表情：常用与八个分类，上下滑动，底栏一点跳到分类。按住 😊 打开键盘设置：输入方案、九宫格、数字键盘、中英混输、自动纠错、震动与按键音、外观。")
+                Usage(icon: "face.smiling", title: "表情与键盘设置", text: "表情键：常用与八个分类，上下滑动，底栏一点跳到分类。按住表情键打开键盘设置：输入方案、九宫格、数字键盘、中英混输、自动纠错、震动与按键音、外观。")
             }
             Card(title: "Mosto 与外观") {
                 Usage(icon: "hand.tap", title: "候选栏左边的 Mosto", text: "候选栏左边的 Mosto：轻点一下打开他的颜文字（右下角“返回”回到键盘），轻点两下切换日光 / 夜灯。")
