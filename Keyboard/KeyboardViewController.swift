@@ -34,6 +34,7 @@ final class KeyboardViewController: UIInputViewController {
     private let syllablePicker = SyllablePickerView()
     private var syllableChoices: (start: Int, choices: [(text: String, keys: [Character])]) = (0, [])
     private var heightConstraint: NSLayoutConstraint?
+    private weak var lastReleasedWindow: UIWindow?
 
     // State
     private var chinese = true
@@ -160,6 +161,7 @@ final class KeyboardViewController: UIInputViewController {
         view.addSubview(root)
         view.clipsToBounds = true
         root.clipsToBounds = true
+        inputView?.allowsSelfSizing = true
         if heightConstraint == nil {
             let c = view.heightAnchor.constraint(equalToConstant: preferredHeight())
             c.priority = UILayoutPriority(999)
@@ -296,6 +298,7 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        inputView?.allowsSelfSizing = true
         if heightConstraint == nil {
             let c = view.heightAnchor.constraint(equalToConstant: preferredHeight())
             c.priority = UILayoutPriority(999)
@@ -346,7 +349,8 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
         super.viewWillTransition(to: size, with: coordinator)
-        heightConstraint?.constant = preferredHeight(landscape: size.width > size.height)
+        let screen = view.window?.windowScene?.screen.bounds ?? UIScreen.main.bounds
+        heightConstraint?.constant = preferredHeight(landscape: size.width > min(screen.width, screen.height) + 1)
     }
 
     private func preferredHeight(landscape: Bool? = nil) -> CGFloat {
@@ -358,7 +362,7 @@ final class KeyboardViewController: UIInputViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         let b = view.bounds
-        if view.window != nil { releaseSystemGestureDelays() }   // the window can change (rotation, app switch)
+    if let w = view.window, w !== lastReleasedWindow { lastReleasedWindow = w; releaseSystemGestureDelays() }
         if !syllablePicker.isHidden, let f = keyboard.keypadSideColumn() { syllablePicker.frame = f }
         root.frame = b
         tintView.frame = b
