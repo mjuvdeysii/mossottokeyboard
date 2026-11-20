@@ -162,12 +162,6 @@ final class KeyboardViewController: UIInputViewController {
         view.clipsToBounds = true
         root.clipsToBounds = true
         inputView?.allowsSelfSizing = true
-        if heightConstraint == nil {
-            let c = view.heightAnchor.constraint(equalToConstant: preferredHeight())
-            c.priority = UILayoutPriority(999)
-            c.isActive = true
-            heightConstraint = c
-        }
         tintView.isUserInteractionEnabled = false
         root.addSubview(tintView)
         loadEngine()
@@ -296,8 +290,8 @@ final class KeyboardViewController: UIInputViewController {
         view.window?.gestureRecognizers?.forEach { $0.delaysTouchesBegan = false; $0.delaysTouchesEnded = false }
     }
 
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
+    override func updateViewConstraints() {
+        super.updateViewConstraints()
         inputView?.allowsSelfSizing = true
         if heightConstraint == nil {
             let c = view.heightAnchor.constraint(equalToConstant: preferredHeight())
@@ -306,6 +300,12 @@ final class KeyboardViewController: UIInputViewController {
             heightConstraint = c
         }
         heightConstraint?.constant = preferredHeight()
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        inputView?.allowsSelfSizing = true
+        view.setNeedsUpdateConstraints()
         lastDocumentID = host.documentIdentifier
         hostEchoesMarked = 0
         lastEchoed = ""
