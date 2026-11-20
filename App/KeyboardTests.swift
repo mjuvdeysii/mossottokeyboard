@@ -366,13 +366,13 @@ enum KeyboardTests {
         // the table, row by row
         func r(_ e: FeedbackEvent) -> FeedbackResponse { FeedbackModel.response(for: e) }
         let rows: [(String, FeedbackEvent, FeedbackResponse)] = [
-            ("letter", .key(.char("a")), FeedbackResponse(kind: .impact, intensity: 0.6, sound: 1104)),
-            ("九宫格 key", .key(.t9("5")), FeedbackResponse(kind: .impact, intensity: 0.6, sound: 1104)),
+            ("letter", .key(.char("a")), FeedbackResponse(kind: .impact, intensity: 0.88, sound: 1104)),
+            ("九宫格 key", .key(.t9("5")), FeedbackResponse(kind: .impact, intensity: 0.88, sound: 1104)),
             ("space", .key(.space), FeedbackResponse(kind: .impact, intensity: 1, sound: 1104)),
             ("delete", .key(.delete), FeedbackResponse(kind: .impact, intensity: 1, sound: 1155)),
             ("return", .key(.ret), FeedbackResponse(kind: .impact, intensity: 1, sound: 1156)),
             ("shift", .key(.shift), FeedbackResponse(kind: .impact, intensity: 1, sound: 1156)),
-            ("candidate", .candidate, FeedbackResponse(kind: .impact, intensity: 0.6, sound: 1104)),
+            ("candidate", .candidate, FeedbackResponse(kind: .impact, intensity: 0.88, sound: 1104)),
             ("undo chip", .undoChip, FeedbackResponse(kind: .impact, intensity: 1, sound: 1155)),
             ("other characters shown", .altShown, FeedbackResponse(kind: .selection, intensity: 1, sound: nil)),
             ("other character chosen", .altMoved, FeedbackResponse(kind: .selection, intensity: 1, sound: nil)),
@@ -381,7 +381,7 @@ enum KeyboardTests {
             ("word delete", .deleteWord, FeedbackResponse(kind: .selection, intensity: 1, sound: nil)),
             ("clear armed", .clearArmed, FeedbackResponse(kind: .selection, intensity: 1, sound: nil)),
             ("clear", .key(.clearInput), FeedbackResponse(kind: .impact, intensity: 1, sound: 1156)),
-            ("Mosto", .mosto, FeedbackResponse(kind: .soft, intensity: 0.7, sound: 1156)),
+            ("Mosto", .mosto, FeedbackResponse(kind: .soft, intensity: 0.85, sound: 1156)),
         ]
         for (name, e, want) in rows { log(r(e) == want, "feedback.table \(name)", "got \(r(e))") }
 
@@ -397,13 +397,13 @@ enum KeyboardTests {
         // in this app the keyboard plays whatever 允许完全访问 says (the 上手 page)
         log(vc.feedbackAllowed, "feedback.inside the app: allowed", "hasFullAccess=\(vc.hasFullAccess)")
         rec.clear(); vc.feel(.key(.char("a")))
-        log(rec.haptics == [.init(kind: .impact, intensity: 0.6)] && rec.sounds == [1104], "feedback.a: one light tap and a click",
+        log(rec.haptics == [.init(kind: .impact, intensity: 0.88)] && rec.sounds == [1104], "feedback.a: one light tap and a click",
             "\(rec.haptics) \(rec.sounds)")
         rec.clear(); vc.feel(.key(.delete))
         log(rec.haptics == [.init(kind: .impact, intensity: 1)] && rec.sounds == [1155], "feedback.delete: one firm tap and the delete click",
             "\(rec.haptics) \(rec.sounds)")
         rec.clear(); vc.feel(.mosto)
-        log(rec.haptics == [.init(kind: .soft, intensity: 0.7)], "feedback.Mosto: soft", "\(rec.haptics)")
+        log(rec.haptics == [.init(kind: .soft, intensity: 0.85)], "feedback.Mosto: soft", "\(rec.haptics)")
         let keys: [KeyAction] = [.char("q"), .space, .ret, .shift, .delete, .t9("2"), .page(.numbers), .toggleLanguage, .emoji]
         rec.clear(); for k in keys { vc.feel(.key(k)) }
         log(!rec.haptics.contains { $0.kind == .soft }, "feedback.no key is soft", "\(rec.haptics)")
@@ -431,7 +431,7 @@ enum KeyboardTests {
         let host = kb.1
         let board = vc.keyboardViewForTests
         typealias Felt = RecordingFeedbackPlayer.Entry
-        let light = Felt(kind: .impact, intensity: 0.6), firm = Felt(kind: .impact, intensity: 1), tick = Felt(kind: .selection, intensity: 1)
+        let light = Felt(kind: .impact, intensity: 0.88), firm = Felt(kind: .impact, intensity: 1), tick = Felt(kind: .selection, intensity: 1)
 
         // 1. long press on ， until its other characters show, then slide to the second: the key's own tap and click,
         // one tick as they show, one as the choice moves
