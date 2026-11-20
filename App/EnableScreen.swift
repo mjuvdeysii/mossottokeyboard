@@ -15,7 +15,7 @@ struct EnableScreen: View {
                 StatusCard(added: added)
                 SetupCard()
                 VStack(alignment: .leading, spacing: 10) {
-                    SectionHeader(title: "在真实输入框里试", subtitle: added ? "点一下输入框，用 🌐 切到 Mosto键盘" : "添加键盘后，在这里切到 Mosto键盘试试")
+                    SectionHeader(title: "在真实输入框里试", subtitle: added ? "点一下输入框，用地球键切到 Mosto键盘" : "添加键盘后，在这里切到 Mosto键盘试试")
                     HStack(alignment: .top, spacing: 8) {
                         TextField("全拼 nihao 或小鹤 nihc → 你好", text: $text, axis: .vertical)
                             .lineLimit(3...8)
@@ -66,7 +66,7 @@ private struct StatusCard: View {
                 .frame(width: 44)
             VStack(alignment: .leading, spacing: 3) {
                 Text(added ? "Mosto键盘已添加" : "还没有添加 Mosto键盘").font(.headline)
-                Text(added ? "打字时按 🌐 切换过来；在“上手”里可以先练一练。" : "照下面三步添加，大约半分钟；纯离线本地运行，保持默认权限即可使用。")
+                Text(added ? "打字时按地球键切换过来；在“上手”里可以先练一练。" : "照下面三步添加，大约半分钟；纯离线本地运行，保持默认权限即可使用。")
                     .font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
