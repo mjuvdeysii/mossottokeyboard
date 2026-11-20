@@ -439,6 +439,24 @@ private struct SettingsHubScreen: View {
 
     var body: some View {
         List {
+            Section {
+                HStack(spacing: 12) {
+                    Image(uiImage: mostoImage("MostoToy"))
+                        .resizable().scaledToFit()
+                        .frame(width: 52, height: 52)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Mosto键盘 1.0").font(.headline)
+                        Text("纯离线 · 零 AI · 零共享容器").font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                    Text(added ? "已启用" : "待启用")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(added ? Color.green : mostoTint)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Capsule().fill((added ? Color.green : mostoTint).opacity(0.14)))
+                }
+                .padding(.vertical, 4)
+            }
             Section("键盘状态与快捷设置") {
                 HStack {
                     Label("键盘启用状态", systemImage: added ? "checkmark.circle.fill" : "keyboard")
