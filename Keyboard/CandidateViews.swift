@@ -559,7 +559,6 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         case .ended:
             longPressTimer?.invalidate()
             let idx = candidateIndex(at: p)
-            let current = idx.flatMap { $0 < candidates.count ? candidates[$0].text : nil }
             let chosen = gesture.end(index: gesture.index, currentText: gesture.text).map { idx ?? $0 }
             setNeedsLayout()
             if let chosen { onSelect?(chosen) }
