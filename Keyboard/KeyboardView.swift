@@ -173,7 +173,7 @@ final class KeyView: UIView {
         hintLabel.textColor = Theme.secondaryText
         guideLabel.attributedText = guideText()
         icon.tintColor = fg
-        if bounds.width > 0 { layoutCap() }
+        if bounds.width > 0, !Theme.plain { layoutCap() }
     }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
