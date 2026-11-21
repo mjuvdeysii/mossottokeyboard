@@ -140,7 +140,10 @@ final class KeyboardViewController: UIInputViewController {
     /// Block until the engine has loaded (the bench drives keys straight after creating the controller).
     func waitForEngineForTests() -> Bool {
         for _ in 0..<600 {
-            if engine.decodeNow([Tap.exact("a")]) != nil { return true }
+            if engine.decodeNow([Tap.exact("a")]) != nil {
+             if !safeMode, english == nil, let en = engine.englishLexicon { english = EnglishDecoder(lexicon: en) }   
+             return true
+        }    
             RunLoop.main.run(until: Date().addingTimeInterval(0.05))
         }
         return false
@@ -310,6 +313,7 @@ final class KeyboardViewController: UIInputViewController {
         if !settingsPanel.isHidden { showSettings(false) }
         if !grid.isHidden { showGrid(false) }
         if emojiShown { showEmoji(false) }
+        if !safeMode, english == nil, let en = engine.englishLexicon { english = EnglishDecoder(lexicon: en) }
         adaptToField()
         applyAppearance()
     }
@@ -1027,7 +1031,7 @@ final class KeyboardViewController: UIInputViewController {
     /// current, else decoded at once — this waits only for a decode already under way.
     private func currentResult() -> Decoder.Result? {
         if resultGeneration == generation, let r = result { return r }
-        guard !taps.isEmpty, let out = engine.decodeWithTimeout(taps, literal: literalGeneration, generation: generation, timeout: 0.04) else { return result }
+        guard !taps.isEmpty, let out = engine.decodeWithTimeout(taps, literal: literalGeneration, generation: generation, timeout: Bundle.main.bundlePath.hasSuffix(".appex") ? 0.05 : 0.5) else { return result }
         show(out, generation: generation)
         return out.result
     }
@@ -1161,7 +1165,7 @@ final class KeyboardViewController: UIInputViewController {
     /// return would type it).
     private func restorableText(_ keys: [Tap], literal: Bool) -> String {
         // the keypad's keys spell their pinyin only once the engine is there (no waiting on it here)
-        if keys.contains(where: { $0.group }), engine.isLoaded, let py = engine.decodeWithTimeout(keys, literal: literal, timeout: 0.03)?.result.preedit {
+        if keys.contains(where: { $0.group }), engine.isLoaded, let py = engine.decodeWithTimeout(keys, literal: literal, timeout: Bundle.main.bundlePath.hasSuffix(".appex") ? 0.08 : 0.5)?.result.preedit {
             return py.replacingOccurrences(of: " ", with: "")
         }
         return String(keys.map { $0.key })
