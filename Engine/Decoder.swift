@@ -292,7 +292,8 @@ public final class Decoder {
         func pair(_ a: Tap, _ b: Tap, end: Int, extra: Double, into best: inout [UInt16: Span]) {
             for (ka, la) in alternatives(a) {
                 for (kb, lb) in alternatives(b) {
-                    guard let ids = lexicon.codeToSyllables[String([ka, kb])] else { continue }
+                    let ids = lexicon.syllables(forCode: ka, kb)
+                    guard !ids.isEmpty else { continue }
                     let ca = isCorrection(ka, a), cb = isCorrection(kb, b)
                     let corrected = extra > 0 || ca || cb
                     let s = spatialWeight * (la + lb) - (corrected ? correctionPenalty : 0) - extra
@@ -310,11 +311,13 @@ public final class Decoder {
             var best: [UInt16: Span] = [:]
             pair(a, b, end: i + 2, extra: 0, into: &best)
             // 相邻换位 (小鹤): 两个键顺序打反 (inhc → nihc), literal keys only
-            if transposeEnabled, !a.group, !b.group, a.key != b.key,
-               let ids = lexicon.codeToSyllables[String([b.key, a.key])] {
-                let s = -correctionPenalty - xiaoheTransposePenalty
-                for id in ids where (best[id]?.spatial ?? -.infinity) < s {
-                    best[id] = Span(end: i + 2, id: id, spatial: s, corrected: true, kind: 3, oneEdit: false)
+            if transposeEnabled, !a.group, !b.group, a.key != b.key {
+                let ids = lexicon.syllables(forCode: b.key, a.key)
+                if !ids.isEmpty {
+                    let s = -correctionPenalty - xiaoheTransposePenalty
+                    for id in ids where (best[id]?.spatial ?? -.infinity) < s {
+                        best[id] = Span(end: i + 2, id: id, spatial: s, corrected: true, kind: 3, oneEdit: false)
+                    }
                 }
             }
             // one key too many: inside the syllable (a x b), or just before it (x a b) — full keyboard only
@@ -731,24 +734,26 @@ public final class Decoder {
             // 跨音节换位 (小鹤): 词驱动 4 键跨界换位 (nhic → ni + hc = 你好)，只对两音节词库词生效
             if scheme == .xiaohe, transposeEnabled, correctionEnabled, i + 4 <= n {
                 let a = taps[i], b = taps[i + 1], c = taps[i + 2], d = taps[i + 3]
-                if !a.group, !b.group, !c.group, !d.group, b.key != c.key,
-                   let s1s = lexicon.codeToSyllables[String([a.key, c.key])],
-                   let s2s = lexicon.codeToSyllables[String([b.key, d.key])] {
-                    let sp = -correctionPenalty - xiaoheTransposePenalty
-                    for s1 in s1s {
-                        for s2 in s2s {
-                            let follow = lexicon.followers(first: s1, second: s2)
-                            for idx in follow.pairs {
-                                let score = Double(lexicon.entry(idx).score) / 100
-                                if score < minWord { break }
-                                let base = score - wordPenalty
-                                guard accepts(i, i + 4, 2, base + sp) else { break }
-                                insert(Edge(start: i, end: i + 4, score: base + sp, corrected: true, entry: idx,
-                                            userText: nil, ids: [], cuts: [i + 2, i + 4], kinds: [3, 3]))
+                if !a.group, !b.group, !c.group, !d.group, b.key != c.key {
+                    let s1s = lexicon.syllables(forCode: a.key, c.key)
+                    let s2s = lexicon.syllables(forCode: b.key, d.key)
+                    if !s1s.isEmpty && !s2s.isEmpty {
+                        let sp = -correctionPenalty - xiaoheTransposePenalty
+                        for s1 in s1s {
+                            for s2 in s2s {
+                                let follow = lexicon.followers(first: s1, second: s2)
+                                for idx in follow.pairs {
+                                    let score = Double(lexicon.entry(idx).score) / 100
+                                    if score < minWord { break }
+                                    let base = score - wordPenalty
+                                    guard accepts(i, i + 4, 2, base + sp) else { break }
+                                    insert(Edge(start: i, end: i + 4, score: base + sp, corrected: true, entry: idx,
+                                                userText: nil, ids: [], cuts: [i + 2, i + 4], kinds: [3, 3]))
+                                }
                             }
                         }
                     }
-                   }
+                }
             }
             for first in spansFrom[i] {
                 let firstEnd = first.end

@@ -546,11 +546,17 @@ private struct FeaturesHubScreen: View {
                         NavigationLink("查看完整小鹤双拼键位表与练习") { XiaoheGuideView() }
                             .buttonStyle(.borderedProminent).tint(mostoTint)
                     } else if let lessonTitle = item.lessonTitle {
-                        Button("在互动练手中试一试") {
-                            selected = nil
-                            nav?.tryDemo(lessonTitle)
+                        HStack(spacing: 10) {
+                            Button("在互动练手中试一试") {
+                                selected = nil
+                                nav?.tryDemo(lessonTitle)
+                            }
+                            .buttonStyle(.borderedProminent).tint(mostoTint)
+                            if item.id == "fix" {
+                                NavigationLink("拇指落点热力图") { TouchDriftHeatmapView() }
+                                    .buttonStyle(.bordered).tint(mostoTint)
+                            }
                         }
-                        .buttonStyle(.borderedProminent).tint(mostoTint)
                     } else {
                         NavigationLink("查看全部键盘用法") { UsageDetailView() }
                             .buttonStyle(.borderedProminent).tint(mostoTint)
@@ -745,6 +751,11 @@ private struct SettingsHubScreen: View {
 
             Section("输入方案与隐私") {
                 NavigationLink {
+                    TouchDriftHeatmapView()
+                } label: {
+                    Label("拇指落点热力图（高斯触点学习）", systemImage: "scope")
+                }
+                NavigationLink {
                     XiaoheGuideView()
                 } label: {
                     Label("小鹤双拼键位表与学习成本", systemImage: "square.grid.3x3")
@@ -760,6 +771,132 @@ private struct SettingsHubScreen: View {
         }
         .listStyle(.insetGrouped)
         .onChange(of: phase) { p in if p == .active { added = KeyboardStatus.isAdded() } }
+    }
+}
+
+/// R37 Signature Feature: Pure vector SwiftUI Canvas visualizing Mosto's Gaussian touch-offset model.
+/// Shows real learned per-key thumb landing drift (or a realistic right-thumb demo preview before enough typing).
+struct TouchDriftHeatmapView: View {
+    @State private var showDemo = false
+    @State private var globalOffset: (Double, Double) = KeyboardSettings.shared.touchOffset
+    @State private var keyOffsets: [String: [Double]] = KeyboardSettings.shared.keyOffsets
+
+    private static let rows = ["qwertyuiop", "asdfghjkl", "zxcvbnm"]
+    private static let demoGlobal: (Double, Double) = (0.09, 0.06)
+    private static let demoKeys: [String: [Double]] = [
+        "q": [0.16, 0.14], "w": [0.10, 0.11], "e": [0.06, 0.08], "i": [-0.09, 0.09], "o": [-0.14, 0.12], "p": [-0.18, 0.15],
+        "a": [0.12, 0.05], "s": [0.07, 0.04], "j": [-0.06, 0.04], "k": [-0.08, 0.05], "l": [-0.12, 0.07],
+        "z": [0.10, -0.06], "n": [-0.09, -0.05], "m": [-0.13, -0.07]
+    ]
+
+    private var hasRealData: Bool {
+        abs(globalOffset.0) > 0.005 || abs(globalOffset.1) > 0.005 || !keyOffsets.isEmpty
+    }
+    private var activeGlobal: (Double, Double) { (showDemo || !hasRealData) ? Self.demoGlobal : globalOffset }
+    private var activeKeys: [String: [Double]] { (showDemo || !hasRealData) ? Self.demoKeys : keyOffsets }
+
+    private var driftSummary: String {
+        let gx = activeGlobal.0, gy = activeGlobal.1
+        let h = abs(gx) < 0.02 ? "水平居中" : (gx > 0 ? String(format: "右偏 %.0f%% 键宽", gx * 100) : String(format: "左偏 %.0f%% 键宽", -gx * 100))
+        let v = abs(gy) < 0.02 ? "垂直居中" : (gy > 0 ? String(format: "偏下 %.0f%% 键高", gy * 100) : String(format: "偏上 %.0f%% 键高", -gy * 100))
+        return "\(h) · \(v)"
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("高斯触点偏移热力图").font(.headline.weight(.bold))
+                            Text(hasRealData && !showDemo ? "基于你已积累的本机落点学习" : "示意模式：展示右手拇指典型偏移补偿")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Picker("视图", selection: $showDemo) {
+                            Text("我的").tag(false)
+                            Text("示意").tag(true)
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 112)
+                    }
+
+                    Canvas { ctx, size in
+                        let kw = size.width / 10
+                        let rowH = size.height / 3
+                        let gapX: CGFloat = 4
+                        let gapY: CGFloat = 6
+                        let violet = Color(red: 0.39, green: 0.24, blue: 0.75)
+                        let gold = Color(red: 0.90, green: 0.68, blue: 0.24)
+                        let gx = activeGlobal.0, gy = activeGlobal.1
+
+                        for (r, row) in Self.rows.enumerated() {
+                            let startX = r == 0 ? 0.0 : (r == 1 ? 0.5 : 1.5)
+                            for (cIdx, ch) in row.enumerated() {
+                                let rect = CGRect(
+                                    x: (startX + Double(cIdx)) * kw + gapX / 2,
+                                    y: Double(r) * rowH + gapY / 2,
+                                    width: kw - gapX,
+                                    height: rowH - gapY
+                                )
+                                let ko = activeKeys[String(ch)]
+                                let dx = max(-0.35, min(0.35, gx + (ko?.first ?? 0)))
+                                let dy = max(-0.35, min(0.35, gy + (ko?.last ?? 0)))
+                                let mag = hypot(dx, dy)
+                                let intensity = min(1.0, mag / 0.28)
+
+                                let keyPath = Path(roundedRect: rect, cornerRadius: 7)
+                                ctx.fill(keyPath, with: .color(violet.opacity(0.06 + intensity * 0.22)))
+                                ctx.stroke(keyPath, with: .color(violet.opacity(0.18 + intensity * 0.35)), lineWidth: 0.8)
+
+                                let center = CGPoint(x: rect.midX, y: rect.midY)
+                                let landed = CGPoint(x: center.x + dx * rect.width * 1.15, y: center.y + dy * rect.height * 1.15)
+
+                                if mag > 0.03 {
+                                    var vec = Path()
+                                    vec.move(to: center)
+                                    vec.addLine(to: landed)
+                                    ctx.stroke(vec, with: .color(gold.opacity(0.85)), style: StrokeStyle(lineWidth: 1.4, lineCap: .round))
+                                    let dot = CGRect(x: landed.x - 3, y: landed.y - 3, width: 6, height: 6)
+                                    ctx.fill(Path(ellipseIn: dot), with: .color(gold))
+                                }
+
+                                ctx.draw(
+                                    Text(String(ch))
+                                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                        .foregroundColor(Color.primary.opacity(0.82)),
+                                    at: CGPoint(x: rect.midX, y: rect.minY + 12)
+                                )
+                            }
+                        }
+                    }
+                    .frame(height: 168)
+
+                    HStack(spacing: 12) {
+                        Label(driftSummary, systemImage: "hand.point.up.left")
+                            .font(.caption.weight(.medium)).foregroundStyle(mostoTint)
+                        Spacer()
+                        Text("已学 \(activeKeys.count) 键").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .padding(16)
+                .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
+
+                Card(title: "原理说明") {
+                    Usage(icon: "scope", title: "只移边缘，不改键心", text: "金色圆点代表你的拇指相对键心的实际落点方向。Mosto 的二维高斯模型会自动把热区边缘向你的落点微调，同时保持键心绝对准确。")
+                    Divider()
+                    Usage(icon: "lock.shield", title: "100% 本机学习", text: "落点参数只以坐标数字保存在本机，不含任何输入文本内容，可随时在键盘设置中一键清空。")
+                }
+            }
+            .padding(16)
+        }
+        .background(Color(UIColor.systemGroupedBackground))
+        .navigationTitle("拇指落点热力图")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            globalOffset = KeyboardSettings.shared.touchOffset
+            keyOffsets = KeyboardSettings.shared.keyOffsets
+        }
     }
 }
 

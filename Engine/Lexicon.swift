@@ -14,6 +14,8 @@ public final class Lexicon {
     public let syllables: [String]
     /// 2-key Xiaohe code -> syllable ids (e.g. "hc" -> [hao]).
     public let codeToSyllables: [String: [UInt16]]
+    /// Zero-allocation 26×26 flat lookup table for ASCII 'a'...'z' Xiaohe pairs.
+    private let pairCodeToSyllables: [[UInt16]]
     /// First key -> syllable ids whose code starts with it (for a dangling single tap).
     public let firstKeyToSyllables: [Character: [UInt16]]
     public let entryCount: Int
@@ -89,13 +91,26 @@ public final class Lexicon {
 
         var c2s: [String: [UInt16]] = [:]
         var f2s: [Character: [UInt16]] = [:]
+        var flat = [[UInt16]](repeating: [], count: 26 * 26)
         for (i, s) in names.enumerated() {
             guard let code = XiaoheScheme.code(for: s) else { continue }
-            c2s[code, default: []].append(UInt16(i))
-            f2s[code.first!, default: []].append(UInt16(i))
+            let id = UInt16(i)
+            c2s[code, default: []].append(id)
+            f2s[code.first!, default: []].append(id)
+            let bytes = Array(code.utf8)
+            if bytes.count == 2, bytes[0] >= 97, bytes[0] <= 122, bytes[1] >= 97, bytes[1] <= 122 {
+                flat[Int(bytes[0] - 97) * 26 + Int(bytes[1] - 97)].append(id)
+            }
         }
         codeToSyllables = c2s
+        pairCodeToSyllables = flat
         firstKeyToSyllables = f2s
+    }
+
+    @inline(__always) public func syllables(forCode a: Character, _ b: Character) -> [UInt16] {
+        guard let va = a.asciiValue, let vb = b.asciiValue,
+              va >= 97, va <= 122, vb >= 97, vb <= 122 else { return [] }
+        return pairCodeToSyllables[Int(va - 97) * 26 + Int(vb - 97)]
     }
 
     deinit { munmap(UnsafeMutableRawPointer(mutating: base), length) }
