@@ -274,20 +274,15 @@ final class KeyboardViewController: UIInputViewController {
         super.viewDidAppear(animated)
         LaunchGuard.succeeded()
         releaseSystemGestureDelays()
+        DispatchQueue.main.async { [weak self] in self?.feedbackPlayer.prepare() }
     }
-
     /// iOS puts a system gesture gate (_UISystemGestureGateGestureRecognizer) on the keyboard's window that holds
     /// touches near the screen edges back until it decides they are not a system swipe — so q, a, shift, 123 and the
     /// space bar press late, and in fast typing those taps arrive out of order or are lost. Turning off its
     /// delaysTouchesBegan (on every recognizer above our view, each time the keyboard lands in a window) makes every
     /// key press immediately; the system gestures themselves still work.
     private func releaseSystemGestureDelays() {
-        var v: UIView? = view
-        while let cur = v {
-            cur.gestureRecognizers?.forEach { $0.delaysTouchesBegan = false; $0.delaysTouchesEnded = false }
-            v = cur.superview
-        }
-        view.window?.gestureRecognizers?.forEach { $0.delaysTouchesBegan = false; $0.delaysTouchesEnded = false }
+           view.gestureRecognizers?.forEach { $0.delaysTouchesBegan = false; $0.delaysTouchesEnded = false }
     }
 
     override func updateViewConstraints() {
@@ -317,7 +312,6 @@ final class KeyboardViewController: UIInputViewController {
         if emojiShown { showEmoji(false) }
         adaptToField()
         applyAppearance()
-        feedbackPlayer.prepare()
     }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
@@ -343,8 +337,8 @@ final class KeyboardViewController: UIInputViewController {
             }
         }
         engine.save()
-        KeyboardSettings.shared.touchOffset = (spatial.offsetX, spatial.offsetY)
-        KeyboardSettings.shared.keyOffsets = spatial.keyOffsetsList
+        let offset = (spatial.offsetX, spatial.offsetY); let keyOffsets = spatial.keyOffsetsList
+        DispatchQueue.global(qos: .utility).async { KeyboardSettings.shared.touchOffset = offset; KeyboardSettings.shared.keyOffsets = keyOffsets }
     }
 
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
@@ -438,7 +432,7 @@ final class KeyboardViewController: UIInputViewController {
     /// Only checked in hosts seen to include the marked text in the text before the cursor (confirmed twice), so a
     /// host that does not is never mistaken for one that moved on.
     private func reconcileWithHost() {
-        guard !taps.isEmpty, hasMarkedText, markedString.count >= 2,
+        guard !taps.isEmpty, hasMarkedText, markedString.count >= 1,
               let before = host.documentContextBeforeInput else { return }
         if before.hasSuffix(markedString) {
             // the host shows our marked text in its context: confirmed once per distinct composition string
@@ -448,7 +442,7 @@ final class KeyboardViewController: UIInputViewController {
         // a late notice about an earlier state of this composition (fast typing) is not the host moving on
         // and only once the host has caught up with the latest marked text (it echoed the current string): callbacks
         // arrive in order, so a context without it after that is newer, never a stale one from before a commit
-        guard hostEchoesMarked >= 2, lastEchoed == markedString,
+        guard hostEchoesMarked >= 1, lastEchoed == markedString,
               !markedHistory.contains(where: { before.hasSuffix($0) }) else { return }
         markedHistory.removeAll()
         hasMarkedText = false
@@ -480,13 +474,13 @@ final class KeyboardViewController: UIInputViewController {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
         let b = Self.resourceBundle
         let ep = b.path(forResource: "english", ofType: "bin")
-        engine.load(lexiconPath: b.path(forResource: "lexicon", ofType: "bin"), englishPath: ep,
+        if !safe, let cached = engine.englishLexicon { english = EnglishDecoder(cached) }; engine.load(lexiconPath: b.path(forResource: "lexicon", ofType: "bin"), englishPath: ep,
                     grammarPath: b.path(forResource: "grammar", ofType: "gram"),
                     sentencePath: b.path(forResource: "sentence", ofType: "gram"),
                     userDictURL: Self.keepsLearnedWords ? dir?.appendingPathComponent("userdict.json") : nil, safe: safe,
-                    emojiHintsPath: b.path(forResource: "emoji_hints", ofType: "txt"))
+                    emojiHintsPath: b.path(forResource: "emoji_hints", ofType: "txt"), onEnglishLoaded: safe ? nil : { [weak self] en in DispatchQueue.main.async { self?.english = EnglishDecoder(en) } })
         // English mode reads the same file (read-only, safe to share between threads)
-        if !safe, let ep { english = (engine.englishLexicon ?? (try? EnglishLexicon(path: ep))).map(EnglishDecoder.init) }
+        // async english
         safeMode = safe
         // If we are still alive after 1.5s of real use, this launch succeeded.
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { LaunchGuard.succeeded() }
@@ -792,8 +786,15 @@ final class KeyboardViewController: UIInputViewController {
            prev.isASCII, (prev.isNumber || (s == "。" && prev.isLetter && (host.documentContextBeforeInput ?? "").contains("@"))) {
             out = s == "。" ? "." : ":"
         }
-        let pairs: [String: String] = ["《": "《》", "（": "（）", "【": "【】", "「": "「」", "『": "『』"]; if let p = pairs[out] { host.insertText(p); host.adjustTextPosition(byCharacterOffset: -1) } else { host.insertText(out) }
-        lastInsertedSpace = false
+        let pairs: [String: String] = ["《": "《》", "（": "（）", "【": "【】", "「": "「」", "『": "『』"]
+        if let p = pairs[out] {
+                          host.insertText(p)
+            if Bundle.main.bundlePath.hasSuffix(".appex") {
+                                                           let gen = generation
+               let closing = String(p.last!)
+               DispatchQueue.main.asyncAfter(deadline: .now() + 0.018) { [weak self] in
+                                                                        guard let self, self.generation == gen, (self.host.documentContextBeforeInput ?? "").hasSuffix(closing) else { return }; self.host.adjustTextPosition(byCharacterOffset: -1) } } else { host.adjustTextPosition(byCharacterOffset: -1) } } else { host.insertText(out) }
+                lastInsertedSpace = false
         if !chinese && [".", "!", "?"].contains(s) { updateAutoShift(); reconfigure() }
     }
 
@@ -1026,7 +1027,7 @@ final class KeyboardViewController: UIInputViewController {
     /// current, else decoded at once — this waits only for a decode already under way.
     private func currentResult() -> Decoder.Result? {
         if resultGeneration == generation, let r = result { return r }
-        guard !taps.isEmpty, let out = engine.decodeNow(taps, literal: literalGeneration, generation: generation) else { return result }
+        guard !taps.isEmpty, let out = engine.decodeWithTimeout(taps, literal: literalGeneration, generation: generation, timeout: 0.04) else { return result }
         show(out, generation: generation)
         return out.result
     }
@@ -1090,11 +1091,15 @@ final class KeyboardViewController: UIInputViewController {
     private func offerForget(_ i: Int) {
         guard let r = result, i < r.candidates.count else { return }
         let c = r.candidates[i]
-        guard !c.syllables.isEmpty, engine.knows(syllables: c.syllables, text: c.text) else { return }
-        candidateBar.offerForget(c.text) { [weak self] in
+        guard !c.syllables.isEmpty else { return }
+        let gen = generation
+        engine.knows(syllables: c.syllables, text: c.text) { [weak self] known in
+                                                           guard let self, known, self.generation == gen else { return }
+                                                            self.candidateBar.offerForget(c.text) { [weak self] in
             self?.engine.forget(syllables: c.syllables, text: c.text)
             if self?.taps.isEmpty == false { self?.refresh() }
         }
+                                                           }
     }
 
     private func commitAll() {
@@ -1156,7 +1161,7 @@ final class KeyboardViewController: UIInputViewController {
     /// return would type it).
     private func restorableText(_ keys: [Tap], literal: Bool) -> String {
         // the keypad's keys spell their pinyin only once the engine is there (no waiting on it here)
-        if keys.contains(where: { $0.group }), engine.isLoaded, let py = engine.decodeNow(keys, literal: literal)?.result.preedit {
+        if keys.contains(where: { $0.group }), engine.isLoaded, let py = engine.decodeWithTimeout(keys, literal: literal, timeout: 0.03)?.result.preedit {
             return py.replacingOccurrences(of: " ", with: "")
         }
         return String(keys.map { $0.key })
