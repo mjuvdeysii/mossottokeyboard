@@ -35,6 +35,7 @@ final class EngineHost {
     private static var cachedLexicon: Lexicon?
     private static var cachedGrammar: Grammar?
     private static var cachedSentence: Grammar?
+    private static let isExtension = Bundle.main.bundlePath.hasSuffix(".appex")
     /// 表情联想: words → emoji (Unicode CLDR's Chinese annotations; Tools/build_emoji_hints.py)
     private var emojiHintsPath: String?
     private var emojiHintsLoaded = false
@@ -69,7 +70,7 @@ final class EngineHost {
             return
         }
         // Keep well below the 60 MB keyboard extension Jetsam ceiling.
-        guard let hp = emojiHintsPath, memoryFootprintMB() < 42 else { return }
+        guard let hp = emojiHintsPath, (!Self.isExtension || memoryFootprintMB() < 42) else { return }
         autoreleasepool {
             guard let text = try? String(contentsOfFile: hp, encoding: .utf8) else { return }
             var t: [String: [String]] = [:]; t.reserveCapacity(1200)
@@ -238,7 +239,7 @@ final class EngineHost {
         queue.async {
             if !self.readingsReady, let lex = self.lexicon, let d = self.decoder {
                 self.readingsReady = true
-                if memoryFootprintMB() < 46 {
+                if !Self.isExtension || memoryFootprintMB() < 46 {
                     d.setReadings(Self.compactReadings(for: lex))
                 } else {
                     d.setReadings(["\0": []])
