@@ -167,11 +167,14 @@ final class EngineHost {
         if r.candidates.count > 1, !r.candidates[0].corrected, r.candidates[1].corrected {
             r.candidates[1].fixes = d.fixes(for: r.candidates[1], taps: taps)
         }
-        // a word that has an emoji (哈哈 😂, 蛋糕 🎂): offered after the first few candidates, never before them
+        // a word that has an emoji (哈哈 😂, 蛋糕 🎂) or dynamic date/time: offered after top candidate(s), never slot 0
         if let first = r.candidates.first, first.tapCount == taps.count, first.text.count >= 2 {
             ensureEmojiHints()
-            let isUtil = first.text == "日期" || first.text == "时间" || first.text == "星期"; let at = min(isUtil ? 1 : 2, r.candidates.count); var items = Array((emojiHints[first.text] ?? []).prefix(1))
-            if let kao = Self.kaomojiHints[first.text] { items.append(kao) }; if first.text == "日期" { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; items.insert(f.string(from: Date()), at: 0) } else if first.text == "时间" { let f = DateFormatter(); f.dateFormat = "HH:mm"; items.insert(f.string(from: Date()), at: 0) } else if first.text == "星期" { let wd = Calendar.current.component(.weekday, from: Date()); let wds = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"]; if wd >= 1 && wd <= 7 { items.insert(wds[wd - 1], at: 0) } }
+            let dyn = Self.dynamicDateCandidate(for: first.text)
+            let at = min(dyn != nil ? 1 : 2, r.candidates.count)
+            var items = Array((emojiHints[first.text] ?? []).prefix(1))
+            if let kao = Self.kaomojiHints[first.text] { items.append(kao) }
+            if let dyn { items.insert(dyn, at: 0) }
             let extra = items.prefix(2).filter { e in !r.candidates.contains { $0.text == e } }.map { Candidate(text: $0, tapCount: taps.count, syllables: [], corrected: false, score: first.score - 50) }
             if !extra.isEmpty { r.candidates.insert(contentsOf: extra, at: at) }
             // inline emoji/kaomoji restrained to <=2 items at slot 2 (after top 2 words); date/time at slot 1
@@ -179,6 +182,66 @@ final class EngineHost {
         var choices: (start: Int, choices: [(text: String, keys: [Character])]) = (0, [])
         if taps.contains(where: { $0.group }) { choices = d.t9SyllableChoices(taps) }
         return Output(result: r, choices: choices)
+    }
+
+    /// Offline relative date/time candidates: 日期, 时间, 星期, 今天/明天/后天/昨天/前天, 本周一..日, 下周一..日.
+    private static func dynamicDateCandidate(for word: String, now: Date = Date()) -> String? {
+        let cal = Calendar.current
+        let wds = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"]
+        func md(_ d: Date, weekday: Bool) -> String {
+            let m = cal.component(.month, from: d)
+            let day = cal.component(.day, from: d)
+            if weekday {
+                let wd = cal.component(.weekday, from: d)
+                let label = (wd >= 1 && wd <= 7) ? " " + wds[wd - 1] : ""
+                return "\(m)月\(day)日\(label)"
+            }
+            return "\(m)月\(day)日"
+        }
+        switch word {
+        case "日期":
+            let y = cal.component(.year, from: now), m = cal.component(.month, from: now), d = cal.component(.day, from: now)
+            return String(format: "%04d-%02d-%02d", y, m, d)
+        case "时间":
+            let h = cal.component(.hour, from: now), m = cal.component(.minute, from: now)
+            return String(format: "%02d:%02d", h, m)
+        case "星期":
+            let wd = cal.component(.weekday, from: now)
+            return (wd >= 1 && wd <= 7) ? wds[wd - 1] : nil
+        case "今天":
+            return md(now, weekday: true)
+        case "明天":
+            return cal.date(byAdding: .day, value: 1, to: now).map { md($0, weekday: true) }
+        case "后天":
+            return cal.date(byAdding: .day, value: 2, to: now).map { md($0, weekday: true) }
+        case "大后天":
+            return cal.date(byAdding: .day, value: 3, to: now).map { md($0, weekday: true) }
+        case "昨天":
+            return cal.date(byAdding: .day, value: -1, to: now).map { md($0, weekday: true) }
+        case "前天":
+            return cal.date(byAdding: .day, value: -2, to: now).map { md($0, weekday: true) }
+        default:
+            break
+        }
+        let nextPrefix = word.hasPrefix("下周") || word.hasPrefix("下星期")
+        let thisPrefix = word.hasPrefix("本周") || word.hasPrefix("这周")
+        guard nextPrefix || thisPrefix, let last = word.last else { return nil }
+        let targetMonBased: Int
+        switch last {
+        case "一": targetMonBased = 1
+        case "二": targetMonBased = 2
+        case "三": targetMonBased = 3
+        case "四": targetMonBased = 4
+        case "五": targetMonBased = 5
+        case "六": targetMonBased = 6
+        case "日", "天": targetMonBased = 7
+        default: return nil
+        }
+        // Convert Calendar weekday (1=Sun..7=Sat) to Monday-based (1=Mon..7=Sun).
+        let todayWD = cal.component(.weekday, from: now)
+        let todayMonBased = todayWD == 1 ? 7 : todayWD - 1
+        let delta = (nextPrefix ? 7 : 0) + (targetMonBased - todayMonBased)
+        return cal.date(byAdding: .day, value: delta, to: now).map { md($0, weekday: false) }
     }
 
     /// Decode in the background; `done` runs on the main thread (nil until the engine has loaded). A request that a

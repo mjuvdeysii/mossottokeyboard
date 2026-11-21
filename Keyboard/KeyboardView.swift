@@ -9,7 +9,25 @@ final class KeyView: UIView {
     private let guideLabel = UILabel()
     private let icon = UIImageView()
 
-    var pressed = false { didSet { if pressed != oldValue { updateColors() } } }
+    var pressed = false {
+        didSet {
+            guard pressed != oldValue else { return }
+            updateColors()
+            if !pressed && !Theme.plain && !UIAccessibility.isReduceMotionEnabled {
+                rim.removeAnimation(forKey: "rimPulse")
+                let a = CABasicAnimation(keyPath: "opacity")
+                a.fromValue = Float(1.0)
+                a.toValue = Float(0.76)
+                a.duration = 0.12
+                a.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                rim.opacity = 0.76
+                rim.add(a, forKey: "rimPulse")
+            } else if pressed {
+                rim.removeAnimation(forKey: "rimPulse")
+                rim.opacity = 1.0
+            }
+        }
+    }
     private var hasApplied = false
     /// While the space bar drives the cursor the other caps go blank, as in the iOS trackpad mode.
     var blanked = false {

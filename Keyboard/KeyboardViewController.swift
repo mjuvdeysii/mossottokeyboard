@@ -853,10 +853,91 @@ final class KeyboardViewController: UIInputViewController {
                 host.adjustTextPosition(byCharacterOffset: -closing.utf16.count)
             }
         } else {
+            let calcInput = (out == "=" || out == "＝") ? host.documentContextBeforeInput : nil
             host.insertText(out)
+            if let expr = calcInput, let ans = Self.evalTrailingArithmetic(expr) {
+                predictGeneration += 1
+                predictions = [ans]
+                candidateBar.update(preedit: "", candidates: predictionCandidates(), prediction: true)
+                updatePlainLightButton()
+            }
         }
         lastInsertedSpace = false
         if !chinese && [".", "!", "?"].contains(s) { updateAutoShift(); reconfigure() }
+    }
+
+    /// Pure-Swift offline trailing arithmetic evaluator (e.g. "AA每人 286/4" + "=" -> "71.5").
+    /// Zero NSExpression / ObjC exception risk, zero network, stack-only recursive descent.
+    private static func evalTrailingArithmetic(_ text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return nil }
+        let allowed = Set("0123456789.+-*/×÷＋－＊／() ")
+        var tailChars: [Character] = []
+        for ch in trimmed.reversed() {
+            if allowed.contains(ch) { tailChars.append(ch) } else { break }
+        }
+        let raw = String(tailChars.reversed()).trimmingCharacters(in: .whitespaces)
+        guard raw.count >= 3, raw.count <= 48 else { return nil }
+        let normalized = raw
+            .replacingOccurrences(of: "×", with: "*").replacingOccurrences(of: "＊", with: "*")
+            .replacingOccurrences(of: "÷", with: "/").replacingOccurrences(of: "／", with: "/")
+            .replacingOccurrences(of: "＋", with: "+").replacingOccurrences(of: "－", with: "-")
+            .replacingOccurrences(of: " ", with: "")
+        guard normalized.contains(where: { "+-*/".contains($0) }),
+              normalized.contains(where: { $0.isNumber }) else { return nil }
+        let chars = Array(normalized)
+        var pos = 0
+        func parseExpr() -> Double? {
+            guard var val = parseTerm() else { return nil }
+            while pos < chars.count, chars[pos] == "+" || chars[pos] == "-" {
+                let op = chars[pos]; pos += 1
+                guard let rhs = parseTerm() else { return nil }
+                val = op == "+" ? val + rhs : val - rhs
+            }
+            return val
+        }
+        func parseTerm() -> Double? {
+            guard var val = parseFactor() else { return nil }
+            while pos < chars.count, chars[pos] == "*" || chars[pos] == "/" {
+                let op = chars[pos]; pos += 1
+                guard let rhs = parseFactor() else { return nil }
+                if op == "/" {
+                    guard abs(rhs) > 1e-12 else { return nil }
+                    val /= rhs
+                } else {
+                    val *= rhs
+                }
+            }
+            return val
+        }
+        func parseFactor() -> Double? {
+            guard pos < chars.count else { return nil }
+            if chars[pos] == "-" { pos += 1; return parseFactor().map { -$0 } }
+            if chars[pos] == "+" { pos += 1; return parseFactor() }
+            if chars[pos] == "(" {
+                pos += 1
+                guard let v = parseExpr(), pos < chars.count, chars[pos] == ")" else { return nil }
+                pos += 1
+                return v
+            }
+            let start = pos
+            var hasDot = false
+            while pos < chars.count, chars[pos].isNumber || (chars[pos] == "." && !hasDot) {
+                if chars[pos] == "." { hasDot = true }
+                pos += 1
+            }
+            guard pos > start else { return nil }
+            return Double(String(chars[start..<pos]))
+        }
+        guard let value = parseExpr(), pos == chars.count, value.isFinite, abs(value) < 1e12 else { return nil }
+        let rounded = (value * 10000).rounded() / 10000
+        if rounded == rounded.rounded(), abs(rounded) < 1e12 {
+            return String(Int64(rounded))
+        }
+        var s = String(format: "%.4f", rounded)
+        while s.hasSuffix("0") { s.removeLast() }
+        if s.hasSuffix(".") { s.removeLast() }
+        return s
     }
 
     private func space() {

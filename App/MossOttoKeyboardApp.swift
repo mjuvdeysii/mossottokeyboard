@@ -751,6 +751,11 @@ private struct SettingsHubScreen: View {
 
             Section("输入方案与隐私") {
                 NavigationLink {
+                    SpeedChallengeView()
+                } label: {
+                    Label("手感测速靶场（3 句实时计速）", systemImage: "gauge.with.dots.needle.67percent")
+                }
+                NavigationLink {
                     TouchDriftHeatmapView()
                 } label: {
                     Label("拇指落点热力图（高斯触点学习）", systemImage: "scope")
@@ -771,6 +776,169 @@ private struct SettingsHubScreen: View {
         }
         .listStyle(.insetGrouped)
         .onChange(of: phase) { p in if p == .active { added = KeyboardStatus.isAdded() } }
+    }
+}
+
+/// R38 Signature Feature: 3-sentence live typing speed & accuracy arena running on the real embedded Mosto keyboard.
+struct SpeedChallengeView: View {
+    @StateObject private var model: PlaygroundModel = {
+        let m = PlaygroundModel()
+        m.step = lessons.count
+        return m
+    }()
+    @State private var index = 0
+    @State private var startedAt: Date? = nil
+    @State private var finishedSeconds: Double? = nil
+    @State private var totalChars = 0
+
+    private let targets = [
+        "今天天气真不错",
+        "按偏了也能打对",
+        "下周一准时开会",
+    ]
+
+    private var currentTarget: String { targets[min(index, targets.count - 1)] }
+    private var isFinished: Bool { finishedSeconds != nil }
+
+    private var cpm: Int {
+        guard let elapsed = finishedSeconds ?? startedAt.map({ Date().timeIntervalSince($0) }), elapsed > 0.4 else { return 0 }
+        let chars = isFinished ? totalChars : (totalChars + matchedPrefixCount)
+        return Int((Double(chars) / elapsed * 60.0).rounded())
+    }
+
+    private var matchedPrefixCount: Int {
+        let typed = Array(model.before)
+        let target = Array(currentTarget)
+        var n = 0
+        while n < typed.count && n < target.count && typed[n] == target[n] { n += 1 }
+        return n
+    }
+
+    private func resetChallenge() {
+        index = 0
+        startedAt = nil
+        finishedSeconds = nil
+        totalChars = 0
+        model.clear()
+        model.keyboardVisible = true
+    }
+
+    private func evaluateProgress() {
+        guard !isFinished else { return }
+        if startedAt == nil && (!model.before.isEmpty || !model.marked.isEmpty) {
+            startedAt = Date()
+        }
+        if model.before.contains(currentTarget) {
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            totalChars += currentTarget.count
+            if index + 1 < targets.count {
+                index += 1
+                model.clear()
+            } else {
+                finishedSeconds = max(0.5, Date().timeIntervalSince(startedAt ?? Date()))
+                model.keyboardVisible = false
+            }
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(spacing: 10) {
+                        metricTile(title: "进度", value: "\(min(index + (isFinished ? 1 : 0), targets.count))/\(targets.count)")
+                        metricTile(title: "实时速度", value: cpm > 0 ? "\(cpm) 字/分" : "待开始")
+                        metricTile(title: "方案", value: model.layout == 1 ? "小鹤" : (model.layout == 2 ? "九宫格" : "全拼"))
+                    }
+
+                    if isFinished, let sec = finishedSeconds {
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack(spacing: 12) {
+                                Image(uiImage: mostoImage("MostoToy"))
+                                    .resizable().scaledToFit()
+                                    .frame(width: 60, height: 60)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("三句挑战完成").font(.title3.weight(.bold))
+                                    Text(String(format: "共 %d 字 · 用时 %.1f 秒 · 均速 %d 字/分", totalChars, sec, cpm))
+                                        .font(.subheadline).foregroundStyle(.secondary)
+                                }
+                            }
+                            HStack(spacing: 10) {
+                                Button("再来一轮") { resetChallenge() }
+                                    .buttonStyle(.borderedProminent).tint(mostoTint)
+                                NavigationLink("查看落点热力图") { TouchDriftHeatmapView() }
+                                    .buttonStyle(.bordered).tint(mostoTint)
+                            }
+                        }
+                        .padding(16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
+                    } else {
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                Text("第 \(index + 1) 句 · 直接盲打").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                                Spacer()
+                                Picker("方案", selection: Binding(
+                                    get: { model.layout == 1 ? 1 : 0 },
+                                    set: { model.layout = $0 }
+                                )) {
+                                    Text("全拼").tag(0)
+                                    Text("小鹤").tag(1)
+                                }
+                                .pickerStyle(.segmented)
+                                .frame(width: 112)
+                            }
+                            HStack(spacing: 2) {
+                                ForEach(Array(currentTarget.enumerated()), id: \.offset) { i, ch in
+                                    Text(String(ch))
+                                        .font(.system(size: 24, weight: .semibold, design: .rounded))
+                                        .foregroundStyle(i < matchedPrefixCount ? mostoTint : Color.primary)
+                                }
+                            }
+                            Text("支持按偏自动纠错；打完本句自动切下一句。")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        .padding(16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
+
+                        TextArea(model: model)
+                    }
+                }
+                .padding(16)
+            }
+            .background(Color(UIColor.systemGroupedBackground))
+
+            if model.keyboardVisible && !isFinished && !SnapshotRenderer.requested {
+                Divider()
+                KeyboardHostView(model: model)
+                    .frame(height: 264)
+                    .background(Color(UIColor {
+                        $0.userInterfaceStyle == .dark
+                            ? UIColor(white: 0.10, alpha: 1)
+                            : UIColor(red: 0.82, green: 0.83, blue: 0.86, alpha: 1)
+                    }))
+            }
+        }
+        .navigationTitle("手感测速靶场")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("重置") { resetChallenge() }
+            }
+        }
+        .onChange(of: model.before) { _ in evaluateProgress() }
+        .onChange(of: model.marked) { _ in evaluateProgress() }
+    }
+
+    private func metricTile(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title).font(.caption2).foregroundStyle(.secondary)
+            Text(value).font(.subheadline.weight(.bold)).foregroundStyle(.primary).lineLimit(1)
+        }
+        .padding(11)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
     }
 }
 
