@@ -86,6 +86,13 @@ final class KeyboardViewController: UIInputViewController {
     private var lastEchoed = ""
     private var markedHistory: [String] = []
     private var lastMarkedTime: CFTimeInterval = 0
+    private var lastHostWriteTime: CFTimeInterval = 0
+    private var lastReconcileTime: CFTimeInterval = 0
+    private var lastCommittedContext = ""
+    /// In the real iOS .appex extension, keep pinyin preedit inside CandidateBarView (zero setMarkedText XPC,
+    /// zero Safari/WKWebView contenteditable DOM composition lag or cursor drift, matching WeType/Hamster/Sogou).
+    /// In-app test bench & Playground (hostOverride != nil or !inExtension) keep inline marked text for full test coverage.
+    private var useInlineMarkedText: Bool { !Self.inExtension || hostOverride != nil }
 
     // English mode: the word being typed (its taps and the characters inserted), its suggestions and the
     // autocorrection space would apply; the last applied correction, which a delete right after takes back.
@@ -176,6 +183,7 @@ final class KeyboardViewController: UIInputViewController {
         inputView?.allowsSelfSizing = true
         tintView.isUserInteractionEnabled = false
         root.addSubview(tintView)
+        candidateBar.showsPreedit = !useInlineMarkedText
         loadEngine()
 
         keyboard.inputController = self
@@ -197,6 +205,7 @@ final class KeyboardViewController: UIInputViewController {
             self.undoable = nil
             self.enUndo = nil
             self.cleared = nil
+            self.lastCommittedContext = ""
             self.endEnglishWord()
             let before = self.host.documentContextBeforeInput
             let after = self.host.documentContextAfterInput
@@ -337,6 +346,8 @@ final class KeyboardViewController: UIInputViewController {
         lastDocumentID = host.documentIdentifier
         hostEchoesMarked = 0
         lastEchoed = ""
+        lastCommittedContext = ""
+        candidateBar.showsPreedit = !useInlineMarkedText
         userToggledModeInField = false
         forgetLastWord()
         afterLastKey = contextSnapshot()
@@ -431,6 +442,7 @@ final class KeyboardViewController: UIInputViewController {
             // what was learned about the last field's echo of marked text says nothing about this one
             hostEchoesMarked = 0
             lastEchoed = ""
+            lastCommittedContext = ""
             let traitsChanged = fieldTraits() != lastFieldTraits
             if !taps.isEmpty, traitsChanged {
                 clearComposition(touchHost: false)
@@ -464,8 +476,19 @@ final class KeyboardViewController: UIInputViewController {
     /// word just typed is behind us — no undoing its correction, no suggestions for it, no ". " from its space.
     private func leaveWordIfMoved() {
         guard taps.isEmpty,
-              (undoable != nil || enUndo != nil || cleared != nil || !predictions.isEmpty || lastInsertedSpace || !enTaps.isEmpty),
-              contextSnapshot() != afterLastKey else { return }
+              (undoable != nil || enUndo != nil || cleared != nil || !predictions.isEmpty || lastInsertedSpace || !enTaps.isEmpty) else { return }
+        if Self.inExtension && hostOverride == nil {
+            let now = CACurrentMediaTime()
+            if now - lastHostWriteTime < 0.18 { return }
+            if undoable == nil && enUndo == nil && cleared == nil && !lastInsertedSpace && enTaps.isEmpty {
+                // Only predictions active and user tapped elsewhere outside our own write echo: clear without XPC.
+                clearPredictions()
+                lastCommittedContext = ""
+                return
+            }
+        }
+        guard contextSnapshot() != afterLastKey else { return }
+        lastCommittedContext = ""
         forgetLastWord()
     }
 
@@ -484,10 +507,15 @@ final class KeyboardViewController: UIInputViewController {
     /// Only checked in hosts seen to include the marked text in the text before the cursor (confirmed twice), so a
     /// host that does not is never mistaken for one that moved on.
     private func reconcileWithHost() {
-        guard !taps.isEmpty, hasMarkedText, markedString.count >= 2 else { return }
-        // During rapid typing bursts on iOS 27, skip redundant XPC reads triggered by our own setMarkedText
-        // once the host has already confirmed it echoes marked text.
-        if hostEchoesMarked >= 2, CACurrentMediaTime() - lastMarkedTime < 0.08 { return }
+        guard useInlineMarkedText, !taps.isEmpty, hasMarkedText, markedString.count >= 2 else { return }
+        let now = CACurrentMediaTime()
+        // In .appex (Safari / WKWebView), skip XPC reads triggered by our own setMarkedText echoes.
+        if Self.inExtension && hostOverride == nil {
+            if now - lastMarkedTime < 0.25 || now - lastReconcileTime < 0.15 { return }
+            lastReconcileTime = now
+        } else if hostEchoesMarked >= 2, now - lastMarkedTime < 0.08 {
+            return
+        }
         guard let before = host.documentContextBeforeInput else { return }
         if before.hasSuffix(markedString) {
             // the host shows our marked text in its context: confirmed once per distinct composition string
@@ -727,9 +755,11 @@ final class KeyboardViewController: UIInputViewController {
         pairAdjustGeneration += 1
         if action != .delete { justInsertedPair = nil }
         defer {
-            // Only snapshot host context via XPC when idle with state that leaveWordIfMoved() actually protects.
-            // Eliminates 2 synchronous XPC round-trips per letter while composing on iOS 27 (Safari, Notes, WebView).
-            if taps.isEmpty && (undoable != nil || enUndo != nil || cleared != nil || !predictions.isEmpty || lastInsertedSpace || !enTaps.isEmpty) {
+            // Only snapshot host context via XPC when idle with state that truly needs afterLastKey comparison.
+            // Predictions alone do not need post-commit XPC in .appex (eliminates 2 XPC round-trips per committed word).
+            let needsSnapshot = (undoable != nil || enUndo != nil || cleared != nil || lastInsertedSpace || !enTaps.isEmpty)
+                || (!(Self.inExtension && hostOverride == nil) && !predictions.isEmpty)
+            if taps.isEmpty && needsSnapshot {
                 afterLastKey = contextSnapshot()
             }
             let ms = (CACurrentMediaTime() - t0) * 1000
@@ -762,7 +792,7 @@ final class KeyboardViewController: UIInputViewController {
         case .delete:
             delete()
         case .ret:
-            if !taps.isEmpty { commitRaw() } else { host.insertText("\n") }
+            if !taps.isEmpty { commitRaw() } else { lastHostWriteTime = CACurrentMediaTime(); host.insertText("\n"); lastCommittedContext = "" }
             lastInsertedSpace = false
             if !chinese { updateAutoShift() }
             reconfigure()
@@ -791,7 +821,10 @@ final class KeyboardViewController: UIInputViewController {
         case .t9(let d):
             // 九宫格: each key stands for its letters; 分词 only splits syllables inside a composition
             guard d != "'" || !taps.isEmpty else { return }
-            if taps.isEmpty { engine.setContext(host.documentContextBeforeInput ?? "") }
+            if taps.isEmpty {
+                let ctx = lastCommittedContext.isEmpty ? (host.documentContextBeforeInput ?? "") : lastCommittedContext
+                engine.setContext(ctx)
+            }
             lastInsertedSpace = false
             taps.append(Tap.t9(d))
             refresh()
@@ -804,7 +837,8 @@ final class KeyboardViewController: UIInputViewController {
             let literal = swiped?.literal ?? literalGeneration
             let text = restorableText(keys, literal: literal)
             if !taps.isEmpty { clearComposition() }
-            cleared = (keys, host.documentContextBeforeInput ?? "", literal, text)
+            let clearCtx = lastCommittedContext.isEmpty ? (host.documentContextBeforeInput ?? "") : lastCommittedContext
+            cleared = (keys, clearCtx, literal, text)
         case .deleteWord:
             deleteWord()
         case .emoji:
@@ -823,8 +857,11 @@ final class KeyboardViewController: UIInputViewController {
             }
         }
         if chinese && !(shifted || capsLock) {
-            // a new composition: the words are read in the context of the text before the cursor
-            if taps.isEmpty { engine.setContext(host.documentContextBeforeInput ?? "") }
+            // a new composition: reuse locally known committed context (0 XPC) when available
+            if taps.isEmpty {
+                let ctx = lastCommittedContext.isEmpty ? (host.documentContextBeforeInput ?? "") : lastCommittedContext
+                engine.setContext(ctx)
+            }
             taps.append(tap)
             refresh()
             return
@@ -1364,7 +1401,9 @@ final class KeyboardViewController: UIInputViewController {
 
     /// Insert committed text; it replaces the marked pinyin when there is one.
     private func insertCommitted(_ text: String) {
+        lastHostWriteTime = CACurrentMediaTime()
         host.insertText(text)
+        lastCommittedContext = String((lastCommittedContext + text).suffix(8))
         hasMarkedText = false
         markedString = ""
     }
@@ -1428,8 +1467,10 @@ final class KeyboardViewController: UIInputViewController {
         markedHistory.removeAll()
         if hasMarkedText {
             if touchHost {
-                if discardMarked { host.insertText("") }
-                host.unmarkText()
+                lastHostWriteTime = CACurrentMediaTime()
+                // insertText("") already replaces & unmarks the marked range in both UIKit and WebKit;
+                // avoid a redundant unmarkText() that fires a second compositionend and shifts contenteditable cursors.
+                if discardMarked { host.insertText("") } else { host.unmarkText() }
             }
             hasMarkedText = false
             markedString = ""
@@ -1454,9 +1495,11 @@ final class KeyboardViewController: UIInputViewController {
             let text = predictions[i]
             clearPredictions()
             forgetLastWord()
+            lastHostWriteTime = CACurrentMediaTime()
             host.insertText(text)
-            engine.setContext(text)
-            requestPredictions(after: text)
+            lastCommittedContext = String((lastCommittedContext + text).suffix(8))
+            engine.setContext(lastCommittedContext)
+            requestPredictions(after: lastCommittedContext)
             return
         }
         if taps.isEmpty, !enTaps.isEmpty, i < enSuggestions.count {

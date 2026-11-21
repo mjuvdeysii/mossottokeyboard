@@ -170,7 +170,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     func themeChanged() {
         expandButton.tintColor = Theme.secondaryText
         preedit.textColor = Theme.secondaryText
-        preedit.font = Theme.font(14, .medium)
+        preedit.font = Theme.font(11.5, .semibold)
         var uc = undoChip.configuration
         uc?.baseBackgroundColor = Theme.correctedTint
         uc?.baseForegroundColor = Theme.correctedMark
@@ -274,6 +274,16 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     @objc private func mostoTapped() { onMostoTap?() }
     @objc private func mostoDoubleTapped() { mosto.hop(); onMostoDoubleTap?() }
 
+    /// Immediately show typed keys in the candidate bar preedit line (0 ms, 0 XPC).
+    func setPreedit(_ text: String) {
+        preedit.text = text
+        let show = showsPreedit && !isPrediction && !text.isEmpty
+        if preedit.isHidden != !show {
+            preedit.isHidden = !show
+            setNeedsLayout()
+        }
+    }
+
     /// `prediction`: the row shows next-word suggestions (联想) rather than candidates for typed keys.
     func update(preedit text: String, candidates: [Candidate], prediction: Bool = false) {
         preedit.text = text
@@ -293,7 +303,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         }
         let busy = !candidates.isEmpty
         setMosto(!busy && !typing && showsMosto && undoText == nil)
-        preedit.isHidden = !busy || prediction || !showsPreedit
+        preedit.isHidden = text.isEmpty || prediction || !showsPreedit
         setNeedsLayout()
         layoutIfNeeded()
     }
@@ -343,8 +353,9 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     override func layoutSubviews() {
         super.layoutSubviews()
         let h = bounds.height
-        let preH: CGFloat = showsPreedit ? min(20, h * 0.3) : 0
-        preedit.frame = CGRect(x: 10, y: 2, width: bounds.width - 20, height: preH)
+        let showPre = showsPreedit && !preedit.isHidden
+        let preH: CGFloat = showPre ? 13 : 0
+        preedit.frame = CGRect(x: 10, y: 1, width: bounds.width - 20, height: preH)
         // high in the strip, clear of the q key below (the keys' reach band gives way to him: see reservedTop)
         let ms = min(h - 8, 44)
         mosto.frame = CGRect(x: 8, y: 1, width: ms, height: ms)
