@@ -23,7 +23,7 @@ struct ContentView: View {
     var body: some View {
         TabView(selection: $nav.tab) {
             NavigationStack {
-                FeaturesHubScreen()
+                FeaturesHubScreen(model: nav.playground)
                     .navigationTitle("Mosto键盘")
                     .navigationBarTitleDisplayMode(.inline)
             }
@@ -37,7 +37,7 @@ struct ContentView: View {
             .tabItem { Label("上手", systemImage: "hand.tap") }
             .tag(AppTab.guide)
             NavigationStack {
-                SettingsHubScreen()
+                SettingsHubScreen(model: nav.playground)
                     .navigationTitle("设置")
                     .navigationBarTitleDisplayMode(.inline)
             }
@@ -92,8 +92,8 @@ private let featureItems: [FeatureItem] = [
                 detail: "句子中直接夹打 ok、iOS、iPhone 自动识别大小写；中文全键盘与九宫格均支持完整纠错与联想。", lessonTitle: "中英混输"),
     FeatureItem(id: "kaomoji", icon: "face.smiling", title: "颜文字与彩蛋", stat: "126 款 · 情绪联动",
                 detail: "内置 8 大情绪 126 款颜文字；输入日期、时间、星期自动动态输出，输入晚安、开心、可爱、宝宝等触发 Mosto 彩蛋。", lessonTitle: nil),
-    FeatureItem(id: "glass", icon: "square.on.square", title: "双风格质感", stat: "iOS 原生 · Mosto 潮玩",
-                detail: "简洁模式 1:1 复刻系统液态玻璃高度与纯净键帽；Mosto 模式采用 3D 软胶厚底沿与日/夜灯双光，一键切换。", lessonTitle: nil),
+    FeatureItem(id: "glass", icon: "square.on.square", title: "微扁平双风格", stat: "iOS 原生 · Mosto 软胶",
+                detail: "简洁模式复刻系统液态玻璃高度与纯净键帽；Mosto 模式采用微扁平哑光软胶底沿与日/夜灯暖金高光，一键切换。", lessonTitle: nil),
     FeatureItem(id: "offline", icon: "lock.shield", title: "纯离线 · 零 AI", stat: "0 联网 · 0 追踪",
                 detail: "键盘扩展全程本机计算，不含任何网络请求、剪贴板读取或第三方 SDK，保持默认权限即可正常打字。", lessonTitle: nil),
 ]
@@ -105,9 +105,9 @@ private enum StageMood: Int, CaseIterable {
     }
     var subtitle: String {
         switch self {
-        case .day: return "软胶厚底沿 · 台灯暖光"
-        case .night: return "暗夜绒面 · 暖金微光"
-        case .plain: return "1:1 复刻 · 液态玻璃"
+        case .day: return "微扁平软胶 · 哑光柔面"
+        case .night: return "暗夜绒面 · 暖金细高光"
+        case .plain: return "系统比例 · 液态玻璃"
         }
     }
 }
@@ -201,7 +201,7 @@ private struct FeatureGlyphArt: View {
     }
 }
 
-/// Tactile miniature 3-keycap specimen showing 3D soft-vinyl vs iOS 27 Liquid Glass craft.
+/// Tactile miniature 3-keycap specimen showing micro-flat soft-vinyl vs iOS Liquid Glass craft.
 private struct MiniKeySpecimen: View {
     let mood: StageMood
 
@@ -209,20 +209,21 @@ private struct MiniKeySpecimen: View {
         let keys = ["m", "o", "中"]
         let isPlain = mood == .plain
         let isNight = mood == .night
-        let faceColor: Color = isPlain ? .white : (isNight ? Color(red: 0.25, green: 0.20, blue: 0.38) : Color(red: 0.99, green: 0.97, blue: 0.93))
-        let lipColor: Color = isPlain ? Color.black.opacity(0.08) : (isNight ? Color(red: 0.14, green: 0.10, blue: 0.24) : Color(red: 0.82, green: 0.76, blue: 0.66))
-        let inkColor: Color = isNight ? Color(red: 1.0, green: 0.95, blue: 0.85) : Color(red: 0.16, green: 0.12, blue: 0.26)
+        let faceColor: Color = isPlain ? .white : (isNight ? Color(red: 0.27, green: 0.22, blue: 0.55) : Color(red: 0.98, green: 0.97, blue: 1.0))
+        let lipColor: Color = isPlain ? Color.black.opacity(0.08) : (isNight ? Color(red: 0.11, green: 0.08, blue: 0.29) : Color(red: 0.81, green: 0.76, blue: 0.93))
+        let rimColor: Color = isPlain ? Color.black.opacity(0.06) : (isNight ? Color(red: 1.0, green: 0.89, blue: 0.66).opacity(0.32) : Color.white.opacity(0.88))
+        let inkColor: Color = isNight ? Color(red: 1.0, green: 0.95, blue: 0.86) : Color(red: 0.17, green: 0.10, blue: 0.38)
         HStack(spacing: 5) {
             ForEach(keys, id: \.self) { label in
                 ZStack {
-                    RoundedRectangle(cornerRadius: isPlain ? 8 : 9, style: .continuous)
+                    RoundedRectangle(cornerRadius: isPlain ? 7 : 9, style: .continuous)
                         .fill(lipColor)
                         .offset(y: isPlain ? 0.8 : 1.7)
-                    RoundedRectangle(cornerRadius: isPlain ? 8 : 9, style: .continuous)
+                    RoundedRectangle(cornerRadius: isPlain ? 7 : 9, style: .continuous)
                         .fill(faceColor)
                         .overlay(
-                            RoundedRectangle(cornerRadius: isPlain ? 8 : 9, style: .continuous)
-                                .stroke(isPlain ? Color.black.opacity(0.06) : (isNight ? Color(red: 1.0, green: 0.894, blue: 0.659).opacity(0.26) : Color.white.opacity(0.75)), lineWidth: 0.75)
+                            RoundedRectangle(cornerRadius: isPlain ? 7 : 9, style: .continuous)
+                                .stroke(rimColor, lineWidth: 0.75)
                         )
                     Text(label)
                         .font(.system(size: label == "中" ? 12 : 14, weight: isPlain ? .regular : .medium, design: isPlain ? .default : .rounded))
@@ -234,8 +235,15 @@ private struct MiniKeySpecimen: View {
     }
 }
 
-/// Tab 1 (首屏): Art-directed single-screen showcase with hand-drawn Mosto stage, tactile keycap specimen, and custom vector Bento cards.
+private struct SandboxPrompt: Identifiable {
+    let id: String
+    let label: String
+    let hint: String
+}
+
+/// Tab 1 (首屏): Art-directed Mosto stage, live interactive sandbox (xiaohe/quanpin + dismissible keyboard), and Bento feature cards.
 private struct FeaturesHubScreen: View {
+    @ObservedObject var model: PlaygroundModel
     @Environment(\.appNavigation) private var nav
     @Environment(\.scenePhase) private var phase
     @State private var added = KeyboardStatus.isAdded()
@@ -243,8 +251,27 @@ private struct FeaturesHubScreen: View {
     @State private var blink = false
     @State private var hop = false
     @State private var selected: FeatureItem? = nil
+    @State private var sandboxKeyboardOpen = false
+    @State private var activePromptIndex = 0
+    @State private var cursorBlink = true
 
     private let cols = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
+
+    private var prompts: [SandboxPrompt] {
+        if model.layout == 1 {
+            return [
+                SandboxPrompt(id: "xh1", label: "转置纠错", hint: "试试打 inhc 空格 → 你好"),
+                SandboxPrompt(id: "xh2", label: "长句连打", hint: "试试打 jmtmll 空格 → 今天来了"),
+                SandboxPrompt(id: "xh3", label: "成对标点", hint: "长按 ，选《》自动回退，按空格跳出"),
+            ]
+        } else {
+            return [
+                SandboxPrompt(id: "qp1", label: "转置纠错", hint: "试试打 nihoa 空格 → 你好"),
+                SandboxPrompt(id: "qp2", label: "漏键连打", hint: "试试打 jintiantiaqi 空格 → 今天天气"),
+                SandboxPrompt(id: "qp3", label: "成对标点", hint: "长按 ，选《》自动回退，按空格跳出"),
+            ]
+        }
+    }
 
     private var stageBg: LinearGradient {
         switch mood {
@@ -260,116 +287,248 @@ private struct FeaturesHubScreen: View {
     private var stageInk: Color { mood == .night ? Color(red: 1.0, green: 0.96, blue: 0.88) : Color(red: 0.16, green: 0.12, blue: 0.28) }
     private var stageSub: Color { mood == .night ? Color.white.opacity(0.72) : Color.black.opacity(0.56) }
 
+    private func syncMoodToModel(_ m: StageMood) {
+        switch m {
+        case .day:
+            model.style = 0; model.appearance = 1
+        case .night:
+            model.style = 0; model.appearance = 2
+        case .plain:
+            model.style = 1; model.appearance = 0
+        }
+    }
+
     var body: some View {
-        VStack(spacing: 11) {
-            VStack(spacing: 10) {
-                HStack(spacing: 12) {
-                    ZStack {
-                        RadialGradient(colors: [Color(red: 1.0, green: 0.84, blue: 0.48).opacity(mood == .night ? 0.38 : 0.45), .clear], center: .center, startRadius: 4, endRadius: 42)
-                            .frame(width: 82, height: 82)
-                        Image(uiImage: mostoImage(mood == .night ? "MostoToyNight" : (blink ? "MostoToyBlink" : "MostoToy")))
-                            .resizable().scaledToFit()
-                            .frame(width: 78, height: 78)
-                            .scaleEffect(x: hop ? 1.06 : 1, y: hop ? 0.94 : 1, anchor: .bottom)
-                            .offset(y: hop ? -4 : 0)
-                    }
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.2, dampingFraction: 0.45)) { hop = true; blink = true }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.55)) { hop = false }
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(spacing: 12) {
+                    VStack(spacing: 10) {
+                        HStack(spacing: 12) {
+                            ZStack {
+                                RadialGradient(colors: [Color(red: 1.0, green: 0.89, blue: 0.66).opacity(mood == .night ? 0.28 : 0.42), .clear], center: .center, startRadius: 4, endRadius: 42)
+                                    .frame(width: 82, height: 82)
+                                Image(uiImage: mostoImage(mood == .night ? "MostoToyNight" : (blink ? "MostoToyBlink" : "MostoToy")))
+                                    .resizable().scaledToFit()
+                                    .frame(width: 78, height: 78)
+                                    .scaleEffect(x: hop ? 1.06 : 1, y: hop ? 0.94 : 1, anchor: .bottom)
+                                    .offset(y: hop ? -4 : 0)
+                            }
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                withAnimation(.spring(response: 0.2, dampingFraction: 0.45)) { hop = true; blink = true }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.55)) { hop = false }
+                                }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.26) { blink = false }
+                            }
+
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("按偏了，也能打对")
+                                    .font(.headline.weight(.semibold))
+                                    .foregroundStyle(stageInk)
+                                Text(mood.subtitle)
+                                    .font(.caption)
+                                    .foregroundStyle(stageSub)
+                                MiniKeySpecimen(mood: mood)
+                                    .padding(.top, 2)
+                            }
+                            Spacer(minLength: 0)
                         }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.26) { blink = false }
-                    }
 
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("按偏了，也能打对")
-                            .font(.headline.weight(.semibold))
-                            .foregroundStyle(stageInk)
-                        Text(mood.subtitle)
-                            .font(.caption)
-                            .foregroundStyle(stageSub)
-                        MiniKeySpecimen(mood: mood)
-                            .padding(.top, 2)
+                        HStack(spacing: 6) {
+                            ForEach(StageMood.allCases, id: \.self) { m in
+                                Button {
+                                    withAnimation(.easeInOut(duration: 0.2)) { mood = m }
+                                    syncMoodToModel(m)
+                                } label: {
+                                    Text(m.label)
+                                        .font(.caption.weight(mood == m ? .semibold : .regular))
+                                        .foregroundStyle(mood == m ? (mood == .night ? Color(red: 0.15, green: 0.11, blue: 0.27) : .white) : stageSub)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 6)
+                                        .background(Capsule().fill(mood == m ? (mood == .night ? Color(red: 1.0, green: 0.89, blue: 0.66) : mostoTint) : Color.black.opacity(mood == .night ? 0.18 : 0.05)))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
                     }
-                    Spacer(minLength: 0)
-                }
+                    .padding(14)
+                    .background(
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .fill(stageBg)
+                            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(Color.white.opacity(mood == .night ? 0.12 : 0.65), lineWidth: 1))
+                    )
 
-                HStack(spacing: 6) {
-                    ForEach(StageMood.allCases, id: \.self) { m in
+                    // Playable live sandbox card: try xiaohe/quanpin correction & micro-flat feel in 10 seconds.
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 8) {
+                            Label("手感试打沙盒", systemImage: "keyboard")
+                                .font(.subheadline.weight(.semibold))
+                            Spacer()
+                            Picker("方案", selection: Binding(
+                                get: { model.layout == 1 ? 1 : 0 },
+                                set: { model.layout = $0 }
+                            )) {
+                                Text("全拼").tag(0)
+                                Text("小鹤").tag(1)
+                            }
+                            .pickerStyle(.segmented)
+                            .frame(width: 112)
+                            Button {
+                                UISelectionFeedbackGenerator().selectionChanged()
+                                withAnimation(.spring(response: 0.26, dampingFraction: 0.84)) {
+                                    sandboxKeyboardOpen.toggle()
+                                }
+                            } label: {
+                                HStack(spacing: 3) {
+                                    Image(systemName: sandboxKeyboardOpen ? "keyboard.chevron.compact.down" : "keyboard")
+                                    Text(sandboxKeyboardOpen ? "收起" : "试打")
+                                }
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(mostoTint)
+                                .padding(.horizontal, 9).padding(.vertical, 5)
+                                .background(Capsule().fill(mostoTint.opacity(0.12)))
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        // Built-in 3 short scenario prompts (wraps cleanly, zero horizontal scroll)
+                        HStack(spacing: 6) {
+                            ForEach(Array(prompts.enumerated()), id: \.element.id) { idx, p in
+                                Button {
+                                    activePromptIndex = idx
+                                    if !sandboxKeyboardOpen {
+                                        withAnimation(.spring(response: 0.26, dampingFraction: 0.84)) {
+                                            sandboxKeyboardOpen = true
+                                        }
+                                    }
+                                } label: {
+                                    Text(p.label)
+                                        .font(.caption2.weight(activePromptIndex == idx ? .semibold : .medium))
+                                        .foregroundStyle(activePromptIndex == idx ? .white : .secondary)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 5)
+                                        .background(Capsule().fill(activePromptIndex == idx ? mostoTint : Color(UIColor.tertiarySystemFill)))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+
+                        let activePrompt = prompts[min(activePromptIndex, prompts.count - 1)]
+                        VStack(alignment: .leading, spacing: 6) {
+                            (Text(model.before) + Text(model.marked).underline() + Text(sandboxKeyboardOpen && cursorBlink ? "|" : " ").foregroundColor(mostoTint))
+                                .font(.system(size: 18, design: .rounded))
+                                .frame(maxWidth: .infinity, minHeight: 42, alignment: .topLeading)
+                                .overlay(alignment: .topLeading) {
+                                    if model.before.isEmpty && model.marked.isEmpty {
+                                        Text(activePrompt.hint)
+                                            .font(.system(size: 14, design: .rounded))
+                                            .foregroundStyle(.tertiary)
+                                            .allowsHitTesting(false)
+                                    }
+                                }
+                            if !model.before.isEmpty || !model.marked.isEmpty {
+                                HStack {
+                                    Text(activePrompt.hint)
+                                        .font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+                                    Spacer()
+                                    Button("清空") { model.clear() }
+                                        .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        .padding(11)
+                        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color(UIColor.tertiarySystemGroupedBackground)))
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            if !sandboxKeyboardOpen {
+                                withAnimation(.spring(response: 0.26, dampingFraction: 0.84)) {
+                                    sandboxKeyboardOpen = true
+                                }
+                            }
+                        }
+                    }
+                    .padding(14)
+                    .background(
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .fill(Color(UIColor.secondarySystemGroupedBackground))
+                            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Color.primary.opacity(0.05), lineWidth: 0.8))
+                    )
+
+                    // Show setup guidance clearly when not yet enabled; automatically hide once enabled.
+                    if !added {
                         Button {
-                            withAnimation(.easeInOut(duration: 0.2)) { mood = m }
+                            nav?.guideSegment = 0
+                            nav?.tab = .guide
                         } label: {
-                            Text(m.label)
-                                .font(.caption.weight(mood == m ? .semibold : .regular))
-                                .foregroundStyle(mood == m ? (mood == .night ? Color(red: 0.15, green: 0.11, blue: 0.27) : .white) : stageSub)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 6)
-                                .background(Capsule().fill(mood == m ? (mood == .night ? Color(red: 1.0, green: 0.85, blue: 0.50) : mostoTint) : Color.black.opacity(mood == .night ? 0.18 : 0.05)))
+                            HStack(spacing: 10) {
+                                Circle().fill(mostoTint).frame(width: 8, height: 8)
+                                Text("尚未启用系统键盘 · 30 秒完成添加")
+                                    .font(.subheadline.weight(.medium)).foregroundStyle(.primary)
+                                Spacer()
+                                Text("去开启")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(mostoTint)
+                            }
+                            .padding(.horizontal, 14).padding(.vertical, 11)
+                            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
                         }
                         .buttonStyle(.plain)
                     }
-                }
-            }
-            .padding(14)
-            .background(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(stageBg)
-                    .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(Color.white.opacity(mood == .night ? 0.12 : 0.65), lineWidth: 1))
-            )
 
-            LazyVGrid(columns: cols, spacing: 10) {
-                ForEach(featureItems) { item in
-                    Button { selected = item } label: {
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack(alignment: .top) {
-                                FeatureGlyphArt(id: item.id)
-                                Spacer()
-                                Image(systemName: "arrow.up.right")
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(.tertiary)
+                    LazyVGrid(columns: cols, spacing: 10) {
+                        ForEach(featureItems) { item in
+                            Button { selected = item } label: {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    HStack(alignment: .top) {
+                                        FeatureGlyphArt(id: item.id)
+                                        Spacer()
+                                        Image(systemName: "arrow.up.right")
+                                            .font(.caption2.weight(.semibold))
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                    Spacer(minLength: 2)
+                                    Text(item.title).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+                                    Text(item.stat).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                                }
+                                .padding(12)
+                                .frame(maxWidth: .infinity, minHeight: 96, alignment: .leading)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                        .fill(Color(UIColor.secondarySystemGroupedBackground))
+                                        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Color.primary.opacity(0.05), lineWidth: 0.8))
+                                )
                             }
-                            Spacer(minLength: 2)
-                            Text(item.title).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
-                            Text(item.stat).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                            .buttonStyle(.plain)
                         }
-                        .padding(12)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                        .background(
-                            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .fill(Color(UIColor.secondarySystemGroupedBackground))
-                                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Color.primary.opacity(0.05), lineWidth: 0.8))
-                        )
                     }
-                    .buttonStyle(.plain)
                 }
+                .padding(.horizontal, 16).padding(.vertical, 10)
             }
-            .frame(maxHeight: .infinity)
+            .background(Color(UIColor.systemGroupedBackground))
 
-            Button {
-                nav?.guideSegment = added ? 1 : 0
-                nav?.tab = .guide
-            } label: {
-                HStack(spacing: 10) {
-                    Circle()
-                        .fill(added ? Color.green : mostoTint)
-                        .frame(width: 8, height: 8)
-                    Text(added ? "Mosto键盘已就绪 · 点击进入互动练手" : "尚未启用键盘 · 30 秒去完成添加")
-                        .font(.subheadline.weight(.medium)).foregroundStyle(.primary)
-                    Spacer()
-                    Text(added ? "去练手" : "去开启")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(mostoTint)
-                }
-                .padding(.horizontal, 14).padding(.vertical, 11)
-                .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
+            if sandboxKeyboardOpen && !SnapshotRenderer.requested {
+                Divider()
+                KeyboardHostView(model: model)
+                    .frame(height: 264)
+                    .background(Color(UIColor {
+                        $0.userInterfaceStyle == .dark
+                            ? UIColor(white: 0.10, alpha: 1)
+                            : UIColor(red: 0.82, green: 0.83, blue: 0.86, alpha: 1)
+                    }))
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
-            .buttonStyle(.plain)
         }
-        .padding(.horizontal, 16).padding(.vertical, 10)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(UIColor.systemGroupedBackground))
         .onChange(of: phase) { p in if p == .active { added = KeyboardStatus.isAdded() } }
+        .onChange(of: nav?.tab) { newTab in
+            if newTab != .features && sandboxKeyboardOpen { sandboxKeyboardOpen = false }
+        }
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 530_000_000)
+                if sandboxKeyboardOpen { cursorBlink.toggle() }
+            }
+        }
         .sheet(item: $selected) { item in
             NavigationStack {
                 VStack(alignment: .leading, spacing: 18) {
@@ -432,8 +591,9 @@ private struct GuideHubScreen: View {
     }
 }
 
-/// Tab 3 (设置): Zero-scroll native Settings center with direct drill-downs.
+/// Tab 3 (设置): Real interactive Settings center for core typing & feel preferences (no App Group required).
 private struct SettingsHubScreen: View {
+    @ObservedObject var model: PlaygroundModel
     @Environment(\.scenePhase) private var phase
     @State private var added = KeyboardStatus.isAdded()
 
@@ -441,7 +601,7 @@ private struct SettingsHubScreen: View {
         List {
             Section {
                 HStack(spacing: 12) {
-                    Image(uiImage: mostoImage("MostoToy"))
+                    Image(uiImage: mostoImage(model.appearance == 2 ? "MostoToyNight" : "MostoToy"))
                         .resizable().scaledToFit()
                         .frame(width: 52, height: 52)
                     VStack(alignment: .leading, spacing: 3) {
@@ -457,9 +617,116 @@ private struct SettingsHubScreen: View {
                 }
                 .padding(.vertical, 4)
             }
-            Section("键盘状态与快捷设置") {
+
+            Section {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Label("输入方案与布局", systemImage: "character.textbox")
+                        Spacer()
+                        Text(model.layout == 1 ? "纯小鹤 2 键" : (model.layout == 2 ? "九宫格" : "全拼"))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Picker("输入方案", selection: $model.layout) {
+                        Text("全拼").tag(0)
+                        Text("小鹤双拼").tag(1)
+                        Text("九宫格").tag(2)
+                    }
+                    .pickerStyle(.segmented)
+                }
+                .padding(.vertical, 2)
+
+                if model.layout == 1 {
+                    Toggle(isOn: $model.guide) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("小鹤键位助记提示")
+                            Text("在字母键帽下标注声韵母，熟练后可关闭").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    .tint(mostoTint)
+                }
+
                 HStack {
-                    Label("键盘启用状态", systemImage: added ? "checkmark.circle.fill" : "keyboard")
+                    Label("123 数字键盘", systemImage: "number.square")
+                    Spacer()
+                    Picker("123", selection: $model.numberPad) {
+                        Text("完整页").tag(false)
+                        Text("九宫格").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 136)
+                }
+            } header: {
+                Text("输入方案")
+            }
+
+            Section {
+                HStack {
+                    Label("键盘风格", systemImage: "paintbrush.pointed")
+                    Spacer()
+                    Picker("风格", selection: $model.style) {
+                        Text("Mosto").tag(0)
+                        Text("简洁").tag(1)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 136)
+                }
+
+                HStack {
+                    Label("光线模式", systemImage: "sun.max")
+                    Spacer()
+                    Picker("光线", selection: $model.appearance) {
+                        Text("自动").tag(0)
+                        Text("日光").tag(1)
+                        Text(model.style == 1 ? "夜光" : "夜灯").tag(2)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 162)
+                }
+            } header: {
+                Text("外观质感")
+            }
+
+            Section {
+                Toggle(isOn: $model.autocorrect) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("按触点位置自动纠错")
+                        Text("默认最优档，自动修正邻键误触与长句漏键").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .tint(mostoTint)
+
+                Toggle(isOn: $model.english) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("中英混输与成对标点")
+                        Text("中文态直出 iOS / OK，成对括号按空格跳出").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .tint(mostoTint)
+
+                Toggle(isOn: $model.feedback) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("按键触感震动")
+                        Text("按下瞬间轻脆反馈（系统键盘需开启完全访问）").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .tint(mostoTint)
+
+                Toggle(isOn: $model.keySound) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("系统按键音")
+                        Text("跟随静音开关播放原声按键音").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .tint(mostoTint)
+            } header: {
+                Text("纠错与手感")
+            } footer: {
+                Text("Mosto 坚持零 App Group 共享容器：以上开关即时生效于 App 内沙盒；系统键盘内偏好可在任意 App 长按表情键或点击候选栏快捷按钮独立调整，全程离线保存。")
+            }
+
+            Section("系统键盘与用法") {
+                HStack {
+                    Label("系统键盘状态", systemImage: added ? "checkmark.circle.fill" : "keyboard")
                         .foregroundStyle(added ? .green : mostoTint)
                     Spacer()
                     Text(added ? "已添加" : "未添加").foregroundStyle(.secondary)
@@ -472,7 +739,7 @@ private struct SettingsHubScreen: View {
                 NavigationLink {
                     UsageDetailView()
                 } label: {
-                    Label("键盘内偏好与全部用法（风格 / 方案 / 震动）", systemImage: "slider.horizontal.3")
+                    Label("全部手势与键盘用法说明", systemImage: "slider.horizontal.3")
                 }
             }
 
@@ -482,21 +749,12 @@ private struct SettingsHubScreen: View {
                 } label: {
                     Label("小鹤双拼键位表与学习成本", systemImage: "square.grid.3x3")
                 }
-                ForEach(LegalText.docs, id: \.id) {
-                    doc in
+                ForEach(LegalText.docs, id: \.id) { doc in
                     NavigationLink {
                         LegalView(doc: doc)
                     } label: {
                         Label(doc.title, systemImage: aboutIcon(doc.id))
                     }
-                }
-            }
-
-            Section {
-                HStack {
-                    Text("Mosto键盘 1.0").font(.footnote).foregroundStyle(.secondary)
-                    Spacer()
-                    Text("纯离线 · 零 AI · 零共享容器").font(.footnote).foregroundStyle(.secondary)
                 }
             }
         }

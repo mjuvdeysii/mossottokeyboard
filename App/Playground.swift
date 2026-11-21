@@ -232,7 +232,7 @@ struct PlaygroundScreen: View {
             }
             .scrollDismissesKeyboard(.never)
 
-            if model.keyboardVisible || model.step < lessons.count {
+            if model.keyboardVisible {
                 Divider()
                 Group {
                     if SnapshotRenderer.requested {
@@ -350,14 +350,14 @@ private struct DoneCard: View {
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
-                        Text("Mosto 键盘控制台").font(.headline.weight(.bold))
+                        Text("Mosto 沙盒控制台").font(.headline.weight(.bold))
                         Text(isAdded ? "已启用" : "待启用")
                             .font(.caption2.weight(.bold))
                             .foregroundStyle(isAdded ? Color.green : Color.orange)
                             .padding(.horizontal, 7).padding(.vertical, 2)
                             .background(Capsule().fill((isAdded ? Color.green : Color.orange).opacity(0.15)))
                     }
-                    Text("以下设置对所有 App 中的 Mosto键盘即时生效并跨版本持久保存。")
+                    Text("即时生效于本页沙盒；零共享容器，系统键盘内长按表情键调整偏好。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 4)
@@ -415,7 +415,7 @@ private struct DoneCard: View {
                     IconTile(symbol: "paintbrush.pointed")
                     VStack(alignment: .leading, spacing: 2) {
                         Text("键盘风格").font(.subheadline.weight(.semibold))
-                        Text(model.style == 0 ? "3D 软胶键帽 + Mosto 陪伴" : "系统原生纯净毛玻璃").font(.caption).foregroundStyle(.secondary)
+                        Text(model.style == 0 ? "微扁平软胶键帽 + Mosto 陪伴" : "系统原生纯净毛玻璃").font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
                     Picker("风格", selection: $model.style) {
@@ -493,29 +493,27 @@ struct TextArea: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if model.step >= lessons.count {
-                HStack {
-                    Label("实时试打沙盒", systemImage: "text.cursor")
-                        .font(.caption.weight(.bold)).foregroundStyle(.secondary)
-                    Spacer()
-                    if !model.before.isEmpty || !model.marked.isEmpty {
-                        Button("清空") { model.clear() }
-                            .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                    }
-                    Button {
-                        UISelectionFeedbackGenerator().selectionChanged()
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) { model.keyboardVisible.toggle() }
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: model.keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard")
-                            Text(model.keyboardVisible ? "收起键盘" : "唤出键盘")
-                        }
-                        .font(.caption.weight(.semibold)).foregroundStyle(mostoTint)
-                        .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(Capsule().fill(mostoTint.opacity(0.12)))
-                    }
-                    .buttonStyle(.plain)
+            HStack {
+                Label(model.step >= lessons.count ? "实时试打沙盒" : "练习输入区", systemImage: "text.cursor")
+                    .font(.caption.weight(.bold)).foregroundStyle(.secondary)
+                Spacer()
+                if !model.before.isEmpty || !model.marked.isEmpty {
+                    Button("清空") { model.clear() }
+                        .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                 }
+                Button {
+                    UISelectionFeedbackGenerator().selectionChanged()
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) { model.keyboardVisible.toggle() }
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: model.keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard")
+                        Text(model.keyboardVisible ? "收起键盘" : "唤出键盘")
+                    }
+                    .font(.caption.weight(.semibold)).foregroundStyle(mostoTint)
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(Capsule().fill(mostoTint.opacity(0.12)))
+                }
+                .buttonStyle(.plain)
             }
             (Text(model.before) + Text(model.marked).underline() + Text(blink ? "|" : " ").foregroundColor(mostoTint))
                 .font(.system(size: 20, design: .rounded))

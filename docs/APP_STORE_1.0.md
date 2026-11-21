@@ -89,9 +89,13 @@ Thank you for reviewing Mosto Keyboard (Mosto键盘).
 | 4 | 双材质键盘美学 | 3D 实体键帽与 Liquid Glass 随心切换 | 对角线切分或双卡片同屏对比浅色 3D 实体键帽质感与深色 Liquid Glass 质感，呈现精致光影细节 | 真实渲染界面截图，严禁过度滤镜或失真装饰 |
 | 5 | 上手即练，双拼零门槛 | 内置键位图与互动练习场 | 展示伴侣 App 内置练习输入框与小鹤双拼键位参考面板，演示从新手查键到流畅盲打的完整闭环 | 保持伴侣 App 实际 UI 比例与克制排版，突出实用工具感 |
 
-## 7. 提审前最终自检清单
+## 7. 提审前最终自检清单（R36 / 1.0 上架核对）
 
+- [x] **CI 与 SDK 链路核查**：`build` 任务运行于 `macos-15`（`Xcode 26.3 / 17C529`，iOS 26 SDK）负责全量编译、模拟器快照、Keyboard Test Bench 与引擎质量门禁；`testflight` 任务运行于 `xcode-27`（iOS 27 SDK）负责 Release 归档、自动云端签名与上传 TestFlight。
+- [x] **签名与容器边界**：`.xcodeproj` 零签名改动、零新增 `.entitlements`，`App/PrivacyInfo.xcprivacy` 与 `Keyboard/Resources/PrivacyInfo.xcprivacy` 声明完整，`ITSAppUsesNonExemptEncryption = NO`。
+- [x] **离线隐私静态门禁**：`Tools/check_offline.py` 与 `Tools/check_no_sync_tap.py` 全量通过。
+- [x] **核心体验打磨（R35–R36）**：零主线程 `queue.sync`、Grapheme Cluster 空格拖光标、成对标点 18ms 安全回退 + 联动双删、同会话连续撤回尊重、32ms 高速连击触觉节流、微扁平 Mosto 质感（1.7pt 底沿 + 0.75pt 暖金高光）、Tab 1 10 秒试打沙盒与 Tab 3 真设置中心。
 - [ ] 核对 App Store Connect 中隐私政策 URL、技术支持 URL 与 `docs/privacy.html`、`docs/index.html` 线上可访问性。
 - [ ] 核对 App Store Connect 隐私标签已勾选“不收集数据（Data Not Collected）”。
-- [ ] 使用真机（未开启“允许完全访问”）完整复测小鹤双拼、全拼、九宫格与中英混输。
-- [ ] 确认提交构建版本通过 CI 全量引擎质量门禁（`Engine quality gate`）与离线隐私检查（`check_offline.py`）。
+- [ ] 使用真机（未开启“允许完全访问”）完整复测小鹤双拼、全拼、九宫格、成对标点联动删除与中英混输。
+- [ ] 在 TestFlight 最新绿灯构建上截取 6.9" / 6.7" 商店 5 图并提交 App Review。
