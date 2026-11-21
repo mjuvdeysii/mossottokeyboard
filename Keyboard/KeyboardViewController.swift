@@ -84,6 +84,7 @@ final class KeyboardViewController: UIInputViewController {
     private var hostEchoesMarked = 0
     private var lastEchoed = ""
     private var markedHistory: [String] = []
+    private var lastMarkedTime: CFTimeInterval = 0
 
     // English mode: the word being typed (its taps and the characters inserted), its suggestions and the
     // autocorrection space would apply; the last applied correction, which a delete right after takes back.
@@ -461,7 +462,9 @@ final class KeyboardViewController: UIInputViewController {
     /// The cursor is no longer where the last key left it (tapped elsewhere, text replaced, another field): the
     /// word just typed is behind us — no undoing its correction, no suggestions for it, no ". " from its space.
     private func leaveWordIfMoved() {
-        guard taps.isEmpty, contextSnapshot() != afterLastKey else { return }
+        guard taps.isEmpty,
+              (undoable != nil || enUndo != nil || cleared != nil || !predictions.isEmpty || lastInsertedSpace || !enTaps.isEmpty),
+              contextSnapshot() != afterLastKey else { return }
         forgetLastWord()
     }
 
@@ -480,8 +483,11 @@ final class KeyboardViewController: UIInputViewController {
     /// Only checked in hosts seen to include the marked text in the text before the cursor (confirmed twice), so a
     /// host that does not is never mistaken for one that moved on.
     private func reconcileWithHost() {
-        guard !taps.isEmpty, hasMarkedText, markedString.count >= 1,
-              let before = host.documentContextBeforeInput else { return }
+        guard !taps.isEmpty, hasMarkedText, markedString.count >= 2 else { return }
+        // During rapid typing bursts on iOS 27, skip redundant XPC reads triggered by our own setMarkedText
+        // once the host has already confirmed it echoes marked text.
+        if hostEchoesMarked >= 2, CACurrentMediaTime() - lastMarkedTime < 0.08 { return }
+        guard let before = host.documentContextBeforeInput else { return }
         if before.hasSuffix(markedString) {
             // the host shows our marked text in its context: confirmed once per distinct composition string
             if markedString != lastEchoed { lastEchoed = markedString; hostEchoesMarked += 1 }
@@ -715,7 +721,11 @@ final class KeyboardViewController: UIInputViewController {
         let t0 = CACurrentMediaTime()
         pairAdjustGeneration += 1
         defer {
-            afterLastKey = contextSnapshot()
+            // Only snapshot host context via XPC when idle with state that leaveWordIfMoved() actually protects.
+            // Eliminates 2 synchronous XPC round-trips per letter while composing on iOS 27 (Safari, Notes, WebView).
+            if taps.isEmpty && (undoable != nil || enUndo != nil || cleared != nil || !predictions.isEmpty || lastInsertedSpace || !enTaps.isEmpty) {
+                afterLastKey = contextSnapshot()
+            }
             let ms = (CACurrentMediaTime() - t0) * 1000
             handleTotal += ms; handleCount += 1; handleMax = max(handleMax, ms)
             if handleCount % 40 == 0 { peakFootprint = max(peakFootprint, memoryFootprintMB()) }   // a few µs
@@ -799,6 +809,13 @@ final class KeyboardViewController: UIInputViewController {
 
     private func letter(_ s: String, tap: Tap) {
         lastInsertedSpace = false
+        if let p = pendingSelect {
+            pendingSelect = nil
+            if let r = result, !r.candidates.isEmpty {
+                let idx = min(p.index, r.candidates.count - 1)
+                select(idx, shown: r.candidates[idx])
+            }
+        }
         if chinese && !(shifted || capsLock) {
             // a new composition: the words are read in the context of the text before the cursor
             if taps.isEmpty { engine.setContext(host.documentContextBeforeInput ?? "") }
@@ -1150,7 +1167,7 @@ final class KeyboardViewController: UIInputViewController {
             // press is never invisible; the pinyin replaces them as soon as it is known
             setMarked(rawKeys)
         }
-        if committedParts.isEmpty, let ctx = host.documentContextBeforeInput { engine.setContext(ctx) }; reconfigure()
+        reconfigure()
         engine.decode(taps, literal: effectiveLiteral, generation: gen) { [weak self] out in
             guard let self, gen == self.generation, let out else { return }
             let ms = (CACurrentMediaTime() - asked) * 1000
@@ -1160,6 +1177,7 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func setMarked(_ marked: String) {
+        lastMarkedTime = CACurrentMediaTime()
         host.setMarkedText(marked, selectedRange: NSRange(location: (marked as NSString).length, length: 0))
         hasMarkedText = true
         markedString = marked
@@ -1191,7 +1209,7 @@ final class KeyboardViewController: UIInputViewController {
     /// current, else decoded at once — this waits only for a decode already under way.
     private func currentResult() -> Decoder.Result? {
         if resultGeneration == generation, let r = result { return r }
-        guard !taps.isEmpty, let out = engine.decodeWithTimeout(taps, literal: literalGeneration, generation: generation, timeout: Bundle.main.bundlePath.hasSuffix(".appex") ? 0.05 : 0.5) else { return result }
+        guard !taps.isEmpty, let out = engine.decodeWithTimeout(taps, literal: literalGeneration, generation: generation, timeout: Bundle.main.bundlePath.hasSuffix(".appex") ? 0.025 : 0.5) else { return result }
         show(out, generation: generation)
         return out.result
     }
@@ -1420,14 +1438,19 @@ final class KeyboardViewController: UIInputViewController {
         if resultGeneration != generation || result == nil {
             // 解码还在飞：绝不在这里同步等引擎（queue.sync 会卡主线程、吞掉这次触摸）。
             // 存下这一次点击，等 show() 把这一代的候选显示出来后立刻执行。
-            if pendingSelect == nil {
-                pendingSelect = (i, shown ?? Candidate(text: "", tapCount: 0, syllables: [], corrected: false, score: 0))
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-                    guard let self, let p = self.pendingSelect else { return }
+            let wasNil = pendingSelect == nil
+            pendingSelect = (i, shown ?? Candidate(text: "", tapCount: 0, syllables: [], corrected: false, score: 0))
+            if wasNil {
+                let targetGen = generation
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self] in
+                    guard let self, self.generation == targetGen, let p = self.pendingSelect else { return }
                     self.pendingSelect = nil
-                    // 兜底：若那一代解码始终没回来，用当前显示的结果执行，不让点击凭空消失
-                    let s = self.result.flatMap { p.index < $0.candidates.count ? $0.candidates[p.index] : nil } ?? p.shown
-                    self.select(p.index, shown: s)
+                    if let r = self.result, !r.candidates.isEmpty {
+                        let s = p.index < r.candidates.count ? r.candidates[p.index] : p.shown
+                        self.select(p.index, shown: s)
+                    } else if !self.taps.isEmpty {
+                        self.commitRaw()
+                    }
                 }
             }
             return

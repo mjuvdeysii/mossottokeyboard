@@ -529,7 +529,20 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     private func candidateIndex(at p: CGPoint) -> Int? {
         let q = convert(p, to: strip)
         guard q.y >= -16, q.x >= strip.bounds.minX - 12, q.x < strip.bounds.maxX else { return nil }
-        return labels.firstIndex { ($0.frame.minX - 4) <= q.x && q.x < ($0.frame.maxX + 4) } ?? (!labels.isEmpty && q.x < labels[0].frame.maxX ? 0 : (typing && labels.isEmpty && p.x < 120 ? 0 : nil))
+        if let exact = labels.firstIndex(where: { ($0.frame.minX - 6) <= q.x && q.x < ($0.frame.maxX + 6) }) {
+            return exact
+        }
+        if !labels.isEmpty {
+            if q.x <= labels[0].frame.maxX + 10 { return 0 }
+            // Fallback to nearest visible candidate within 12 pt gap so taps on inter-item spacing never miss.
+            var best: (idx: Int, dist: CGFloat)?
+            for (i, l) in labels.enumerated() where !l.isHidden {
+                let d = q.x < l.frame.minX ? (l.frame.minX - q.x) : (q.x > l.frame.maxX ? (q.x - l.frame.maxX) : 0)
+                if d <= 12, best == nil || d < best!.dist { best = (i, d) }
+            }
+            if let best { return best.idx }
+        }
+        return typing && labels.isEmpty && p.x < 120 ? 0 : nil
     }
 
     func stripTouch(_ phase: TouchSample.Phase, at p: CGPoint, time: CFTimeInterval) {
@@ -559,7 +572,13 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         case .ended:
             longPressTimer?.invalidate()
             let idx = candidateIndex(at: p)
-            let chosen = gesture.end(index: gesture.index, currentText: gesture.text).map { idx ?? $0 }
+            let wasDown = gesture.down, wasSlid = gesture.slid, wasHeld = gesture.held
+            var chosen = gesture.end(index: gesture.index, currentText: gesture.text).map { idx ?? $0 }
+            // If candidates finished laying out between .began and .ended (ultra-fast tap right after typing),
+            // commit the candidate now under the finger instead of dropping the tap.
+            if chosen == nil, !benchTouches, wasDown, !wasSlid, !wasHeld, let endIdx = idx, endIdx < candidates.count {
+                chosen = endIdx
+            }
             setNeedsLayout()
             if let chosen { onSelect?(chosen) }
         case .cancelled:

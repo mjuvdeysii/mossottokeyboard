@@ -253,7 +253,9 @@ final class EngineHost {
             self.lock.lock(); let superseded = generation < self.latest; self.lock.unlock()
             if superseded { return }
             let out = self.run(taps, literal: literal)
+            self.lock.lock()
             self.lastOut = (generation, literal, out)
+            self.lock.unlock()
             DispatchQueue.main.async { done(out) }
         }
     }
@@ -266,31 +268,54 @@ final class EngineHost {
     /// The engine has loaded (the lexicon at least).
     var isLoaded: Bool { lock.lock(); defer { lock.unlock() }; return loaded }
     var englishLexicon: EnglishLexicon? { lock.lock(); defer { lock.unlock() }; return sharedEnglish }
-    // engine-queue state: the last background decode, so a commit that needs it right away does not decode again
+    // protected by `lock`: the last background decode, so a commit that needs it right away does not wait or re-decode
     private var lastOut: (generation: Int, literal: Bool, out: Output?)?
 
     /// Decode now, waiting for whatever is queued before it (used by the simulator test bench and snapshot renderer).
     /// With `generation`, the background decode already queued for that generation is used when it has run.
     func decodeNow(_ taps: [Tap], literal: Bool = false, generation: Int? = nil) -> Output? {
-        queue.sync {
-            if let g = generation, let last = lastOut, last.generation == g, last.literal == literal, last.out != nil {
+        if let g = generation {
+            lock.lock()
+            let cached = lastOut
+            lock.unlock()
+            if let last = cached, last.generation == g, last.literal == literal, last.out != nil {
                 return last.out
+            }
+        }
+        return queue.sync {
+            if let g = generation {
+                self.lock.lock(); let cached = self.lastOut; self.lock.unlock()
+                if let last = cached, last.generation == g, last.literal == literal, last.out != nil {
+                    return last.out
+                }
             }
             return run(taps, literal: literal)
         }
     }
 
-    /// Non-blocking bounded decode for live keyboard commits: never waits on cold start and never stalls past `timeout`.
-    func decodeWithTimeout(_ taps: [Tap], literal: Bool = false, generation: Int? = nil, timeout: TimeInterval = 0.04) -> Output? {
-        guard isLoaded else { return nil }
+    /// Non-blocking bounded decode for live keyboard commits: hits lock-protected cache in microseconds when ready,
+    /// never waits on cold start, and never stalls past `timeout`.
+    func decodeWithTimeout(_ taps: [Tap], literal: Bool = false, generation: Int? = nil, timeout: TimeInterval = 0.025) -> Output? {
+        lock.lock()
+        let ready = loaded
+        let cached = lastOut
+        lock.unlock()
+        guard ready else { return nil }
+        if let g = generation, let last = cached, last.generation == g, last.literal == literal, let out = last.out {
+            return out
+        }
         let sem = DispatchSemaphore(value: 0)
         var result: Output?
         queue.async {
-            if let g = generation, let last = self.lastOut, last.generation == g, last.literal == literal, last.out != nil {
-                result = last.out
-            } else {
-                result = self.run(taps, literal: literal)
+            if let g = generation {
+                self.lock.lock(); let latestCached = self.lastOut; self.lock.unlock()
+                if let last = latestCached, last.generation == g, last.literal == literal, let out = last.out {
+                    result = out
+                    sem.signal()
+                    return
+                }
             }
+            result = self.run(taps, literal: literal)
             sem.signal()
         }
         return sem.wait(timeout: .now() + timeout) == .success ? result : nil

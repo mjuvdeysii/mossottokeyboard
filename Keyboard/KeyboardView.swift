@@ -9,25 +9,7 @@ final class KeyView: UIView {
     private let guideLabel = UILabel()
     private let icon = UIImageView()
 
-    var pressed = false {
-        didSet {
-            guard pressed != oldValue else { return }
-            updateColors()
-            if !pressed && !Theme.plain && !UIAccessibility.isReduceMotionEnabled {
-                rim.removeAnimation(forKey: "rimPulse")
-                let a = CABasicAnimation(keyPath: "opacity")
-                a.fromValue = Float(1.0)
-                a.toValue = Float(0.76)
-                a.duration = 0.12
-                a.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                rim.opacity = 0.76
-                rim.add(a, forKey: "rimPulse")
-            } else if pressed {
-                rim.removeAnimation(forKey: "rimPulse")
-                rim.opacity = 1.0
-            }
-        }
-    }
+    var pressed = false { didSet { if pressed != oldValue { updateColors() } } }
     private var hasApplied = false
     /// While the space bar drives the cursor the other caps go blank, as in the iOS trackpad mode.
     var blanked = false {
@@ -65,9 +47,8 @@ final class KeyView: UIView {
         rim.lineWidth = 0.75
         rim.lineCap = .round
         layer.addSublayer(rim)
-        // contact shadow: the cap stands on the board, it is not printed on it
-        lip.shadowOffset = CGSize(width: 0, height: 0.5)
-        lip.shadowRadius = 0.8
+        // Zero offscreen shadow rasterization on iOS 27: the 1.7 pt lip itself provides crisp contact depth.
+        lip.shadowOpacity = 0
         layer.addSublayer(wings)
         crown.path = Self.crownPath()
         crown.lineJoin = .round
@@ -178,8 +159,7 @@ final class KeyView: UIView {
         let b = bottom.resolvedColor(with: t), u = under.resolvedColor(with: t)
         face.colors = Theme.plain ? [b.cgColor, b.cgColor, b.cgColor] : [top.resolvedColor(with: t).cgColor, b.cgColor, Theme.mix(b, u, pressed ? 0.04 : 0.10).cgColor]
         lip.backgroundColor = u.cgColor
-        lip.shadowColor = Theme.keyShadow.resolvedColor(with: t).cgColor
-        lip.shadowOpacity = pressed ? 0 : 1
+        lip.shadowOpacity = 0
         rim.strokeColor = Theme.keyHighlight.resolvedColor(with: t).withAlphaComponent(
             Theme.keyHighlight.resolvedColor(with: t).cgColor.alpha * (pressed ? 0.35 : style == .accent ? 0.8 : 1)).cgColor
         wings.fillColor = Theme.wing.resolvedColor(with: t).cgColor
