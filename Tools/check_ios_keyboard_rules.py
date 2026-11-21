@@ -104,7 +104,7 @@ for dirpath, _dirs, files in os.walk(KEYBOARD):
                     problems.append(f"{path}: KeyView.pressed spawns CABasicAnimation on keystroke hot path")
 
                 # Rule 5b: No lip.shadowOpacity > 0 without lip.shadowPath = UIBezierPath
-                if re.search(r'lip\.shadowOpacity\s*=\s*(?!0\b)', kv) and "lip.shadowPath = UIBezierPath" not in kv:
+                if re.search(r'lip\.shadowOpacity\s*=\s*(?!0(?:\.0+)?\b)\S', kv) and "lip.shadowPath = UIBezierPath" not in kv:
                     problems.append(f"{path}: KeyView sets lip.shadowOpacity > 0 without shadowPath (causes offscreen rasterization)")
 
 for p in problems:

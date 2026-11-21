@@ -631,7 +631,7 @@ final class KeyboardViewController: UIInputViewController {
             + String(format: "按键响应（主线程）平均 %.1f ms、最长 %.0f ms；候选出现 平均 %.1f ms、最长 %.0f ms；",
                      handleCount > 0 ? handleTotal / Double(handleCount) : 0, handleMax,
                      candCount > 0 ? candTotal / Double(candCount) : 0, candMax)
-            + String(format: "内存 %.0f MB（本次最高 %.0f MB）", mem, peakFootprint)
+            + String(format: "内存 %.0f MB（本次最高 %.0f MB）· 引擎就绪 %.0f ms", mem, peakFootprint, engine.loadMs)
             + (memoryWarnings > 0 ? "，内存警告 \(memoryWarnings) 次" : "")
             + feelLine
             + (safeMode ? "；上次启动未完成，本次以精简模式运行（无语言模型与中英混输），下次自动恢复" : ""))

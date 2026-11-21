@@ -169,7 +169,7 @@ final class KeyView: UIView {
         backgroundColor = .clear
         label.textColor = fg
         hintLabel.textColor = Theme.secondaryText
-        guideLabel.attributedText = guideText()
+        if !guideLabel.isHidden { guideLabel.attributedText = guideText() }
         icon.tintColor = fg
         if bounds.width > 0, !Theme.plain { layoutCap() }
     }
@@ -189,25 +189,33 @@ final class KeyView: UIView {
     /// The style changed (Mosto / 简洁): colours, type and the cap's shape follow.
     func themeChanged() {
         hasApplied = false
+        lastCapSize = .zero
         apply(spec, borders: borders)
     }
+
+    private var lastCapSize: CGSize = .zero
 
     private func layoutCap() {
         let l: CGFloat = Theme.plain ? 0 : min(Metrics.lip, bounds.height * 0.1)
         let cr: CGFloat = Theme.plain ? 9.0 : Metrics.cornerRadius
         let f = faceRect
+        let sizeChanged = f.size != lastCapSize
         CATransaction.begin(); CATransaction.setDisableActions(true)
-        lip.cornerRadius = cr
-        face.cornerRadius = cr
-        lip.frame = CGRect(x: 0, y: l, width: bounds.width, height: bounds.height - l)
-        lip.shadowPath = UIBezierPath(roundedRect: lip.bounds, cornerRadius: cr).cgPath
+        if sizeChanged {
+            lastCapSize = f.size
+            lip.cornerRadius = cr
+            face.cornerRadius = cr
+            lip.frame = CGRect(x: 0, y: l, width: bounds.width, height: bounds.height - l)
+            rim.path = Self.rimPath(in: f.size)
+            if spec.action == .space, f.width > 120, !Theme.plain {
+                wings.path = Self.wingsPath(in: f.size)
+            }
+        }
         face.frame = f
         rim.frame = f
-        rim.path = Self.rimPath(in: f.size)
         if spec.action == .space, f.width > 120, !Theme.plain {
             wings.isHidden = blanked
             wings.frame = f
-            wings.path = Self.wingsPath(in: f.size)
         } else {
             wings.isHidden = true
         }

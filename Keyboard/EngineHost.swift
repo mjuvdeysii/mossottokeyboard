@@ -40,6 +40,7 @@ final class EngineHost {
     private var emojiHintsPath: String?
     private var emojiHintsLoaded = false
     private var emojiHints: [String: [String]] = [:]; private static let kaomojiHints: [String: String] = ["开心": "ヾ(≧▽≦*)o", "高兴": "(≧∇≦)/", "哈哈": "(＾▽＾)", "哈哈哈": "ヾ(≧▽≦*)o", "笑死": "(≧∇≦)/", "嘿嘿": "(●'◡'●)", "晚安": "(∪｡∪)｡｡｡zzz", "困": "(￣o￣) . z Z", "好困": "(∪｡∪)｡｡｡zzz", "睡觉": "( ˘ω˘ ) ｽﾔｧ…", "抱抱": "(づ￣ ³￣)づ", "爱你": "(´,,•ω•,,)♡", "喜欢": "(´∀`)♡", "比心": "(｡•ㅅ•｡)♡", "卖萌": "(・ω・)", "委屈": "(｡•́︿•̀｡)", "难过": "QAQ", "哭": "( T_T )", "呜呜": "(´;ω;`)", "生气": "(╬▔皿▔)╯", "掀桌": "(╯°□°)╯︵ ┻━┻", "震惊": "Σ(っ °Д °;)っ", "无奈": "╮(╯▽╰)╭", "摊手": "╮(￣▽￣)╭", "加油": "(๑•̀ㅂ•́)و✧", "冲": "(ง •̀_•́)ง", "好的": "(｡•̀ᴗ-)✧", "收到": "(｡･∀･)ﾉﾞ", "谢谢": "(´▽`ʃ♡ƪ)", "摸鱼": "_(:3」∠)_", "躺平": "(:3[▓▓]", "好累": "_(:3」∠)_", "恶魔": "ψ(｀∇´)ψ", "魔头": "ψ(｀∇´)ψ", "小魔王": "Ψ(￣∀￣)Ψ", "可爱": "(｡･ω･｡)ﾉ♡", "女儿": "(づ｡◕‿‿◕｡)づ", "宝宝": "ヾ(≧▽≦*)o"]
+    private static let sortedKaomojiHints: [(key: String, value: String)] = kaomojiHints.sorted { $0.key.count > $1.key.count }
 
     private static func compactReadings(for lex: Lexicon) -> [Character: [UInt16]] {
         if let cached = cachedReadings { return cached }
@@ -86,6 +87,7 @@ final class EngineHost {
     /// Load the lexicon, the learned words and the English list (memory-mapped files: quick, and off the main thread).
     func load(lexiconPath: String?, englishPath: String?, grammarPath: String?, sentencePath: String? = nil, userDictURL: URL?,
               safe: Bool = false, emojiHintsPath: String? = nil, onEnglishLoaded: ((EnglishLexicon) -> Void)? = nil) {
+        let t0 = CFAbsoluteTimeGetCurrent()
         queue.async {
             self.emojiHintsPath = safe ? nil : emojiHintsPath
             self.emojiHintsLoaded = false
@@ -116,10 +118,12 @@ final class EngineHost {
                 }
             }
             self.decoder = d
+            let elapsedMs = (CFAbsoluteTimeGetCurrent() - t0) * 1000
             self.lock.lock()
             self.sharedEnglish = enLex
             self.sharedLexiconCount = lex.entryCount
             self.sharedLearnedCount = ud.count
+            self.sharedLoadMs = elapsedMs
             self.loaded = true
             self.lock.unlock()
             if let enLex { DispatchQueue.main.async { onEnglishLoaded?(enLex) } }
@@ -220,6 +224,14 @@ final class EngineHost {
             return cal.date(byAdding: .day, value: -1, to: now).map { md($0, weekday: true) }
         case "前天":
             return cal.date(byAdding: .day, value: -2, to: now).map { md($0, weekday: true) }
+        case "今年":
+            return "\(cal.component(.year, from: now))年"
+        case "明年":
+            return "\(cal.component(.year, from: now) + 1)年"
+        case "去年":
+            return "\(cal.component(.year, from: now) - 1)年"
+        case "本月", "这个月":
+            return "\(cal.component(.month, from: now))月"
         default:
             break
         }
@@ -265,8 +277,10 @@ final class EngineHost {
     private var sharedEnglish: EnglishLexicon?
     private var sharedLexiconCount = 0
     private var sharedLearnedCount = 0
+    private var sharedLoadMs: Double = 0
     /// The engine has loaded (the lexicon at least).
     var isLoaded: Bool { lock.lock(); defer { lock.unlock() }; return loaded }
+    var loadMs: Double { lock.lock(); defer { lock.unlock() }; return sharedLoadMs }
     var englishLexicon: EnglishLexicon? { lock.lock(); defer { lock.unlock() }; return sharedEnglish }
     // protected by `lock`: the last background decode, so a commit that needs it right away does not wait or re-decode
     private var lastOut: (generation: Int, literal: Bool, out: Output?)?
@@ -333,7 +347,7 @@ final class EngineHost {
                     d.setReadings(["\0": []])
                 }
             }
-            let raw = self.decoder?.predictions(after: ctx) ?? []; var singles = 0; var p = raw.filter { if $0.count == 1 { singles += 1; return singles <= 2 }; return true }; let tail = String(ctx); if !p.isEmpty { for (k, kao) in Self.kaomojiHints.sorted(by: { $0.key.count > $1.key.count }) where tail.hasSuffix(k) { self.ensureEmojiHints(); if let em = self.emojiHints[k]?.first, !p.contains(em) { p.insert(em, at: min(2, p.count)) }; if !p.contains(kao) { p.insert(kao, at: min(3, p.count)) }; break } }; p = Array(p.prefix(5))
+            let raw = self.decoder?.predictions(after: ctx) ?? []; var singles = 0; var p = raw.filter { if $0.count == 1 { singles += 1; return singles <= 2 }; return true }; let tail = String(ctx); if !p.isEmpty { for (k, kao) in Self.sortedKaomojiHints where tail.hasSuffix(k) { self.ensureEmojiHints(); if let em = self.emojiHints[k]?.first, !p.contains(em) { p.insert(em, at: min(2, p.count)) }; if !p.contains(kao) { p.insert(kao, at: min(3, p.count)) }; break } }; p = Array(p.prefix(5))
             DispatchQueue.main.async { done(p) }
         }
     }
