@@ -44,12 +44,12 @@ final class KeyView: UIView {
         face.locations = [0, 0.5, 1]
         layer.addSublayer(face)
         rim.fillColor = nil
-        rim.lineWidth = 1
+        rim.lineWidth = 0.75
         rim.lineCap = .round
         layer.addSublayer(rim)
         // contact shadow: the cap stands on the board, it is not printed on it
-        lip.shadowOffset = CGSize(width: 0, height: 1)
-        lip.shadowRadius = 1.5
+        lip.shadowOffset = CGSize(width: 0, height: 0.5)
+        lip.shadowRadius = 0.8
         layer.addSublayer(wings)
         crown.path = Self.crownPath()
         crown.lineJoin = .round
@@ -184,7 +184,7 @@ final class KeyView: UIView {
     /// The face rests on the lip; pressed, it sinks onto it (the lip all but disappears), as a soft toy key would.
     private var faceRect: CGRect {
         let l: CGFloat = Theme.plain ? 0 : min(Metrics.lip, bounds.height * 0.1)
-        return pressed ? CGRect(x: 0, y: Theme.plain ? 0 : l - 0.5, width: bounds.width, height: bounds.height - l)
+        return pressed ? CGRect(x: 0, y: Theme.plain ? 0 : max(0, l - 0.4), width: bounds.width, height: bounds.height - l)
                        : CGRect(x: 0, y: 0, width: bounds.width, height: bounds.height - l)
     }
 

@@ -88,9 +88,9 @@ enum Metrics {
     static let gapX: CGFloat = 6
     static let gapY: CGFloat = 10
     /// The darker lip under each cap (the face sinks onto it when pressed).
-    static var lip: CGFloat { Theme.plain ? 1.0 : 3.5 }
+    static var lip: CGFloat { Theme.plain ? 0.8 : 1.7 }
     /// Soft vinyl caps: rounder than the system keyboard's.
-    static var cornerRadius: CGFloat { Theme.plain ? 6.5 : 10 }
+    static var cornerRadius: CGFloat { Theme.plain ? 6.5 : 9.5 }
     static let letterFont: CGFloat = 24
     static let symbolFont: CGFloat = 24
     static let functionFont: CGFloat = 16
@@ -312,7 +312,7 @@ enum Theme {
     private static let mosto_key: UIColor = dyn(hex(0xFBF8FF), hex(0x46378C))
     private static let plain_key: UIColor = dyn(hex(0xFFFFFF), hex(0x464646))
     static var keyTop: UIColor { plain ? plain_keyTop : mosto_keyTop }
-    private static let mosto_keyTop: UIColor = dyn(hex(0xFFFFFF), hex(0x52429E))
+    private static let mosto_keyTop = dyn(hex(0xFFFFFF), hex(0x4E3F96))
     private static let plain_keyTop: UIColor = dyn(hex(0xFFFFFF), hex(0x464646))
     static var keyLip: UIColor { plain ? plain_keyLip : mosto_keyLip }
     private static let mosto_keyLip: UIColor = dyn(hex(0xCDBFEB), hex(0x1B1248))
@@ -324,7 +324,7 @@ enum Theme {
     private static let mosto_functionKey: UIColor = dyn(hex(0xC7B8F0), hex(0x2D2168))
     private static let plain_functionKey: UIColor = dyn(hex(0xFFFFFF), hex(0x464646))
     static var functionTop: UIColor { plain ? plain_functionTop : mosto_functionTop }
-    private static let mosto_functionTop: UIColor = dyn(hex(0xD3C6F6), hex(0x35286F))
+    private static let mosto_functionTop = dyn(hex(0xCFC2F4), hex(0x33266E))
     private static let plain_functionTop: UIColor = dyn(hex(0xFFFFFF), hex(0x464646))
     static var functionLip: UIColor { plain ? plain_functionLip : mosto_functionLip }
     private static let mosto_functionLip: UIColor = dyn(hex(0x9682D6), hex(0x120B33))
@@ -336,7 +336,7 @@ enum Theme {
     private static let mosto_accentKey: UIColor = dyn(hex(0xE7B85A), hex(0xE3B04F))
     private static let plain_accentKey: UIColor = dyn(hex(0x0A7CFF), hex(0x0A84FF))
     static var accentTop: UIColor { plain ? plain_accentTop : mosto_accentTop }
-    private static let mosto_accentTop: UIColor = dyn(hex(0xF0CA78), hex(0xEDC26C))
+    private static let mosto_accentTop = dyn(hex(0xECC36F), hex(0xE9BC62))
     private static let plain_accentTop: UIColor = dyn(hex(0x2B8EFF), hex(0x2A93FF))
     static var accentLip: UIColor { plain ? plain_accentLip : mosto_accentLip }
     private static let mosto_accentLip: UIColor = dyn(hex(0xA9741F), hex(0x7C5112))
@@ -345,7 +345,7 @@ enum Theme {
     private static let mosto_accentText: UIColor = hex(0x2B1961)
     private static let plain_accentText: UIColor = UIColor.white
     static var keyHighlight: UIColor { plain ? plain_keyHighlight : mosto_keyHighlight }
-    private static let mosto_keyHighlight: UIColor = dyn(UIColor(white: 1, alpha: 0.95), UIColor(white: 1, alpha: 0.16))
+    private static let mosto_keyHighlight = dyn(UIColor(white: 1, alpha: 0.72), hex(0xFFE4A8, 0.22))
     private static let plain_keyHighlight: UIColor = dyn(UIColor(white: 1, alpha: 0.55), UIColor(white: 1, alpha: 0.12))
     static var bubble: UIColor { plain ? plain_bubble : mosto_bubble }
     private static let mosto_bubble: UIColor = dyn(hex(0xFFFDF8), hex(0x52429E))
@@ -366,7 +366,7 @@ enum Theme {
     private static let plain_functionText: UIColor = dyn(hex(0x000000), hex(0xFFFFFF))
     static var keyShadow: UIColor { plain ? plain_keyShadow : mosto_keyShadow }
     /// `a` moved `k` of the way towards `b` (opaque colours).
-    private static let mosto_keyShadow: UIColor = dyn(hex(0x2B1961, 0.18), UIColor(white: 0, alpha: 0.40))
+    private static let mosto_keyShadow = dyn(hex(0x2B1961, 0.09), UIColor(white: 0, alpha: 0.22))
     private static let plain_keyShadow: UIColor = dyn(UIColor(white: 0, alpha: 0.06), UIColor(white: 0, alpha: 0.28))
     static func mix(_ a: UIColor, _ b: UIColor, _ k: CGFloat) -> UIColor {
         var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0, r2: CGFloat = 0, g2: CGFloat = 0, b2: CGFloat = 0, a2: CGFloat = 0

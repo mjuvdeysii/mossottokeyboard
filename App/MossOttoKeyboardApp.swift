@@ -217,12 +217,12 @@ private struct MiniKeySpecimen: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: isPlain ? 8 : 9, style: .continuous)
                         .fill(lipColor)
-                        .offset(y: isPlain ? 1 : 3.5)
+                        .offset(y: isPlain ? 0.8 : 1.7)
                     RoundedRectangle(cornerRadius: isPlain ? 8 : 9, style: .continuous)
                         .fill(faceColor)
                         .overlay(
                             RoundedRectangle(cornerRadius: isPlain ? 8 : 9, style: .continuous)
-                                .stroke(isPlain ? Color.black.opacity(0.06) : Color.white.opacity(isNight ? 0.16 : 0.75), lineWidth: 0.8)
+                                .stroke(isPlain ? Color.black.opacity(0.06) : (isNight ? Color(red: 1.0, green: 0.894, blue: 0.659).opacity(0.26) : Color.white.opacity(0.75)), lineWidth: 0.75)
                         )
                     Text(label)
                         .font(.system(size: label == "中" ? 12 : 14, weight: isPlain ? .regular : .medium, design: isPlain ? .default : .rounded))
