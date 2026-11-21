@@ -54,6 +54,15 @@ final class AmbientLightView: UIView {
         refresh()
     }
 
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        refresh()
+    }
+
+    override var isHidden: Bool {
+        didSet { if isHidden != oldValue { refresh() } }
+    }
+
     private func refresh() {
         backgroundColor = night && forcedNight ? Theme.forcedNightTint
             : !night && forcedDay ? Theme.forcedDayTint : Theme.glassTint
@@ -65,8 +74,8 @@ final class AmbientLightView: UIView {
         edgeFade.locations = [0, NSNumber(value: Double(min(0.2, 22 / bounds.height))), NSNumber(value: Double(max(0.8, 1 - 16 / bounds.height))), 1]
         let w = bounds.width, h = bounds.height
         if night {
-            let c = Theme.hex(0xFFC45A)   // the gold glow of Mosto's spade
-            glow.colors = [c.withAlphaComponent(0.22).cgColor, c.withAlphaComponent(0.07).cgColor, c.withAlphaComponent(0).cgColor]
+            let c = Theme.hex(0xFFE4A8)   // the warm cream-gold glow of Mosto's spade
+            glow.colors = [c.withAlphaComponent(0.14).cgColor, c.withAlphaComponent(0.04).cgColor, c.withAlphaComponent(0).cgColor]
             glow.locations = [0, 0.4, 1]
             glow.startPoint = CGPoint(x: lampPoint.x / w, y: lampPoint.y / h)
             glow.endPoint = CGPoint(x: (lampPoint.x + 90) / w, y: (lampPoint.y + 60) / h)
@@ -75,7 +84,7 @@ final class AmbientLightView: UIView {
         }
         CATransaction.commit()
         // at night the spade's glow breathes, very slowly (5 s), like a lamp; never with Reduce Motion
-        if night && !UIAccessibility.isReduceMotionEnabled {
+        if night && window != nil && !isHidden && !UIAccessibility.isReduceMotionEnabled {
             if glow.animation(forKey: "breathe") == nil {
                 let a = CABasicAnimation(keyPath: "opacity")
                 a.fromValue = 1.0
