@@ -446,7 +446,7 @@ private struct DoneCard: View {
                     IconTile(symbol: "wand.and.stars")
                     VStack(alignment: .leading, spacing: 2) {
                         Text("按触点位置自动纠错").font(.subheadline.weight(.semibold))
-                        Text("邻键误触、长句漏键自动修正，点 ↩️ 可撤回").font(.caption).foregroundStyle(.secondary)
+                        Text("邻键误触、长句漏键自动修正，点 ↩ 可撤回").font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
                     Toggle("", isOn: $model.autocorrect).labelsHidden().tint(mostoTint)
