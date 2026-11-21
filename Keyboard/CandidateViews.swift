@@ -308,6 +308,13 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     /// Mosto is (about to be) shown or put away — his night light follows him.
     var onMostoShown: ((Bool) -> Void)?
 
+    /// Stop every timer owned by the candidate strip and Mosto when the keyboard is dismissed.
+    func pauseTimers() {
+        mostoTimer?.invalidate(); mostoTimer = nil
+        longPressTimer?.invalidate(); longPressTimer = nil
+        mosto.pauseTimers()
+    }
+
     private func setMosto(_ on: Bool) {
         // put away even when he was never asked for (a new strip starts with him hidden, 简洁 never shows him)
         if !on, !mostoWanted { mosto.isHidden = true; return }

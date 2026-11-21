@@ -80,6 +80,21 @@ for dirpath, _dirs, files in os.walk(KEYBOARD):
             if ref and re.search(r'documentContext(Before|After)Input|contextSnapshot\s*\(', ref):
                 problems.append(f"{path}: refresh() performs per-keystroke documentContext XPC IPC")
 
+            # Rule 6: No engine.trim() inside select() commit hot path (drops caches & writes disk on every word)
+            sel = extract_func(code, r'private\s+func\s+select\b')
+            if sel and "engine.trim()" in sel:
+                problems.append(f"{path}: select() calls engine.trim() on commit hot path (causes disk write + cache re-parse storm)")
+
+            # Rule 7: No UserDefaults reads inside reconfigure() per-keystroke hot path
+            rec = extract_func(code, r'private\s+func\s+reconfigure\b')
+            if rec and "KeyboardSettings.shared" in rec:
+                problems.append(f"{path}: reconfigure() reads KeyboardSettings.shared on keystroke hot path (cache flags in applySettings)")
+
+            # Rule 8: Never eagerly allocate emojiPanel inside applyAppearance()
+            app = extract_func(code, r'private\s+func\s+applyAppearance\b')
+            if app and re.search(r'\bemojiPanel\.', app):
+                problems.append(f"{path}: applyAppearance() accesses eager emojiPanel instead of emojiPanelIfLoaded?")
+
         if name == "KeyboardView.swift":
             # Rule 5a: No CABasicAnimation in KeyView.pressed hot path
             kv = extract_func(code, r'final\s+class\s+KeyView\b')

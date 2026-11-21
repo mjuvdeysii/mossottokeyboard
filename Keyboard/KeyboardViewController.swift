@@ -35,6 +35,7 @@ final class KeyboardViewController: UIInputViewController {
     private var syllableChoices: (start: Int, choices: [(text: String, keys: [Character])]) = (0, [])
     private var heightConstraint: NSLayoutConstraint?
     private var pairAdjustGeneration = 0
+    private var justInsertedPair: (open: Character, close: Character)?
     private var cursorDragBefore: [Character] = []
     private var cursorDragAfterReversed: [Character] = []
     private var cursorDragHasContext = false
@@ -358,7 +359,7 @@ final class KeyboardViewController: UIInputViewController {
         super.viewWillDisappear(animated)
         LaunchGuard.succeeded()   // put away normally: not a launch that failed
         keyboard.cancelAllTouches()   // a key held as the keyboard goes: no repeat into the next field
-        candidateBar.mosto.pauseTimers()
+        candidateBar.pauseTimers()
         peakFootprint = max(peakFootprint, memoryFootprintMB())
         if !taps.isEmpty || hasMarkedText {
             clearComposition(touchHost: false)
@@ -370,7 +371,7 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
-        candidateBar.mosto.pauseTimers()
+        candidateBar.pauseTimers()
         if !emojiShown, let p = emojiPanelIfLoaded {
             p.removeFromSuperview()
             emojiPanelIfLoaded = nil
@@ -578,7 +579,7 @@ final class KeyboardViewController: UIInputViewController {
             Theme.plain = plain
             keyboard.themeChanged()
             candidateBar.themeChanged()
-            settingsPanel.themeChanged(); grid.themeChanged(); emojiPanel.themeChanged()
+            settingsPanel.themeChanged(); grid.themeChanged(); emojiPanelIfLoaded?.themeChanged()
         }
         let sysDark = systemIsDark
         let mode = KeyboardSettings.shared.appearance
@@ -615,6 +616,8 @@ final class KeyboardViewController: UIInputViewController {
         hapticsOn = s.feedback
         guideOn = s.xiaoheGuide
         soundOn = s.keySound
+        numberPadOn = s.numberPad
+        pinyinGridOn = s.pinyinGrid
         if !settingsPanel.isHidden {
             let n = engine.counts()
             settingsPanel.setLearned("词库 \(n.lexicon) 条 · 已学习 \(n.learned) 个词")
@@ -640,10 +643,12 @@ final class KeyboardViewController: UIInputViewController {
         if !taps.isEmpty { refresh() }
     }
 
-    /// Haptics and sound, read once per settings change rather than from the defaults on every key.
+    /// Haptics, sound and layout flags, read once per settings change rather than from UserDefaults on every key.
     private var hapticsOn = true
     private var guideOn = false
     private var soundOn = true
+    private var numberPadOn = false
+    private var pinyinGridOn = false
     /// Felt and heard as the table says (FeedbackModel), when the switches and 允许完全访问 allow it.
     func feel(_ event: FeedbackEvent, at point: CGPoint? = nil) {
         guard feedbackAllowed else { return }
@@ -702,8 +707,8 @@ final class KeyboardViewController: UIInputViewController {
                                          returnLabel: label, returnIsAccent: accent,
                                          shifted: shifted, capsLock: capsLock,
                                          keyBorders: true,
-                                         numberGrid: KeyboardSettings.shared.numberPad,   // 123: the 九宫格 pad or the full page
-                                         pinyinGrid: KeyboardSettings.shared.pinyinGrid, composing: !taps.isEmpty,
+                                         numberGrid: numberPadOn,   // 123: the 九宫格 pad or the full page
+                                         pinyinGrid: pinyinGridOn, composing: !taps.isEmpty,
                                          xiaoheGuide: guideOn && scheme == .xiaohe)
         // most keystrokes change nothing on the keys: skip the work entirely (it ran twice per keystroke before)
         if ctx == lastContext { return }
@@ -720,6 +725,7 @@ final class KeyboardViewController: UIInputViewController {
     func handle(_ action: KeyAction, tap: Tap?) {
         let t0 = CACurrentMediaTime()
         pairAdjustGeneration += 1
+        if action != .delete { justInsertedPair = nil }
         defer {
             // Only snapshot host context via XPC when idle with state that leaveWordIfMoved() actually protects.
             // Eliminates 2 synchronous XPC round-trips per letter while composing on iOS 27 (Safari, Notes, WebView).
@@ -848,8 +854,8 @@ final class KeyboardViewController: UIInputViewController {
         // Right after a digit, as the system Chinese keyboard: 。 is a decimal point and ： a time separator
         // (3.14, 12:30), never 3。14 or 12：30.
         var out = s
-        if chinese, s == "。" || s == "：", let prev = host.documentContextBeforeInput?.last,
-           prev.isASCII, (prev.isNumber || (s == "。" && prev.isLetter && (host.documentContextBeforeInput ?? "").contains("@"))) {
+        if chinese, s == "。" || s == "：", let before = host.documentContextBeforeInput, let prev = before.last,
+           prev.isASCII, (prev.isNumber || (s == "。" && prev.isLetter && before.contains("@"))) {
             out = s == "。" ? "." : ":"
         }
         let pairs: [String: (full: String, closing: String)] = [
@@ -858,6 +864,9 @@ final class KeyboardViewController: UIInputViewController {
         if let p = pairs[out] {
             host.insertText(p.full)
             let closing = p.closing
+            if let openCh = out.first, let closeCh = closing.first {
+                justInsertedPair = (openCh, closeCh)
+            }
             if Bundle.main.bundlePath.hasSuffix(".appex") {
                 let gen = pairAdjustGeneration
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.018) { [weak self] in
@@ -1000,16 +1009,18 @@ final class KeyboardViewController: UIInputViewController {
             if taps.isEmpty { clearComposition() } else { refresh() }
             return
         }
-        // Smart Pair Backspace: when cursor sits directly inside an empty CJK pair (e.g. 《|》, （|）, “|”),
-        // one tap removes both halves cleanly so the user never has to chase the stray closing bracket.
-        if chinese, enTaps.isEmpty,
-           let before = host.documentContextBeforeInput, let after = host.documentContextAfterInput,
-           let open = before.last, let close = after.first,
-           Self.matchingClosingPair[open] == close {
-            host.adjustTextPosition(byCharacterOffset: close.utf16.count)
-            host.deleteBackward()
-            host.deleteBackward()
-            return
+        // Smart Pair Backspace: when cursor sits directly inside a freshly inserted CJK pair (e.g. 《|》, （|）, “|”),
+        // one tap removes both halves cleanly. Gated on justInsertedPair so ordinary rapid Backspace does 0 XPC calls.
+        if let pair = justInsertedPair {
+            justInsertedPair = nil
+            if chinese, enTaps.isEmpty,
+               host.documentContextBeforeInput?.last == pair.open,
+               host.documentContextAfterInput?.first == pair.close {
+                host.adjustTextPosition(byCharacterOffset: pair.close.utf16.count)
+                host.deleteBackward()
+                host.deleteBackward()
+                return
+            }
         }
         host.deleteBackward()
         if !enTaps.isEmpty {
@@ -1242,16 +1253,39 @@ final class KeyboardViewController: UIInputViewController {
             commitsSinceSave += 1
             if commitsSinceSave >= 30 {
                 commitsSinceSave = 0
-                KeyboardSettings.shared.touchOffset = (spatial.offsetX, spatial.offsetY)
-                KeyboardSettings.shared.keyOffsets = spatial.keyOffsetsList
+                let offset = (spatial.offsetX, spatial.offsetY)
+                let keyOffsets = spatial.keyOffsetsList
+                DispatchQueue.global(qos: .utility).async {
+                    KeyboardSettings.shared.touchOffset = offset
+                    KeyboardSettings.shared.keyOffsets = keyOffsets
+                }
             }
         }
         taps.removeFirst(min(c.tapCount, taps.count))
         if !taps.isEmpty { engine.setContext(committedParts.map { $0.text }.joined().isEmpty ? c.text : committedParts.map { $0.text }.joined()) }
         if taps.isEmpty {
-            let full = committedParts.map { $0.text }.joined(); let sleepy = ["困", "睡", "晚安", "累", "哈欠", "熬夜"].contains { full.contains($0) || c.text.contains($0) }; let happy = c.text.count >= 4 || committedParts.count >= 2 || ["哈哈", "嘿嘿", "开心", "太好", "爱你", "恭喜", "谢谢", "棒", "可爱", "女儿", "宝宝"].contains { full.contains($0) || c.text.contains($0) }; engine.learn(parts: committedParts); if !committedParts.isEmpty { engine.trim() }; if !Theme.plain { DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) { [weak self] in guard let self else { return }; if sleepy { self.candidateBar.mosto.demoYawn(); self.candidateBar.mosto.hop(); DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in guard let self else { return }; self.candidateBar.mosto.setNight(self.isNight) } } else if happy { self.candidateBar.mosto.hop() } } }
+            let full = committedParts.map { $0.text }.joined()
+            let committedText = full.isEmpty ? c.text : full
+            let sleepy = ["困", "睡", "晚安", "累", "哈欠", "熬夜"].contains { full.contains($0) || c.text.contains($0) }
+            let happy = c.text.count >= 4 || committedParts.count >= 2 || ["哈哈", "嘿嘿", "开心", "太好", "爱你", "恭喜", "谢谢", "棒", "可爱", "女儿", "宝宝"].contains { full.contains($0) || c.text.contains($0) }
+            engine.learn(parts: committedParts)
+            if !Theme.plain {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) { [weak self] in
+                    guard let self, self.view.window != nil else { return }
+                    if sleepy {
+                        self.candidateBar.mosto.demoYawn()
+                        self.candidateBar.mosto.hop()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+                            guard let self, self.view.window != nil else { return }
+                            self.candidateBar.mosto.setNight(self.isNight)
+                        }
+                    } else if happy {
+                        self.candidateBar.mosto.hop()
+                    }
+                }
+            }
             clearComposition()
-            requestPredictions()
+            requestPredictions(after: committedText)
         } else {
             refresh()
         }
@@ -1420,8 +1454,9 @@ final class KeyboardViewController: UIInputViewController {
             let text = predictions[i]
             clearPredictions()
             forgetLastWord()
-            host.insertText(text); engine.setContext((host.documentContextBeforeInput ?? "") + text)
-            requestPredictions()
+            host.insertText(text)
+            engine.setContext(text)
+            requestPredictions(after: text)
             return
         }
         if taps.isEmpty, !enTaps.isEmpty, i < enSuggestions.count {
@@ -1460,11 +1495,12 @@ final class KeyboardViewController: UIInputViewController {
 
     // MARK: - 联想
 
-    private func requestPredictions() {
+    private func requestPredictions(after knownContext: String? = nil) {
         predictGeneration += 1
         guard chinese, taps.isEmpty, enTaps.isEmpty, !emojiShown else { return }
         let gen = predictGeneration
-        engine.predict(after: host.documentContextBeforeInput ?? "") { [weak self] list in
+        let ctx = knownContext ?? (host.documentContextBeforeInput ?? "")
+        engine.predict(after: ctx) { [weak self] list in
             guard let self, gen == self.predictGeneration, self.taps.isEmpty, self.enTaps.isEmpty, self.chinese,
                   !list.isEmpty else { return }
             self.predictions = list
