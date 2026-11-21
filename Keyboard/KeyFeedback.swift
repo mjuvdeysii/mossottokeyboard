@@ -93,6 +93,8 @@ final class SystemFeedbackPlayer: FeedbackPlayer {
     private let plainSoft = UIImpactFeedbackGenerator(style: .soft)
     private let plainTick = UISelectionFeedbackGenerator()
     private(set) var played = 0
+    private var lastImpactTime: CFTimeInterval = 0
+    private static let minImpactInterval: CFTimeInterval = 0.032
     /// Click sounds are started off the main thread: AudioServicesPlaySystemSound can block for a few milliseconds
     /// (most of all on the first sound after the keyboard appears), and the key press must not wait for it.
     private static let soundQueue = DispatchQueue(label: "mosto.keysound", qos: .userInteractive, attributes: .concurrent)
@@ -119,23 +121,28 @@ final class SystemFeedbackPlayer: FeedbackPlayer {
     }
 
     func play(_ kind: FeedbackKind, intensity: CGFloat, at point: CGPoint?) {
-        played += 1
         let onView = attached
         switch kind {
         case .impact:
+            let now = CACurrentMediaTime()
+            if now - lastImpactTime < Self.minImpactInterval { return }
+            lastImpactTime = now
+            played += 1
             let g = onView ? light : plainLight
             if #available(iOS 17.5, *), onView, let point = point ?? centre { g.impactOccurred(intensity: intensity, at: point) }
             else { g.impactOccurred(intensity: intensity) }
-            g.prepare()
+            if onView { g.prepare() }
         case .soft:
+            played += 1
             let g = onView ? soft : plainSoft
             if #available(iOS 17.5, *), onView, let point = point ?? centre { g.impactOccurred(intensity: intensity, at: point) }
             else { g.impactOccurred(intensity: intensity) }
         case .selection:
+            played += 1
             let g = onView ? tick : plainTick
             if #available(iOS 17.5, *), onView, let point = point ?? centre { g.selectionChanged(at: point) }
             else { g.selectionChanged() }
-            g.prepare()
+            if onView { g.prepare() }
         }
     }
 

@@ -513,7 +513,9 @@ final class KeyboardView: UIView {
     var onAction: ((KeyAction, Tap?) -> Void)?
     /// The space bar drags the cursor one character (+1 right, −1 left). Returns whether it passed a visible
     /// character (false at the start or end of the text): the ticks follow only what the cursor really passes.
+    var onCursorBegin: (() -> Void)?
     var onCursorMove: ((Int) -> Bool)?
+    var onCursorEnd: (() -> Void)?
     /// Whether a drag on the space bar may move the cursor now (not while a pinyin is being composed).
     var canMoveCursor: (() -> Bool)?
     /// A finger lands on a key (where, for the haptic).
@@ -846,6 +848,7 @@ final class KeyboardView: UIView {
                 tr.dragAccum = 0
                 tr.rhythm.begin(at: now)
                 setCursorMode(true, except: tr.keyIndex)
+                onCursorBegin?()
                 onFeedback?(.cursorMode, p)
             }
             if tr.dragging {
@@ -1029,7 +1032,7 @@ final class KeyboardView: UIView {
     private func finish(_ tr: Tracked, emit: Bool) {
         guard !tr.finished else { return }
         tr.finished = true
-        if tr.dragging { setCursorMode(false, except: -1) }
+        if tr.dragging { setCursorMode(false, except: -1); onCursorEnd?() }
         tr.longPressTimer?.invalidate()
         tr.repeatTimer?.invalidate()
         tr.preview?.removeFromSuperview()

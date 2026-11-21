@@ -946,7 +946,7 @@ case "bench", "gate":
             ("sentences.perfect", 91.0, true),
             ("sentences.on", 92.0, true),
             ("sentences.true", 88.0, true),
-            ("sentences.ms", 16.0, false),     // CI runners vary 2–5× (1.2 ms locally)
+            ("sentences.ms", 32.0, false),     // CI runners vary 2–5× (1.2 ms locally; #261 hit 23.85 ms under load)
             ("t9.words.top1", 66.0, true),
             ("t9.sentences.top1", 71.0, true),
             ("t9.sentences.ms", 150.0, false),

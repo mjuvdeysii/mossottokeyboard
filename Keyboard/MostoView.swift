@@ -67,14 +67,20 @@ final class MostoView: UIView {
         schedule()
     }
 
+    func pauseTimers() {
+        timer?.invalidate()
+        timer = nil
+        image.layer.removeAllAnimations()
+    }
+
     override func didMoveToWindow() {
         super.didMoveToWindow()
-        if window == nil { timer?.invalidate(); timer = nil } else { schedule() }
+        if window == nil { pauseTimers() } else { schedule() }
     }
 
     override var isHidden: Bool {
         didSet {
-            if isHidden { timer?.invalidate(); timer = nil; yawned = false; if night { image.image = sleep } } else { schedule() }
+            if isHidden { pauseTimers(); yawned = false; if night { image.image = sleep } } else { schedule() }
         }
     }
 

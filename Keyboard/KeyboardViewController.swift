@@ -34,7 +34,14 @@ final class KeyboardViewController: UIInputViewController {
     private let syllablePicker = SyllablePickerView()
     private var syllableChoices: (start: Int, choices: [(text: String, keys: [Character])]) = (0, [])
     private var heightConstraint: NSLayoutConstraint?
-    private weak var lastReleasedWindow: UIWindow?
+    private var pairAdjustGeneration = 0
+    private var cursorDragBefore: [Character] = []
+    private var cursorDragAfterReversed: [Character] = []
+    private var cursorDragHasContext = false
+    /// Session-scoped undo respect: if a user undoes the same auto-corrected key sequence twice in one session,
+    /// keep it literal for the rest of the session so autocorrect never fights intentional jargon/names.
+    private var undoCountsByKeys: [String: Int] = [:]
+    private var sessionLiteralKeys: Set<String> = []
 
     // State
     private var chinese = true
@@ -183,21 +190,43 @@ final class KeyboardViewController: UIInputViewController {
             // so Mosto, light pill, settings button, and candidates never trigger top-row keys
             // under any state
         }
-        keyboard.onCursorMove = { [weak self] d in
-            guard let self, self.taps.isEmpty else { return false }
-            // the cursor leaves the word just typed: nothing to undo or autocorrect there any more
+        keyboard.onCursorBegin = { [weak self] in
+            guard let self, self.taps.isEmpty else { return }
             self.undoable = nil
             self.enUndo = nil
             self.cleared = nil
             self.endEnglishWord()
-            // one visible character per step: an emoji or other surrogate pair is two UTF-16 units
+            let before = self.host.documentContextBeforeInput
+            let after = self.host.documentContextAfterInput
+            self.cursorDragHasContext = (before != nil || after != nil)
+            self.cursorDragBefore = Array(before ?? "")
+            self.cursorDragAfterReversed = Array((after ?? "").reversed())
+        }
+        keyboard.onCursorMove = { [weak self] d in
+            guard let self, self.taps.isEmpty, d != 0 else { return false }
             let proxy = self.host
-            let ch = d < 0 ? proxy.documentContextBeforeInput?.last : proxy.documentContextAfterInput?.first
-            // some apps share no context: then step one unit and let the system clamp at the ends
-            proxy.adjustTextPosition(byCharacterOffset: d * (ch?.utf16.count ?? 1))
-            // whether a visible character was passed (none at the ends): the keys tick by the finger's distance
-            // (CursorRhythm), not here
-            return ch != nil
+            guard self.cursorDragHasContext else {
+                proxy.adjustTextPosition(byCharacterOffset: d)
+                return false
+            }
+            if d < 0 {
+                guard let ch = self.cursorDragBefore.popLast() else { return false }
+                self.cursorDragAfterReversed.append(ch)
+                proxy.adjustTextPosition(byCharacterOffset: -ch.utf16.count)
+                return true
+            } else {
+                guard let ch = self.cursorDragAfterReversed.popLast() else { return false }
+                self.cursorDragBefore.append(ch)
+                proxy.adjustTextPosition(byCharacterOffset: ch.utf16.count)
+                return true
+            }
+        }
+        keyboard.onCursorEnd = { [weak self] in
+            guard let self else { return }
+            self.cursorDragBefore.removeAll(keepingCapacity: false)
+            self.cursorDragAfterReversed.removeAll(keepingCapacity: false)
+            self.cursorDragHasContext = false
+            self.afterLastKey = self.contextSnapshot()
         }
         keyboard.onKeyDown = { [weak self] action, p in self?.feel(.key(action), at: p) }
         keyboard.onFeedback = { [weak self] event, p in self?.feel(event, at: p) }
@@ -276,16 +305,14 @@ final class KeyboardViewController: UIInputViewController {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         LaunchGuard.succeeded()
-        releaseSystemGestureDelays()
+        releaseOwnGestureDelays(in: view)
         DispatchQueue.main.async { [weak self] in self?.feedbackPlayer.prepare() }
     }
-    /// iOS puts a system gesture gate (_UISystemGestureGateGestureRecognizer) on the keyboard's window that holds
-    /// touches near the screen edges back until it decides they are not a system swipe — so q, a, shift, 123 and the
-    /// space bar press late, and in fast typing those taps arrive out of order or are lost. Turning off its
-    /// delaysTouchesBegan (on every recognizer above our view, each time the keyboard lands in a window) makes every
-    /// key press immediately; the system gestures themselves still work.
-    private func releaseSystemGestureDelays() {
-           view.gestureRecognizers?.forEach { $0.delaysTouchesBegan = false; $0.delaysTouchesEnded = false }
+
+    /// Only adjust gesture recognizers owned by the keyboard's own view subtree — never mutate host/window recognizers.
+    private func releaseOwnGestureDelays(in rootView: UIView) {
+        rootView.gestureRecognizers?.forEach { $0.delaysTouchesBegan = false; $0.delaysTouchesEnded = false }
+        for sub in rootView.subviews { releaseOwnGestureDelays(in: sub) }
     }
 
     override func updateViewConstraints() {
@@ -303,6 +330,7 @@ final class KeyboardViewController: UIInputViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         inputView?.allowsSelfSizing = true
+        heightConstraint?.constant = preferredHeight()
         view.setNeedsUpdateConstraints()
         lastDocumentID = host.documentIdentifier
         hostEchoesMarked = 0
@@ -320,29 +348,33 @@ final class KeyboardViewController: UIInputViewController {
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
         super.traitCollectionDidChange(previous)
-        applyAppearance()
+        if previous?.userInterfaceStyle != traitCollection.userInterfaceStyle {
+            applyAppearance()
+        }
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         LaunchGuard.succeeded()   // put away normally: not a launch that failed
         keyboard.cancelAllTouches()   // a key held as the keyboard goes: no repeat into the next field
+        candidateBar.mosto.pauseTimers()
         peakFootprint = max(peakFootprint, memoryFootprintMB())
-        if !taps.isEmpty {
-            // put away mid-word: the letters stay in the field. Where the host already kept them itself (it
-            // finalised the marked text as the field lost focus) they are only unmarked, never written twice.
-            // (the marked text is the letters, or the 九宫格 pinyin — exactly what a commit would write)
-            if hasMarkedText, !markedString.isEmpty, (host.documentContextBeforeInput ?? "").hasSuffix(markedString) {
-                host.unmarkText()
-                hasMarkedText = false
-                clearComposition()
-            } else {
-                commitRaw()
-            }
+        if !taps.isEmpty || hasMarkedText {
+            clearComposition(touchHost: false)
         }
         engine.save()
         let offset = (spatial.offsetX, spatial.offsetY); let keyOffsets = spatial.keyOffsetsList
         DispatchQueue.global(qos: .utility).async { KeyboardSettings.shared.touchOffset = offset; KeyboardSettings.shared.keyOffsets = keyOffsets }
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        candidateBar.mosto.pauseTimers()
+        if !emojiShown, let p = emojiPanelIfLoaded {
+            p.removeFromSuperview()
+            emojiPanelIfLoaded = nil
+        }
+        engine.trim()
     }
 
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
@@ -352,7 +384,16 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func preferredHeight(landscape: Bool? = nil) -> CGFloat {
-        let isLandscape = landscape ?? (UIScreen.main.bounds.width > UIScreen.main.bounds.height)
+        let isLandscape: Bool
+        if let landscape {
+            isLandscape = landscape
+        } else if let orientation = view.window?.windowScene?.interfaceOrientation, orientation != .unknown {
+            isLandscape = orientation.isLandscape
+        } else if view.bounds.height > 0 {
+            isLandscape = view.bounds.width > view.bounds.height * 1.4
+        } else {
+            isLandscape = UIScreen.main.bounds.width > UIScreen.main.bounds.height
+        }
         return isLandscape ? Metrics.toolbarHeightLandscape + 4 * Metrics.rowPitchLandscape
                            : Metrics.toolbarHeight + 4 * Metrics.rowPitch
     }
@@ -360,7 +401,6 @@ final class KeyboardViewController: UIInputViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         let b = view.bounds
-    if let w = view.window, w !== lastReleasedWindow { lastReleasedWindow = w; releaseSystemGestureDelays() }
         if !syllablePicker.isHidden, let f = keyboard.keypadSideColumn() { syllablePicker.frame = f }
         root.frame = b
         tintView.frame = b
@@ -389,6 +429,10 @@ final class KeyboardViewController: UIInputViewController {
             // what was learned about the last field's echo of marked text says nothing about this one
             hostEchoesMarked = 0
             lastEchoed = ""
+            let traitsChanged = fieldTraits() != lastFieldTraits
+            if !taps.isEmpty, traitsChanged {
+                clearComposition(touchHost: false)
+            }
             if taps.isEmpty { forgetLastWord() }
             // Another field (or a host that reports a new identifier whenever its text changes — this arrives
             // late, after the next keys may already be typed): never throw those keys away; adapt the layout only
@@ -396,7 +440,7 @@ final class KeyboardViewController: UIInputViewController {
             lastDocumentID = id
             if taps.isEmpty {
                 // a field of another kind gets its page and language; any field gets its shift and light
-                if fieldTraits() != lastFieldTraits { adaptToField() } else if !chinese { updateAutoShift(); reconfigure() }
+                if traitsChanged { adaptToField() } else if !chinese { updateAutoShift(); reconfigure() }
                 applyAppearance()
             }
             return
@@ -669,6 +713,7 @@ final class KeyboardViewController: UIInputViewController {
 
     func handle(_ action: KeyAction, tap: Tap?) {
         let t0 = CACurrentMediaTime()
+        pairAdjustGeneration += 1
         defer {
             afterLastKey = contextSnapshot()
             let ms = (CACurrentMediaTime() - t0) * 1000
@@ -790,15 +835,27 @@ final class KeyboardViewController: UIInputViewController {
            prev.isASCII, (prev.isNumber || (s == "。" && prev.isLetter && (host.documentContextBeforeInput ?? "").contains("@"))) {
             out = s == "。" ? "." : ":"
         }
-        let pairs: [String: String] = ["《": "《》", "（": "（）", "【": "【】", "「": "「」", "『": "『』"]
+        let pairs: [String: (full: String, closing: String)] = [
+            "《": ("《》", "》"), "（": ("（）", "）"), "【": ("【】", "】"), "「": ("「」", "」"), "『": ("『』", "』"), "“": ("“”", "”")
+        ]
         if let p = pairs[out] {
-                          host.insertText(p)
+            host.insertText(p.full)
+            let closing = p.closing
             if Bundle.main.bundlePath.hasSuffix(".appex") {
-                                                           let gen = generation
-               let closing = String(p.last!)
-               DispatchQueue.main.asyncAfter(deadline: .now() + 0.018) { [weak self] in
-                                                                        guard let self, self.generation == gen, (self.host.documentContextBeforeInput ?? "").hasSuffix(closing) else { return }; self.host.adjustTextPosition(byCharacterOffset: -1) } } else { host.adjustTextPosition(byCharacterOffset: -1) } } else { host.insertText(out) }
-                lastInsertedSpace = false
+                let gen = pairAdjustGeneration
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.018) { [weak self] in
+                    guard let self, self.pairAdjustGeneration == gen, self.taps.isEmpty,
+                          self.host.documentContextBeforeInput?.hasSuffix(closing) == true else { return }
+                    self.host.adjustTextPosition(byCharacterOffset: -closing.utf16.count)
+                    self.afterLastKey = self.contextSnapshot()
+                }
+            } else {
+                host.adjustTextPosition(byCharacterOffset: -closing.utf16.count)
+            }
+        } else {
+            host.insertText(out)
+        }
+        lastInsertedSpace = false
         if !chinese && [".", "!", "?"].contains(s) { updateAutoShift(); reconfigure() }
     }
 
@@ -827,7 +884,12 @@ final class KeyboardViewController: UIInputViewController {
             reconfigure()
             return
         }
-        if chinese, let next = proxy.documentContextAfterInput?.first, "》）】」』".contains(next) { proxy.adjustTextPosition(byCharacterOffset: 1); return }; proxy.insertText(" ")
+        if chinese, let after = proxy.documentContextAfterInput,
+           let closing = ["》", "）", "】", "」", "』", "”"].first(where: { after.hasPrefix($0) }) {
+            proxy.adjustTextPosition(byCharacterOffset: closing.utf16.count)
+            return
+        }
+        proxy.insertText(" ")
         lastInsertedSpace = true
         if !chinese { updateAutoShift(); reconfigure() }
     }
@@ -840,6 +902,17 @@ final class KeyboardViewController: UIInputViewController {
             if taps.isEmpty { clearComposition() } else { refresh() }
             return
         }
+        // Smart Pair Backspace: when cursor sits directly inside an empty CJK pair (e.g. 《|》, （|）, “|”),
+        // one tap removes both halves cleanly so the user never has to chase the stray closing bracket.
+        if chinese, enTaps.isEmpty,
+           let before = host.documentContextBeforeInput, let after = host.documentContextAfterInput,
+           let open = before.last, let close = after.first,
+           Self.matchingClosingPair[open] == close {
+            host.adjustTextPosition(byCharacterOffset: close.utf16.count)
+            host.deleteBackward()
+            host.deleteBackward()
+            return
+        }
         host.deleteBackward()
         if !enTaps.isEmpty {
             enTaps.removeLast()
@@ -848,6 +921,10 @@ final class KeyboardViewController: UIInputViewController {
         }
         if !chinese { updateAutoShift(); reconfigure() }
     }
+
+    private static let matchingClosingPair: [Character: Character] = [
+        "《": "》", "（": "）", "【": "】", "「": "」", "『": "』", "“": "”"
+    ]
 
     // MARK: - English autocorrect
 
@@ -981,17 +1058,19 @@ final class KeyboardViewController: UIInputViewController {
     /// background and the candidates are shown when they arrive — unless more keys came in meanwhile.
     private func refresh(literal: Bool = false) {
         generation += 1
-        literalGeneration = literal
+        let rawKeys = String(taps.map { $0.key })
+        let effectiveLiteral = literal || (!rawKeys.isEmpty && sessionLiteralKeys.contains(rawKeys))
+        literalGeneration = effectiveLiteral
         let gen = generation
         let asked = CACurrentMediaTime()
-        if !taps.contains(where: { $0.group }) { setMarked(String(taps.map { $0.key })) }
+        if !taps.contains(where: { $0.group }) { setMarked(rawKeys) }
         else if !engine.isLoaded {
             // 九宫格 before any pinyin has been read (engine still loading, or it failed): the digits, so a key
             // press is never invisible; the pinyin replaces them as soon as it is known
-            setMarked(String(taps.map { $0.key }))
+            setMarked(rawKeys)
         }
         if committedParts.isEmpty, let ctx = host.documentContextBeforeInput { engine.setContext(ctx) }; reconfigure()
-        engine.decode(taps, literal: literal, generation: gen) { [weak self] out in
+        engine.decode(taps, literal: effectiveLiteral, generation: gen) { [weak self] out in
             guard let self, gen == self.generation, let out else { return }
             let ms = (CACurrentMediaTime() - asked) * 1000
             self.candTotal += ms; self.candCount += 1; self.candMax = max(self.candMax, ms)
@@ -1085,6 +1164,12 @@ final class KeyboardViewController: UIInputViewController {
         guard taps.isEmpty, (host.documentContextBeforeInput ?? "").hasSuffix(u.text) else { return false }
         for _ in u.text { host.deleteBackward() }
         if !u.syllables.isEmpty { engine.unlearn(syllables: u.syllables, text: u.text) }
+        let rawKeys = String(u.taps.map { $0.key })
+        if !rawKeys.isEmpty {
+            let count = (undoCountsByKeys[rawKeys] ?? 0) + 1
+            undoCountsByKeys[rawKeys] = count
+            if count >= 2 { sessionLiteralKeys.insert(rawKeys) }
+        }
         taps = u.taps
         refresh(literal: true)
         return true
@@ -1110,7 +1195,7 @@ final class KeyboardViewController: UIInputViewController {
         var guardCount = 0
         while !taps.isEmpty && guardCount < 32 {
             guardCount += 1
-            if let c = currentResult()?.candidates.first, c.tapCount > 0, !c.syllables.isEmpty || c.isEnglish {
+            if let c = currentResult()?.candidates.first, c.tapCount > 0, c.tapCount <= taps.count, !c.syllables.isEmpty || c.isEnglish {
                 select(0)
             } else {
                 commitRaw()
@@ -1206,12 +1291,15 @@ final class KeyboardViewController: UIInputViewController {
         afterLastKey = contextSnapshot()
     }
 
-    private func clearComposition() {
+    private func clearComposition(touchHost: Bool = true, discardMarked: Bool = true) {
         markedHistory.removeAll()
         if hasMarkedText {
-            host.setMarkedText("", selectedRange: NSRange(location: 0, length: 0))
-            host.unmarkText()
+            if touchHost {
+                if discardMarked { host.insertText("") }
+                host.unmarkText()
+            }
             hasMarkedText = false
+            markedString = ""
         }
         taps.removeAll()
         generation += 1          // a decode still under way for these keys is dropped when it comes back
