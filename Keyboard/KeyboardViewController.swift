@@ -464,6 +464,11 @@ final class KeyboardViewController: UIInputViewController {
 
     override func selectionDidChange(_ textInput: UITextInput?) {
         super.selectionDidChange(textInput)
+        if !useInlineMarkedText, !taps.isEmpty, CACurrentMediaTime() - lastHostWriteTime > 0.35 {
+            lastCommittedContext = ""
+            clearComposition(touchHost: false)
+            return
+        }
         reconcileWithHost()
         leaveWordIfMoved()
     }
@@ -1226,6 +1231,12 @@ final class KeyboardViewController: UIInputViewController {
 
     private func setMarked(_ marked: String) {
         lastMarkedTime = CACurrentMediaTime()
+        if !useInlineMarkedText {
+            candidateBar.setPreedit(marked)
+            markedString = marked
+            return
+        }
+        lastHostWriteTime = lastMarkedTime
         host.setMarkedText(marked, selectedRange: NSRange(location: (marked as NSString).length, length: 0))
         hasMarkedText = true
         markedString = marked

@@ -109,8 +109,9 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     override init(frame: CGRect) {
         super.init(frame: frame)
         backgroundColor = Theme.touchable   // never fully clear: see Theme.touchable
-        preedit.font = Theme.font(14, .medium)
+        preedit.font = Theme.font(10.5, .semibold)
         preedit.textColor = Theme.secondaryText
+        preedit.isUserInteractionEnabled = false
         addSubview(preedit)
         // the row scrolls with the system's own inertia and bounce; no scroll bar; a finger that lands highlights
         // at once, and the scrolling takes the touch over (no selection) once it starts
@@ -133,6 +134,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         fade.endPoint = CGPoint(x: 1, y: 0.5)
         fade.colors = [UIColor.clear.cgColor, UIColor.black.cgColor, UIColor.black.cgColor, UIColor.clear.cgColor]
         addSubview(stripBox)
+        bringSubviewToFront(preedit)
         let cfg = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
         expandButton.setImage(UIImage(systemName: "chevron.down", withConfiguration: cfg), for: .normal)
         expandButton.tintColor = Theme.secondaryText
@@ -354,22 +356,20 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         super.layoutSubviews()
         let h = bounds.height
         let showPre = showsPreedit && !preedit.isHidden
-        let preH: CGFloat = showPre ? 13 : 0
-        preedit.frame = CGRect(x: 10, y: 1, width: bounds.width - 20, height: preH)
+        preedit.frame = CGRect(x: 10, y: 0, width: max(0, bounds.width - 54), height: showPre ? 12 : 0)
         // high in the strip, clear of the q key below (the keys' reach band gives way to him: see reservedTop)
         let ms = min(h - 8, 44)
         mosto.frame = CGRect(x: 8, y: 1, width: ms, height: ms)
-        let rowY = preH
-        let rowH = h - preH
-        expandButton.frame = CGRect(x: bounds.width - 44, y: rowY, width: 44, height: rowH)
+        expandButton.frame = CGRect(x: bounds.width - 44, y: 0, width: 44, height: h)
         // the row starts where the first candidate always started (after the chip, if there is one) and ends at ⌄
         var lead: CGFloat = 6
         if !undoChip.isHidden {
-            let sz = undoChip.sizeThatFits(CGSize(width: 200, height: rowH))
-            undoChip.frame = CGRect(x: 8, y: rowY + (rowH - sz.height) / 2, width: sz.width, height: sz.height)
+            let sz = undoChip.sizeThatFits(CGSize(width: 200, height: h))
+            undoChip.frame = CGRect(x: 8, y: (h - sz.height) / 2, width: sz.width, height: sz.height)
             lead = undoChip.frame.maxX + 6
         }
-        let box = CGRect(x: lead, y: rowY, width: max(0, bounds.width - 44 - lead), height: rowH)
+        // Keep stripBox and CandidateStrip spanning the FULL bar height (0..h) so taps on the upper third never miss.
+        let box = CGRect(x: lead, y: 0, width: max(0, bounds.width - 44 - lead), height: h)
         if stripBox.frame != box { stripBox.frame = box }
         let inner = CGRect(origin: .zero, size: box.size)
         if strip.frame != inner { strip.frame = inner }
@@ -436,6 +436,9 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     private func layoutCandidates() {
         let viewW = strip.bounds.width
         let rowH = strip.bounds.height
+        let showPre = showsPreedit && !preedit.isHidden
+        let topY: CGFloat = showPre ? 10 : 3
+        let labelH: CGFloat = max(18, showPre ? (rowH - 11) : (rowH - 6))
         let inline = bounds.height < Self.twoLineHeight
         let need = strip.contentOffset.x + max(viewW, 1) * 2
         let pressed = gesture.highlighted
@@ -457,7 +460,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             }
             let l = pool[n]
             l.isHidden = false
-            let frame = CGRect(x: x, y: 3, width: w, height: rowH - 6)
+            let frame = CGRect(x: x, y: topY, width: w, height: labelH)
             if l.frame != frame { l.frame = frame }
             let c = candidates[n]
             let cap = captionFor(n)

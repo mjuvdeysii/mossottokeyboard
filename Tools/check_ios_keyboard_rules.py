@@ -95,6 +95,11 @@ for dirpath, _dirs, files in os.walk(KEYBOARD):
             if app and re.search(r'\bemojiPanel\.', app):
                 problems.append(f"{path}: applyAppearance() accesses eager emojiPanel instead of emojiPanelIfLoaded?")
 
+            # Rule 9: setMarked(_:) must gate host.setMarkedText behind useInlineMarkedText (prevents Safari/WKWebView composition lag & cursor drift)
+            sm = extract_func(code, r'private\s+func\s+setMarked\b')
+            if sm and ("useInlineMarkedText" not in sm or "candidateBar.setPreedit" not in sm):
+                problems.append(f"{path}: setMarked(_:) calls host.setMarkedText without useInlineMarkedText candidate-bar preedit guard")
+
         if name == "KeyboardView.swift":
             # Rule 5a: No CABasicAnimation in KeyView.pressed hot path
             kv = extract_func(code, r'final\s+class\s+KeyView\b')
