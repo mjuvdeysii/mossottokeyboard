@@ -833,6 +833,7 @@ final class KeyboardViewController: UIInputViewController {
         case .delete:
             delete()
         case .ret:
+            inInsertedPair = false
             if !taps.isEmpty { commitRaw() } else { lastHostWriteTime = CACurrentMediaTime(); host.insertText("\n"); lastCommittedContext = "" }
             lastInsertedSpace = false
             if !chinese { updateAutoShift() }
@@ -944,6 +945,7 @@ final class KeyboardViewController: UIInputViewController {
             let closing = p.closing
             if let openCh = out.first, let closeCh = closing.first {
                 justInsertedPair = (openCh, closeCh)
+                inInsertedPair = true
             }
             if Bundle.main.bundlePath.hasSuffix(".appex") {
                 let gen = pairAdjustGeneration
@@ -1069,10 +1071,14 @@ final class KeyboardViewController: UIInputViewController {
             reconfigure()
             return
         }
-        if chinese, let after = proxy.documentContextAfterInput,
-           let closing = ["》", "）", "】", "」", "』", "”"].first(where: { after.hasPrefix($0) }) {
-            proxy.adjustTextPosition(byCharacterOffset: closing.utf16.count)
-            return
+        // Gate closing-bracket jump-out behind inInsertedPair so ordinary Chinese spacebar pauses do 0 XPC calls.
+        if chinese, inInsertedPair {
+            inInsertedPair = false
+            if let after = proxy.documentContextAfterInput,
+               let closing = ["》", "）", "】", "」", "』", "”"].first(where: { after.hasPrefix($0) }) {
+                proxy.adjustTextPosition(byCharacterOffset: closing.utf16.count)
+                return
+            }
         }
         proxy.insertText(" ")
         lastInsertedSpace = true
@@ -1094,7 +1100,8 @@ final class KeyboardViewController: UIInputViewController {
             if chinese, enTaps.isEmpty,
                host.documentContextBeforeInput?.last == pair.open,
                host.documentContextAfterInput?.first == pair.close {
-                host.adjustTextPosition(byCharacterOffset: pair.close.utf16.count)
+                inInsertedPair = false
+                   host.adjustTextPosition(byCharacterOffset: pair.close.utf16.count)
                 host.deleteBackward()
                 host.deleteBackward()
                 return
@@ -1265,14 +1272,16 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
-    private func setMarked(_ marked: String) {
-        lastMarkedTime = CACurrentMediaTime()
-        if !useInlineMarkedText {
-            candidateBar.setPreedit(marked)
-            markedString = marked
-            return
-        }
-        lastHostWriteTime = lastMarkedTime
+    private func cancelPendingMarked() {
+        pendingMarkedWork?.cancel()
+        pendingMarkedWork = nil
+        pendingMarkedText = nil
+    }
+
+    private func commitMarkedTextToHost(_ marked: String) {
+        let now = CACurrentMediaTime()
+        lastSentMarkedTime = now
+        lastHostWriteTime = now
         host.setMarkedText(marked, selectedRange: NSRange(location: (marked as NSString).length, length: 0))
         hasMarkedText = true
         markedString = marked
@@ -1280,9 +1289,38 @@ final class KeyboardViewController: UIInputViewController {
         if markedHistory.count > 12 { markedHistory.removeFirst() }
     }
 
+    private func setMarked(_ marked: String) {
+        let now = CACurrentMediaTime()
+        lastMarkedTime = now
+        let isRealExtension = Self.inExtension && hostOverride == nil
+        if !isRealExtension || !hasMarkedText || (now - lastSentMarkedTime) >= 0.024 {
+            cancelPendingMarked()
+            commitMarkedTextToHost(marked)
+            return
+        }
+        pendingMarkedText = marked
+        if pendingMarkedWork == nil {
+            let delay = max(0.004, 0.024 - (now - lastSentMarkedTime))
+            let item = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                self.pendingMarkedWork = nil
+                guard !self.taps.isEmpty, let text = self.pendingMarkedText else {
+                    self.pendingMarkedText = nil
+                    return
+                }
+                self.pendingMarkedText = nil
+                self.commitMarkedTextToHost(text)
+            }
+            pendingMarkedWork = item
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
+        }
+    }
+
     private func show(_ out: EngineHost.Output, generation gen: Int) {
         guard !taps.isEmpty else { return }
         var r = out.result; let sc: (Candidate) -> Bool = { $0.text.count == 1 && !$0.syllables.isEmpty && !$0.isEnglish }; if !committedParts.isEmpty { let topFull = r.candidates.prefix(1).filter { $0.tapCount == taps.count && !sc($0) }; let rest = r.candidates.dropFirst(topFull.count); r.candidates = Array(topFull) + rest.filter(sc) + rest.filter { !sc($0) } } else if taps.count == 2, r.candidates.count > 2 { let t = r.candidates.dropFirst(2); r.candidates = Array(r.candidates.prefix(2)) + t.filter(sc) + t.filter { !sc($0) } } else if taps.count == 4, r.candidates.count > 3 { let t = r.candidates.dropFirst(3); let s = t.filter(sc); r.candidates = Array(r.candidates.prefix(3)) + Array(s.prefix(2)) + t.filter { !sc($0) } + Array(s.dropFirst(2)) } else if taps.count >= 5, r.candidates.count > 3 { let t = r.candidates.dropFirst(2); let m = t.filter { !sc($0) }; let s = t.filter(sc); r.candidates = Array(r.candidates.prefix(2)) + Array(m.prefix(2)) + Array(s.prefix(2)) + Array(m.dropFirst(2)) + Array(s.dropFirst(2)) }; var seen = Set<String>(); r.candidates = r.candidates.filter { seen.insert($0.text).inserted }
+        let renderable = r.candidates.filter { Self.isRenderableCandidateText($0.text) }
+        if !renderable.isEmpty { r.candidates = renderable }
         result = r
         resultGeneration = gen
         // 九宫格 keys have no single letter: the field shows the pinyin read from them
@@ -1448,6 +1486,7 @@ final class KeyboardViewController: UIInputViewController {
 
     /// Insert committed text; it replaces the marked pinyin when there is one.
     private func insertCommitted(_ text: String) {
+        cancelPendingMarked()
         lastHostWriteTime = CACurrentMediaTime()
         host.insertText(text)
         lastCommittedContext = String((lastCommittedContext + text).suffix(8))
@@ -1505,12 +1544,14 @@ final class KeyboardViewController: UIInputViewController {
         enUndo = nil
         cleared = nil
         beforeDelete = nil
+        inInsertedPair = false
         endEnglishWord()
         if !taps.isEmpty { clearComposition() }
         afterLastKey = contextSnapshot()
     }
 
     private func clearComposition(touchHost: Bool = true, discardMarked: Bool = true) {
+        cancelPendingMarked()
         markedHistory.removeAll()
         if hasMarkedText {
             if touchHost {
