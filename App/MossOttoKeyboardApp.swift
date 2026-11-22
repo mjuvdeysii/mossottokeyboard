@@ -586,7 +586,7 @@ private struct FeaturesHubScreen: View {
     }
 }
 
-/// Tab 2 (中间): Segmented single-screen hub switching between Enable and Interactive Playground.
+/// Tab 2 (练习): Three-segment hub switching cleanly between Enable Guide, Interactive Practice, and Speed Arena.
 private struct GuideHubScreen: View {
     @Binding var segment: Int
     @ObservedObject var model: PlaygroundModel
@@ -594,8 +594,9 @@ private struct GuideHubScreen: View {
     var body: some View {
         VStack(spacing: 0) {
             Picker("", selection: $segment) {
-                Text("启用键盘").tag(0)
+                Text("启用引导").tag(0)
                 Text("互动练手").tag(1)
+                Text("测速靶场").tag(2)
             }
             .pickerStyle(.segmented)
             .padding(.horizontal, 16).padding(.vertical, 8)
@@ -603,18 +604,27 @@ private struct GuideHubScreen: View {
 
             if segment == 0 {
                 EnableScreen()
-            } else {
+            } else if segment == 1 {
                 PlaygroundScreen(model: model)
+            } else {
+                SpeedChallengeView(embedded: true)
             }
         }
     }
 }
 
-/// Tab 3 (设置): Real interactive Settings center for core typing & feel preferences (no App Group required).
+/// Tab 3 (设置): Mature v1.0 Settings center with dynamic build version, transparent zero-App-Group architecture, and sandbox preferences.
 private struct SettingsHubScreen: View {
     @ObservedObject var model: PlaygroundModel
     @Environment(\.scenePhase) private var phase
     @State private var added = KeyboardStatus.isAdded()
+
+    private var appVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+    }
+    private var appBuild: String {
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "369"
+    }
 
     var body: some View {
         List {
@@ -624,8 +634,8 @@ private struct SettingsHubScreen: View {
                         .resizable().scaledToFit()
                         .frame(width: 52, height: 52)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Mosto键盘 1.0").font(.headline)
-                        Text("纯离线 · 零 AI · 零共享容器").font(.caption).foregroundStyle(.secondary)
+                        Text("Mosto键盘 \(appVersion) (Build \(appBuild))").font(.headline)
+                        Text("纯离线 · 零联网 · 零共享容器").font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 0)
                     Text(added ? "已启用" : "待启用")
@@ -635,6 +645,34 @@ private struct SettingsHubScreen: View {
                         .background(Capsule().fill((added ? Color.green : mostoTint).opacity(0.14)))
                 }
                 .padding(.vertical, 4)
+            }
+
+            Section {
+                HStack {
+                    Label("系统键盘状态", systemImage: added ? "checkmark.circle.fill" : "keyboard")
+                        .foregroundStyle(added ? .green : mostoTint)
+                    Spacer()
+                    Text(added ? "已添加" : "未添加").foregroundStyle(.secondary)
+                }
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    Link(destination: url) {
+                        Label("前往系统设置管理键盘", systemImage: "arrow.up.forward.app")
+                    }
+                }
+                NavigationLink {
+                    UsageDetailView()
+                } label: {
+                    Label("全部手势与键盘用法", systemImage: "slider.horizontal.3")
+                }
+                NavigationLink {
+                    PrivacyArchitectureView()
+                } label: {
+                    Label("离线隐私与安全架构白皮书", systemImage: "lock.shield")
+                }
+            } header: {
+                Text("系统键盘配置")
+            } footer: {
+                Text("为最大化隐私隔离，Mosto键盘不挂载 App Group 共享容器。系统键盘的方案、风格与纠错偏好独立保存在键盘扩展本机存储中，在任意 App 长按表情键或点候选栏设置图标即可即时生效。")
             }
 
             Section {
@@ -674,11 +712,7 @@ private struct SettingsHubScreen: View {
                     .pickerStyle(.segmented)
                     .frame(width: 136)
                 }
-            } header: {
-                Text("输入方案")
-            }
 
-            Section {
                 HStack {
                     Label("键盘风格", systemImage: "paintbrush.pointed")
                     Spacer()
@@ -701,15 +735,11 @@ private struct SettingsHubScreen: View {
                     .pickerStyle(.segmented)
                     .frame(width: 162)
                 }
-            } header: {
-                Text("外观质感")
-            }
 
-            Section {
                 Toggle(isOn: $model.autocorrect) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("按触点位置自动纠错")
-                        Text("默认最优档，自动修正邻键误触与长句漏键").font(.caption).foregroundStyle(.secondary)
+                        Text("自动修正邻键误触、漏键与相邻打反").font(.caption).foregroundStyle(.secondary)
                     }
                 }
                 .tint(mostoTint)
@@ -737,46 +767,27 @@ private struct SettingsHubScreen: View {
                     }
                 }
                 .tint(mostoTint)
+
+                Button(role: .destructive) {
+                    UISelectionFeedbackGenerator().selectionChanged()
+                    model.resetDefaults()
+                } label: {
+                    Label("恢复沙盒默认配置", systemImage: "arrow.counterclockwise")
+                }
             } header: {
-                Text("纠错与手感")
-            } footer: {
-                Text("Mosto 坚持零 App Group 共享容器：以上开关即时生效于 App 内沙盒；系统键盘内偏好可在任意 App 长按表情键或点击候选栏快捷按钮独立调整，全程离线保存。")
+                Text("沙盒键盘偏好（本 App 试打与测速）")
             }
 
-            Section("系统键盘与用法") {
-                HStack {
-                    Label("系统键盘状态", systemImage: added ? "checkmark.circle.fill" : "keyboard")
-                        .foregroundStyle(added ? .green : mostoTint)
-                    Spacer()
-                    Text(added ? "已添加" : "未添加").foregroundStyle(.secondary)
-                }
-                if let url = URL(string: UIApplication.openSettingsURLString) {
-                    Link(destination: url) {
-                        Label("打开系统设置添加或管理键盘", systemImage: "arrow.up.forward.app")
-                    }
-                }
+            Section("学习工具与合规") {
                 NavigationLink {
-                    UsageDetailView()
+                    XiaoheGuideView()
                 } label: {
-                    Label("全部手势与键盘用法说明", systemImage: "slider.horizontal.3")
-                }
-            }
-
-            Section("输入方案与隐私") {
-                NavigationLink {
-                    SpeedChallengeView()
-                } label: {
-                    Label("手感测速靶场（3 句实时计速）", systemImage: "gauge.with.dots.needle.67percent")
+                    Label("小鹤双拼键位表与学习成本", systemImage: "square.grid.3x3")
                 }
                 NavigationLink {
                     TouchDriftHeatmapView()
                 } label: {
                     Label("拇指落点热力图（高斯触点学习）", systemImage: "scope")
-                }
-                NavigationLink {
-                    XiaoheGuideView()
-                } label: {
-                    Label("小鹤双拼键位表与学习成本", systemImage: "square.grid.3x3")
                 }
                 ForEach(LegalText.docs, id: \.id) { doc in
                     NavigationLink {
@@ -792,8 +803,39 @@ private struct SettingsHubScreen: View {
     }
 }
 
+/// Transparent technical specification of Mosto's offline privacy & iOS extension engineering guardrails.
+private struct PrivacyArchitectureView: View {
+    var body: some View {
+        List {
+            Section("零联网与零共享隔离") {
+                row("0 次网络请求", "键盘扩展与伴侣 App 不包含 URLSession、WebView 埋点或任何第三方统计 SDK。")
+                row("0 次剪贴板读取", "不访问 UIPasteboard，无需开启「允许完全访问」即可使用全部中文输入、纠错与心算功能。")
+                row("0 App Group 容器", "伴侣 App 与系统键盘扩展完全隔离，不跨进程共享输入日志或词库文件。")
+            }
+            Section("iOS 键盘扩展工程红线") {
+                row("45 MB Jetsam 内存红线", "词库与语言模型全部以只读 mmap 映射加载，零脏内存常驻，后台离屏自动回收可重建缓存。")
+                row("24 ms 帧合并与 0-XPC 空格", "行内预编辑在高速连打时按 24ms 合并下发，普通中文空格断句 0 次同步 XPC，保障 Safari 与网页编辑器流畅跟手。")
+                row("9 条 CI 自动化铁律门禁", "每次构建自动扫描网络 API、主线程同步解码、离屏阴影、空 setMarkedText 与热路径 XPC。")
+            }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle("离线隐私与安全架构")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func row(_ title: String, _ detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(.subheadline.weight(.semibold))
+            Text(detail).font(.caption).foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 2)
+    }
+}
+
 /// R38 Signature Feature: 3-sentence live typing speed & accuracy arena running on the real embedded Mosto keyboard.
 struct SpeedChallengeView: View {
+    var embedded = false
+    @AppStorage("mostoBestCPM") private var bestCPM = 0
     @StateObject private var model: PlaygroundModel = {
         let m = PlaygroundModel()
         m.step = lessons.count
@@ -848,7 +890,10 @@ struct SpeedChallengeView: View {
                 index += 1
                 model.clear()
             } else {
-                finishedSeconds = max(0.5, Date().timeIntervalSince(startedAt ?? Date()))
+                let sec = max(0.5, Date().timeIntervalSince(startedAt ?? Date()))
+                finishedSeconds = sec
+                let finalCPM = Int((Double(totalChars) / sec * 60.0).rounded())
+                if finalCPM > bestCPM { bestCPM = finalCPM }
                 model.keyboardVisible = false
             }
         }
@@ -861,7 +906,7 @@ struct SpeedChallengeView: View {
                     HStack(spacing: 10) {
                         metricTile(title: "进度", value: "\(min(index + (isFinished ? 1 : 0), targets.count))/\(targets.count)")
                         metricTile(title: "实时速度", value: cpm > 0 ? "\(cpm) 字/分" : "待开始")
-                        metricTile(title: "方案", value: model.layout == 1 ? "小鹤" : (model.layout == 2 ? "九宫格" : "全拼"))
+                        metricTile(title: "最佳纪录", value: bestCPM > 0 ? "\(bestCPM) 字/分" : "暂无")
                     }
 
                     if isFinished, let sec = finishedSeconds {
@@ -900,6 +945,9 @@ struct SpeedChallengeView: View {
                                 }
                                 .pickerStyle(.segmented)
                                 .frame(width: 112)
+                                Button("重置") { resetChallenge() }
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(mostoTint)
                             }
                             HStack(spacing: 2) {
                                 ForEach(Array(currentTarget.enumerated()), id: \.offset) { i, ch in
@@ -933,13 +981,8 @@ struct SpeedChallengeView: View {
                     }))
             }
         }
-        .navigationTitle("手感测速靶场")
+        .navigationTitle(embedded ? "练习" : "手感测速靶场")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("重置") { resetChallenge() }
-            }
-        }
         .onChange(of: model.before) { _ in evaluateProgress() }
         .onChange(of: model.marked) { _ in evaluateProgress() }
     }
