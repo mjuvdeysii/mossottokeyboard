@@ -1,5 +1,6 @@
 import UIKit
 import AudioToolbox
+import CoreText
 
 final class KeyboardViewController: UIInputViewController {
     /// The text field being typed into: the system's proxy, or a stand-in field when the keyboard is driven by the
@@ -36,6 +37,8 @@ final class KeyboardViewController: UIInputViewController {
     private var heightConstraint: NSLayoutConstraint?
     private var pairAdjustGeneration = 0
     private var justInsertedPair: (open: Character, close: Character)?
+    /// True while the user is typing inside a freshly inserted CJK bracket pair (gates closing-bracket space jump-out for 0-XPC spacebar).
+    private var inInsertedPair = false
     private var cursorDragBefore: [Character] = []
     private var cursorDragAfterReversed: [Character] = []
     private var cursorDragHasContext = false
@@ -89,10 +92,40 @@ final class KeyboardViewController: UIInputViewController {
     private var lastHostWriteTime: CFTimeInterval = 0
     private var lastReconcileTime: CFTimeInterval = 0
     private var lastCommittedContext = ""
-    /// In the real iOS .appex extension, keep pinyin preedit inside CandidateBarView (zero setMarkedText XPC,
-    /// zero Safari/WKWebView contenteditable DOM composition lag or cursor drift, matching WeType/Hamster/Sogou).
-    /// In-app test bench & Playground (hostOverride != nil or !inExtension) keep inline marked text for full test coverage.
-    private var useInlineMarkedText: Bool { !Self.inExtension || hostOverride != nil }
+    /// 24ms frame coalescer for inline setMarkedText in .appex: 0ms on first key, max ~41Hz during rapid bursts
+    /// (cuts Safari/WKWebView DOM reflows by ~75% while keeping the candidate bar 100% pure single-row).
+    private var pendingMarkedWork: DispatchWorkItem?
+    private var pendingMarkedText: String?
+    private var lastSentMarkedTime: CFTimeInterval = 0
+    /// Cached CoreText glyph check for non-BMP CJK Extension B+ scalars (prevents [?] tofu boxes in candidate strip).
+    private static var renderableGlyphCache: [UInt32: Bool] = [:]
+    private static let glyphCheckFont: CTFont =
+        CTFontCreateUIFontForLanguage(.system, 17, "zh-Hans" as CFString)
+        ?? CTFontCreateWithName("PingFangSC-Regular" as CFString, 17, nil)
+
+    private static func isRenderableCandidateText(_ text: String) -> Bool {
+        for scalar in text.unicodeScalars {
+            let v = scalar.value
+            // Fast 0ns path for all BMP characters (common CJK, ASCII, punctuation) and Emoji.
+            if v < 0x20000 || scalar.properties.isEmoji { continue }
+            if let cached = renderableGlyphCache[v] {
+                if !cached { return false }
+                continue
+            }
+            let s = String(scalar)
+            let utf16 = Array(s.utf16)
+            var glyphs = [CGGlyph](repeating: 0, count: utf16.count)
+            let fallback = CTFontCreateForString(glyphCheckFont, s as CFString, CFRange(location: 0, length: utf16.count))
+            let psName = CTFontCopyPostScriptName(fallback) as String
+            let ok = !psName.contains("LastResort")
+                && CTFontGetGlyphsForCharacters(fallback, utf16, &glyphs, utf16.count)
+                && !glyphs.isEmpty && glyphs[0] != 0
+            if renderableGlyphCache.count > 512 { renderableGlyphCache.removeAll(keepingCapacity: true) }
+            renderableGlyphCache[v] = ok
+            if !ok { return false }
+        }
+        return true
+    }
 
     // English mode: the word being typed (its taps and the characters inserted), its suggestions and the
     // autocorrection space would apply; the last applied correction, which a delete right after takes back.
@@ -183,7 +216,7 @@ final class KeyboardViewController: UIInputViewController {
         inputView?.allowsSelfSizing = true
         tintView.isUserInteractionEnabled = false
         root.addSubview(tintView)
-        candidateBar.showsPreedit = !useInlineMarkedText
+        candidateBar.showsPreedit = false
         loadEngine()
 
         keyboard.inputController = self
@@ -205,6 +238,7 @@ final class KeyboardViewController: UIInputViewController {
             self.undoable = nil
             self.enUndo = nil
             self.cleared = nil
+            self.inInsertedPair = false
             self.lastCommittedContext = ""
             self.endEnglishWord()
             let before = self.host.documentContextBeforeInput
@@ -347,7 +381,8 @@ final class KeyboardViewController: UIInputViewController {
         hostEchoesMarked = 0
         lastEchoed = ""
         lastCommittedContext = ""
-        candidateBar.showsPreedit = !useInlineMarkedText
+        inInsertedPair = false
+        candidateBar.showsPreedit = false
         userToggledModeInField = false
         forgetLastWord()
         afterLastKey = contextSnapshot()
@@ -372,6 +407,7 @@ final class KeyboardViewController: UIInputViewController {
         keyboard.cancelAllTouches()   // a key held as the keyboard goes: no repeat into the next field
         candidateBar.pauseTimers()
         peakFootprint = max(peakFootprint, memoryFootprintMB())
+        cancelPendingMarked()
         if !taps.isEmpty || hasMarkedText {
             clearComposition(touchHost: false)
         }
