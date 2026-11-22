@@ -5,9 +5,10 @@
 ## 1. XPC 跨进程通信预算（防非微信 App 打字卡顿）
 - `UITextDocumentProxy.documentContextBeforeInput` 与 `documentContextAfterInput` 是**同步跨进程 XPC**。在原生 `UITextView`（微信）下约 0.5 ms，但在 Safari、`WKWebView`、备忘录富文本、Flutter/Electron 宿主中单次可达 **8–25 ms**。
 - **铁律**：
-  1. 组合打字态（`!taps.isEmpty`）每键 **0 次**额外 `documentContext` 读取（`refresh()` 与 `handle()` 末尾禁止无条件读上下文）。
+  1. 组合打字态（`!taps.isEmpty`）每键 **0 次**额外 `documentContext` 读取（`refresh()` 与 `handle()` 末尾禁止无条件读上下文）。；中文普通断句按空格仅在 `inInsertedPair` 标志为真时才检查跳出右括号，日常空格 **0 次 XPC**。
   2. 仅在起打首键（`taps.isEmpty`）读取一次左上下文送入引擎；空格拖动光标在 `.began` 一次性快照后本地按 Swift `Character` 步进。
-  3. `viewWillDisappear` 失焦瞬间禁止同步读取 `documentContextBeforeInput` 或同步写 `UserDefaults`。
+  3. `.appex` 行内 `setMarkedText` 采用 **24 ms 帧合并**（首键 0 ms 立即显示，高速连打合并减少 ~75% Safari/WKWebView DOM 重排；`insertCommitted` 与 `clearComposition` 必须先原子取消 `pendingMarkedWork`），同时保持候选栏 100% 纯净单行与 CoreText 非 BMP 缺字形（`.LastResort` / `.notdef`）零豆腐块过滤。
+  4. `viewWillDisappear` 失焦瞬间禁止同步读取 `documentContextBeforeInput` 或同步写 `UserDefaults`。
 
 ## 2. CoreAnimation 渲染与帧率红线（120Hz ProMotion 零掉帧）
 - **铁律**：
