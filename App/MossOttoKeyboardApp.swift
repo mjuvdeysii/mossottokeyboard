@@ -27,14 +27,14 @@ struct ContentView: View {
                     .navigationTitle("Mosto键盘")
                     .navigationBarTitleDisplayMode(.inline)
             }
-            .tabItem { Label("特性", systemImage: "sparkles") }
+            .tabItem { Label("概览", systemImage: "sparkles") }
             .tag(AppTab.features)
             NavigationStack {
                 GuideHubScreen(segment: $nav.guideSegment, model: nav.playground)
-                    .navigationTitle("上手")
+                    .navigationTitle("练习")
                     .navigationBarTitleDisplayMode(.inline)
             }
-            .tabItem { Label("上手", systemImage: "hand.tap") }
+            .tabItem { Label("练习", systemImage: "hand.tap") }
             .tag(AppTab.guide)
             NavigationStack {
                 SettingsHubScreen(model: nav.playground)
@@ -86,16 +86,16 @@ private struct FeatureItem: Identifiable {
 private let featureItems: [FeatureItem] = [
     FeatureItem(id: "fix", icon: "wand.and.stars", title: "整句纠错", stat: "92.1% 整句 · 0.3ms",
                 detail: "按偏、漏键、多按与相邻打反（如 nihoa → 你好、inhc → 你好）自动联句修正，点候选栏 ↩ 或删除即可秒撤回。", lessonTitle: "按错一个键"),
-    FeatureItem(id: "scheme", icon: "keyboard", title: "双拼与全拼", stat: "小鹤 2 键 · 全拼默认",
-                detail: "同时内置全拼与纯小鹤双拼（每字固定 2 键、无形码），设置跨版本保留；可在键盘设置里随时切换并开启键位提示。", lessonTitle: nil),
-    FeatureItem(id: "mix", icon: "character.bubble", title: "混输与九宫格", stat: "免切英文 · 九宫格",
-                detail: "句子中直接夹打 ok、iOS、iPhone 自动识别大小写；中文全键盘与九宫格均支持完整纠错与联想。", lessonTitle: "中英混输"),
-    FeatureItem(id: "kaomoji", icon: "face.smiling", title: "颜文字与彩蛋", stat: "126 款 · 情绪联动",
-                detail: "内置 8 大情绪 126 款颜文字；输入日期、时间、星期自动动态输出，输入晚安、开心、可爱、宝宝等触发 Mosto 彩蛋。", lessonTitle: nil),
+    FeatureItem(id: "scheme", icon: "keyboard", title: "双拼与全拼", stat: "小鹤 2 键 · 九宫格",
+                detail: "同时内置全拼、纯小鹤双拼（每字固定 2 键、无形码）与九宫格布局，中英混输自动识别大小写，设置跨版本保留。", lessonTitle: nil),
+    FeatureItem(id: "mix", icon: "equal.square", title: "心算与智能日期", stat: "286/4= · 相对日期",
+                detail: "输入算式加等号（如 286/4=）候选栏即出精准结果，支持括号与四则运算；输入明天、下周一、今年、本月自动出对应日期。", lessonTitle: "中英混输"),
+    FeatureItem(id: "kaomoji", icon: "bolt.horizontal", title: "零卡顿流畅引擎", stat: "WebView 帧合并 · 零乱码",
+                detail: "24ms 帧合并行内预编辑与 0-XPC 空格断句，在 Safari 与网页编辑器中丝滑跟手；内置 CoreText 缺字形过滤，永久告别生僻豆腐块。", lessonTitle: nil),
     FeatureItem(id: "glass", icon: "square.on.square", title: "微扁平双风格", stat: "iOS 原生 · Mosto 软胶",
-                detail: "简洁模式复刻系统液态玻璃高度与纯净键帽；Mosto 模式采用微扁平哑光软胶底沿与日/夜灯暖金高光，一键切换。", lessonTitle: nil),
-    FeatureItem(id: "offline", icon: "lock.shield", title: "纯离线 · 零 AI", stat: "0 联网 · 0 追踪",
-                detail: "键盘扩展全程本机计算，不含任何网络请求、剪贴板读取或第三方 SDK，保持默认权限即可正常打字。", lessonTitle: nil),
+                detail: "简洁模式复刻系统液态玻璃比例与纯净单行候选栏；Mosto 模式采用微扁平哑光软胶底沿与日/夜灯暖金高光，一键切换。", lessonTitle: nil),
+    FeatureItem(id: "offline", icon: "lock.shield", title: "纯离线 · 零追踪", stat: "0 联网 · 0 剪贴板",
+                detail: "键盘扩展全程本机只读 mmap 计算，不含任何网络请求、剪贴板读取、第三方 SDK 或共享容器，保持默认权限即可完整使用。", lessonTitle: nil),
 ]
 
 private enum StageMood: Int, CaseIterable {
@@ -260,15 +260,21 @@ private struct FeaturesHubScreen: View {
     private var prompts: [SandboxPrompt] {
         if model.layout == 1 {
             return [
-                SandboxPrompt(id: "xh1", label: "转置纠错", hint: "试试打 inhc 空格 → 你好"),
+                SandboxPrompt(id: "xh1", label: "误触纠错", hint: "试试打 inhc 空格 → 你好，或 cwui 空格 → 测试"),
                 SandboxPrompt(id: "xh2", label: "长句连打", hint: "试试打 jmtmll 空格 → 今天来了"),
-                SandboxPrompt(id: "xh3", label: "成对标点", hint: "长按 ，选《》自动回退，按空格跳出"),
+                SandboxPrompt(id: "xh3", label: "心算与日期", hint: "试试打 286/4= 算账，或打 mgtm 出明日日期"),
+            ]
+        } else if model.layout == 2 {
+            return [
+                SandboxPrompt(id: "t91", label: "九宫格整句", hint: "直接连点九宫格按键，左侧音节栏可精准锁音"),
+                SandboxPrompt(id: "t92", label: "智能标点", hint: "长按 ，选《》自动回退，按空格一键跳出"),
+                SandboxPrompt(id: "t93", label: "心算与日期", hint: "试试切 123 打 286/4=，或输入「明天」看日期"),
             ]
         } else {
             return [
-                SandboxPrompt(id: "qp1", label: "转置纠错", hint: "试试打 nihoa 空格 → 你好"),
-                SandboxPrompt(id: "qp2", label: "漏键连打", hint: "试试打 jintiantiaqi 空格 → 今天天气"),
-                SandboxPrompt(id: "qp3", label: "成对标点", hint: "长按 ，选《》自动回退，按空格跳出"),
+                SandboxPrompt(id: "qp1", label: "误触纠错", hint: "试试打 nihoa 空格 → 你好"),
+                SandboxPrompt(id: "qp2", label: "长句连打", hint: "试试打 jintiantiaqi 空格 → 今天天气"),
+                SandboxPrompt(id: "qp3", label: "心算与日期", hint: "试试打 286/4= 算账，或打 mingtian 出明日日期"),
             ]
         }
     }
@@ -359,21 +365,42 @@ private struct FeaturesHubScreen: View {
                             .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(Color.white.opacity(mood == .night ? 0.12 : 0.65), lineWidth: 1))
                     )
 
-                    // Playable live sandbox card: try xiaohe/quanpin correction & micro-flat feel in 10 seconds.
+                    // Top status capsule: clear setup prompt when not enabled, compact green-dot pill once ready.
+                    Button {
+                        nav?.guideSegment = added ? 2 : 0
+                        nav?.tab = .guide
+                    } label: {
+                        HStack(spacing: 10) {
+                            Circle().fill(added ? Color.green : mostoTint).frame(width: 8, height: 8)
+                            Text(added ? "系统键盘已就绪 · 纯离线运行" : "尚未启用系统键盘 · 30 秒完成添加")
+                                .font(.subheadline.weight(.medium)).foregroundStyle(.primary)
+                            Spacer()
+                            Text(added ? "去测速" : "去开启")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(added ? Color.green : mostoTint)
+                        }
+                        .padding(.horizontal, 14).padding(.vertical, 10)
+                        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
+                    }
+                    .buttonStyle(.plain)
+
+                    // Playable 10-second live sandbox: 3 layouts + 2 styles + 3 pain-point prompts + dismissible keyboard.
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(spacing: 8) {
-                            Label("手感试打沙盒", systemImage: "keyboard")
+                            Label("10 秒手感试打沙盒", systemImage: "keyboard")
                                 .font(.subheadline.weight(.semibold))
                             Spacer()
-                            Picker("方案", selection: Binding(
-                                get: { model.layout == 1 ? 1 : 0 },
-                                set: { model.layout = $0 }
-                            )) {
-                                Text("全拼").tag(0)
-                                Text("小鹤").tag(1)
+                            Button {
+                                UISelectionFeedbackGenerator().selectionChanged()
+                                model.style = model.style == 0 ? 1 : 0
+                            } label: {
+                                Text(model.style == 0 ? "Mosto" : "简洁")
+                                    .font(.caption.weight(.medium))
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal, 8).padding(.vertical, 5)
+                                    .background(Capsule().fill(Color(UIColor.tertiarySystemFill)))
                             }
-                            .pickerStyle(.segmented)
-                            .frame(width: 112)
+                            .buttonStyle(.plain)
                             Button {
                                 UISelectionFeedbackGenerator().selectionChanged()
                                 withAnimation(.spring(response: 0.26, dampingFraction: 0.84)) {
@@ -391,6 +418,13 @@ private struct FeaturesHubScreen: View {
                             }
                             .buttonStyle(.plain)
                         }
+
+                        Picker("输入方案", selection: $model.layout) {
+                            Text("全拼").tag(0)
+                            Text("小鹤").tag(1)
+                            Text("九宫格").tag(2)
+                        }
+                        .pickerStyle(.segmented)
 
                         // Built-in 3 short scenario prompts (wraps cleanly, zero horizontal scroll)
                         HStack(spacing: 6) {
@@ -454,27 +488,6 @@ private struct FeaturesHubScreen: View {
                             .fill(Color(UIColor.secondarySystemGroupedBackground))
                             .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Color.primary.opacity(0.05), lineWidth: 0.8))
                     )
-
-                    // Show setup guidance clearly when not yet enabled; automatically hide once enabled.
-                    if !added {
-                        Button {
-                            nav?.guideSegment = 0
-                            nav?.tab = .guide
-                        } label: {
-                            HStack(spacing: 10) {
-                                Circle().fill(mostoTint).frame(width: 8, height: 8)
-                                Text("尚未启用系统键盘 · 30 秒完成添加")
-                                    .font(.subheadline.weight(.medium)).foregroundStyle(.primary)
-                                Spacer()
-                                Text("去开启")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(mostoTint)
-                            }
-                            .padding(.horizontal, 14).padding(.vertical, 11)
-                            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
-                        }
-                        .buttonStyle(.plain)
-                    }
 
                     LazyVGrid(columns: cols, spacing: 10) {
                         ForEach(featureItems) { item in
