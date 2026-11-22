@@ -361,11 +361,11 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         let ms = min(h - 8, 44)
         mosto.frame = CGRect(x: 8, y: 1, width: ms, height: ms)
         expandButton.frame = CGRect(x: bounds.width - 44, y: 0, width: 44, height: h)
-        // the row starts where the first candidate always started (after the chip, if there is one) and ends at ⌄
-        var lead: CGFloat = 6
+        // Start at 12pt so the first candidate cleanly clears iOS 26/27 Liquid Glass top-left corner radius.
+        var lead: CGFloat = 12
         if !undoChip.isHidden {
             let sz = undoChip.sizeThatFits(CGSize(width: 200, height: h))
-            undoChip.frame = CGRect(x: 8, y: (h - sz.height) / 2, width: sz.width, height: sz.height)
+            undoChip.frame = CGRect(x: 12, y: (h - sz.height) / 2, width: sz.width, height: sz.height)
             lead = undoChip.frame.maxX + 6
         }
         // Keep stripBox and CandidateStrip spanning the FULL bar height (0..h) so taps on the upper third never miss.
