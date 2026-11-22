@@ -92,11 +92,9 @@ final class KeyboardViewController: UIInputViewController {
     private var lastHostWriteTime: CFTimeInterval = 0
     private var lastReconcileTime: CFTimeInterval = 0
     private var lastCommittedContext = ""
-    /// 24ms frame coalescer for inline setMarkedText in .appex: 0ms on first key, max ~41Hz during rapid bursts
-    /// (cuts Safari/WKWebView DOM reflows by ~75% while keeping the candidate bar 100% pure single-row).
-    private var pendingMarkedWork: DispatchWorkItem?
-    private var pendingMarkedText: String?
-    private var lastSentMarkedTime: CFTimeInterval = 0
+    /// In the real iOS .appex extension, show pinyin in CandidateBarView's leading single-row pill (0 setMarkedText XPC,
+    /// < 1ms keystroke latency, 0ms haptic delay, 100% reliable candidate taps). In-app test bench keeps inline marked text.
+    private var useInlineMarkedText: Bool { !Self.inExtension || hostOverride != nil }
     /// Cached CoreText glyph check for non-BMP CJK Extension B+ scalars (prevents [?] tofu boxes in candidate strip).
     private static var renderableGlyphCache: [UInt32: Bool] = [:]
     private static let glyphCheckFont: CTFont =
@@ -216,7 +214,7 @@ final class KeyboardViewController: UIInputViewController {
         inputView?.allowsSelfSizing = true
         tintView.isUserInteractionEnabled = false
         root.addSubview(tintView)
-        candidateBar.showsPreedit = false
+        candidateBar.showsPreedit = !useInlineMarkedText
         loadEngine()
 
         keyboard.inputController = self
@@ -382,7 +380,7 @@ final class KeyboardViewController: UIInputViewController {
         lastEchoed = ""
         lastCommittedContext = ""
         inInsertedPair = false
-        candidateBar.showsPreedit = false
+        candidateBar.showsPreedit = !useInlineMarkedText
         userToggledModeInField = false
         forgetLastWord()
         afterLastKey = contextSnapshot()
@@ -407,7 +405,6 @@ final class KeyboardViewController: UIInputViewController {
         keyboard.cancelAllTouches()   // a key held as the keyboard goes: no repeat into the next field
         candidateBar.pauseTimers()
         peakFootprint = max(peakFootprint, memoryFootprintMB())
-        cancelPendingMarked()
         if !taps.isEmpty || hasMarkedText {
             clearComposition(touchHost: false)
         }
@@ -500,6 +497,11 @@ final class KeyboardViewController: UIInputViewController {
 
     override func selectionDidChange(_ textInput: UITextInput?) {
         super.selectionDidChange(textInput)
+        if !useInlineMarkedText, !taps.isEmpty, CACurrentMediaTime() - lastHostWriteTime > 0.35 {
+            lastCommittedContext = ""
+            clearComposition(touchHost: false)
+            return
+        }
         reconcileWithHost()
         leaveWordIfMoved()
     }
@@ -543,7 +545,7 @@ final class KeyboardViewController: UIInputViewController {
     /// Only checked in hosts seen to include the marked text in the text before the cursor (confirmed twice), so a
     /// host that does not is never mistaken for one that moved on.
     private func reconcileWithHost() {
-        guard !taps.isEmpty, hasMarkedText, markedString.count >= 2 else { return }
+        guard useInlineMarkedText, !taps.isEmpty, hasMarkedText, markedString.count >= 2 else { return }
         let now = CACurrentMediaTime()
         // In .appex (Safari / WKWebView), skip XPC reads triggered by our own setMarkedText echoes.
         if Self.inExtension && hostOverride == nil {
@@ -1267,48 +1269,19 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
-    private func cancelPendingMarked() {
-        pendingMarkedWork?.cancel()
-        pendingMarkedWork = nil
-        pendingMarkedText = nil
-    }
-
-    private func commitMarkedTextToHost(_ marked: String) {
-        let now = CACurrentMediaTime()
-        lastSentMarkedTime = now
-        lastHostWriteTime = now
+    private func setMarked(_ marked: String) {
+        lastMarkedTime = CACurrentMediaTime()
+        if !useInlineMarkedText {
+            candidateBar.setPreedit(marked)
+            markedString = marked
+            return
+        }
+        lastHostWriteTime = lastMarkedTime
         host.setMarkedText(marked, selectedRange: NSRange(location: (marked as NSString).length, length: 0))
         hasMarkedText = true
         markedString = marked
         markedHistory.append(marked)
         if markedHistory.count > 12 { markedHistory.removeFirst() }
-    }
-
-    private func setMarked(_ marked: String) {
-        let now = CACurrentMediaTime()
-        lastMarkedTime = now
-        let isRealExtension = Self.inExtension && hostOverride == nil
-        if !isRealExtension || !hasMarkedText || (now - lastSentMarkedTime) >= 0.024 {
-            cancelPendingMarked()
-            commitMarkedTextToHost(marked)
-            return
-        }
-        pendingMarkedText = marked
-        if pendingMarkedWork == nil {
-            let delay = max(0.004, 0.024 - (now - lastSentMarkedTime))
-            let item = DispatchWorkItem { [weak self] in
-                guard let self else { return }
-                self.pendingMarkedWork = nil
-                guard !self.taps.isEmpty, let text = self.pendingMarkedText else {
-                    self.pendingMarkedText = nil
-                    return
-                }
-                self.pendingMarkedText = nil
-                self.commitMarkedTextToHost(text)
-            }
-            pendingMarkedWork = item
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
-        }
     }
 
     private func show(_ out: EngineHost.Output, generation gen: Int) {
@@ -1481,7 +1454,6 @@ final class KeyboardViewController: UIInputViewController {
 
     /// Insert committed text; it replaces the marked pinyin when there is one.
     private func insertCommitted(_ text: String) {
-        cancelPendingMarked()
         lastHostWriteTime = CACurrentMediaTime()
         host.insertText(text)
         lastCommittedContext = String((lastCommittedContext + text).suffix(8))
@@ -1546,7 +1518,6 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func clearComposition(touchHost: Bool = true, discardMarked: Bool = true) {
-        cancelPendingMarked()
         markedHistory.removeAll()
         if hasMarkedText {
             if touchHost {

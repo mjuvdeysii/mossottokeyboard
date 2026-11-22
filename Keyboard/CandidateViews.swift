@@ -109,8 +109,12 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     override init(frame: CGRect) {
         super.init(frame: frame)
         backgroundColor = Theme.touchable   // never fully clear: see Theme.touchable
-        preedit.font = Theme.font(10.5, .semibold)
+        preedit.font = Theme.font(12, .semibold)
         preedit.textColor = Theme.secondaryText
+        preedit.textAlignment = .center
+        preedit.lineBreakMode = .byTruncatingHead
+        preedit.backgroundColor = Theme.functionKey.withAlphaComponent(0.55)
+        preedit.clipsToBounds = true
         preedit.isUserInteractionEnabled = false
         addSubview(preedit)
         // the row scrolls with the system's own inertia and bounce; no scroll bar; a finger that lands highlights
@@ -172,7 +176,8 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     func themeChanged() {
         expandButton.tintColor = Theme.secondaryText
         preedit.textColor = Theme.secondaryText
-        preedit.font = Theme.font(11.5, .semibold)
+        preedit.font = Theme.font(12, .semibold)
+        preedit.backgroundColor = Theme.functionKey.withAlphaComponent(0.55)
         var uc = undoChip.configuration
         uc?.baseBackgroundColor = Theme.correctedTint
         uc?.baseForegroundColor = Theme.correctedMark
@@ -276,11 +281,12 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     @objc private func mostoTapped() { onMostoTap?() }
     @objc private func mostoDoubleTapped() { mosto.hop(); onMostoDoubleTap?() }
 
-    /// Immediately show typed keys in the candidate bar preedit line (0 ms, 0 XPC).
+    /// Immediately show typed keys in the leading single-row pinyin pill (0 ms, 0 XPC).
     func setPreedit(_ text: String) {
+        let changed = preedit.text != text
         preedit.text = text
         let show = showsPreedit && !isPrediction && !text.isEmpty
-        if preedit.isHidden != !show {
+        if preedit.isHidden != !show || changed {
             preedit.isHidden = !show
             setNeedsLayout()
         }
@@ -355,8 +361,6 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     override func layoutSubviews() {
         super.layoutSubviews()
         let h = bounds.height
-        let showPre = showsPreedit && !preedit.isHidden
-        preedit.frame = CGRect(x: 10, y: 0, width: max(0, bounds.width - 54), height: showPre ? 12 : 0)
         // high in the strip, clear of the q key below (the keys' reach band gives way to him: see reservedTop)
         let ms = min(h - 8, 44)
         mosto.frame = CGRect(x: 8, y: 1, width: ms, height: ms)
@@ -367,6 +371,16 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             let sz = undoChip.sizeThatFits(CGSize(width: 200, height: h))
             undoChip.frame = CGRect(x: 12, y: (h - sz.height) / 2, width: sz.width, height: sz.height)
             lead = undoChip.frame.maxX + 6
+            preedit.frame = .zero
+        } else if showsPreedit && !preedit.isHidden, let txt = preedit.text, !txt.isEmpty {
+            let rawW = ceil((txt as NSString).size(withAttributes: [.font: preedit.font ?? Theme.font(12, .semibold)]).width) + 14
+            let pillW = min(max(30, rawW), 92)
+            let pillH = min(24, max(20, h - 16))
+            preedit.layer.cornerRadius = pillH / 2
+            preedit.frame = CGRect(x: 12, y: (h - pillH) / 2, width: pillW, height: pillH)
+            lead = preedit.frame.maxX + 6
+        } else {
+            preedit.frame = .zero
         }
         // Keep stripBox and CandidateStrip spanning the FULL bar height (0..h) so taps on the upper third never miss.
         let box = CGRect(x: lead, y: 0, width: max(0, bounds.width - 44 - lead), height: h)
@@ -436,9 +450,8 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     private func layoutCandidates() {
         let viewW = strip.bounds.width
         let rowH = strip.bounds.height
-        let showPre = showsPreedit && !preedit.isHidden
-        let topY: CGFloat = showPre ? 10 : 3
-        let labelH: CGFloat = max(18, showPre ? (rowH - 11) : (rowH - 6))
+        let topY: CGFloat = 3
+        let labelH: CGFloat = max(18, rowH - 6)
         let inline = bounds.height < Self.twoLineHeight
         let need = strip.contentOffset.x + max(viewW, 1) * 2
         let pressed = gesture.highlighted
