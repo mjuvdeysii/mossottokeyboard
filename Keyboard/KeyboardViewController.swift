@@ -500,11 +500,6 @@ final class KeyboardViewController: UIInputViewController {
 
     override func selectionDidChange(_ textInput: UITextInput?) {
         super.selectionDidChange(textInput)
-        if !useInlineMarkedText, !taps.isEmpty, CACurrentMediaTime() - lastHostWriteTime > 0.35 {
-            lastCommittedContext = ""
-            clearComposition(touchHost: false)
-            return
-        }
         reconcileWithHost()
         leaveWordIfMoved()
     }
@@ -548,7 +543,7 @@ final class KeyboardViewController: UIInputViewController {
     /// Only checked in hosts seen to include the marked text in the text before the cursor (confirmed twice), so a
     /// host that does not is never mistaken for one that moved on.
     private func reconcileWithHost() {
-        guard useInlineMarkedText, !taps.isEmpty, hasMarkedText, markedString.count >= 2 else { return }
+        guard !taps.isEmpty, hasMarkedText, markedString.count >= 2 else { return }
         let now = CACurrentMediaTime()
         // In .appex (Safari / WKWebView), skip XPC reads triggered by our own setMarkedText echoes.
         if Self.inExtension && hostOverride == nil {
