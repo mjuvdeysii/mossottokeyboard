@@ -102,7 +102,7 @@ for dirpath, _dirs, files in os.walk(KEYBOARD):
             ic = extract_func(code, r'private\s+func\s+insertCommitted\b')
             if ic and "cancelPendingMarked" not in ic:
               problems.append(f"{path}: insertCommitted(_:) must call cancelPendingMarked() before host.insertText")
-             cc = extract_func(code, r'private\s+func\s+clearComposition\b')
+            cc = extract_func(code, r'private\s+func\s+clearComposition\b')
             if cc and "cancelPendingMarked" not in cc:
                 problems.append(f"{path}: clearComposition() must call cancelPendingMarked() before clearing marked text")
                 
