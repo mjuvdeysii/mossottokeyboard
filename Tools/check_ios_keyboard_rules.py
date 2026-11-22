@@ -95,11 +95,17 @@ for dirpath, _dirs, files in os.walk(KEYBOARD):
             if app and re.search(r'\bemojiPanel\.', app):
                 problems.append(f"{path}: applyAppearance() accesses eager emojiPanel instead of emojiPanelIfLoaded?")
 
-            # Rule 9: setMarked(_:) must gate host.setMarkedText behind useInlineMarkedText (prevents Safari/WKWebView composition lag & cursor drift)
+            # Rule 9: setMarked(_:) must coalesce rapid .appex marked text updates (24ms frame budget) and insertCommitted/clearComposition must cancel pending updates
             sm = extract_func(code, r'private\s+func\s+setMarked\b')
-            if sm and ("useInlineMarkedText" not in sm or "candidateBar.setPreedit" not in sm):
-                problems.append(f"{path}: setMarked(_:) calls host.setMarkedText without useInlineMarkedText candidate-bar preedit guard")
-
+            if sm and ("pendingMarkedWork" not in sm or "cancelPendingMarked" not in sm):
+                problems.append(f"{path}: setMarked(_:) must coalesce rapid .appex setMarkedText updates via pendingMarkedWork/cancelPendingMarked")
+            ic = extract_func(code, r'private\s+func\s+insertCommitted\b')
+            if ic and "cancelPendingMarked" not in ic:
+              problems.append(f"{path}: insertCommitted(_:) must call cancelPendingMarked() before host.insertText")
+            cc = extract_func(code, r'private\s+func\s+clearComposition\b')
+            if cc and "cancelPendingMarked" not in cc:
+                problems.append(f"{path}: clearComposition() must call cancelPendingMarked() before clearing marked text")
+                
         if name == "KeyboardView.swift":
             # Rule 5a: No CABasicAnimation in KeyView.pressed hot path
             kv = extract_func(code, r'final\s+class\s+KeyView\b')

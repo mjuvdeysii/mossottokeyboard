@@ -149,7 +149,18 @@ final class PlaygroundModel: ObservableObject {
     }
         func skipAll() { firstDone = false; firstKeys = nil; UserDefaults.standard.set(true, forKey: "onboardingDone"); withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { step = lessons.count } }; func restart() { clear(); firstDone = false; firstKeys = nil; withAnimation { step = 0 } }
     func clear() { host.clear(); refresh() }
-
+    func resetDefaults() {
+        layout = 0
+        guide = false
+        numberPad = false
+        style = 0
+        appearance = 0
+        autocorrect = true
+        english = true
+        feedback = true
+        keySound = true
+    }
+        
     /// Straight to one lesson (「了解」页的「试一试」): the keys being composed dropped, the field empty, the practice
     /// keyboard back on 全拼 (the lessons are written for it).
     func jump(to lesson: Int) {
@@ -223,7 +234,7 @@ struct PlaygroundScreen: View {
                         TextArea(model: model)
                     } else {
                         TextArea(model: model)
-                        DoneCard(model: model)
+                        PracticeQuickDeck(model: model)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -337,155 +348,88 @@ private struct KeyChips: View {
     }
 }
 
-private struct DoneCard: View {
-    @ObservedObject var model: PlaygroundModel
-    private var isAdded: Bool { KeyboardStatus.isAdded() }
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 12) {
-                Image(uiImage: mostoImage(model.appearance == 2 ? "MostoNight" : "Mosto"))
-                    .resizable().scaledToFit().frame(width: 48, height: 48)
-                    .padding(4)
-                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(mostoTint.opacity(0.12)))
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Text("Mosto 沙盒控制台").font(.headline.weight(.bold))
-                        Text(isAdded ? "已启用" : "待启用")
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(isAdded ? Color.green : Color.orange)
-                            .padding(.horizontal, 7).padding(.vertical, 2)
-                            .background(Capsule().fill((isAdded ? Color.green : Color.orange).opacity(0.15)))
-                    }
-                    Text("即时生效于本页沙盒；零共享容器，系统键盘内长按表情键调整偏好。")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 4)
-                Button("新手引导") { UISelectionFeedbackGenerator().selectionChanged(); model.restart() }
-                    .font(.caption.weight(.semibold)).buttonStyle(.bordered).controlSize(.small)
-            }
-            .padding(14)
-            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
 
-            Card(title: "输入方案与键盘布局") {
-                HStack(spacing: 12) {
-                    IconTile(symbol: "character.textbox")
+private struct PracticeQuickDeck: View {
+    @ObservedObject var model: PlaygroundModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    Image(uiImage: mostoImage(model.appearance == 2 ? "MostoNight" : "Mosto"))
+                        .resizable().scaledToFit().frame(width: 40, height: 40)
+                        .padding(3)
+                        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(mostoTint.opacity(0.12)))
+                        .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("中文输入与布局").font(.subheadline.weight(.semibold))
-                        Text(model.layout == 1 ? "小鹤双拼 · 两键一字" : (model.layout == 2 ? "九宫格 · 左侧音节栏锁音" : "全拼 · 支持简拼与整句")).font(.caption).foregroundStyle(.secondary)
+                        Text("自由试打模式").font(.subheadline.weight(.bold))
+                        Text("随时切换方案体验纠错与长句；更多偏好在底部「设置」页调整。")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
-                    Spacer()
+                    Spacer(minLength: 4)
+                    Button("7 步闯关") {
+                        UISelectionFeedbackGenerator().selectionChanged()
+                        model.restart()
+                    }
+                    .font(.caption.weight(.semibold))
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
+
                 Picker("输入方案", selection: $model.layout) {
                     Text("全拼").tag(0)
                     Text("小鹤双拼").tag(1)
                     Text("九宫格").tag(2)
                 }
                 .pickerStyle(.segmented)
-                if model.layout == 1 {
-                    Divider()
-                    HStack(spacing: 12) {
-                        IconTile(symbol: "graduationcap")
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("小鹤键位助记提示").font(.subheadline.weight(.semibold))
-                            Text("在键帽标注声韵母，记熟可关").font(.caption).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Toggle("", isOn: $model.guide).labelsHidden().tint(mostoTint)
-                    }
-                }
-                Divider()
-                HStack(spacing: 12) {
-                    IconTile(symbol: "number.square")
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("123 数字键盘").font(.subheadline.weight(.semibold))
-                        Text(model.numberPad ? "点 123 打开九宫格大数字键" : "点 123 打开完整数字符号页").font(.caption).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Picker("123", selection: $model.numberPad) {
-                        Text("完整页").tag(false)
-                        Text("九宫格").tag(true)
-                    }
-                    .pickerStyle(.segmented).frame(width: 140)
-                }
             }
+            .padding(14)
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
 
-            Card(title: "外观风格与光效") {
-                HStack(spacing: 12) {
-                    IconTile(symbol: "paintbrush.pointed")
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("键盘风格").font(.subheadline.weight(.semibold))
-                        Text(model.style == 0 ? "微扁平软胶键帽 + Mosto 陪伴" : "系统原生纯净毛玻璃").font(.caption).foregroundStyle(.secondary)
+            HStack(spacing: 10) {
+                NavigationLink {
+                    XiaoheGuideView()
+                } label: {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Image(systemName: "square.grid.3x3")
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(mostoTint)
+                        Text("小鹤键位图")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                        Text("声韵母口诀与查表")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
                     }
-                    Spacer()
-                    Picker("风格", selection: $model.style) {
-                        Text("Mosto").tag(0)
-                        Text("简洁").tag(1)
-                    }
-                    .pickerStyle(.segmented).frame(width: 140)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
                 }
-                Divider()
-                HStack(spacing: 12) {
-                    IconTile(symbol: "sun.max")
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("光线模式").font(.subheadline.weight(.semibold))
-                        Text("候选栏左上角亦可一键切换").font(.caption).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Picker("光线", selection: $model.appearance) {
-                        Text("自动").tag(0)
-                        Text("日光").tag(1)
-                        Text(model.style == 1 ? "夜光" : "夜灯").tag(2)
-                    }
-                    .pickerStyle(.segmented).frame(width: 164)
-                }
-            }
+                .buttonStyle(.plain)
 
-            Card(title: "智能纠错与按键触感") {
-                HStack(spacing: 12) {
-                    IconTile(symbol: "wand.and.stars")
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("按触点位置自动纠错").font(.subheadline.weight(.semibold))
-                        Text("邻键误触、长句漏键自动修正，点 ↩ 可撤回").font(.caption).foregroundStyle(.secondary)
+                NavigationLink {
+                    TouchDriftHeatmapView()
+                } label: {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Image(systemName: "scope")
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(mostoTint)
+                        Text("落点热力图")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                        Text("拇指偏移学习模型")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
                     }
-                    Spacer()
-                    Toggle("", isOn: $model.autocorrect).labelsHidden().tint(mostoTint)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
                 }
-                Divider()
-                HStack(spacing: 12) {
-                    IconTile(symbol: "character.bubble")
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("中英混输与智能标点").font(.subheadline.weight(.semibold))
-                        Text("中文态直出 iOS/OK，成对括号按空格跳出").font(.caption).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Toggle("", isOn: $model.english).labelsHidden().tint(mostoTint)
-                }
-                Divider()
-                HStack(spacing: 12) {
-                    IconTile(symbol: "iphone.radiowaves.left.and.right")
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("按键触感震动").font(.subheadline.weight(.semibold))
-                        Text("按下瞬间触发清脆微震（需开启完全访问）").font(.caption).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Toggle("", isOn: $model.feedback).labelsHidden().tint(mostoTint)
-                }
-                Divider()
-                HStack(spacing: 12) {
-                    IconTile(symbol: "speaker.wave.2")
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("系统按键音").font(.subheadline.weight(.semibold))
-                        Text("跟随手机静音开关播放原声按键音").font(.caption).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Toggle("", isOn: $model.keySound).labelsHidden().tint(mostoTint)
-                }
+                .buttonStyle(.plain)
             }
         }
     }
 }
-
 /// Interactive sandbox text area with quick test hints and a one-tap fold/unfold toggle for the bottom keyboard.
 struct TextArea: View {
     @ObservedObject var model: PlaygroundModel

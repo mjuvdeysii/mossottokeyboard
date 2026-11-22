@@ -14,7 +14,7 @@
 - **隐私政策页面**：仓库 GitHub Pages 的 `privacy.html`（对应 `docs/privacy.html`）
 - **技术支持页面**：仓库 GitHub Pages 的 `index.html`（对应 `docs/index.html`）
 - **使用条款页面**：仓库 GitHub Pages 的 `terms.html`（对应 `docs/terms.html`）
-- **参考验证版本**：TestFlight Build 350（iOS #250，Commit `8b89f2f`）
+- **参考验证版本**：TestFlight Build 369（R44 1.0 集结版，基线 Build 368 / iOS #268 Commit `32a16fc`）
 
 ## 2. 关键词（Keywords，100 字符以内）
 
@@ -32,8 +32,10 @@ Mosto键盘是一款专注中文输入精准度与隐私安全的离线 iOS 键�
 - **触摸几何感知自动纠错**：结合按键落点偏移模型与中文词库概率，在保持正常输入零打扰的同时，自动修正误触邻键、多按漏按与跨音节顺手换位。
 - **小鹤双拼与全拼双引擎**：完整支持标准小鹤双拼（零辅助码、两键一字）与标准全拼（支持简拼与半音节预测），并支持句子内中英混输。
 - **纯本机离线运行**：无需开启“允许完全访问”即可使用全部核心打字、纠错与词库联想功能。键盘扩展零网络请求、零剪贴板读取、零云端上传、零第三方统计 SDK。
-- **双材质视觉与清脆手感**：内置 3D 实体键帽质感与 Liquid Glass 两种视觉风格，支持浅色与深色外观自适应、清脆按键音效与触感反馈。
-- **工程级质量门禁实测（基于 Build 350 引擎回归基准）**：
+- **行内心算与智能相对日期**：输入算式加等号（如 `286/4=`）候选栏直接给出精确结果，输入「明天」「下周一」「今年」「本月」自动匹配对应日期。
+- **WebView 零卡顿与零豆腐块**：24ms 帧合并行内预编辑 + 0-XPC 中文空格断句，保障 Safari 与网页富文本编辑器流畅跟手；内置 CoreText 非 BMP 生僻字形过滤，候选栏彻底告别缺字豆腐块。
+- **双材质视觉与清脆手感**：内置微扁平软胶 Mosto 质感与 iOS Liquid Glass 简洁风格，纯净单行候选栏（12pt 左侧圆角避让），支持浅色与深色外观自适应、清脆按键音效与触感反馈。
+- **工程级质量门禁实测（基于引擎回归基准）**：
   - 全拼自动纠错与顺手换位句级基准：`transpose.sentences` Top-1 59.21%（Top-3 67.11%）
   - 小鹤双拼核心指标均受 CI 自动化质量门禁保护（包含触控噪声词级/句级准确率、误纠率 <= 1.0%、平均解码时延 <= 3.0 ms、中英混输与冷启动联想时延）
 
@@ -89,12 +91,12 @@ Thank you for reviewing Mosto Keyboard (Mosto键盘).
 | 4 | 双材质键盘美学 | 3D 实体键帽与 Liquid Glass 随心切换 | 对角线切分或双卡片同屏对比浅色 3D 实体键帽质感与深色 Liquid Glass 质感，呈现精致光影细节 | 真实渲染界面截图，严禁过度滤镜或失真装饰 |
 | 5 | 上手即练，双拼零门槛 | 内置键位图与互动练习场 | 展示伴侣 App 内置练习输入框与小鹤双拼键位参考面板，演示从新手查键到流畅盲打的完整闭环 | 保持伴侣 App 实际 UI 比例与克制排版，突出实用工具感 |
 
-## 7. 提审前最终自检清单（R36 / 1.0 上架核对）
+## 7. 提审前最终自检清单（R44 / Build 369 1.0 最终集结核对）
 
 - [x] **CI 与 SDK 链路核查**：`build` 任务运行于 `macos-15`（`Xcode 26.3 / 17C529`，iOS 26 SDK）负责全量编译、模拟器快照、Keyboard Test Bench 与引擎质量门禁；`testflight` 任务运行于 `xcode-27`（iOS 27 SDK）负责 Release 归档、自动云端签名与上传 TestFlight。
 - [x] **签名与容器边界**：`.xcodeproj` 零签名改动、零新增 `.entitlements`，`App/PrivacyInfo.xcprivacy` 与 `Keyboard/Resources/PrivacyInfo.xcprivacy` 声明完整，`ITSAppUsesNonExemptEncryption = NO`。
-- [x] **离线隐私静态门禁**：`Tools/check_offline.py` 与 `Tools/check_no_sync_tap.py` 全量通过。
-- [x] **核心体验打磨（R35–R36）**：零主线程 `queue.sync`、Grapheme Cluster 空格拖光标、成对标点 18ms 安全回退 + 联动双删、同会话连续撤回尊重、32ms 高速连击触觉节流、微扁平 Mosto 质感（1.7pt 底沿 + 0.75pt 暖金高光）、Tab 1 10 秒试打沙盒与 Tab 3 真设置中心。
+- [x] **9 条静态门禁全绿**：`Tools/check_offline.py`、`Tools/check_no_sync_tap.py` 与 `Tools/check_ios_keyboard_rules.py` 全量通过。
+- [x] **核心体验打磨（R35–R44）**：纯净单行候选栏（12pt Liquid Glass 左侧圆角避让）+ 24ms 帧合并行内 `setMarkedText`、CoreText 非 BMP 零豆腐块字形过滤、0-XPC 中文空格断句、行内心算（`286/4=`）与智能相对日期、零主线程 `queue.sync`、Grapheme Cluster 空格拖光标、成对标点 18ms 安全回退与联动双删、成熟三 Tab 伴侣 App（概览 / 练习 / 设置）。
 - [ ] 核对 App Store Connect 中隐私政策 URL、技术支持 URL 与 `docs/privacy.html`、`docs/index.html` 线上可访问性。
 - [ ] 核对 App Store Connect 隐私标签已勾选“不收集数据（Data Not Collected）”。
 - [ ] 使用真机（未开启“允许完全访问”）完整复测小鹤双拼、全拼、九宫格、成对标点联动删除与中英混输。
