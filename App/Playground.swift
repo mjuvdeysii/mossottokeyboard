@@ -29,7 +29,7 @@ struct Lesson {
 let lessons: [Lesson] = [
     Lesson(title: "打出“你好”", line: "依次按下面的键，再按空格。", keys: "nihao␣",
            check: { t, _ in t.contains("你好") }),
-    Lesson(title: "按错一个键", line: "最后的 e 故意按成旁边的 w：看候选下方的小字 rw→re，再按空格。", keys: "jintianhenrw␣", slip: 11,
+    Lesson(title: "按错一个键", line: "最后的 e 故意按成旁边的 w：留意首选底部的纠错微光提示，再按空格。", keys: "jintianhenrw␣", slip: 11,
            check: { t, _ in t.contains("今天很热") }),
     Lesson(title: "长句漏按一个键", line: "tian 少按一个 n，整句照样读对。", keys: "jintiantiaqihenhao␣", slip: 10, missing: "n",
            check: { t, _ in t.contains("今天天气很好") }),

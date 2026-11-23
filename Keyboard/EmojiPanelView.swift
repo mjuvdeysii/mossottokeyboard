@@ -35,14 +35,57 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     /// Text, so they go into any field; three to a row.
     static let kaomojiName = "Mosto 颜文字"
     static let kaomoji: [String] = [
+        // Mosto 招牌小魔王
         "ψ(｀∇´)ψ", "(｀∀´)Ψ", "Ψ(￣∀￣)Ψ", "ψ(._. )>", "(¬‿¬)", "(￣y▽￣)╭",
-        "(＾▽＾)", "(๑•̀ㅂ•́)و✧", "(｡•̀ᴗ-)✧", "ヾ(≧▽≦*)o", "(*/ω＼*)", "(⁄ ⁄•⁄ω⁄•⁄ ⁄)",
-        "(╯°□°）╯︵ ┻━┻", "┬─┬ノ( º _ ºノ)", "¯\\_(ツ)_/¯", "(ಥ_ಥ)", "(T_T)", "QAQ",
-        "(・ω・)", "(｡･ω･｡)", "(=^･ω･^=)", "ʕ•ᴥ•ʔ", "(≧∇≦)ﾉ", "(●'◡'●)",
-        "(✿◠‿◠)", "o(*￣▽￣*)ブ", "(っ´▽`)っ", "(づ｡◕‿‿◕｡)づ", "(ง •_•)ง", "ᕦ(ò_óˇ)ᕤ",
-        "( •̀ ω •́ )✧", "(⊙ˍ⊙)", "Σ(っ °Д °;)っ", "(╬▔皿▔)╯", "(ノへ￣、)", "(´▽`ʃ♡ƪ)",
-        "♪(´▽｀)", "(～﹃～)~zZ", "(￣︶￣)↗", "(^_−)☆", "(´･ω･`)", "_(:з」∠)_",
-        "(~￣▽￣)~", "щ(゜Д゜щ)", "(x_x)", "(〃＾▽＾〃)", "(´∀`)♡", "(づ￣ ³￣)づ", "╰(￣ω￣ｏ)", "(=｀ω´=)", "(╭☞•́⍛•̀)╭☞", "(▀̿Ĺ̯▀̿ ̿)", "(￣▽￣)／", "( ￣▽￣)σ", "(๑•̀ㅂ•́)و✧", "(｡•̀ᴗ-)✧", "ヾ(•ω•`)o", "(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧", "ヽ(✿ﾟ▽ﾟ)ノ", "♪(^∇^*)", "(*^▽^*)", "٩( 'ω' )و", "( ´ ▽ ` )ﾉ", "(´,,•ω•,,)♡", "(✿◡‿◡)", "(｡･ω･｡)ﾉ♡", "(♡˙︶˙♡)", "(*╯3╰)", "(๑´ㅂ`๑)", "(つ´ω`)つ", "⊂(・▽・⊂)", "(｡•ㅅ•｡)♡", "(/▽＼)", "(っ˘ω˘ς )", "( ´･･)ﾉ(._.`)", "ヾ(´･ω･｀)ﾉ", "(｡･∀･)ﾉﾞ", "U•ェ•*U", "(ฅ´ω`ฅ)", "(▽◕ ᴥ ◕▽)", "(●—●)", "╮(￣▽￣)╭", "(⌐■_■)", "(￣_,￣ )", "(◔◡◔)", "(¬_¬ )", "( →_→)", "(←_← )", "┌( ಠ_ಠ)┘", "( ˙꒳˙ )", "(；′⌒`)", "(｡•́︿•̀｡)", "(´;ω;`)", "( >﹏<。)", "o(TヘTo)", "(；´д｀)ゞ", "(´-ω-`)", "orz", "OTZ", "(｡•́ - •̀｡)", "(╯‵□′)╯︵┻━┻", "(＃°Д°)", "(°ー°〃)", "(⊙_⊙)？", "∑(っ°Д°;)っ", "(╬ Ò﹏Ó)", "(｀⌒´メ)", "(⊙x⊙;)", "(∪｡∪)｡｡｡zzz", "(￣o￣) . z Z", "(:3[▓▓]", "(:3[＿＿]", "( -_-)旦~", "( ´_ゝ`)", "(￣.￣)", "(-_-) zzz", "(¦3[▓▓]", "(=_=)", "(￣﹃￣)", "( ˘ω˘ ) ｽﾔｧ…",
+        "(▼∀▼)", "ψ(￣▽￣)ψ", "(ΦωΦ)✧", "(✧∀✧)", "ψ(｀▽´)ψ",
+        // 开心 · 欢呼 · 得意
+        "(＾▽＾)", "ヾ(≧▽≦*)o", "(≧∇≦)ﾉ", "(*^▽^*)", "(●'◡'●)", "ヽ(✿ﾟ▽ﾟ)ノ",
+        "♪(^∇^*)", "(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧", "o(*￣▽￣*)ブ", "(￣▽￣)／", "ヾ(•ω•`)o", "(〃＾▽＾〃)",
+        "(*^ω^*)", "(^▽^)", "o(^▽^)o", "(≧∀≦)ゞ", "ヾ(^▽^*)))", "ヽ(^o^)丿",
+        "(*≧∀≦*)", "(^o^)/", "٩(ˊᗜˋ*)و", "(*￣︶￣)", "(￣∀￣)", "( ´ ▽ ` )",
+        "(☆▽☆)", "(★ω★)", "(✧ω✧)", "ヽ(•̀ω•́ )ゝ", "(*ﾟ▽ﾟ*)", "(｡◕‿◕｡)",
+        // 卖萌 · 猫猫 · 小动物
+        "(・ω・)", "(｡･ω･｡)", "(=^･ω･^=)", "(=｀ω´=)", "(ฅ´ω`ฅ)", "ʕ•ᴥ•ʔ",
+        "U•ェ•*U", "(▽◕ ᴥ ◕▽)", "(●—●)", "(=^･ｪ･^=)", "(=´∇｀=)", "(´･ω･`)",
+        "(・∀・)", "(✿◡‿◡)", "(✿◠‿◠)", "(=・ω・=)", "(=^･^=)", "(ฅ'ω'ฅ)",
+        "ʕ·ᴥ·ʔ", "(・(ｪ)・)", "(◕ᴥ◕)", "(ᵔᴥᵔ)", "( ´(00)ˋ )", "(*ΦωΦ*)",
+        "(/ =ω=)/", "(｡･ω･｡)ﾉ", "( ・◇・)？", "(・ω< )",
+        // 害羞 · 贴贴 · 比心 · 抱抱
+        "(*/ω＼*)", "(⁄ ⁄•⁄ω⁄•⁄ ⁄)", "(/▽＼)", "(´,,•ω•,,)♡", "(´∀`)♡", "(｡･ω･｡)ﾉ♡",
+        "(♡˙︶˙♡)", "(｡•ㅅ•｡)♡", "(´▽`ʃ♡ƪ)", "(づ｡◕‿‿◕｡)づ", "(づ￣ ³￣)づ", "(っ´▽`)っ",
+        "(つ´ω`)つ", "⊂(・▽・⊂)", "(*╯3╰)", "(っ˘ω˘ς )", "( ˘ ³˘)♥", "(´ε｀ )♡",
+        "(灬º‿º灬)♡", "(〃∀〃)", "(*/▽＼*)", "(*ﾉωﾉ)", "(っ•̀ω•́)っ♡", "♡(ŐωŐ人)",
+        "(づ◡﹏◡)づ", "(⊃｡•́‿•̀｡)⊃", "(つ≧▽≦)つ", "(*´∀`*)",
+        // 加油 · 收到 · 打气 · 比耶
+        "(๑•̀ㅂ•́)و✧", "(｡•̀ᴗ-)✧", "(ง •_•)ง", "(ง •̀_•́)ง", "ᕦ(ò_óˇ)ᕤ", "٩( 'ω' )و",
+        "( •̀ ω •́ )✧", "(｡･∀･)ﾉﾞ", "( ´ ▽ ` )ﾉ", "(^_−)☆", "( ￣▽￣)σ", "(╭☞•́⍛•̀)╭☞",
+        "(￣︶￣)↗", "♪(´▽｀)", "(*•̀ᴗ•́*)و ̑̑", "v(￣︶￣)y", "(^o^)v", "( •̀∀•́ )",
+        "(๑•̀ω•́)ノ", "(｀・ω・´)ゞ", "(￣^￣)ゞ", "( • ̀ω•́ )✧", "✧٩(ˊωˋ*)و✧", "(๑˃̵ᴗ˂̵)و",
+        // 无语 · 摊手 · 摸鱼 · 躺平
+        "¯\\_(ツ)_/¯", "╮(￣▽￣)╭", "╮(╯▽╰)╭", "(￣_,￣ )", "(¬_¬ )", "( →_→)",
+        "(←_← )", "( ˙꒳˙ )", "(￣.￣)", "( ´_ゝ`)", "( -_-)旦~", "_(:з」∠)_",
+        "_(:3」∠)_", "(:3[▓▓]", "(:3[＿＿]", "(¦3[▓▓]", "(=_=)", "(⌐■_■)",
+        "(▀̿Ĺ̯▀̿ ̿)", "(~￣▽￣)~", "╰(￣ω￣ｏ)", "( ´･･)ﾉ(._.`)", "ヾ(´･ω･｀)ﾉ", "(눈_눈)",
+        "(ー_ー)!!", "(￣ω￣;)", "(￣▽￣\")", "(´-ι_-｀)", "(¬､¬)", "(°_°)",
+        "(:3_ヽ)_", "__(⌒(_´-ω-)_",
+        // 委屈 · 哭哭 · 破防
+        "(ಥ_ಥ)", "(T_T)", "QAQ", "QvQ", "(｡•́︿•̀｡)", "(´;ω;`)",
+        "( >﹏<。)", "o(TヘTo)", "(；′⌒`)", "(｡•́ - •̀｡)", "(ノへ￣、)", "(´-ω-`)",
+        "(；´д｀)ゞ", "orz", "OTZ", "(´；ω；`)", "(╥_╥)", "(っ- ‸ - ς)",
+        "(ToT)", "(;´༎ຶД༎ຶ`)", "(ノДＴ)", "(´•̥ ̯ •̥`)", "o(╥﹏╥)o", "(p_q)",
+        // 震惊 · 吃瓜 · 疑惑
+        "(⊙ˍ⊙)", "Σ(っ °Д °;)っ", "∑(っ°Д°;)っ", "(⊙_⊙)？", "(⊙x⊙;)", "(°ー°〃)",
+        "щ(゜Д゜щ)", "(x_x)", "(◔◡◔)", "┌( ಠ_ಠ)┘", "(・_・;)", "(°ロ°)!",
+        "(?_?)", "(O_O;)", "Σ(°△°|||)", "(°Д°)", "(⊙o⊙)", "w(ﾟДﾟ)w",
+        "(゜ロ゜)", "(´⊙ω⊙`)", "ε=ε=┌(;￣◇￣)┘",
+        // 生气 · 掀桌
+        "(╯°□°）╯︵ ┻━┻", "(╯‵□′)╯︵┻━┻", "┬─┬ノ( º _ ºノ)", "(╬▔皿▔)╯", "(╬ Ò﹏Ó)", "(＃°Д°)",
+        "(｀⌒´メ)", "(๑`^´๑)", "( `д´)", "(`皿´#)", "(╬ಠ益ಠ)", "(ノಠ益ಠ)ノ彡┻━┻",
+        "凸(｀0´)凸", "(҂ `з´ )",
+        // 晚安 · 犯困 · 吃喝 · 告别
+        "(～﹃～)~zZ", "(∪｡∪)｡｡｡zzz", "(￣o￣) . z Z", "(-_-) zzz", "(￣﹃￣)", "( ˘ω˘ ) ｽﾔｧ…",
+        "(๑´ㅂ`๑)", "(￣～￣) 嚼嚼", "( ^_^)／▼☆▼＼(^_^ )", "( ^_^)/~~", "( ´ ▽ ` )ﾉ~~", "( ˘ ³˘)ﾉ~~",
+        "(*￣▽￣)d", "(っ˘ڡ˘ς)", "( ´▽｀)つ旦", "( ^_^)／□☆□＼(^_^ )",
     ]
 
     final class Cell: UICollectionViewCell {
@@ -53,19 +96,33 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             label.textAlignment = .center
             label.adjustsFontSizeToFitWidth = true
             label.minimumScaleFactor = 0.6
+            label.layer.cornerRadius = 10
+            label.layer.cornerCurve = .continuous
+            label.layer.borderWidth = 0.5
+            label.layer.borderColor = UIColor.clear.cgColor
+            label.clipsToBounds = true
             contentView.addSubview(label)
-            contentView.layer.cornerRadius = 8
+            contentView.layer.cornerRadius = 10
             contentView.layer.cornerCurve = .continuous
             isAccessibilityElement = true
             accessibilityTraits = .keyboardKey
         }
         required init?(coder: NSCoder) { fatalError() }
+        override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+            super.traitCollectionDidChange(previous)
+            if tag == 1 {
+                label.layer.borderColor = Theme.preeditPillBorder.resolvedColor(with: traitCollection).cgColor
+            }
+        }
         override func layoutSubviews() {
             super.layoutSubviews()
-            label.frame = contentView.bounds.insetBy(dx: 3, dy: 3); label.layer.cornerRadius = 9; label.clipsToBounds = true
+            label.frame = contentView.bounds.insetBy(dx: 3, dy: 3)
         }
         override var isHighlighted: Bool {
-            didSet { contentView.backgroundColor = .clear; label.backgroundColor = tag == 1 ? (isHighlighted ? Theme.functionKey : Theme.functionKey.withAlphaComponent(0.42)) : (isHighlighted ? Theme.functionKey : .clear) }
+            didSet {
+                contentView.backgroundColor = .clear
+                label.backgroundColor = tag == 1 ? (isHighlighted ? Theme.functionKey : Theme.preeditPillBg) : (isHighlighted ? Theme.functionKey : .clear)
+            }
         }
     }
 
@@ -209,10 +266,13 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         if let kaomojiTab = tabButtons.last {
             if Theme.plain {
                 let cfg = UIImage.SymbolConfiguration(pointSize: 16, weight: .medium)
-                kaomojiTab.setImage(UIImage(systemName: "face.smiling", withConfiguration: cfg), for: .normal)
-                kaomojiTab.tintColor = Theme.keyText
+                kaomojiTab.imageView?.overrideUserInterfaceStyle = .light
+                kaomojiTab.setImage(UIImage(systemName: "face.smiling", withConfiguration: cfg)?.withRenderingMode(.alwaysTemplate), for: .normal)
+                let isSel = selected == tabButtons.count - 1
+                kaomojiTab.tintColor = (isSel ? Theme.keyText : Theme.secondaryText).resolvedColor(with: traitCollection)
                 kaomojiTab.setTitle(nil, for: .normal)
             } else if let face = UIImage(named: "mosto_day", in: Bundle(for: EmojiPanelView.self), with: nil) {
+                kaomojiTab.imageView?.overrideUserInterfaceStyle = .unspecified
                 let side: CGFloat = 24
                 let small = UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { _ in
                     let scale = min(side / face.size.width, side / face.size.height)
@@ -275,7 +335,10 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         let recent = Self.recents()
         var cats = Self.categories(); let rk = (UserDefaults.standard.array(forKey: "recentKaomoji") as? [String]) ?? []; if !rk.isEmpty, let ki = cats.firstIndex(where: { $0.name == Self.kaomojiName }) { cats[ki].items = rk + cats[ki].items.filter { !rk.contains($0) } }; sections = [Category(name: "常用", symbol: "clock", items: recent)] + cats
         selected = -1
-        returnButton.isHidden = true; backButton.backgroundColor = kaomoji ? Theme.accentKey : Theme.functionKey; backButton.setTitleColor(kaomoji ? Theme.accentText : Theme.keyText, for: .normal)
+        returnButton.isHidden = true
+        backButton.backgroundColor = kaomoji ? Theme.accentKey : Theme.functionKey
+        backButton.setTitleColor(kaomoji ? Theme.accentText : Theme.keyText, for: .normal)
+        backButton.layer.shadowColor = (kaomoji ? Theme.accentLip : Theme.functionLip).resolvedColor(with: traitCollection).cgColor
         deleteButton.isHidden = false
         collection.reloadData()
         guard bounds.width > 100, bounds.height > 100 else { return }   // shown with a frame later: load() runs again
@@ -318,6 +381,9 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         backButton.frame = CGRect(x: 4, y: b.height - barH - 2, width: side, height: barH - 4)
         deleteButton.frame = CGRect(x: b.width - side - 4, y: b.height - barH - 2, width: side, height: barH - 4)
         returnButton.frame = deleteButton.frame
+        for btn in [backButton, deleteButton, returnButton] {
+            btn.layer.shadowPath = UIBezierPath(roundedRect: btn.bounds, cornerRadius: Metrics.cornerRadius).cgPath
+        }
         // narrow phones: the gear gives its room to the tabs (settings stay a long press on the 表情 key away)
         gear.isHidden = b.width - 2 * side - 16 < 230
         bar.frame = CGRect(x: side + 8, y: b.height - barH, width: b.width - 2 * side - 16, height: barH - 4)
@@ -334,7 +400,10 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         let c = collectionView.dequeueReusableCell(withReuseIdentifier: "e", for: indexPath) as! Cell
         let e = sections[indexPath.section].items[indexPath.item]
         c.label.text = e
-        let kao = isKaomoji(indexPath.section); c.tag = kao ? 1 : 0; c.label.backgroundColor = kao ? Theme.functionKey.withAlphaComponent(0.42) : .clear
+        let kao = isKaomoji(indexPath.section)
+        c.tag = kao ? 1 : 0
+        c.label.backgroundColor = kao ? Theme.preeditPillBg : .clear
+        c.label.layer.borderColor = kao ? Theme.preeditPillBorder.resolvedColor(with: traitCollection).cgColor : UIColor.clear.cgColor
         c.label.font = kao ? .systemFont(ofSize: 15, weight: .medium) : .systemFont(ofSize: 30)
         // 颜文字长短差很大：下限从 10.2pt 抬到 13.6pt（Susan Kare：小字不能糊成一团）
         c.label.minimumScaleFactor = kao ? 0.58 : 0.6
@@ -367,7 +436,13 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         let e = sections[indexPath.section].items[indexPath.item]
-        if !isKaomoji(indexPath.section) { Self.remember(e) } else { var rk = ((UserDefaults.standard.array(forKey: "recentKaomoji") as? [String]) ?? []).filter { $0 != e }; rk.insert(e, at: 0); UserDefaults.standard.set(Array(rk.prefix(18)), forKey: "recentKaomoji") }
+        if !isKaomoji(indexPath.section) {
+            Self.remember(e)
+        } else {
+            var rk = ((UserDefaults.standard.array(forKey: "recentKaomoji") as? [String]) ?? []).filter { $0 != e }
+            rk.insert(e, at: 0)
+            UserDefaults.standard.set(Array(rk.prefix(24)), forKey: "recentKaomoji")
+        }
         onEmoji?(e)
         collectionView.deselectItem(at: indexPath, animated: false)
     }
@@ -408,7 +483,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         selected = s
         titleLabel.text = sections[s].name
         for (i, b) in tabButtons.enumerated() {
-            b.tintColor = i == s ? Theme.keyText : Theme.secondaryText
+            b.tintColor = (i == s ? Theme.keyText : Theme.secondaryText).resolvedColor(with: traitCollection)
             b.backgroundColor = i == s ? Theme.functionKey : .clear
             b.isEnabled = !sections[i].items.isEmpty
         }

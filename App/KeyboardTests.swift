@@ -124,6 +124,7 @@ enum KeyboardTests {
         strip(window)
         clearSwipe(window)
         r48Features(window)
+        r49Features(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -1223,6 +1224,112 @@ enum KeyboardTests {
             "initialOk=\(initialOk) count=\(grid.displayedCountForTests) picked=\(picked)")
         grid.show([Candidate(text: "你", tapCount: 2, syllables: [1], corrected: false, score: 0)])
         log(grid.singleCharButtonHiddenForTests, "r48.grid hides single-char filter when all candidates are already 1-char")
+    }
+
+    // MARK: - R49: universal punctuation flick-up, Live Keystroke Dock, kaomoji library, filter preservation & date shortcuts
+
+    static func r49Features(_ window: UIWindow) {
+        // 1. Universal punctuation flick-up: English . -> , and T9 ， -> 、
+        if let kb = makeKeyboard(scheme: 1, in: window) {
+            let (vc, h) = kb
+            vc.handle(.toggleLanguage, tap: nil)
+            let kview = vc.keyboardViewForTests
+            if let r = kview.keyRectsForTests(.char(".")) {
+                let c = CGPoint(x: r.cap.midX, y: r.cap.midY)
+                let up = CGPoint(x: c.x, y: c.y - 24)
+                let back = CGPoint(x: c.x, y: c.y - 2)
+                kview.feedForTests([
+                    TouchSample(id: 10, phase: .began, point: c, time: 10.00),
+                    TouchSample(id: 10, phase: .ended, point: c, time: 10.06),
+                    TouchSample(id: 11, phase: .began, point: c, time: 11.00),
+                    TouchSample(id: 11, phase: .moved, point: up, time: 11.04),
+                    TouchSample(id: 11, phase: .ended, point: up, time: 11.08),
+                    TouchSample(id: 12, phase: .began, point: c, time: 12.00),
+                    TouchSample(id: 12, phase: .moved, point: up, time: 12.04),
+                    TouchSample(id: 12, phase: .moved, point: back, time: 12.08),
+                    TouchSample(id: 12, phase: .ended, point: back, time: 12.12),
+                ])
+                log(h.string == ".,.", "r49.english period flick-up emits comma while tap & pull-back keep period", "got=\(h.string)")
+            } else {
+                log(false, "r49.english period rect lookup", "missing . key")
+            }
+        } else { log(false, "r49.english flick setup", "engine did not load") }
+
+        if let kbT9 = makeKeyboard(scheme: 1, grid: true, in: window) {
+            let (vc, h) = kbT9
+            let kview = vc.keyboardViewForTests
+            if let r = kview.keyRectsForTests(.char("，")) {
+                let c = CGPoint(x: r.cap.midX, y: r.cap.midY)
+                let up = CGPoint(x: c.x, y: c.y - 24)
+                kview.feedForTests([
+                    TouchSample(id: 20, phase: .began, point: c, time: 20.00),
+                    TouchSample(id: 20, phase: .moved, point: up, time: 20.04),
+                    TouchSample(id: 20, phase: .ended, point: up, time: 20.08),
+                ])
+                log(h.string == "、", "r49.t9 comma flick-up emits 、", "got=\(h.string)")
+            } else {
+                log(false, "r49.t9 comma rect lookup", "missing ， key")
+            }
+        } else { log(false, "r49.t9 flick setup", "engine did not load") }
+
+        // 2. Live Keystroke Dock: overflow left-fade, clear preview dim, and full-width grid dock
+        let bar = CandidateBarView(frame: CGRect(x: 0, y: 0, width: 402, height: 42))
+        bar.showsPreedit = true
+        bar.xiaoheRhythm = true
+        bar.update(preedit: "jmtmtmqihkhcwomk", candidates: [
+            Candidate(text: "今天天气很好", tapCount: 16, syllables: [1], corrected: false, score: 0)
+        ])
+        bar.layoutIfNeeded()
+        let compactW = bar.preeditDockFrameForTests.width
+        log(bar.preeditShownForTests && bar.preeditOverflowFadeForTests && compactW <= 110 && compactW >= 90,
+            "r49.live dock uses right-anchored left fade within 110pt cap",
+            "shown=\(bar.preeditShownForTests) fade=\(bar.preeditOverflowFadeForTests) width=\(compactW)")
+        bar.setClearPreview(true)
+        log(bar.clearPreviewForTests, "r49.setClearPreview dims live dock alongside strip")
+        bar.setClearPreview(false)
+        bar.gridExpanded = true
+        bar.layoutIfNeeded()
+        log(bar.preeditDockFrameForTests.width > 200,
+            "r49.expanded candidate grid widens live dock across toolbar",
+            "expandedWidth=\(bar.preeditDockFrameForTests.width)")
+
+        // 3. Kaomoji library enrichment & uniqueness
+        let kao = EmojiPanelView.kaomoji
+        log(kao.count >= 170 && Set(kao).count == kao.count,
+            "r49.kaomoji library enriched (>= 170) with zero duplicates",
+            "count=\(kao.count) unique=\(Set(kao).count)")
+
+        // 4. CandidateGridView preserves single-char filter across backspace updates
+        let grid = CandidateGridView(frame: CGRect(x: 0, y: 0, width: 402, height: 220))
+        grid.show([
+            Candidate(text: "你好", tapCount: 4, syllables: [1, 2], corrected: false, score: 0),
+            Candidate(text: "你", tapCount: 2, syllables: [1], corrected: false, score: 0),
+        ])
+        grid.toggleSingleCharForTests()
+        grid.show([
+            Candidate(text: "世界", tapCount: 4, syllables: [3, 4], corrected: false, score: 0),
+            Candidate(text: "世", tapCount: 2, syllables: [3], corrected: false, score: 0),
+            Candidate(text: "试", tapCount: 2, syllables: [3], corrected: false, score: 0),
+        ], preserveFilter: true)
+        log(grid.displayedCountForTests == 2,
+            "r49.grid preserves single-char filter when preserveFilter is true",
+            "displayed=\(grid.displayedCountForTests)")
+
+        // 5. Expanded relative date/time dynamic candidates
+        if let kb = makeKeyboard(scheme: 1, in: window) {
+            let (vc, h) = kb
+            type(vc, "xianzai"); settle(vc)
+            let timeCands = vc.testState.candidates.prefix(3)
+            log(timeCands.contains(where: { $0.count == 5 && $0.contains(":") }),
+                "r49.xianzai offers HH:mm dynamic time candidate",
+                "cands=\(Array(timeCands))")
+            reset(vc, h)
+            type(vc, "xiageyue"); settle(vc)
+            let monthCands = vc.testState.candidates.prefix(3)
+            log(monthCands.contains(where: { $0.hasSuffix("月") && $0.count <= 3 }),
+                "r49.xiageyue offers next month dynamic candidate",
+                "cands=\(Array(monthCands))")
+        } else { log(false, "r49.dynamic date setup", "engine did not load") }
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

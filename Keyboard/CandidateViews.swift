@@ -49,13 +49,19 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     /// Tap on the leading raw-key preview pill: commits the literal typed letters immediately.
     var onPreeditTap: (() -> Void)?
 
+    private let preeditDock = UIView()
+    private let preeditClip = UIView()
     private let preedit = UILabel()
+    private let preeditFade = CAGradientLayer()
+    private let preeditCaret = CALayer()
     /// After a corrected word went in: "↩ nihap" at the start of the strip puts the keys back as typed (the same
     /// as pressing delete right away). After a swipe that cleared the composition: the keys it cleared.
     private let undoChip = UIButton(type: .system)
     var onUndo: (() -> Void)?
     private var undoText: String?
     private var longPressTimer: Timer?
+    private var forgetTimer: Timer?
+    var idleAccessibilityViews: [UIView] = []
     /// The candidates, in a row that scrolls; inside a box whose mask fades the edges where more candidates are.
     private let stripBox = UIView()
     private let strip = CandidateStrip()
@@ -117,22 +123,35 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     override init(frame: CGRect) {
         super.init(frame: frame)
         backgroundColor = Theme.touchable   // never fully clear: see Theme.touchable
-        preedit.font = Theme.font(11.5, .medium)
-        preedit.textColor = Theme.secondaryText
-        preedit.textAlignment = .center
-        preedit.lineBreakMode = .byTruncatingHead
-        preedit.backgroundColor = Theme.preeditPillBg
-        preedit.layer.borderWidth = 0.5
-        preedit.layer.borderColor = Theme.preeditPillBorder.resolvedColor(with: traitCollection).cgColor
-        preedit.clipsToBounds = true
-        preedit.isUserInteractionEnabled = true
-        preedit.accessibilityTraits = .button
-        preedit.accessibilityHint = "轻点直接上屏原字母"
+        preeditDock.backgroundColor = Theme.preeditPillBg
+        preeditDock.layer.borderWidth = 0.5
+        preeditDock.layer.borderColor = Theme.preeditPillBorder.resolvedColor(with: traitCollection).cgColor
+        preeditDock.layer.cornerCurve = .continuous
+        preeditDock.clipsToBounds = true
+        preeditDock.isHidden = true
+        preeditDock.isAccessibilityElement = true
+        preeditDock.accessibilityTraits = .button
+        preeditDock.accessibilityHint = "轻点直接上屏原字母"
         let preeditTap = UITapGestureRecognizer(target: self, action: #selector(preeditTapped))
         preeditTap.delaysTouchesBegan = false
         preeditTap.delaysTouchesEnded = false
-        preedit.addGestureRecognizer(preeditTap)
-        addSubview(preedit)
+        preeditDock.addGestureRecognizer(preeditTap)
+        preeditClip.isUserInteractionEnabled = false
+        preeditClip.clipsToBounds = true
+        preeditDock.addSubview(preeditClip)
+        preedit.font = Theme.font(11.5, .medium)
+        preedit.textColor = Theme.secondaryText
+        preedit.textAlignment = .left
+        preedit.lineBreakMode = .byClipping
+        preedit.isUserInteractionEnabled = false
+        preeditClip.addSubview(preedit)
+        preeditFade.startPoint = CGPoint(x: 0, y: 0.5)
+        preeditFade.endPoint = CGPoint(x: 1, y: 0.5)
+        preeditFade.colors = [UIColor.clear.cgColor, UIColor.black.cgColor, UIColor.black.cgColor]
+        preeditCaret.cornerRadius = 0.75
+        preeditCaret.backgroundColor = Theme.correctedMark.resolvedColor(with: traitCollection).withAlphaComponent(0.78).cgColor
+        preeditDock.layer.addSublayer(preeditCaret)
+        addSubview(preeditDock)
         // the row scrolls with the system's own inertia and bounce; no scroll bar; a finger that lands highlights
         // at once, and the scrolling takes the touch over (no selection) once it starts
         strip.owner = self
@@ -158,7 +177,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         fade.endPoint = CGPoint(x: 1, y: 0.5)
         fade.colors = [UIColor.clear.cgColor, UIColor.black.cgColor, UIColor.black.cgColor, UIColor.clear.cgColor]
         addSubview(stripBox)
-        bringSubviewToFront(preedit)
+        bringSubviewToFront(preeditDock)
         let cfg = UIImage.SymbolConfiguration(pointSize: 16, weight: .regular)
         expandButton.setImage(UIImage(systemName: "chevron.down", withConfiguration: cfg), for: .normal)
         expandButton.tintColor = Theme.secondaryText
@@ -191,16 +210,17 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     required init?(coder: NSCoder) { fatalError() }
 
     @objc private func preeditTapped() {
-        preedit.alpha = 0.55
-        UIView.animate(withDuration: 0.14) { self.preedit.alpha = 1 }
+        preeditDock.alpha = 0.55
+        UIView.animate(withDuration: 0.14) { self.preeditDock.alpha = 1 }
         onPreeditTap?()
     }
 
     @objc private func expandTapped() { if gridExpanded || !candidates.isEmpty { onExpand?() } else { onSettings?() } }
 
-    /// Formats the raw-key preview pill: exact keys typed, with subtle 2-key breathing kerning in Xiaohe mode.
+    /// Formats the raw-key live dock: exact keys typed, with subtle 2-key breathing kerning in Xiaohe mode.
     private func applyPreeditText(_ text: String) {
         preeditRaw = text
+        preeditDock.accessibilityLabel = text.isEmpty ? nil : "输入原字母 \(text)"
         guard !text.isEmpty else {
             preedit.attributedText = nil
             preedit.text = ""
@@ -234,8 +254,9 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
         super.traitCollectionDidChange(previous)
         if previous?.userInterfaceStyle != traitCollection.userInterfaceStyle {
-            preedit.backgroundColor = Theme.preeditPillBg
-            preedit.layer.borderColor = Theme.preeditPillBorder.resolvedColor(with: traitCollection).cgColor
+            preeditDock.backgroundColor = Theme.preeditPillBg
+            preeditDock.layer.borderColor = Theme.preeditPillBorder.resolvedColor(with: traitCollection).cgColor
+            preeditCaret.backgroundColor = Theme.correctedMark.resolvedColor(with: traitCollection).withAlphaComponent(0.78).cgColor
             applyPreeditText(preeditRaw)
             let divColor = Theme.candidateDivider.resolvedColor(with: traitCollection).cgColor
             for d in dividerPool { d.backgroundColor = divColor }
@@ -250,8 +271,9 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         expandButton.tintColor = Theme.secondaryText
         preedit.textColor = Theme.secondaryText
         preedit.font = Theme.font(11.5, .medium)
-        preedit.backgroundColor = Theme.preeditPillBg
-        preedit.layer.borderColor = Theme.preeditPillBorder.resolvedColor(with: traitCollection).cgColor
+        preeditDock.backgroundColor = Theme.preeditPillBg
+        preeditDock.layer.borderColor = Theme.preeditPillBorder.resolvedColor(with: traitCollection).cgColor
+        preeditCaret.backgroundColor = Theme.correctedMark.resolvedColor(with: traitCollection).withAlphaComponent(0.78).cgColor
         applyPreeditText(preeditRaw)
         correctionBar.backgroundColor = Theme.correctedMark.resolvedColor(with: traitCollection).cgColor
         var uc = undoChip.configuration
@@ -272,8 +294,10 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     var undoTextForTests: String? { undoText }
     func undoTapForTests() { onUndo?() }
     var correctionBarShownForTests: Bool { !correctionBar.isHidden }
-    var preeditShownForTests: Bool { !preedit.isHidden }
+    var preeditShownForTests: Bool { !preeditDock.isHidden }
     var preeditAttributedForTests: NSAttributedString? { preedit.attributedText }
+    var preeditDockFrameForTests: CGRect { preeditDock.frame }
+    var preeditOverflowFadeForTests: Bool { preeditClip.layer.mask === preeditFade }
 
     /// Offer (or withdraw, with nil) putting back keys: the ones a correction replaced, or the ones a swipe cleared.
     /// `spoken`: what VoiceOver says for it (by default, that it takes back a correction).
@@ -300,6 +324,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         let a: CGFloat = on ? 0.35 : 1
         stripBox.alpha = a
         expandButton.alpha = a
+        preeditDock.alpha = a
     }
     var clearPreviewForTests: Bool { stripBox.alpha < 1 }
 
@@ -312,9 +337,9 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         if let hit = super.hitTest(point, with: event), hit !== self { return hit }
-        if showsPreedit && !preedit.isHidden && !preeditRaw.isEmpty && preedit.frame.width > 0 {
-            let expanded = CGRect(x: preedit.frame.minX, y: 0, width: preedit.frame.width, height: bounds.height)
-            if expanded.contains(point) { return preedit }
+        if showsPreedit && !preeditDock.isHidden && !preeditRaw.isEmpty && preeditDock.frame.width > 0 {
+            let expanded = CGRect(x: preeditDock.frame.minX, y: 0, width: preeditDock.frame.width, height: bounds.height)
+            if expanded.contains(point) { return preeditDock }
         }
         return super.hitTest(point, with: event)
     }
@@ -322,9 +347,14 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     override var accessibilityElements: [Any]? {
         get {
             var out: [Any] = []
-            if !mosto.isHidden { out.append(mosto) }
+            let visibleIdle = idleAccessibilityViews.filter { !$0.isHidden }
+            if !visibleIdle.isEmpty {
+                out.append(contentsOf: visibleIdle)
+            } else if !mosto.isHidden {
+                out.append(mosto)
+            }
             if !undoChip.isHidden { out.append(undoChip) }
-            if showsPreedit && !preedit.isHidden && !preeditRaw.isEmpty { out.append(preedit) }
+            if showsPreedit && !preeditDock.isHidden && !preeditRaw.isEmpty { out.append(preeditDock) }
             for (i, l) in labels.enumerated() where !l.isHidden {
                 let e = CandidateElement(accessibilityContainer: self)
                 e.accessibilityLabel = i < candidates.count ? candidates[i].text : l.text
@@ -370,13 +400,13 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     @objc private func mostoTapped() { onMostoTap?() }
     @objc private func mostoDoubleTapped() { mosto.hop(); onMostoDoubleTap?() }
 
-    /// Immediately show typed keys in the leading single-row raw-key pill (0 ms, 0 XPC).
+    /// Immediately show typed keys in the leading single-row live keystroke dock (0 ms, 0 XPC).
     func setPreedit(_ text: String) {
         let changed = preeditRaw != text
         if changed { applyPreeditText(text) }
         let show = showsPreedit && !isPrediction && !text.isEmpty
-        if preedit.isHidden != !show || changed {
-            preedit.isHidden = !show
+        if preeditDock.isHidden != !show || changed {
+            preeditDock.isHidden = !show
             setNeedsLayout()
         }
     }
@@ -400,7 +430,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         }
         let busy = !candidates.isEmpty
         setMosto(!busy && !typing && showsMosto && undoText == nil)
-        preedit.isHidden = text.isEmpty || prediction || !showsPreedit
+        preeditDock.isHidden = text.isEmpty || prediction || !showsPreedit
         setNeedsLayout()
         layoutIfNeeded()
     }
@@ -419,6 +449,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     func pauseTimers() {
         mostoTimer?.invalidate(); mostoTimer = nil
         longPressTimer?.invalidate(); longPressTimer = nil
+        forgetTimer?.invalidate(); forgetTimer = nil
         mosto.pauseTimers()
     }
 
@@ -461,29 +492,56 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             let sz = undoChip.sizeThatFits(CGSize(width: 200, height: h))
             undoChip.frame = CGRect(x: 10, y: (h - sz.height) / 2, width: sz.width, height: sz.height)
             lead = undoChip.frame.maxX + 6
-            preedit.frame = .zero
-        } else if showsPreedit && !preedit.isHidden, !preeditRaw.isEmpty {
+            preeditDock.frame = .zero
+        } else if showsPreedit && !preeditDock.isHidden, !preeditRaw.isEmpty {
             let textW: CGFloat
             if let attr = preedit.attributedText, attr.length > 0 {
                 textW = ceil(attr.size().width)
             } else {
                 textW = ceil((preeditRaw as NSString).size(withAttributes: [.font: preedit.font ?? Theme.font(11.5, .medium)]).width)
             }
-            let pillW = min(max(26, textW + 12), 68)
-            let pillH = min(22, max(19, h - 18))
-            preedit.layer.cornerRadius = pillH / 2
-            preedit.frame = CGRect(x: 10, y: (h - pillH) / 2, width: pillW, height: pillH)
-            lead = preedit.frame.maxX + 6
+            let pillH = min(26, max(20, h - 14))
+            let pillW: CGFloat
+            if gridExpanded {
+                pillW = max(60, bounds.width - expandW - 18)
+            } else {
+                let maxPillW = min(110, floor(bounds.width * 0.28))
+                pillW = min(max(30, textW + 18), maxPillW)
+            }
+            preeditDock.layer.cornerRadius = pillH / 2
+            preeditDock.frame = CGRect(x: 10, y: (h - pillH) / 2, width: pillW, height: pillH)
+            lead = preeditDock.frame.maxX + 6
+
+            let caretW: CGFloat = 1.5, caretGap: CGFloat = 2.0, padH: CGFloat = 7
+            let maxInner = max(8, pillW - padH * 2 - caretW - caretGap)
+            CATransaction.begin(); CATransaction.setDisableActions(true)
+            if textW > maxInner {
+                preeditClip.frame = CGRect(x: padH, y: 0, width: maxInner, height: pillH)
+                preedit.frame = CGRect(x: maxInner - textW, y: 0, width: textW, height: pillH)
+                preeditFade.frame = preeditClip.bounds
+                preeditFade.locations = [0, NSNumber(value: Double(min(0.30, 12 / maxInner))), 1]
+                if preeditClip.layer.mask !== preeditFade { preeditClip.layer.mask = preeditFade }
+                preeditCaret.frame = CGRect(x: preeditClip.frame.maxX + caretGap, y: (pillH - 12) / 2, width: caretW, height: 12)
+            } else {
+                if preeditClip.layer.mask != nil { preeditClip.layer.mask = nil }
+                let startX = gridExpanded ? (padH + 3) : floor((pillW - (textW + caretGap + caretW)) / 2)
+                preeditClip.frame = CGRect(x: startX, y: 0, width: textW, height: pillH)
+                preedit.frame = CGRect(x: 0, y: 0, width: textW, height: pillH)
+                preeditCaret.frame = CGRect(x: startX + textW + caretGap, y: (pillH - 12) / 2, width: caretW, height: 12)
+            }
+            preeditCaret.backgroundColor = Theme.correctedMark.resolvedColor(with: traitCollection).withAlphaComponent(0.78).cgColor
+            CATransaction.commit()
         } else {
-            preedit.frame = .zero
+            preeditDock.frame = .zero
         }
         // Keep stripBox and CandidateStrip spanning the FULL bar height (0..h) so taps on the upper third never miss.
         let box = CGRect(x: lead, y: 0, width: max(0, bounds.width - expandW - lead), height: h)
         if stripBox.frame != box { stripBox.frame = box }
         let inner = CGRect(origin: .zero, size: box.size)
         if strip.frame != inner { strip.frame = inner }
-        // nothing to show: the strip takes no touches (they fall to the strip's own view, as before it scrolled)
-        stripBox.isHidden = candidates.isEmpty && !typing
+        // nothing to show: the strip takes no touches (or when grid is open and dock expands full-width above it)
+        let hideStripForGridDock = gridExpanded && showsPreedit && !preeditDock.isHidden && !preeditRaw.isEmpty
+        stripBox.isHidden = (candidates.isEmpty && !typing) || hideStripForGridDock
         layoutCandidates()
     }
 
@@ -691,7 +749,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     /// The candidate under a point of this view (an index into the full list), where the row shows it.
     private func candidateIndex(at p: CGPoint) -> Int? {
         let q = convert(p, to: strip)
-        let leftSlop: CGFloat = (showsPreedit && !preedit.isHidden) ? 4 : 12
+        let leftSlop: CGFloat = (showsPreedit && !preeditDock.isHidden) ? 4 : 12
         guard q.y >= -16, q.x >= strip.bounds.minX - leftSlop, q.x < strip.bounds.maxX else { return nil }
         if let exact = labels.firstIndex(where: { ($0.frame.minX - 6) <= q.x && q.x < ($0.frame.maxX + 6) }) {
             return exact
@@ -838,15 +896,17 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         cfg.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 14, bottom: 6, trailing: 14)
         let b = UIButton(configuration: cfg, primaryAction: UIAction { [weak self] _ in confirm(); self?.dismissForget() })
         b.sizeToFit()
-        b.frame.origin = CGPoint(x: 10, y: (bounds.height - b.bounds.height) / 2 + 4)
+        b.frame.origin = CGPoint(x: 10, y: (bounds.height - b.bounds.height) / 2)
         addSubview(b)
         forgetButton = b
-        Timer.scheduledTimer(withTimeInterval: 4, repeats: false) { [weak self, weak b] _ in
+        forgetTimer = Timer.scheduledTimer(withTimeInterval: 4, repeats: false) { [weak self, weak b] _ in
             if let b, self?.forgetButton === b { self?.dismissForget() }
         }
     }
 
     func dismissForget() {
+        forgetTimer?.invalidate()
+        forgetTimer = nil
         forgetButton?.removeFromSuperview()
         forgetButton = nil
     }
@@ -994,9 +1054,11 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         collection.setContentOffset(.zero, animated: false)
     }
 
-    func show(_ candidates: [Candidate]) {
+    func show(_ candidates: [Candidate], preserveFilter: Bool = false) {
         allCandidates = candidates
-        singleCharOnly = false
+        if !preserveFilter || !candidates.contains(where: { $0.text.count == 1 }) {
+            singleCharOnly = false
+        }
         rebuildDisplayed()
         updateFilterButtonStyle()
         collection.reloadData()

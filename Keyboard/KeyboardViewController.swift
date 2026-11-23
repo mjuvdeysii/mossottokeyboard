@@ -324,7 +324,7 @@ final class KeyboardViewController: UIInputViewController {
         grid.onDelete = { [weak self] in
             guard let self else { return }
             self.handle(.delete, tap: nil)
-            if self.taps.isEmpty { self.showGrid(false) } else { self.grid.show(self.result?.candidates ?? []) }
+            if self.taps.isEmpty { self.showGrid(false) } else { self.grid.show(self.result?.candidates ?? [], preserveFilter: true) }
         }
         settingsPanel.onClose = { [weak self] in self?.showSettings(false) }
         settingsPanel.onChange = { [weak self] in self?.applySettings() }
@@ -339,7 +339,23 @@ final class KeyboardViewController: UIInputViewController {
         }
 
         for v in [candidateBar, keyboard, grid, settingsPanel] as [UIView] { root.addSubview(v) }
-        grid.isHidden = true; mostoHintButton.frame = CGRect(x: 6, y: 4, width: 92, height: 36); mostoHintButton.layer.cornerRadius = 18; mostoHintButton.titleLabel?.font = Theme.font(12, .semibold); mostoHintButton.setTitle("        颜文字", for: .normal); mostoHintButton.accessibilityLabel = "Mosto 颜文字"; mostoHintButton.addAction(UIAction { [weak self] _ in self?.candidateBar.onMostoTap?() }, for: .touchUpInside); let lp = UILongPressGestureRecognizer(target: self, action: #selector(mostoHeld(_:))); lp.minimumPressDuration = 0.42; mostoHintButton.addGestureRecognizer(lp); candidateBar.addSubview(mostoHintButton); candidateBar.bringSubviewToFront(candidateBar.mosto); candidateBar.mosto.isUserInteractionEnabled = false; plainLightButton.layer.cornerRadius = 17; plainLightButton.titleLabel?.font = Theme.font(12, .semibold); plainLightButton.accessibilityLabel = "切换日光与夜灯"; plainLightButton.addAction(UIAction { [weak self] _ in self?.candidateBar.onMostoDoubleTap?() }, for: .touchUpInside); candidateBar.addSubview(plainLightButton)
+        grid.isHidden = true
+        mostoHintButton.layer.cornerCurve = .continuous
+        mostoHintButton.titleLabel?.font = Theme.font(12, .semibold)
+        mostoHintButton.accessibilityLabel = "Mosto 颜文字"
+        mostoHintButton.addAction(UIAction { [weak self] _ in self?.candidateBar.onMostoTap?() }, for: .touchUpInside)
+        let lp = UILongPressGestureRecognizer(target: self, action: #selector(mostoHeld(_:)))
+        lp.minimumPressDuration = 0.42
+        mostoHintButton.addGestureRecognizer(lp)
+        candidateBar.addSubview(mostoHintButton)
+        candidateBar.bringSubviewToFront(candidateBar.mosto)
+        candidateBar.mosto.isUserInteractionEnabled = false
+        plainLightButton.layer.cornerCurve = .continuous
+        plainLightButton.titleLabel?.font = Theme.font(12, .semibold)
+        plainLightButton.accessibilityLabel = "切换日光与夜灯"
+        plainLightButton.addAction(UIAction { [weak self] _ in self?.candidateBar.onMostoDoubleTap?() }, for: .touchUpInside)
+        candidateBar.addSubview(plainLightButton)
+        candidateBar.idleAccessibilityViews = [mostoHintButton, plainLightButton]
         settingsPanel.isHidden = true
         applySettings()
         let off = KeyboardSettings.shared.touchOffset
@@ -462,6 +478,7 @@ final class KeyboardViewController: UIInputViewController {
         let insetL = view.safeAreaInsets.left, insetR = view.safeAreaInsets.right
         let w = b.width - insetL - insetR
         candidateBar.frame = CGRect(x: insetL, y: 0, width: w, height: barHeight)
+        updatePlainLightButton()
         // the keys reach up into the strip — 8 pt always, a little more right after a key (see KeyboardView.hitTest) —
         // never so far that a quick candidate pick lands on a key (the strip is shorter in landscape)
         let reach: CGFloat = min(14, barHeight * 0.3)
@@ -675,8 +692,79 @@ final class KeyboardViewController: UIInputViewController {
         candidateBar.mosto.setNight(night)
         candidateBar.showsMosto = !Theme.plain    // by day and at night (only his light follows); none in 简洁
         tintView.isHidden = Theme.plain; root.backgroundColor = Theme.touchable
-        settingsPanel.setNight(night); updatePlainLightButton()
-    }; private func updatePlainLightButton() { let idle = taps.isEmpty && predictions.isEmpty && enSuggestions.isEmpty && candidateBar.undoTextForTests == nil && !emojiShown && settingsPanel.isHidden && grid.isHidden && (Theme.plain || !candidateBar.mosto.isHidden); let isNight = self.isNight ;let cfg = UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold); mostoHintButton.isHidden = !idle; mostoHintButton.isUserInteractionEnabled = idle; mostoHintButton.backgroundColor = Theme.preeditPillBg; mostoHintButton.setTitleColor(Theme.secondaryText, for: .normal); mostoHintButton.tintColor = Theme.secondaryText.resolvedColor(with: root.traitCollection); if Theme.plain { mostoHintButton.frame = CGRect(x: 92, y: 5, width: 76, height: 32); mostoHintButton.layer.cornerRadius = 16; mostoHintButton.setImage(UIImage(systemName: "face.smiling", withConfiguration: cfg)?.withRenderingMode(.alwaysTemplate), for: .normal); mostoHintButton.imageView?.overrideUserInterfaceStyle = .light; mostoHintButton.setTitle(" 颜文字", for: .normal) } else { mostoHintButton.frame = CGRect(x: 10, y: 5, width: 90, height: 32); mostoHintButton.layer.cornerRadius = 16; mostoHintButton.setImage(nil, for: .normal); mostoHintButton.setTitle("             颜文字", for: .normal) }; if idle { candidateBar.bringSubviewToFront(mostoHintButton); if !Theme.plain { candidateBar.bringSubviewToFront(candidateBar.mosto) } }; plainLightButton.frame = CGRect(x: Theme.plain ? 10 : 106, y: 5, width: 74, height: 32); plainLightButton.layer.cornerRadius = 16; plainLightButton.isHidden = !idle; plainLightButton.isUserInteractionEnabled = idle; guard idle else { return }; candidateBar.bringSubviewToFront(plainLightButton); plainLightButton.setImage(UIImage(systemName: isNight ? "moon.stars.fill" : "sun.max.fill", withConfiguration: cfg), for: .normal); plainLightButton.setTitle(isNight ? (Theme.plain ? " 夜光" : " 夜灯") : " 日光", for: .normal); plainLightButton.tintColor = isNight ? UIColor(red: 0.96, green: 0.78, blue: 0.32, alpha: 1) : Theme.secondaryText; plainLightButton.setTitleColor(Theme.secondaryText, for: .normal); plainLightButton.backgroundColor = Theme.preeditPillBg }; @objc private func mostoHeld(_ g: UILongPressGestureRecognizer) { guard g.state == .began else { return }; feel(.mosto); candidateBar.mosto.demoYawn(); candidateBar.mosto.hop(); DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) { [weak self] in guard let self else { return }; self.candidateBar.mosto.setNight(self.isNight) } }
+        settingsPanel.setNight(night)
+        updatePlainLightButton()
+    }
+
+    private func updatePlainLightButton() {
+        let idle = taps.isEmpty && predictions.isEmpty && enSuggestions.isEmpty && candidateBar.undoTextForTests == nil && !emojiShown && settingsPanel.isHidden && grid.isHidden && (Theme.plain || !candidateBar.mosto.isHidden)
+        let night = isNight
+        let cfg = UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold)
+        let h = candidateBar.bounds.height > 0 ? candidateBar.bounds.height : barHeight
+        let pillH = min(32, max(26, h - 8))
+        let pillY = floor((h - pillH) / 2)
+        let ms = min(h - 8, 44)
+        let fg = Theme.secondaryText.resolvedColor(with: root.traitCollection)
+
+        mostoHintButton.isHidden = !idle
+        mostoHintButton.isUserInteractionEnabled = idle
+        mostoHintButton.backgroundColor = Theme.preeditPillBg
+        mostoHintButton.layer.cornerRadius = pillH / 2
+        if Theme.plain {
+            mostoHintButton.configuration = nil
+            mostoHintButton.titleLabel?.font = Theme.font(12, .semibold)
+            mostoHintButton.contentHorizontalAlignment = .center
+            mostoHintButton.frame = CGRect(x: 92, y: pillY, width: 76, height: pillH)
+            mostoHintButton.setImage(UIImage(systemName: "face.smiling", withConfiguration: cfg)?.withRenderingMode(.alwaysTemplate), for: .normal)
+            mostoHintButton.imageView?.overrideUserInterfaceStyle = .light
+            mostoHintButton.tintColor = fg
+            mostoHintButton.setTitleColor(fg, for: .normal)
+            mostoHintButton.setTitle(" 颜文字", for: .normal)
+        } else {
+            mostoHintButton.setImage(nil, for: .normal)
+            mostoHintButton.setTitle(nil, for: .normal)
+            var c = UIButton.Configuration.plain()
+            c.title = "颜文字"
+            c.baseForegroundColor = fg
+            c.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 10)
+            c.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
+                var out = incoming
+                out.font = Theme.font(12, .semibold)
+                return out
+            }
+            mostoHintButton.configuration = c
+            mostoHintButton.contentHorizontalAlignment = .trailing
+            mostoHintButton.frame = CGRect(x: 10, y: pillY, width: ms + 56, height: pillH)
+        }
+        if idle {
+            candidateBar.bringSubviewToFront(mostoHintButton)
+            if !Theme.plain { candidateBar.bringSubviewToFront(candidateBar.mosto) }
+        }
+
+        let lightX = Theme.plain ? 10 : mostoHintButton.frame.maxX + 6
+        plainLightButton.frame = CGRect(x: lightX, y: pillY, width: 74, height: pillH)
+        plainLightButton.layer.cornerRadius = pillH / 2
+        plainLightButton.isHidden = !idle
+        plainLightButton.isUserInteractionEnabled = idle
+        guard idle else { return }
+        candidateBar.bringSubviewToFront(plainLightButton)
+        plainLightButton.setImage(UIImage(systemName: night ? "moon.stars.fill" : "sun.max.fill", withConfiguration: cfg), for: .normal)
+        plainLightButton.setTitle(night ? (Theme.plain ? " 夜光" : " 夜灯") : " 日光", for: .normal)
+        plainLightButton.tintColor = night ? UIColor(red: 0.96, green: 0.78, blue: 0.32, alpha: 1) : fg
+        plainLightButton.setTitleColor(fg, for: .normal)
+        plainLightButton.backgroundColor = Theme.preeditPillBg
+    }
+
+    @objc private func mostoHeld(_ g: UILongPressGestureRecognizer) {
+        guard g.state == .began else { return }
+        feel(.mosto)
+        candidateBar.mosto.demoYawn()
+        candidateBar.mosto.hop()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) { [weak self] in
+            guard let self else { return }
+            self.candidateBar.mosto.setNight(self.isNight)
+        }
+    }
 
     func applySettings() {
         let s = KeyboardSettings.shared
@@ -1309,7 +1397,7 @@ final class KeyboardViewController: UIInputViewController {
             displayPreedit = String(taps.map { $0.key })
         }
         candidateBar.update(preedit: displayPreedit, candidates: r.candidates)
-        if !grid.isHidden { grid.show(r.candidates) }
+        if !grid.isHidden { grid.show(r.candidates, preserveFilter: true) }
         updateSyllablePicker(out.choices)
         if let p = pendingSelect, gen == generation {
             pendingSelect = nil
@@ -1687,7 +1775,8 @@ final class KeyboardViewController: UIInputViewController {
             endEnglishWord()
             emojiPanel.setChinese(chinese)
             emojiPanel.frame = CGRect(x: view.safeAreaInsets.left, y: 0, width: view.bounds.width - view.safeAreaInsets.left - view.safeAreaInsets.right, height: view.bounds.height)
-            emojiPanel.load(kaomoji: kaomoji); lastEmojiInserted = ""; for case let b as UIButton in emojiPanel.subviews { if b.title(for: .normal) == "返回" { b.isHidden = true } else if b.image(for: .normal) != nil { b.isHidden = false } else if b.title(for: .normal) == "拼音" || b.title(for: .normal) == "ABC" { b.backgroundColor = kaomoji ? Theme.accentKey : Theme.functionKey; b.setTitleColor(kaomoji ? Theme.accentText : Theme.keyText, for: .normal) } }
+            emojiPanel.load(kaomoji: kaomoji)
+            lastEmojiInserted = ""
             root.bringSubviewToFront(emojiPanel)
         } else if !chinese {
             updateAutoShift()

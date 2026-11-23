@@ -906,15 +906,15 @@ final class KeyboardView: UIView {
                 let i = popup.index(at: p.x)
                 if i != popup.selected { popup.selected = i; onFeedback?(.altMoved, p) }
             }
-        case .char(let s) where !tr.altShown && !tr.typedOnDown:
-            if s == "，" && kv.spec.alt == "。" {
+        case .char where !tr.altShown && !tr.typedOnDown:
+            if let alt = kv.spec.alt {
                 let rise = tr.start.y - p.y
                 let driftX = abs(p.x - tr.start.x)
                 if rise >= 16 && driftX <= 32 {
                     if tr.flickedAlt == nil {
-                        tr.flickedAlt = "。"
+                        tr.flickedAlt = alt
                         tr.longPressTimer?.invalidate()
-                        tr.preview?.label.text = "。"
+                        tr.preview?.label.text = alt
                         tr.preview?.label.textColor = Theme.correctedMark
                         tr.preview?.setNeedsLayout()
                         onFeedback?(.altMoved, p)
@@ -922,7 +922,7 @@ final class KeyboardView: UIView {
                     break
                 } else if tr.flickedAlt != nil && rise < 8 {
                     tr.flickedAlt = nil
-                    tr.preview?.label.text = "，"
+                    tr.preview?.label.text = kv.spec.label
                     tr.preview?.label.textColor = Theme.keyText
                     tr.preview?.setNeedsLayout()
                     break

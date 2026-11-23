@@ -39,7 +39,24 @@ final class EngineHost {
     /// 表情联想: words → emoji (Unicode CLDR's Chinese annotations; Tools/build_emoji_hints.py)
     private var emojiHintsPath: String?
     private var emojiHintsLoaded = false
-    private var emojiHints: [String: [String]] = [:]; private static let kaomojiHints: [String: String] = ["开心": "ヾ(≧▽≦*)o", "高兴": "(≧∇≦)/", "哈哈": "(＾▽＾)", "哈哈哈": "ヾ(≧▽≦*)o", "笑死": "(≧∇≦)/", "嘿嘿": "(●'◡'●)", "晚安": "(∪｡∪)｡｡｡zzz", "困": "(￣o￣) . z Z", "好困": "(∪｡∪)｡｡｡zzz", "睡觉": "( ˘ω˘ ) ｽﾔｧ…", "抱抱": "(づ￣ ³￣)づ", "爱你": "(´,,•ω•,,)♡", "喜欢": "(´∀`)♡", "比心": "(｡•ㅅ•｡)♡", "卖萌": "(・ω・)", "委屈": "(｡•́︿•̀｡)", "难过": "QAQ", "哭": "( T_T )", "呜呜": "(´;ω;`)", "生气": "(╬▔皿▔)╯", "掀桌": "(╯°□°)╯︵ ┻━┻", "震惊": "Σ(っ °Д °;)っ", "无奈": "╮(╯▽╰)╭", "摊手": "╮(￣▽￣)╭", "加油": "(๑•̀ㅂ•́)و✧", "冲": "(ง •̀_•́)ง", "好的": "(｡•̀ᴗ-)✧", "收到": "(｡･∀･)ﾉﾞ", "谢谢": "(´▽`ʃ♡ƪ)", "摸鱼": "_(:3」∠)_", "躺平": "(:3[▓▓]", "好累": "_(:3」∠)_", "恶魔": "ψ(｀∇´)ψ", "魔头": "ψ(｀∇´)ψ", "小魔王": "Ψ(￣∀￣)Ψ", "可爱": "(｡･ω･｡)ﾉ♡", "女儿": "(づ｡◕‿‿◕｡)づ", "宝宝": "ヾ(≧▽≦*)o"]
+    private var emojiHints: [String: [String]] = [:]
+    private static let kaomojiHints: [String: String] = [
+        "开心": "ヾ(≧▽≦*)o", "高兴": "(≧∇≦)/", "哈哈": "(＾▽＾)", "哈哈哈": "ヾ(≧▽≦*)o",
+        "笑死": "(≧∇≦)/", "嘿嘿": "(●'◡'●)", "晚安": "(∪｡∪)｡｡｡zzz", "困": "(￣o￣) . z Z",
+        "好困": "(∪｡∪)｡｡｡zzz", "睡觉": "( ˘ω˘ ) ｽﾔｧ…", "早安": "( ´ ▽ ` )ﾉ", "辛苦了": "( ´▽｀)つ旦",
+        "抱抱": "(づ￣ ³￣)づ", "贴贴": "(づ｡◕‿‿◕｡)づ", "爱你": "(´,,•ω•,,)♡", "喜欢": "(´∀`)♡",
+        "比心": "(｡•ㅅ•｡)♡", "害羞": "(⁄ ⁄•⁄ω⁄•⁄ ⁄)", "卖萌": "(・ω・)", "猫猫": "(=^･ω･^=)",
+        "狗狗": "U•ェ•*U", "委屈": "(｡•́︿•̀｡)", "难过": "QAQ", "破防": "(;´༎ຶД༎ຶ`)",
+        "哭": "( T_T )", "呜呜": "(´;ω;`)", "生气": "(╬▔皿▔)╯", "掀桌": "(╯°□°)╯︵ ┻━┻",
+        "震惊": "Σ(っ °Д °;)っ", "吃瓜": "(⊙ˍ⊙)", "无语": "(￣_,￣ )", "无奈": "╮(╯▽╰)╭",
+        "摊手": "╮(￣▽￣)╭", "社恐": "(*/ω＼*)", "救命": "Σ(°△°|||)", "加油": "(๑•̀ㅂ•́)و✧",
+        "冲": "(ง •̀_•́)ง", "好的": "(｡•̀ᴗ-)✧", "收到": "(｡･∀･)ﾉﾞ", "点赞": "(*￣▽￣)d",
+        "厉害": "( •̀ ω •́ )✧", "比耶": "v(￣︶￣)y", "期待": "(☆▽☆)", "谢谢": "(´▽`ʃ♡ƪ)",
+        "干杯": "( ^_^)／□☆□＼(^_^ )", "拜拜": "( ´ ▽ ` )ﾉ~~", "再见": "( ^_^)/~~",
+        "摸鱼": "_(:3」∠)_", "躺平": "(:3[▓▓]", "好累": "_(:3」∠)_", "恶魔": "ψ(｀∇´)ψ",
+        "魔头": "ψ(｀∇´)ψ", "小魔王": "Ψ(￣∀￣)Ψ", "可爱": "(｡･ω･｡)ﾉ♡", "女儿": "(づ｡◕‿‿◕｡)づ",
+        "宝宝": "ヾ(≧▽≦*)o", "生日快乐": "(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧"
+    ]
     private static let sortedKaomojiHints: [(key: String, value: String)] = kaomojiHints.sorted { $0.key.count > $1.key.count }
 
     private static func compactReadings(for lex: Lexicon) -> [Character: [UInt16]] {
@@ -188,7 +205,7 @@ final class EngineHost {
         return Output(result: r, choices: choices)
     }
 
-    /// Offline relative date/time candidates: 日期, 时间, 星期, 今天/明天/后天/昨天/前天, 本周一..日, 下周一..日.
+    /// Offline relative date/time candidates: 日期, 时间/现在, 星期, 今天..大后天, 昨天/前天, 本/上/下个月, 上/本/下周一..日.
     private static func dynamicDateCandidate(for word: String, now: Date = Date()) -> String? {
         let cal = Calendar.current
         let wds = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"]
@@ -206,7 +223,7 @@ final class EngineHost {
         case "日期":
             let y = cal.component(.year, from: now), m = cal.component(.month, from: now), d = cal.component(.day, from: now)
             return String(format: "%04d-%02d-%02d", y, m, d)
-        case "时间":
+        case "时间", "现在":
             let h = cal.component(.hour, from: now), m = cal.component(.minute, from: now)
             return String(format: "%02d:%02d", h, m)
         case "星期":
@@ -232,12 +249,17 @@ final class EngineHost {
             return "\(cal.component(.year, from: now) - 1)年"
         case "本月", "这个月":
             return "\(cal.component(.month, from: now))月"
+        case "上个月":
+            return cal.date(byAdding: .month, value: -1, to: now).map { "\(cal.component(.month, from: $0))月" }
+        case "下个月":
+            return cal.date(byAdding: .month, value: 1, to: now).map { "\(cal.component(.month, from: $0))月" }
         default:
             break
         }
         let nextPrefix = word.hasPrefix("下周") || word.hasPrefix("下星期")
         let thisPrefix = word.hasPrefix("本周") || word.hasPrefix("这周")
-        guard nextPrefix || thisPrefix, let last = word.last else { return nil }
+        let prevPrefix = word.hasPrefix("上周") || word.hasPrefix("上星期")
+        guard nextPrefix || thisPrefix || prevPrefix, let last = word.last else { return nil }
         let targetMonBased: Int
         switch last {
         case "一": targetMonBased = 1
@@ -252,7 +274,8 @@ final class EngineHost {
         // Convert Calendar weekday (1=Sun..7=Sat) to Monday-based (1=Mon..7=Sun).
         let todayWD = cal.component(.weekday, from: now)
         let todayMonBased = todayWD == 1 ? 7 : todayWD - 1
-        let delta = (nextPrefix ? 7 : 0) + (targetMonBased - todayMonBased)
+        let weekShift = nextPrefix ? 7 : (prevPrefix ? -7 : 0)
+        let delta = weekShift + (targetMonBased - todayMonBased)
         return cal.date(byAdding: .day, value: delta, to: now).map { md($0, weekday: false) }
     }
 

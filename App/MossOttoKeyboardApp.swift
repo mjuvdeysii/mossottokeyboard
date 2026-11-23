@@ -90,8 +90,8 @@ private let featureItems: [FeatureItem] = [
                 detail: "同时内置全拼、纯小鹤双拼（每字固定 2 键、无形码）与九宫格布局，中英混输自动识别大小写，设置跨版本保留。", lessonTitle: nil),
     FeatureItem(id: "mix", icon: "equal.square", title: "心算与智能日期", stat: "286/4= · 相对日期",
                 detail: "输入算式加等号（如 286/4=）候选栏即出精准结果，支持括号与四则运算；输入明天、下周一、今年、本月自动出对应日期。", lessonTitle: "中英混输"),
-    FeatureItem(id: "kaomoji", icon: "bolt.horizontal", title: "零卡顿流畅引擎", stat: "WebView 帧合并 · 零乱码",
-                detail: "24ms 帧合并行内预编辑与 0-XPC 空格断句，在 Safari 与网页编辑器中丝滑跟手；内置 CoreText 缺字形过滤，永久告别生僻豆腐块。", lessonTitle: nil),
+    FeatureItem(id: "kaomoji", icon: "bolt.horizontal", title: "零卡顿流畅引擎", stat: "0-XPC · 标点上滑 · 零乱码",
+                detail: ".appex 零 setMarkedText XPC 与 0-XPC 空格断句，Safari 与网页编辑器零卡顿；左侧实时原字母韵律槽 + 标点轻上滑直出副符号 + CoreText 零豆腐块。", lessonTitle: nil),
     FeatureItem(id: "glass", icon: "square.on.square", title: "微扁平双风格", stat: "iOS 原生 · Mosto 软胶",
                 detail: "简洁模式复刻系统液态玻璃比例与纯净单行候选栏；Mosto 模式采用微扁平哑光软胶底沿与日/夜灯暖金高光，一键切换。", lessonTitle: nil),
     FeatureItem(id: "offline", icon: "lock.shield", title: "纯离线 · 零追踪", stat: "0 联网 · 0 剪贴板",
@@ -623,7 +623,7 @@ private struct SettingsHubScreen: View {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
     }
     private var appBuild: String {
-        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "369"
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "375"
     }
 
     var body: some View {
@@ -814,8 +814,8 @@ private struct PrivacyArchitectureView: View {
             }
             Section("iOS 键盘扩展工程红线") {
                 row("45 MB Jetsam 内存红线", "词库与语言模型全部以只读 mmap 映射加载，零脏内存常驻，后台离屏自动回收可重建缓存。")
-                row("24 ms 帧合并与 0-XPC 空格", "行内预编辑在高速连打时按 24ms 合并下发，普通中文空格断句 0 次同步 XPC，保障 Safari 与网页编辑器流畅跟手。")
-                row("9 条 CI 自动化铁律门禁", "每次构建自动扫描网络 API、主线程同步解码、离屏阴影、空 setMarkedText 与热路径 XPC。")
+                row("零 setMarkedText XPC 与 0-XPC 空格", "键盘扩展不向宿主发送行内 setMarkedText，改由顶部实时原字母槽展示输入流；日常中文空格断句 0 次同步 XPC，保障 Safari 与网页编辑器丝滑跟手。")
+                row("11 条 CI 自动化铁律门禁", "每次构建自动扫描网络 API、主线程同步解码、离屏阴影、空 setMarkedText、遗漏定时器与热路径 XPC。")
             }
         }
         .listStyle(.insetGrouped)
@@ -1159,28 +1159,28 @@ struct UsageDetailContent: View {
                 Divider()
                 Usage(icon: "space", title: "空格、回车、删除", text: "空格：上屏首选　回车：上屏字母　删除：逐键回退，按住会加速，再久一点按词删除。")
                 Divider()
-                Usage(icon: "wand.and.stars", title: "按触点自动纠错", text: "首选浅色底 = 已按触点位置自动纠错，字下方小字写着改了哪里（如 hap→hao：按的是 hap，读作 hao）；第二个候选下标“原键”，是按原样读的结果。上屏后候选栏左侧出现 ↩ 和刚才按的字母，点它或立刻按删除都可撤回纠错。长句中间多按或漏按了一个键（全拼：jintiantiaqi → 今天天气），整句照样读对，后面的字继续连上。")
+                Usage(icon: "wand.and.stars", title: "按触点自动纠错", text: "首选浅色底与底部微光柱代表已按触点位置自动纠错，候选栏保持清爽高密度不堆叠多余小字；轻点最左侧实时原字母槽可直接上屏原字母，上屏后点左侧 ↩ 或立刻按删除都可撤回纠错。长句中间多按或漏按了一个键（全拼：jintiantiaqi → 今天天气），整句照样读对，后面的字继续连上。")
                 Divider()
                 Usage(icon: "text.append", title: "联想", text: "联想：中文上屏后，候选栏给出接下来常用的字词，点一下直接上屏并继续联想；按任意键即收起。")
                 Divider()
                 Usage(icon: "person.text.rectangle", title: "记住你的词", text: "词库里没有的名字、说法，分几次选出来一次后就记住了：下次完整拼出或只打声母（mstd → 摸索台灯）排第一，只打前半截排第二。")
                 Divider()
-                Usage(icon: "chevron.down", title: "全部候选", text: "候选栏右侧 ⌄ 展开全部候选；长按自己学过的词可以删掉它。")
+                Usage(icon: "chevron.down", title: "全部候选", text: "候选栏右侧 ⌄ 展开全部候选，左下角「单字」一键速筛单字，顶栏全宽展示完整输入原字母；长按自己学过的词可以删掉它。")
             }
             Card(title: "中英混输与英文") {
                 Usage(icon: "character.bubble", title: "中英混输", text: "中英混输：打 ok、ios、iphone 直接出 OK、iOS、iPhone；句子里夹英文词（woyongiphonedazi → 我用iPhone打字）也能读出。拼音本身拼得出的词（women、zhang）仍先给中文。")
                 Divider()
-                Usage(icon: "a.circle", title: "英文模式", text: "英文模式（中/英 切到“英”）也按触点纠错并给出候选：teh → the、dont → don't、im → I'm；空格时替换，删除可撤回；首字母自动大写，双击空格出句号。")
+                Usage(icon: "a.circle", title: "英文模式", text: "英文模式（中/英 切到“英”）也按触点纠错并给出候选：teh → the、dont → don't、im → I'm；空格时替换，删除可撤回；首字母自动大写，轻上滑“.”出“,”，双击空格出句号。")
             }
             Card(title: "键盘与布局") {
                 Usage(icon: "square.grid.3x3", title: "九宫格", text: "中文键盘可选全键盘或九宫格；九宫格两种方案都能用：打字时左列列出可能的拼音，点一下就定下这几个键，“分词”切开音节。")
                 Divider()
-                Usage(icon: "arrow.left.and.right", title: "光标、数字与标点", text: "按住空格左右拖动移动光标。123 打开数字符号页或九宫格数字键盘（键盘设置里选；用九宫格打字时默认九宫格数字，数字输入框也自动换成它）；长按“，”键可选：。？！、…：")
+                Usage(icon: "arrow.left.and.right", title: "光标、数字与标点", text: "按住空格左右拖动移动光标。123 打开数字符号页或九宫格数字键盘（键盘设置里选；用九宫格打字时默认九宫格数字，数字输入框也自动换成它）；轻上滑“，”瞬出“。”（各页标点副符号均支持轻上滑直出），长按“，”键可选：。？！、…《（")
                 Divider()
                 Usage(icon: "face.smiling", title: "表情与键盘设置", text: "表情键：常用与八个分类，上下滑动，底栏一点跳到分类。按住表情键打开键盘设置：输入方案、九宫格、数字键盘、中英混输、自动纠错、震动与按键音、外观。")
             }
             Card(title: "Mosto 与外观") {
-                Usage(icon: "hand.tap", title: "候选栏左边的 Mosto", text: "候选栏左边的 Mosto：轻点一下打开他的颜文字（右下角“返回”回到键盘），轻点两下切换日光 / 夜灯。")
+                Usage(icon: "hand.tap", title: "候选栏左边的 Mosto", text: "候选栏左边的 Mosto：轻点一下打开他的颜文字（左下角“拼音”/“ABC”回到键盘），轻点两下切换日光 / 夜灯。")
                 Divider()
                 Usage(icon: "circle.lefthalf.filled", title: "外观", text: "外观：自动跟随系统浅色 / 深色；也可固定日光或夜灯（按键与 Mosto 换光，候选栏跟随系统，始终看得清）。")
             }

@@ -74,6 +74,7 @@ struct DemoCandidate: Identifiable {
 
 private struct Strip: View {
     var undo: String? = nil
+    var rawKeys: String? = nil
     let items: [DemoCandidate]
     @Environment(\.demoReveal) private var reveal
     var body: some View {
@@ -88,23 +89,32 @@ private struct Strip: View {
                 .padding(.horizontal, 7).padding(.vertical, 4)
                 .background(Capsule().fill(Color.kbTint))
                 .padding(.trailing, 4)
+            } else if let rawKeys {
+                HStack(spacing: 2) {
+                    Text(rawKeys).font(.system(size: 11.5, weight: .medium, design: .rounded))
+                        .foregroundStyle(Color.kbSecondary).lineLimit(1)
+                    RoundedRectangle(cornerRadius: 0.75).fill(Color.kbMark.opacity(0.78))
+                        .frame(width: 1.5, height: 11)
+                }
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(Capsule().fill(Color(uiColor: Theme.preeditPillBg)))
+                .padding(.trailing, 4)
             }
             ForEach(items) { c in
-                VStack(spacing: 0) {
-                    Text(c.text).font(.system(size: 20, design: .rounded)).foregroundStyle(Color.kbText).lineLimit(1)
-                    if let t = c.typed, let m = c.meant {
-                        (Text(t).foregroundColor(.kbSecondary) + Text("→").foregroundColor(.kbSecondary) + Text(m).foregroundColor(.kbMark))
-                            .font(.system(size: 10.5, weight: .semibold, design: .rounded)).lineLimit(1)
-                    } else if let n = c.note {
+                VStack(spacing: 1) {
+                    Text(c.text).font(.system(size: 19, weight: c.fixed ? .medium : .regular, design: .rounded)).foregroundStyle(Color.kbText).lineLimit(1)
+                    if let n = c.note {
                         Text(n).font(.system(size: 10.5, weight: .semibold, design: .rounded)).foregroundStyle(Color.kbSecondary)
+                    } else if c.fixed {
+                        RoundedRectangle(cornerRadius: 1).fill(Color.kbMark).frame(width: 14, height: 2)
                     }
                 }
-                .padding(.horizontal, 7).padding(.vertical, 3)
-                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(c.fixed ? Color.kbTint : .clear))
+                .padding(.horizontal, 7).padding(.vertical, 4)
+                .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(c.fixed ? Color.kbTint : .clear))
             }
             Spacer(minLength: 0)
         }
-        .frame(height: 44)
+        .frame(height: 42)
         .opacity(answered ? 1 : 0)
         .offset(y: answered ? 0 : 5)
         .animation(.easeOut(duration: 0.22), value: answered)
@@ -224,23 +234,23 @@ struct FeatureShowcase: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             SectionHeader(title: "打字时你会看到", subtitle: "以下画面就是键盘上的样子")
-            Demo(title: "按错了什么，改成了什么", line: "手指落在 w 靠 e 的一边：首选浅色底，下方写着 rw→re；第二个“原键”是照按下的读。") {
+            Demo(title: "按错了什么，改成了什么", line: "手指落在 w 靠 e 的一边：左侧胶囊保留原字母（轻点直接上屏），首选底部亮起 2pt 纠错微光提示已修正。") {
                 Board {
                     FieldLine(marked: "jintianhenrw")
-                    Strip(items: [
-                        DemoCandidate(text: "今天很热", typed: "rw", meant: "re", fixed: true),
-                        DemoCandidate(text: "今天很入味", note: "原键"),
+                    Strip(rawKeys: "jintianhenrw", items: [
+                        DemoCandidate(text: "今天很热", fixed: true),
+                        DemoCandidate(text: "今天很入味"),
                         DemoCandidate(text: "今天"),
                     ])
                     LetterRow(hit: "w")
                 }
             }
-            Demo(title: "长句多按、漏按一个键", line: "中间少按了 n，整句照样读对；多按一个键也一样。") {
+            Demo(title: "长句多按、漏按一个键", line: "中间少按了 n，整句照样读对；多按一个键也一样，候选条全程保持高密度清爽单行。") {
                 Board {
                     FieldLine(marked: "jintiantiaqihenhao")
-                    Strip(items: [
-                        DemoCandidate(text: "今天天气很好", typed: "tia", meant: "tian", fixed: true),
-                        DemoCandidate(text: "今天提啊起很好", note: "原键"),
+                    Strip(rawKeys: "tiaqihenhao", items: [
+                        DemoCandidate(text: "今天天气很好", fixed: true),
+                        DemoCandidate(text: "今天提啊起很好"),
                     ])
                 }
             }

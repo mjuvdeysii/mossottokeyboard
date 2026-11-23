@@ -100,6 +100,17 @@ for dirpath, _dirs, files in os.walk(KEYBOARD):
             if sm and ("useInlineMarkedText" not in sm or "candidateBar.setPreedit" not in sm):
                 problems.append(f"{path}: setMarked(_:) must gate host.setMarkedText behind useInlineMarkedText and use candidateBar.setPreedit in .appex")
 
+        if name in ("EmojiPanelView.swift", "CandidateViews.swift"):
+            # Rule 10: Any layer with shadowOpacity > 0 in EmojiPanelView/CandidateViews must configure shadowPath (no offscreen rasterization)
+            if re.search(r'\.shadowOpacity\s*=\s*(?!0(?:\.0+)?\b)\S', code) and "shadowPath" not in code:
+                problems.append(f"{path}: sets shadowOpacity > 0 without shadowPath (causes offscreen rasterization)")
+
+        if name == "CandidateViews.swift":
+            # Rule 11: CandidateBarView.pauseTimers() must invalidate forgetTimer (zero leaked timers on dismissal)
+            pt = extract_func(code, r'func\s+pauseTimers\b')
+            if pt and "forgetTimer?.invalidate()" not in pt:
+                problems.append(f"{path}: pauseTimers() must invalidate forgetTimer on keyboard dismissal")
+
         if name == "KeyboardView.swift":
             # Rule 5a: No CABasicAnimation in KeyView.pressed hot path
             kv = extract_func(code, r'final\s+class\s+KeyView\b')
