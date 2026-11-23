@@ -181,7 +181,11 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    @objc private func preeditTapped() { onPreeditTap?() }
+    @objc private func preeditTapped() {
+        preedit.alpha = 0.55
+        UIView.animate(withDuration: 0.14) { self.preedit.alpha = 1 }
+        onPreeditTap?()
+    }
 
     @objc private func expandTapped() { if gridExpanded || !candidates.isEmpty { onExpand?() } else { onSettings?() } }
 
@@ -784,39 +788,53 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
 
 
     func themeChanged() {
+        for b in [closeButton, deleteButton] {
+            b.tintColor = Theme.functionText
+            b.backgroundColor = Theme.functionKey
+            b.layer.cornerRadius = Metrics.cornerRadius
+            b.layer.shadowOffset = CGSize(width: 0, height: Metrics.lip)
+            b.layer.shadowColor = Theme.functionLip.resolvedColor(with: traitCollection).cgColor
+        }
         collection.reloadData()
+        setNeedsLayout()
     }
     final class Cell: UICollectionViewCell {
         let label = UILabel()
+        var baseBackground: UIColor = Theme.preeditPillBg
         override init(frame: CGRect) {
             super.init(frame: frame)
             label.font = CandidateBarView.font
             label.textAlignment = .center
             label.textColor = Theme.candidateText
             contentView.addSubview(label)
-            // as the system keyboard's expanded candidates: plain text on the glass, a soft highlight when pressed
-            contentView.backgroundColor = Theme.functionKey.withAlphaComponent(0.35)
-            contentView.layer.cornerRadius = 8
+            contentView.backgroundColor = Theme.preeditPillBg
+            contentView.layer.cornerRadius = 10
             contentView.layer.cornerCurve = .continuous
+            contentView.layer.borderWidth = 0.5
+            contentView.layer.borderColor = Theme.preeditPillBorder.resolvedColor(with: traitCollection).cgColor
             isAccessibilityElement = true
             accessibilityTraits = .button
         }
         required init?(coder: NSCoder) { fatalError() }
         override var accessibilityLabel: String? { get { label.text } set { } }
+        override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+            super.traitCollectionDidChange(previous)
+            contentView.layer.borderColor = Theme.preeditPillBorder.resolvedColor(with: traitCollection).cgColor
+        }
         override func layoutSubviews() {
             super.layoutSubviews()
             label.frame = contentView.bounds.insetBy(dx: 4, dy: 0)
         }
         override var isHighlighted: Bool {
-            didSet { contentView.backgroundColor = isHighlighted ? Theme.functionKey : Theme.functionKey.withAlphaComponent(0.35) }
+            didSet { contentView.backgroundColor = isHighlighted ? Theme.functionKey : baseBackground }
         }
     }
 
     override init(frame: CGRect) {
         let layout = UICollectionViewFlowLayout()
-        layout.minimumInteritemSpacing = 6
-        layout.minimumLineSpacing = 6
-        layout.sectionInset = UIEdgeInsets(top: 6, left: 6, bottom: 6, right: 6)
+        layout.minimumInteritemSpacing = 5
+        layout.minimumLineSpacing = 5
+        layout.sectionInset = UIEdgeInsets(top: 6, left: 8, bottom: 6, right: 8)
         collection = UICollectionView(frame: .zero, collectionViewLayout: layout)
         super.init(frame: frame)
         backgroundColor = Theme.touchable   // on the system glass, like the keys (never fully clear: see Theme.touchable)
@@ -836,7 +854,7 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
             b.backgroundColor = Theme.functionKey
             b.layer.cornerRadius = Metrics.cornerRadius
             b.layer.cornerCurve = .continuous
-            // the keyboard's vinyl cap: a darker lip under the face (a hard, unblurred shadow)
+            // Match keycap milled lip without offscreen rasterization (explicit shadowPath set in layoutSubviews).
             b.layer.shadowOpacity = 1
             b.layer.shadowRadius = 0
             b.layer.shadowOffset = CGSize(width: 0, height: Metrics.lip)
@@ -869,9 +887,10 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
     override func layoutSubviews() {
         super.layoutSubviews()
         let side: CGFloat = 56; closeButton.isHidden = true; closeButton.frame = .zero
-        collection.frame = bounds; collection.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: 54, right: 0)
-        let bh: CGFloat = 42
+        collection.frame = bounds; collection.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: 52, right: 0)
+        let bh: CGFloat = 40
         deleteButton.frame = CGRect(x: bounds.width - side + 4, y: bounds.height - bh - 6, width: side - 10, height: bh)
+        deleteButton.layer.shadowPath = UIBezierPath(roundedRect: deleteButton.bounds, cornerRadius: Metrics.cornerRadius).cgPath
         bringSubviewToFront(deleteButton)
     }
 
@@ -879,14 +898,23 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
 
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "c", for: indexPath) as! Cell
-        cell.label.text = candidates[indexPath.item].text; cell.contentView.backgroundColor = indexPath.item == 0 ? Theme.correctedTint : Theme.functionKey.withAlphaComponent(0.35)
+        let c = candidates[indexPath.item]
+        let isFirst = indexPath.item == 0
+        let bg = isFirst ? (c.corrected ? Theme.correctedTint : Theme.firstCandidateTint) : Theme.preeditPillBg
+        cell.label.text = c.text
+        cell.label.font = isFirst ? CandidateBarView.firstFont : CandidateBarView.font
+        cell.label.textColor = Theme.candidateText
+        cell.baseBackground = bg
+        cell.contentView.backgroundColor = bg
+        cell.contentView.layer.borderColor = Theme.preeditPillBorder.resolvedColor(with: traitCollection).cgColor
         return cell
     }
 
     func collectionView(_ collectionView: UICollectionView, layout l: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
-        let maxW = collectionView.bounds.width - 12
-        let w = ceil((candidates[indexPath.item].text as NSString).size(withAttributes: [.font: CandidateBarView.font]).width) + 24
-        return CGSize(width: min(maxW, max(48, w)), height: 44)
+        let maxW = collectionView.bounds.width - 16
+        let f = indexPath.item == 0 ? CandidateBarView.firstFont : CandidateBarView.font
+        let w = ceil((candidates[indexPath.item].text as NSString).size(withAttributes: [.font: f]).width) + 18
+        return CGSize(width: min(maxW, max(42, w)), height: 40)
     }
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {

@@ -98,7 +98,15 @@ final class KeyView: UIView {
         default: label.font = Theme.font(Metrics.functionFont, Theme.plain ? .medium : .semibold)
         }
         if let name = spec.symbol {
-            icon.image = UIImage(systemName: name, withConfiguration: UIImage.SymbolConfiguration(pointSize: Metrics.iconSize, weight: Theme.plain ? .regular : .semibold))
+            let cfg = UIImage.SymbolConfiguration(pointSize: Metrics.iconSize, weight: Theme.plain ? .regular : .semibold)
+            // Keep face.smiling in its crisp outline variant in dark mode so it harmonizes with shift & delete.
+            if name == "face.smiling" {
+                icon.image = UIImage(systemName: name, compatibleWith: UITraitCollection(userInterfaceStyle: .light))?
+                    .applyingSymbolConfiguration(cfg)?
+                    .withRenderingMode(.alwaysTemplate)
+            } else {
+                icon.image = UIImage(systemName: name, withConfiguration: cfg)
+            }
             icon.isHidden = false
         } else {
             icon.image = nil
@@ -168,7 +176,7 @@ final class KeyView: UIView {
         lip.backgroundColor = u.cgColor
         lip.shadowOpacity = 0
         let hi = Theme.keyHighlight.resolvedColor(with: t)
-        let rimScale: CGFloat = pressed ? 0.25 : (style == .accent ? (Theme.plain ? 0.42 : 0.80) : (style == .function && Theme.plain ? 0.55 : 1.0))
+        let rimScale: CGFloat = pressed ? 0.22 : (style == .accent ? (Theme.plain ? 0.42 : 0.80) : (style == .function && Theme.plain ? 0.38 : 1.0))
         rim.strokeColor = hi.withAlphaComponent(hi.cgColor.alpha * rimScale).cgColor
         wings.fillColor = Theme.wing.resolvedColor(with: t).cgColor
         crown.fillColor = Theme.accentKey.resolvedColor(with: t).cgColor
@@ -375,11 +383,11 @@ final class KeyPreview: UIView {
         horns.fillColor = Theme.cream.cgColor
         horns.strokeColor = Theme.hex(0xC9A86A).cgColor
         horns.lineWidth = 0.8
-        shape.shadowColor = Theme.deepViolet.cgColor
-        shape.shadowOpacity = 0.30
-        shape.shadowRadius = 3
-        shape.shadowOffset = CGSize(width: 0, height: 2)
-        shape.lineWidth = 1
+        shape.shadowColor = (Theme.plain ? UIColor.black : Theme.deepViolet).cgColor
+        shape.shadowOpacity = 0.16
+        shape.shadowRadius = 5
+        shape.shadowOffset = CGSize(width: 0, height: 2.5)
+        shape.lineWidth = 0.75
         label.textAlignment = .center
         label.font = Theme.font(32, .medium)
         label.textColor = Theme.keyText
@@ -431,6 +439,7 @@ final class KeyPreview: UIView {
         shape.frame = bounds
         shape.path = p.cgPath
         shape.shadowPath = p.cgPath
+        shape.shadowColor = (Theme.plain ? UIColor.black : Theme.deepViolet).cgColor
         shape.fillColor = Theme.bubble.resolvedColor(with: traitCollection).cgColor
         shape.strokeColor = Theme.bubbleLip.resolvedColor(with: traitCollection).cgColor
         horns.frame = bounds
@@ -448,6 +457,7 @@ final class KeyPreview: UIView {
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
         super.traitCollectionDidChange(previous)
+        shape.shadowColor = (Theme.plain ? UIColor.black : Theme.deepViolet).cgColor
         shape.fillColor = Theme.bubble.resolvedColor(with: traitCollection).cgColor
         shape.strokeColor = Theme.bubbleLip.resolvedColor(with: traitCollection).cgColor
     }
@@ -485,12 +495,16 @@ final class AltPopup: UIView {
         self.reversed = reversed
         super.init(frame: CGRect(x: 0, y: 0, width: cell * CGFloat(options.count) + 8, height: height))
         isUserInteractionEnabled = false
-        backgroundColor = Theme.bubble; layer.shadowColor = (Theme.plain ? UIColor.black : Theme.deepViolet).cgColor
-        layer.cornerRadius = 10
+        backgroundColor = Theme.bubble
+        layer.cornerRadius = 11
+        layer.cornerCurve = .continuous
+        layer.borderWidth = 0.5
+        layer.borderColor = Theme.bubbleLip.resolvedColor(with: traitCollection).cgColor
         layer.shadowColor = (Theme.plain ? UIColor.black : Theme.deepViolet).cgColor
-        layer.shadowOpacity = 0.30
-        layer.shadowRadius = 3
-        layer.shadowOffset = CGSize(width: 0, height: 1)
+        layer.shadowOpacity = 0.18
+        layer.shadowRadius = 6
+        layer.shadowOffset = CGSize(width: 0, height: 2.5)
+        layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: 11).cgPath
         for (i, o) in options.enumerated() {
             let slot = reversed ? options.count - 1 - i : i
             let shift = cjkPunctuationOffset(o, fontSize: 24)
@@ -501,7 +515,8 @@ final class AltPopup: UIView {
             l.font = Theme.font(24, .medium)
             l.adjustsFontSizeToFitWidth = true
             l.minimumScaleFactor = 0.5
-            l.layer.cornerRadius = 7
+            l.layer.cornerRadius = 8
+            l.layer.cornerCurve = .continuous
             l.clipsToBounds = true
             addSubview(l)
             labels.append(l)
