@@ -14,7 +14,7 @@
 - **隐私政策页面**：仓库 GitHub Pages 的 `privacy.html`（对应 `docs/privacy.html`）
 - **技术支持页面**：仓库 GitHub Pages 的 `index.html`（对应 `docs/index.html`）
 - **使用条款页面**：仓库 GitHub Pages 的 `terms.html`（对应 `docs/terms.html`）
-- **参考验证版本**：TestFlight Build 372+（R45–R49 零卡顿极速与手感精修版，基线 Commit `b18d2c1` / `36b1d56`）
+- **参考验证版本**：TestFlight Build 375+（R50 零重影单层雕塑键帽、高定哑光视觉与极速就绪重构版，基线 Commit `905b865`）
 
 ## 2. 关键词（Keywords，100 字符以内）
 
@@ -35,7 +35,7 @@ Mosto键盘是一款专注中文输入精准度与隐私安全的离线 iOS 键�
 - **行内心算与智能相对日期**：输入算式加等号（如 `286/4=`）候选栏直接给出精确结果，输入「明天」「上周一」「下周一」「上个月」「下个月」「今年」「现在」自动匹配对应日期与时间。
 - **WebView 零卡顿与实时原字母槽**：`.appex` 零 `setMarkedText` XPC + 0-XPC 中文空格断句，保障 Safari 与网页富文本编辑器丝滑跟手；顶部左侧「实时原字母槽」按输入节奏展示真实按键流（小鹤 2 键微隙 + 长串右锚定左渐隐 + 1.5pt 输入光标线，展开宫格时顶栏全宽展示），轻点即可原样上屏字母；内置 CoreText 非 BMP 生僻字形过滤，候选栏彻底告别缺字豆腐块。
 - **全键盘标点轻上滑与四档线性触感**：中文「，」与英文「.」等带副符号按键支持轻上滑瞬出副符号（无需等待长按）；普通字母 0.66 `.light` 轻脆反馈与空格/回车/删除 0.78 `.rigid` 机械锚定感分层调校。
-- **双材质视觉与高密度单行候选**：内置微扁平软胶 Mosto 质感（含 228 条颜文字与 Mosto 颜文字快捷入口）与 iOS Liquid Glass 简洁风格，高密度 42pt 单行候选栏配合 2pt 纠错微光柱提示，展开候选宫格支持「单字」一键速筛。
+- **高定哑光双材质视觉与高密度单行候选**：Mosto 主题采用零重影单层超椭圆雕塑键帽（日光奶瓷白 + 暖哑金 / 夜灯深曜石炭紫，配 4.5pt 硬件微灯珠与空格盲打凹痕）与顶栏 28pt 一体 Mosto 胶囊（内置 228 条颜文字）；简洁风格完整复刻 iOS Liquid Glass；配合高速自适应无闪反馈（连打 `<130ms` 抑制遮挡气泡）与高密度 42pt 单行候选栏，展开候选宫格支持「单字」一键速筛。
 - **工程级质量门禁实测（基于引擎回归基准）**：
   - 全拼自动纠错与顺手换位句级基准：`transpose.sentences` Top-1 59.21%（Top-3 67.11%）
   - 小鹤双拼核心指标均受 CI 自动化质量门禁保护（包含触控噪声词级/句级准确率、误纠率 <= 1.0%、平均解码时延 <= 3.0 ms、中英混输与冷启动联想时延）
@@ -92,12 +92,12 @@ Thank you for reviewing Mosto Keyboard (Mosto键盘).
 | 4 | 双材质键盘美学 | 3D 实体键帽与 Liquid Glass 随心切换 | 对角线切分或双卡片同屏对比浅色 3D 实体键帽质感与深色 Liquid Glass 质感，呈现精致光影细节 | 真实渲染界面截图，严禁过度滤镜或失真装饰 |
 | 5 | 上手即练，双拼零门槛 | 内置键位图与互动练习场 | 展示伴侣 App 内置练习输入框与小鹤双拼键位参考面板，演示从新手查键到流畅盲打的完整闭环 | 保持伴侣 App 实际 UI 比例与克制排版，突出实用工具感 |
 
-## 7. 提审前最终自检清单（R49 1.0 最终集结核对）
+## 7. 提审前最终自检清单（R50 1.0 最终集结核对）
 
 - [x] **CI 与 SDK 链路核查**：`build` 任务运行于 `macos-15`（`Xcode 26.3 / 17C529`，iOS 26 SDK）负责全量编译、模拟器快照、Keyboard Test Bench 与引擎质量门禁；`testflight` 任务运行于 `xcode-27`（iOS 27 SDK）负责 Release 归档、自动云端签名与上传 TestFlight。
 - [x] **签名与容器边界**：`.xcodeproj` 零签名改动、零新增 `.entitlements`，`App/PrivacyInfo.xcprivacy` 与 `Keyboard/Resources/PrivacyInfo.xcprivacy` 声明完整，`ITSAppUsesNonExemptEncryption = NO`。
-- [x] **11 条静态门禁全绿**：`Tools/check_offline.py`、`Tools/check_no_sync_tap.py` 与 `Tools/check_ios_keyboard_rules.py` 全量通过。
-- [x] **核心体验打磨（R35–R49）**：`.appex` 零 `setMarkedText` XPC + 顶部实时原字母槽（小鹤 2 键韵律微隙 / 长串右锚定左渐隐 / 展开宫格全宽）、高密度单行候选栏（2pt 纠错微光柱 / 12pt 圆角避让）、全键盘标点轻上滑手势、展开宫格「单字」速筛、CoreText 非 BMP 零豆腐块、0-XPC 中文空格断句、四档线性触感、228 条颜文字与相对日期/时间补全、行内心算（`286/4=`）、零主线程 `queue.sync`、Grapheme Cluster 空格拖光标、成对标点联动双删与成熟三 Tab 伴侣 App。
+- [x] **13 条静态门禁全绿**：`Tools/check_offline.py`、`Tools/check_no_sync_tap.py` 与 `Tools/check_ios_keyboard_rules.py` 全量通过。
+- [x] **核心体验与性能架构打磨（R35–R50）**：零重影单层雕塑键帽 + 高速自适应无闪浮标池、懒加载设置与候选宫格、弹出 0 XPC + 两阶段毫秒级引擎秒启 + 可抢占联想 + 后台 CoreText 校验、收起键盘保留热缓存、`AmbientLightView` 零全屏遮罩与零空转动画、`.appex` 零 `setMarkedText` XPC + 顶部实时原字母槽、全键盘标点轻上滑手势、228 条颜文字与相对日期/时间补全、行内心算（`286/4=`）、0-XPC 空格断句与成熟三 Tab 伴侣 App。
 - [ ] 核对 App Store Connect 中隐私政策 URL、技术支持 URL 与 `docs/privacy.html`、`docs/index.html` 线上可访问性。
 - [ ] 核对 App Store Connect 隐私标签已勾选“不收集数据（Data Not Collected）”。
 - [ ] 使用真机（未开启“允许完全访问”）完整复测小鹤双拼、全拼、九宫格、成对标点联动删除与中英混输。

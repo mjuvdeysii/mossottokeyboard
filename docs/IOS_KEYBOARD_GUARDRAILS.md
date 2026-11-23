@@ -12,9 +12,10 @@
 
 ## 2. CoreAnimation 渲染与帧率红线（120Hz ProMotion 零掉帧）
 - **铁律**：
-  1. **严禁对 `shadowPath == nil` 的图层设置 `shadowOpacity > 0`**（含 `KeyView`、`EmojiPanelView`、`CandidateGridView` 等全扩展面板，由 `Rule 10` 静态扫描兜底）——CoreAnimation 会每帧执行离屏 Alpha 阴影光栅化，直接拖垮帧率并推高脏内存。
-  2. **严禁在 `KeyView.pressed` 热路径上创建 `CABasicAnimation` / `CADisplayLink`**——高频连打与 3,600 键压测会造成渲染管线竞争或主线程抖动。
-  3. 键盘收起/离窗（`viewWillDisappear` / `viewDidDisappear` / `didMoveToWindow(nil)`）后必须 **0 后台定时器、0 无限循环动画、0 额外震动引擎保活**（`CandidateBarView.pauseTimers()` 必须释放 `forgetTimer`，由 `Rule 11` 门禁）。
+  1. **严禁对 `shadowPath == nil` 的图层设置 `shadowOpacity > 0`**（含 `KeyView`、`KeyPreview`、`EmojiPanelView`、`CandidateGridView` 等全扩展面板，由 `Rule 5b` / `Rule 10` 静态扫描兜底）——CoreAnimation 会每帧执行离屏 Alpha 阴影光栅化，直接拖垮帧率并推高脏内存；单层 `KeyView` 采用同心 `.continuous` 圆角 + `0.5pt` 内描边 + 缓存 `shadowPath`，按压态只切换背景与无模糊底线，不做文字垂直位移与错位高光环。
+  2. **严禁全屏遮罩与空转呼吸动画（Rule 12）**：`AmbientLightView` 严禁挂载全屏 `layer.mask` 或启动 `CABasicAnimation` 无限循环，以免在 iOS Liquid Glass 实时模糊层上叠加离屏合成拖影。
+  3. **严禁在 `KeyView.pressed` 热路径上创建 `CABasicAnimation` / `CADisplayLink`**——高频连打与 3,600 键压测会造成渲染管线竞争或主线程抖动；长按空闲动画禁止 1.2s 双影交叉溶解（`transitionCrossDissolve`）。
+  4. **热缓存保活与定时/面板懒加载（Rule 11 / Rule 13）**：键盘收起（`viewDidDisappear`）后释放隐藏的懒加载面板并停掉全部后台定时器（`pauseTimers()` 清理 `forgetTimer` 等），但严禁在 `viewDidDisappear` 调用 `engine.trim()` 清空引擎热缓存（仅在 `didReceiveMemoryWarning` 时释放可重建缓存）；`applyAppearance` 严禁提前初始化未打开的 `grid` / `settingsPanel` / `emojiPanel`。
 
 ## 3. 主线程零阻塞与点击必达（防 Watchdog 与“点首选不上屏”）
 - **铁律**：

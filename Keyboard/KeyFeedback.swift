@@ -96,10 +96,10 @@ final class SystemFeedbackPlayer: FeedbackPlayer {
     private let plainTick = UISelectionFeedbackGenerator()
     private(set) var played = 0
     private var lastImpactTime: CFTimeInterval = 0
+    private var lastPrepareTime: CFTimeInterval = 0
     private static let minImpactInterval: CFTimeInterval = 0.032
-    /// Click sounds are started off the main thread: AudioServicesPlaySystemSound can block for a few milliseconds
-    /// (most of all on the first sound after the keyboard appears), and the key press must not wait for it.
-    private static let soundQueue = DispatchQueue(label: "mosto.keysound", qos: .userInteractive, attributes: .concurrent)
+    /// Serialized high-priority sound queue prevents rapid-typing AudioServices contention.
+    private static let soundQueue = DispatchQueue(label: "mosto.keysound", qos: .userInteractive)
 
     init(view: UIView) {
         self.view = view
@@ -138,7 +138,7 @@ final class SystemFeedbackPlayer: FeedbackPlayer {
             let tuned: CGFloat = firm ? 0.78 : 0.66
             if #available(iOS 17.5, *), onView, let point = point ?? centre { g.impactOccurred(intensity: tuned, at: point) }
             else { g.impactOccurred(intensity: tuned) }
-            if onView { g.prepare() }
+            if onView && now - lastPrepareTime > 0.40 { lastPrepareTime = now; g.prepare() }
         case .soft:
             played += 1
             let g = onView ? soft : plainSoft
@@ -149,7 +149,8 @@ final class SystemFeedbackPlayer: FeedbackPlayer {
             let g = onView ? tick : plainTick
             if #available(iOS 17.5, *), onView, let point = point ?? centre { g.selectionChanged(at: point) }
             else { g.selectionChanged() }
-            if onView { g.prepare() }
+            let now = CACurrentMediaTime()
+            if onView && now - lastPrepareTime > 0.40 { lastPrepareTime = now; g.prepare() }
         }
     }
 

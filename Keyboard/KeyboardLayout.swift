@@ -87,10 +87,10 @@ enum Metrics {
     static let toolbarHeightLandscape: CGFloat = 38
     static let gapX: CGFloat = 6
     static let gapY: CGFloat = 10
-    /// The precision contact lip under each cap (1.0 pt milled edge in Plain, 1.6 pt soft-vinyl in Mosto).
-    static var lip: CGFloat { Theme.plain ? 1.0 : 1.6 }
-    /// Apple continuous squircle cap corners (unified across lip, face, and top specular rim).
-    static var cornerRadius: CGFloat { Theme.plain ? 8.5 : 10.0 }
+    /// Precision 1.0 pt bottom contact grounding across both styles.
+    static var lip: CGFloat { 1.0 }
+    /// Apple continuous squircle cap corners.
+    static var cornerRadius: CGFloat { Theme.plain ? 8.5 : 9.5 }
     static let letterFont: CGFloat = 24
     static let symbolFont: CGFloat = 24
     static let functionFont: CGFloat = 15.5
@@ -273,96 +273,113 @@ enum Theme {
     static let violet = hex(0x633EBF), deepViolet = hex(0x2B1961), cream = hex(0xFFE4A8), gold = hex(0xD69A34)
     static let goldGlow = hex(0xFFC45A)
 
-    /// 简洁 (无主题): plain keys in the system's greys, no Mosto, no wings or crown, the system type — 日光 and 夜光.
+    /// 简洁 (无主题): plain keys in the system's greys, no Mosto, the system type — 日光 and 夜光.
     static var plain = false
 
-    /// The toy's type: SF Rounded (Chinese falls back to the system face); the system face when plain.
+    private struct FontKey: Hashable { let plain: Bool; let size10: Int; let weight: CGFloat }
+    private static var fontCache: [FontKey: UIFont] = [:]
+
+    /// The toy's type: SF Rounded (Chinese falls back to the system face); the system face when plain. Cached per (style, size, weight).
     static func font(_ size: CGFloat, _ weight: UIFont.Weight = .medium) -> UIFont {
+        let key = FontKey(plain: plain, size10: Int((size * 10).rounded()), weight: weight.rawValue)
+        if let cached = fontCache[key] { return cached }
         let f = UIFont.systemFont(ofSize: size, weight: weight)
-        if plain { return f }
-        guard let d = f.fontDescriptor.withDesign(.rounded) else { return f }
-        return UIFont(descriptor: d, size: size)
+        let resolved: UIFont
+        if plain {
+            resolved = f
+        } else if let d = f.fontDescriptor.withDesign(.rounded) {
+            resolved = UIFont(descriptor: d, size: size)
+        } else {
+            resolved = f
+        }
+        fontCache[key] = resolved
+        return resolved
     }
 
-    /// No tint over the system glass: the system draws its glass beyond the keyboard's view (the margin above the
-    /// strip, the globe row below), so any colour laid on it shows as a box inside a grey frame. The keys are the toy;
-    /// the glass stays the system's, by day and at night alike.
     static let glassTint = UIColor.clear
     static let forcedNightTint = UIColor.clear
     static let forcedDayTint = UIColor.clear
-    /// The keyboard's own surfaces: almost invisible (2 % grey over the system glass) but never fully transparent —
-    /// inside a keyboard extension iOS does not deliver a touch that lands on a fully transparent point, even in a
-    /// view that would take it. With clear backgrounds, fast taps landing in the gaps between keys, above the top row
-    /// or in the empty strip were simply lost ("打空").
-    static let touchable = UIColor(white: 0.5, alpha: 0.02)
+    /// Uniform touch-hit backing on root (invisible 1.2% grey prevents iOS extension gap drops without dark banding).
+    static let touchable = UIColor(white: 0.5, alpha: 0.012)
     /// Opaque panels over the keys (candidate grid, settings).
-    static var panel: UIColor { plain ? plain_panel : mosto_panel }   // opaque: keys must not show through a panel
-    private static let mosto_panel: UIColor = dyn(hex(0xEEE8F8), hex(0x1D1442))
+    static var panel: UIColor { plain ? plain_panel : mosto_panel }
+    private static let mosto_panel: UIColor = dyn(hex(0xF0EDF6), hex(0x191625))
     private static let plain_panel: UIColor = dyn(hex(0xF2F2F7), hex(0x1C1C1E))
     /// Settings: grouped background, rounded groups, hairline separators.
     static var settingsGroup: UIColor { plain ? plain_settingsGroup : mosto_settingsGroup }
-    private static let mosto_settingsGroup: UIColor = dyn(UIColor(white: 1, alpha: 0.85), hex(0x3A2C7A, 0.55))
+    private static let mosto_settingsGroup: UIColor = dyn(UIColor(white: 1, alpha: 0.88), hex(0x2E2942, 0.72))
     private static let plain_settingsGroup: UIColor = dyn(UIColor(white: 1, alpha: 0.9), UIColor(white: 1, alpha: 0.08))
     static var separator: UIColor { plain ? plain_separator : mosto_separator }
 
-    // Vinyl caps: face (top → bottom) over a darker lip.
-    private static let mosto_separator: UIColor = dyn(hex(0x2B1961, 0.12), UIColor(white: 1, alpha: 0.12))
+    // Monolith matte vinyl caps (Day: ceramic ivory + cool lavender stone + brushed gold; Night: obsidian charcoal-violet).
+    private static let mosto_separator: UIColor = dyn(hex(0x22193D, 0.12), UIColor(white: 1, alpha: 0.12))
     private static let plain_separator: UIColor = dyn(UIColor(white: 0, alpha: 0.12), UIColor(white: 1, alpha: 0.12))
-    static var key: UIColor { plain ? plain_key : mosto_key }              // letter face
-    private static let mosto_key: UIColor = dyn(hex(0xFAF7FF), hex(0x45368A))
-    private static let plain_key: UIColor = dyn(hex(0xFAFBFD, 0.98), hex(0x3D3E43, 0.96))
+    static var key: UIColor { plain ? plain_key : mosto_key }
+    private static let mosto_key: UIColor = dyn(hex(0xFCFBF8), hex(0x2D283E))
+    private static let plain_key: UIColor = dyn(hex(0xFFFFFF), hex(0x3D3E43))
     static var keyTop: UIColor { plain ? plain_keyTop : mosto_keyTop }
-    private static let mosto_keyTop = dyn(hex(0xFFFFFF), hex(0x4E3F96))
-    private static let plain_keyTop: UIColor = dyn(hex(0xFFFFFF, 0.99), hex(0x47484E, 0.96))
+    private static let mosto_keyTop = mosto_key
+    private static let plain_keyTop: UIColor = plain_key
     static var keyLip: UIColor { plain ? plain_keyLip : mosto_keyLip }
-    private static let mosto_keyLip: UIColor = dyn(hex(0xC8B9E8), hex(0x191042))
-    private static let plain_keyLip: UIColor = dyn(hex(0xB8BDC8, 0.85), hex(0x141518, 0.95))
+    private static let mosto_keyLip: UIColor = dyn(hex(0xD3CCE2), hex(0x161321))
+    private static let plain_keyLip: UIColor = dyn(hex(0xBEC3CE), hex(0x16171A))
     static var keyPressed: UIColor { plain ? plain_keyPressed : mosto_keyPressed }
-    private static let mosto_keyPressed: UIColor = dyn(hex(0xEBE3FA), hex(0x5B4BB0))
-    private static let plain_keyPressed: UIColor = dyn(hex(0xE4E7EE, 0.98), hex(0x585A62, 0.96))
-    static var functionKey: UIColor { plain ? plain_functionKey : mosto_functionKey }      // function face (distinct tactile hierarchy)
-    private static let mosto_functionKey: UIColor = dyn(hex(0xDCD3F2), hex(0x2B2063))
-    private static let plain_functionKey: UIColor = dyn(hex(0xCED4DF, 0.95), hex(0x27282D, 0.94))
+    private static let mosto_keyPressed: UIColor = dyn(hex(0xE9E3F5), hex(0x413A59))
+    private static let plain_keyPressed: UIColor = dyn(hex(0xE5E7EE), hex(0x565860))
+    static var functionKey: UIColor { plain ? plain_functionKey : mosto_functionKey }
+    private static let mosto_functionKey: UIColor = dyn(hex(0xE6E1F0), hex(0x1F1C2C))
+    private static let plain_functionKey: UIColor = dyn(hex(0xD2D6E0), hex(0x28292E))
     static var functionTop: UIColor { plain ? plain_functionTop : mosto_functionTop }
-    private static let mosto_functionTop = dyn(hex(0xE4DCF7), hex(0x32266E))
-    private static let plain_functionTop: UIColor = dyn(hex(0xD8DDE8, 0.96), hex(0x2E2F35, 0.94))
+    private static let mosto_functionTop = mosto_functionKey
+    private static let plain_functionTop: UIColor = plain_functionKey
     static var functionLip: UIColor { plain ? plain_functionLip : mosto_functionLip }
-    private static let mosto_functionLip: UIColor = dyn(hex(0xA695D9), hex(0x120B33))
-    private static let plain_functionLip: UIColor = dyn(hex(0xA8B0BE, 0.88), hex(0x101114, 0.95))
+    private static let mosto_functionLip: UIColor = dyn(hex(0xBFB5D6), hex(0x12101B))
+    private static let plain_functionLip: UIColor = dyn(hex(0xB0B6C4), hex(0x121316))
     static var functionPressed: UIColor { plain ? plain_functionPressed : mosto_functionPressed }
-    private static let mosto_functionPressed: UIColor = dyn(hex(0xFFFDF8), hex(0x46378C))
-    private static let plain_functionPressed: UIColor = dyn(hex(0xFFFFFF, 0.98), hex(0x44454B, 0.96))
-    static var accentKey: UIColor { plain ? plain_accentKey : mosto_accentKey }         // the crown / iOS Liquid Glass blue
-    private static let mosto_accentKey: UIColor = dyn(hex(0xE6B655), hex(0xE3B04F))
+    private static let mosto_functionPressed: UIColor = dyn(hex(0xD5CCE8), hex(0x342F49))
+    private static let plain_functionPressed: UIColor = dyn(hex(0xFFFFFF), hex(0x43444B))
+    static var accentKey: UIColor { plain ? plain_accentKey : mosto_accentKey }
+    private static let mosto_accentKey: UIColor = dyn(hex(0xDFA940), hex(0xD8A13B))
     private static let plain_accentKey: UIColor = dyn(hex(0x007AFF), hex(0x0A84FF))
     static var accentTop: UIColor { plain ? plain_accentTop : mosto_accentTop }
-    private static let mosto_accentTop = dyn(hex(0xEDC36E), hex(0xE9BC62))
-    private static let plain_accentTop: UIColor = dyn(hex(0x2895FF), hex(0x329BFF))
+    private static let mosto_accentTop = mosto_accentKey
+    private static let plain_accentTop: UIColor = plain_accentKey
+    static var accentPressed: UIColor { plain ? plain_accentPressed : mosto_accentPressed }
+    private static let mosto_accentPressed: UIColor = dyn(hex(0xC9922C), hex(0xBE8828))
+    private static let plain_accentPressed: UIColor = dyn(hex(0x0062CC), hex(0x0070E0))
     static var accentLip: UIColor { plain ? plain_accentLip : mosto_accentLip }
-    private static let mosto_accentLip: UIColor = dyn(hex(0xA9741F), hex(0x7C5112))
+    private static let mosto_accentLip: UIColor = dyn(hex(0xB37E20), hex(0x8C6115))
     private static let plain_accentLip: UIColor = dyn(hex(0x005EC4), hex(0x005BBF))
     static var accentText: UIColor { plain ? plain_accentText : mosto_accentText }
-    private static let mosto_accentText: UIColor = hex(0x2B1961)
+    private static let mosto_accentText: UIColor = hex(0x241748)
     private static let plain_accentText: UIColor = UIColor.white
+    static var keyBorder: UIColor { plain ? plain_keyBorder : mosto_keyBorder }
+    private static let mosto_keyBorder: UIColor = dyn(hex(0x22193D, 0.08), UIColor(white: 1, alpha: 0.09))
+    private static let plain_keyBorder: UIColor = dyn(UIColor(white: 0, alpha: 0.08), UIColor(white: 1, alpha: 0.10))
+    static var statusLedActive: UIColor { plain ? plain_statusLedActive : mosto_statusLedActive }
+    private static let mosto_statusLedActive: UIColor = dyn(hex(0x6B47C8), hex(0xE8B752))
+    private static let plain_statusLedActive: UIColor = dyn(hex(0x007AFF), hex(0x0A84FF))
+    static var statusLedMuted: UIColor { dyn(UIColor(white: 0, alpha: 0.16), UIColor(white: 1, alpha: 0.22)) }
+    static var spaceNotch: UIColor { plain ? plain_spaceNotch : mosto_spaceNotch }
+    private static let mosto_spaceNotch: UIColor = dyn(hex(0x22193D, 0.22), hex(0xF3EDE2, 0.26))
+    private static let plain_spaceNotch: UIColor = dyn(UIColor(white: 0, alpha: 0.16), UIColor(white: 1, alpha: 0.22))
     static var keyHighlight: UIColor { plain ? plain_keyHighlight : mosto_keyHighlight }
     private static let mosto_keyHighlight = dyn(UIColor(white: 1, alpha: 0.80), hex(0xFFE4A8, 0.28))
     private static let plain_keyHighlight: UIColor = dyn(UIColor(white: 1, alpha: 0.90), UIColor(white: 1, alpha: 0.20))
     static var bubble: UIColor { plain ? plain_bubble : mosto_bubble }
-    private static let mosto_bubble: UIColor = dyn(hex(0xFFFFFF), hex(0x52429E))
+    private static let mosto_bubble: UIColor = dyn(hex(0xFFFFFF), hex(0x3A3450))
     private static let plain_bubble: UIColor = dyn(hex(0xFFFFFF), hex(0x52535A))
     static var bubbleLip: UIColor { plain ? plain_bubbleLip : mosto_bubbleLip }
-    /// The wings on the space bar.
-    private static let mosto_bubbleLip: UIColor = dyn(hex(0xD5C9EE), hex(0x231859))
+    private static let mosto_bubbleLip: UIColor = dyn(hex(0xCFC7E0), hex(0x524A6E))
     private static let plain_bubbleLip: UIColor = dyn(hex(0xC2C7D0), hex(0x232428))
     static var wing: UIColor { plain ? plain_wing : mosto_wing }
     private static let mosto_wing: UIColor = dyn(hex(0xAE99E8), hex(0x6E59C9))
     private static let plain_wing: UIColor = UIColor.clear
     static var keyText: UIColor { plain ? plain_keyText : mosto_keyText }
-    private static let mosto_keyText: UIColor = dyn(hex(0x2B1961), hex(0xFFF3DC))
+    private static let mosto_keyText: UIColor = dyn(hex(0x22193D), hex(0xF3EDE2))
     private static let plain_keyText: UIColor = dyn(hex(0x111216), hex(0xFFFFFF))
     static var functionText: UIColor { plain ? plain_functionText : mosto_functionText }
-    /// The soft contact shadow under each cap.
-    private static let mosto_functionText: UIColor = dyn(hex(0x2B1961), hex(0xD9CCFF))
+    private static let mosto_functionText: UIColor = dyn(hex(0x372B5C), hex(0xD4CCE8))
     private static let plain_functionText: UIColor = dyn(hex(0x1E2028), hex(0xF2F2F7))
     static var keyShadow: UIColor { plain ? plain_keyShadow : mosto_keyShadow }
     /// `a` moved `k` of the way towards `b` (opaque colours).

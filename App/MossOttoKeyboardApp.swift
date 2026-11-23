@@ -90,10 +90,10 @@ private let featureItems: [FeatureItem] = [
                 detail: "同时内置全拼、纯小鹤双拼（每字固定 2 键、无形码）与九宫格布局，中英混输自动识别大小写，设置跨版本保留。", lessonTitle: nil),
     FeatureItem(id: "mix", icon: "equal.square", title: "心算与智能日期", stat: "286/4= · 相对日期",
                 detail: "输入算式加等号（如 286/4=）候选栏即出精准结果，支持括号与四则运算；输入明天、下周一、今年、本月自动出对应日期。", lessonTitle: "中英混输"),
-    FeatureItem(id: "kaomoji", icon: "bolt.horizontal", title: "零卡顿流畅引擎", stat: "0-XPC · 标点上滑 · 零乱码",
-                detail: ".appex 零 setMarkedText XPC 与 0-XPC 空格断句，Safari 与网页编辑器零卡顿；左侧实时原字母韵律槽 + 标点轻上滑直出副符号 + CoreText 零豆腐块。", lessonTitle: nil),
-    FeatureItem(id: "glass", icon: "square.on.square", title: "微扁平双风格", stat: "iOS 原生 · Mosto 软胶",
-                detail: "简洁模式复刻系统液态玻璃比例与纯净单行候选栏；Mosto 模式采用微扁平哑光软胶底沿与日/夜灯暖金高光，一键切换。", lessonTitle: nil),
+    FeatureItem(id: "kaomoji", icon: "bolt.horizontal", title: "极速就绪与零重影", stat: "两阶段秒启 · 自适应无闪",
+                detail: ".appex 两阶段毫秒级就绪、懒加载面板、热缓存保活与可抢占联想；连续快打抑制遮挡气泡零残影，左侧原字母槽配标点轻上滑直出副符号。", lessonTitle: nil),
+    FeatureItem(id: "glass", icon: "square.on.square", title: "高定哑光双风格", stat: "iOS 原生 · 奶瓷 / 曜石紫",
+                detail: "简洁模式复刻系统液态玻璃比例；Mosto 模式采用零重影单层雕塑哑光键帽、硬件微灯珠与空格盲打凹痕，配 28pt 顶栏一体胶囊。", lessonTitle: nil),
     FeatureItem(id: "offline", icon: "lock.shield", title: "纯离线 · 零追踪", stat: "0 联网 · 0 剪贴板",
                 detail: "键盘扩展全程本机只读 mmap 计算，不含任何网络请求、剪贴板读取、第三方 SDK 或共享容器，保持默认权限即可完整使用。", lessonTitle: nil),
 ]
@@ -105,8 +105,8 @@ private enum StageMood: Int, CaseIterable {
     }
     var subtitle: String {
         switch self {
-        case .day: return "微扁平软胶 · 哑光柔面"
-        case .night: return "暗夜绒面 · 暖金细高光"
+        case .day: return "温润奶瓷白 · 哑光零重影"
+        case .night: return "深曜石炭紫 · 暖哑金点睛"
         case .plain: return "系统比例 · 液态玻璃"
         }
     }

@@ -118,18 +118,14 @@ final class MostoView: UIView {
     /// Snapshot support: the yawn, at once.
     func demoYawn() { image.image = yawn }
 
-    /// Slowly into the yawn (1.2 s), held about seven seconds, slowly out again.
+    /// Crisp yawn without cross-dissolve double-face ghosting.
     private func slowYawn() {
         guard night, !isHidden, let yawn else { return }
         yawned = true
-        UIView.transition(with: image, duration: 1.2, options: [.transitionCrossDissolve, .allowUserInteraction]) {
-            self.image.image = yawn
-        }
-        timer = Timer.scheduledTimer(withTimeInterval: 1.2 + 7, repeats: false) { [weak self] _ in
+        image.image = yawn
+        timer = Timer.scheduledTimer(withTimeInterval: 7.0, repeats: false) { [weak self] _ in
             guard let self, self.night else { return }
-            UIView.transition(with: self.image, duration: 1.2, options: [.transitionCrossDissolve, .allowUserInteraction]) {
-                self.image.image = self.sleep
-            }
+            self.image.image = self.sleep
         }
     }
 }

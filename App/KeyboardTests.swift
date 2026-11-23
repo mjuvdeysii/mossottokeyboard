@@ -125,6 +125,7 @@ enum KeyboardTests {
         clearSwipe(window)
         r48Features(window)
         r49Features(window)
+        r50CraftAndReadiness(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -1330,6 +1331,53 @@ enum KeyboardTests {
                 "r49.xiageyue offers next month dynamic candidate",
                 "cands=\(Array(monthCands))")
         } else { log(false, "r49.dynamic date setup", "engine did not load") }
+    }
+
+    static func r50CraftAndReadiness(_ window: UIWindow) {
+        log(Theme.font(24, .regular) === Theme.font(24, .regular),
+            "r50.Theme.font caches identical font instances across keystrokes")
+        log(AmbientLightView().layer.mask == nil,
+            "r50.AmbientLightView uses zero offscreen full-screen layer mask")
+
+        if let kb = makeKeyboard(scheme: 0, in: window) {
+            let (vc, _) = kb
+            let lazyOk = !vc.settingsPanelLoadedForTests && !vc.gridLoadedForTests && vc.diagnosticsForTests.contains("完全访问")
+            log(lazyOk,
+                "r50.settings & grid panels remain lazy before opening while diagnostics stay readable",
+                "settingsLoaded=\(vc.settingsPanelLoadedForTests) gridLoaded=\(vc.gridLoadedForTests)")
+
+            let kview = vc.keyboardViewForTests
+            let keySubviews = kview.subviews.filter { $0 is KeyView }
+            let gradCount = keySubviews.reduce(0) { acc, kv in
+                acc + (kv.layer.sublayers?.filter { $0 is CAGradientLayer }.count ?? 0)
+            }
+            log(!keySubviews.isEmpty && gradCount == 0,
+                "r50.single-layer monolith KeyViews have zero CAGradientLayer sublayers",
+                "keys=\(keySubviews.count) gradients=\(gradCount)")
+
+            if let rn = kview.keyRectsForTests(.char("n")), let ri = kview.keyRectsForTests(.char("i")) {
+                let pn = CGPoint(x: rn.cap.midX, y: rn.cap.midY)
+                let pi = CGPoint(x: ri.cap.midX, y: ri.cap.midY)
+                kview.feedForTests([
+                    TouchSample(id: 50, phase: .began, point: pn, time: 30.00),
+                    TouchSample(id: 50, phase: .ended, point: pn, time: 30.04),
+                ])
+                let slowShown = kview.lastPreviewShownForTests
+                kview.feedForTests([
+                    TouchSample(id: 51, phase: .began, point: pi, time: 30.07),
+                    TouchSample(id: 51, phase: .ended, point: pi, time: 30.11),
+                ])
+                let rapidShown = kview.lastPreviewShownForTests
+                settle(vc)
+                log(slowShown && !rapidShown && vc.testState.keys == "ni",
+                    "r50.velocity-adaptive preview shows on slow tap and suppresses occluding popup during rapid burst (<130ms)",
+                    "slowShown=\(slowShown) rapidShown=\(rapidShown) keys=\(vc.testState.keys)")
+            } else {
+                log(false, "r50.adaptive preview key rect lookup", "missing n or i key")
+            }
+        } else {
+            log(false, "r50.craft setup", "engine did not load")
+        }
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

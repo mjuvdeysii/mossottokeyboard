@@ -308,8 +308,8 @@ struct FeatureShowcase: View {
                 }
             }
             HStack(alignment: .top, spacing: 12) {
-                LightCard(image: "Mosto", title: "日光", text: "瞪大眼睛看你打字，不打字时待在候选栏左边，偶尔眨眼。", night: false)
-                LightCard(image: "MostoNight", title: "夜灯", text: "眯眼坏笑，尾巴尖亮起灯珠的金光，待在候选栏左边；键盘闲下来，他会慢慢打个哈欠。", night: true)
+                LightCard(image: "Mosto", title: "日光", text: "奶瓷白哑光键帽配灰薰衣草功能键，不打字时在顶栏左侧 28pt 胶囊里陪伴，偶尔眨眼。", night: false)
+                LightCard(image: "MostoNight", title: "夜灯", text: "深曜石炭紫哑光键帽配暖月白字符，眯眼坏笑待在顶栏左胶囊；闲下来偶尔打个哈欠。", night: true)
             }
         }
     }

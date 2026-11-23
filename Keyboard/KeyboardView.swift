@@ -4,12 +4,16 @@ final class KeyView: UIView {
     private(set) var spec: KeySpec
     private(set) var borders = false
     private let label = UILabel()
-    private let hintLabel = UILabel()
-    /// 小鹤键位提示: the initial and finals under the letter
-    private let guideLabel = UILabel()
+    private var hintLabel: UILabel?
+    /// 小鹤键位提示: lazily created only when guide is enabled.
+    private var guideLabel: UILabel?
     private let icon = UIImageView()
 
-    var pressed = false { didSet { if pressed != oldValue { updateColors() } } }
+    /// Mosto studio micro-craft: hardware status indicator on 中/英 and Shift, homing bar on Space.
+    private var statusDot: CALayer?
+    private var spaceNotch: CALayer?
+
+    var pressed = false { didSet { if pressed != oldValue { applyPressState() } } }
     private var hasApplied = false
     /// While the space bar drives the cursor the other caps go blank, as in the iOS trackpad mode.
     var blanked = false {
@@ -17,57 +21,44 @@ final class KeyView: UIView {
             guard blanked != oldValue else { return }
             UIView.animate(withDuration: 0.15) {
                 let a: CGFloat = self.blanked ? 0 : 1
-                self.label.alpha = a; self.hintLabel.alpha = a; self.icon.alpha = a; self.guideLabel.alpha = a
+                self.label.alpha = a; self.hintLabel?.alpha = a; self.icon.alpha = a; self.guideLabel?.alpha = a
             }
-            wings.isHidden = blanked || spec.action != .space
-            crown.isHidden = blanked || spec.action != .toggleLanguage
+            statusDot?.isHidden = blanked || Theme.plain || !(spec.action == .toggleLanguage || spec.action == .shift)
+            spaceNotch?.isHidden = blanked || Theme.plain || spec.action != .space || bounds.width <= 120
         }
     }
 
-    /// The vinyl cap: a darker lip, the face over it (top-lit), and on the space bar Mosto's two wings.
-    private let lip = CALayer()
-    private let face = CAGradientLayer()
-    /// The light catching the cap's rounded top edge (soft vinyl, matte: a rim, not a gloss).
-    private let rim = CAShapeLayer()
-    private let wings = CAShapeLayer()
-    private let crown = CAShapeLayer()
+    private var currentStyle: KeyStyle = .normal
+    private var restBg: CGColor = UIColor.white.cgColor
+    private var pressedBg: CGColor = UIColor.lightGray.cgColor
+    private var restFg: UIColor = Theme.keyText
+    private var pressedFg: UIColor = Theme.keyText
+    private static var symbolCache: [String: UIImage] = [:]
+
+    private static func cachedSymbol(_ name: String) -> UIImage? {
+        let k = name + (Theme.plain ? "_p" : "_m")
+        if let img = symbolCache[k] { return img }
+        let cfg = UIImage.SymbolConfiguration(pointSize: Metrics.iconSize, weight: Theme.plain ? .regular : .semibold)
+        guard let img = UIImage(systemName: name, withConfiguration: cfg)?.withRenderingMode(.alwaysTemplate) else { return nil }
+        symbolCache[k] = img
+        return img
+    }
 
     init(spec: KeySpec, borders: Bool) {
         self.spec = spec
         super.init(frame: .zero)
         isUserInteractionEnabled = false
-        lip.cornerRadius = Metrics.cornerRadius
-        lip.cornerCurve = .continuous
-        face.cornerRadius = Metrics.cornerRadius
-        face.cornerCurve = .continuous
-        face.startPoint = CGPoint(x: 0.5, y: 0)
-        face.endPoint = CGPoint(x: 0.5, y: 1)
-        layer.addSublayer(lip)
-        face.locations = [0, 0.5, 1]
-        layer.addSublayer(face)
-        rim.fillColor = nil
-        rim.lineWidth = 0.75
-        rim.lineCap = .round
-        layer.addSublayer(rim)
-        // Zero offscreen shadow rasterization on iOS 27: the milled lip itself provides crisp contact depth.
-        lip.shadowOpacity = 0
-        layer.addSublayer(wings)
-        crown.path = Self.crownPath()
-        crown.lineJoin = .round
-        crown.lineWidth = 1
-        layer.addSublayer(crown)
+        layer.cornerRadius = Metrics.cornerRadius
+        layer.cornerCurve = .continuous
+        layer.borderWidth = 0.5
+        layer.shadowRadius = 0
+        layer.shadowOffset = CGSize(width: 0, height: 1.0)
+        layer.shadowOpacity = 1
         label.textAlignment = .center
         label.adjustsFontSizeToFitWidth = true
         label.minimumScaleFactor = 0.5
-        hintLabel.font = .systemFont(ofSize: Metrics.hintFont, weight: .regular)
-        hintLabel.textAlignment = .center
         icon.contentMode = .center
         addSubview(label)
-        addSubview(hintLabel)
-        guideLabel.numberOfLines = 0
-        guideLabel.textAlignment = .center
-        guideLabel.isHidden = true
-        addSubview(guideLabel)
         addSubview(icon)
         apply(spec, borders: borders)
     }
@@ -78,19 +69,37 @@ final class KeyView: UIView {
         if hasApplied, borders == self.borders, spec.label == self.spec.label, spec.symbol == self.spec.symbol,
            spec.style == self.spec.style, spec.action == self.spec.action, spec.alt == self.spec.alt,
            spec.width == self.spec.width, spec.guideFinals == self.spec.guideFinals,
-           spec.guideInitial == self.spec.guideInitial { return }
+           spec.guideInitial == self.spec.guideInitial, spec.hint == self.spec.hint { return }
         hasApplied = true
         self.spec = spec
         self.borders = borders
         label.text = spec.label
-        hintLabel.text = spec.hint
-        hintLabel.isHidden = spec.hint == nil
-        guideLabel.isHidden = spec.guideFinals.isEmpty && spec.guideInitial == nil
+        if let hint = spec.hint {
+            let h = hintLabel ?? {
+                let l = UILabel()
+                l.font = Theme.font(Metrics.hintFont, .regular)
+                l.textAlignment = .center
+                addSubview(l)
+                hintLabel = l
+                return l
+            }()
+            h.text = hint
+            h.isHidden = false
+        } else {
+            hintLabel?.isHidden = true
+        }
+        let hasGuide = !spec.guideFinals.isEmpty || spec.guideInitial != nil
+        if hasGuide && guideLabel == nil {
+            let g = UILabel()
+            g.numberOfLines = 0
+            g.textAlignment = .center
+            addSubview(g)
+            guideLabel = g
+        }
+        guideLabel?.isHidden = !hasGuide
         switch spec.action {
-        // the system keyboard's type: regular weight throughout
         case .char where spec.isLetter: label.font = Theme.font(Metrics.letterFont, .regular)
         case .char where ["“", "”", "‘", "’"].contains(spec.label):
-            // the rounded face draws the curly quotes as two near-identical straight ticks: PingFang shows “ and ”
             label.font = UIFont(name: "PingFangSC-Medium", size: Metrics.symbolFont) ?? Theme.font(Metrics.symbolFont, .medium)
         case .char: label.font = Theme.font(Metrics.symbolFont, .medium)
         case .t9(let d): label.font = Theme.font(d == "'" ? Metrics.functionFont : 20, .semibold)
@@ -98,10 +107,9 @@ final class KeyView: UIView {
         default: label.font = Theme.font(Metrics.functionFont, Theme.plain ? .medium : .semibold)
         }
         if let name = spec.symbol {
-            let cfg = UIImage.SymbolConfiguration(pointSize: Metrics.iconSize, weight: Theme.plain ? .regular : .semibold)
             // Keep face.smiling in its crisp outline variant in dark mode so it harmonizes with shift & delete.
             icon.overrideUserInterfaceStyle = (name == "face.smiling") ? .light : .unspecified
-            icon.image = UIImage(systemName: name, withConfiguration: cfg)?.withRenderingMode(.alwaysTemplate)
+            icon.image = Self.cachedSymbol(name)
             icon.isHidden = false
         } else {
             icon.overrideUserInterfaceStyle = .unspecified
@@ -142,65 +150,63 @@ final class KeyView: UIView {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    private func applyPressState() {
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        layer.backgroundColor = pressed ? pressedBg : restBg
+        layer.shadowOpacity = pressed ? 0 : 1
+        CATransaction.commit()
+        if currentStyle == .function {
+            let fg = pressed ? pressedFg : restFg
+            label.textColor = fg
+            icon.tintColor = fg
+        }
+    }
+
     private func updateColors() {
         let t = traitCollection
-        let top: UIColor, bottom: UIColor, under: UIColor, fg: UIColor
-        // an engaged shift reads as a letter cap (cream / violet vinyl) with a solid arrow
-        let style: KeyStyle = spec.action == .shift && spec.style == .normal ? .normal : spec.style
-        switch style {
+        let rest: UIColor, down: UIColor, under: UIColor, fg: UIColor, downFg: UIColor
+        currentStyle = spec.action == .shift && spec.style == .normal ? .normal : spec.style
+        switch currentStyle {
         case .normal:
-            top = pressed ? Theme.keyPressed : Theme.keyTop
-            bottom = pressed ? Theme.keyPressed : Theme.key
-            under = Theme.keyLip; fg = Theme.keyText
+            rest = Theme.key; down = Theme.keyPressed; under = Theme.keyLip
+            fg = Theme.keyText; downFg = Theme.keyText
         case .function:
-            top = pressed ? Theme.functionPressed : Theme.functionTop
-            bottom = pressed ? Theme.functionPressed : Theme.functionKey
-            under = Theme.functionLip; fg = pressed ? Theme.keyText : Theme.functionText
+            rest = Theme.functionKey; down = Theme.functionPressed; under = Theme.functionLip
+            fg = Theme.functionText; downFg = Theme.keyText
         case .accent:
-            top = pressed ? Theme.accentKey : Theme.accentTop
-            bottom = Theme.accentKey
-            under = Theme.accentLip; fg = Theme.accentText
+            rest = Theme.accentKey; down = Theme.accentPressed; under = Theme.accentLip
+            fg = Theme.accentText; downFg = Theme.accentText
         }
+        restBg = rest.resolvedColor(with: t).cgColor
+        pressedBg = down.resolvedColor(with: t).cgColor
+        restFg = fg.resolvedColor(with: t)
+        pressedFg = downFg.resolvedColor(with: t)
         CATransaction.begin(); CATransaction.setDisableActions(true)
-        // Convex top-lit cap at rest; inverted concave shading + extinguished specular rim when depressed.
-        let topR = top.resolvedColor(with: t), b = bottom.resolvedColor(with: t), u = under.resolvedColor(with: t)
-        if pressed {
-            face.colors = Theme.plain
-                ? [Theme.mix(b, u, 0.08).cgColor, b.cgColor, b.cgColor]
-                : [Theme.mix(b, u, 0.12).cgColor, b.cgColor, topR.cgColor]
-        } else if Theme.plain {
-            face.colors = [topR.cgColor, b.cgColor, b.cgColor]
-        } else {
-            face.colors = [topR.cgColor, b.cgColor, Theme.mix(b, u, 0.10).cgColor]
+        layer.shadowColor = under.resolvedColor(with: t).cgColor
+        layer.borderColor = Theme.keyBorder.resolvedColor(with: t).cgColor
+        if let dot = statusDot {
+            let active = (spec.action == .toggleLanguage && spec.label == "中") || (spec.action == .shift && spec.style == .normal)
+            dot.backgroundColor = (active ? Theme.statusLedActive : Theme.statusLedMuted).resolvedColor(with: t).cgColor
+            dot.isHidden = blanked || Theme.plain || !(spec.action == .toggleLanguage || spec.action == .shift)
         }
-        lip.backgroundColor = u.cgColor
-        lip.shadowOpacity = 0
-        let hi = Theme.keyHighlight.resolvedColor(with: t)
-        let rimScale: CGFloat = pressed ? 0.06 : (style == .accent ? (Theme.plain ? 0.42 : 0.80) : (style == .function && Theme.plain ? 0.38 : 1.0))
-        rim.strokeColor = hi.withAlphaComponent(hi.cgColor.alpha * rimScale).cgColor
-        wings.fillColor = Theme.wing.resolvedColor(with: t).cgColor
-        crown.fillColor = Theme.accentKey.resolvedColor(with: t).cgColor
-        crown.strokeColor = Theme.accentLip.resolvedColor(with: t).cgColor
+        if let notch = spaceNotch {
+            notch.backgroundColor = Theme.spaceNotch.resolvedColor(with: t).cgColor
+            notch.isHidden = blanked || Theme.plain || spec.action != .space || bounds.width <= 120
+        }
         CATransaction.commit()
-        backgroundColor = .clear
-        label.textColor = spec.action == .space ? fg.withAlphaComponent(0.76) : fg
-        hintLabel.textColor = Theme.secondaryText
-        if !guideLabel.isHidden { guideLabel.attributedText = guideText() }
-        icon.tintColor = fg.resolvedColor(with: t)
-        if bounds.width > 0 { layoutCap() }
+        if currentStyle != .function {
+            label.textColor = spec.action == .space ? restFg.withAlphaComponent(0.76) : restFg
+            icon.tintColor = restFg
+        }
+        if let h = hintLabel, !h.isHidden { h.textColor = Theme.secondaryText.resolvedColor(with: t) }
+        if let g = guideLabel, !g.isHidden { g.attributedText = guideText() }
+        applyPressState()
+        if bounds.width > 0 && (bounds.size != lastCapSize || lastPlainMode != Theme.plain) { layoutCap() }
     }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
         super.traitCollectionDidChange(previous)
         updateColors()
-    }
-
-    /// The face rests on the milled lip; pressed, it sinks smoothly onto it for crisp tactile feedback.
-    private var faceRect: CGRect {
-        let l: CGFloat = min(Metrics.lip, bounds.height * 0.1)
-        let sink: CGFloat = Theme.plain ? min(0.55, l) : max(0, l - 0.4)
-        return pressed ? CGRect(x: 0, y: sink, width: bounds.width, height: bounds.height - l)
-                       : CGRect(x: 0, y: 0, width: bounds.width, height: bounds.height - l)
     }
 
     /// The style changed (Mosto / 简洁): colours, type and the cap's shape follow.
@@ -214,57 +220,79 @@ final class KeyView: UIView {
     private var lastPlainMode: Bool = false
 
     private func layoutCap() {
-        let l: CGFloat = min(Metrics.lip, bounds.height * 0.1)
+        let f = bounds
+        guard f.width > 0, f.height > 0 else { return }
         let cr: CGFloat = Metrics.cornerRadius
-        let f = faceRect
         let sizeChanged = f.size != lastCapSize || lastPlainMode != Theme.plain
         CATransaction.begin(); CATransaction.setDisableActions(true)
         if sizeChanged {
             lastCapSize = f.size
             lastPlainMode = Theme.plain
-            lip.cornerRadius = cr
-            face.cornerRadius = cr
-            lip.frame = CGRect(x: 0, y: l, width: bounds.width, height: bounds.height - l)
-            rim.path = Self.rimPath(in: f.size)
-            if spec.action == .space, f.width > 120, !Theme.plain {
-                wings.path = Self.wingsPath(in: f.size)
-            }
+            layer.cornerRadius = cr
+            layer.shadowPath = UIBezierPath(roundedRect: f, cornerRadius: cr).cgPath
         }
-        face.frame = f
-        rim.frame = f
-        if spec.action == .space, f.width > 120, !Theme.plain {
-            wings.isHidden = blanked
-            wings.frame = f
+        let wantsDot = !Theme.plain && (spec.action == .toggleLanguage || spec.action == .shift)
+        if wantsDot {
+            let dot = statusDot ?? {
+                let d = CALayer()
+                d.cornerRadius = 2.25
+                layer.addSublayer(d)
+                statusDot = d
+                return d
+            }()
+            dot.frame = CGRect(x: f.width - 9.5, y: 5.5, width: 4.5, height: 4.5)
+            let active = (spec.action == .toggleLanguage && spec.label == "中") || (spec.action == .shift && spec.style == .normal)
+            dot.backgroundColor = (active ? Theme.statusLedActive : Theme.statusLedMuted).resolvedColor(with: traitCollection).cgColor
+            dot.isHidden = blanked
         } else {
-            wings.isHidden = true
+            statusDot?.isHidden = true
         }
-        if spec.action == .toggleLanguage, !blanked, !Theme.plain {
-            crown.isHidden = false
-            crown.bounds = CGRect(x: 0, y: 0, width: 15, height: 9)
-            crown.position = CGPoint(x: f.maxX - 9, y: f.minY + 1)
-            crown.setAffineTransform(CGAffineTransform(rotationAngle: 0.30))
+        let wantsNotch = spec.action == .space && !Theme.plain && f.width > 120
+        if wantsNotch {
+            let notch = spaceNotch ?? {
+                let n = CALayer()
+                n.cornerRadius = 1.25
+                layer.addSublayer(n)
+                spaceNotch = n
+                return n
+            }()
+            notch.frame = CGRect(x: (f.width - 22) / 2, y: (f.height - 2.5) / 2, width: 22, height: 2.5)
+            notch.backgroundColor = Theme.spaceNotch.resolvedColor(with: traitCollection).cgColor
+            notch.isHidden = blanked
+            label.isHidden = true
         } else {
-            crown.isHidden = true
+            spaceNotch?.isHidden = true
+            label.isHidden = false
         }
         CATransaction.commit()
+
         let o = cjkPunctuationOffset(label.text, fontSize: label.font.pointSize)
         label.frame = f.insetBy(dx: 2, dy: 0).offsetBy(dx: o.x, dy: o.y)
         icon.frame = f
-        // 键位提示: the letter moves up and smaller; the initial (gold) and finals sit under it, one per line —
-        // only where the cap is tall enough to read them (portrait); in landscape the letter alone
+        // 键位提示: the letter moves up and smaller; the initial and finals sit under it (portrait only).
         let guided = !(spec.guideFinals.isEmpty && spec.guideInitial == nil) && f.height >= 34
-        guideLabel.isHidden = !guided
+        guideLabel?.isHidden = !guided
         if guided {
+            let g = guideLabel ?? {
+                let l = UILabel()
+                l.numberOfLines = 0
+                l.textAlignment = .center
+                addSubview(l)
+                guideLabel = l
+                return l
+            }()
             let top = f.height * 0.40
             label.font = Theme.font(min(Metrics.letterFont, top * 0.95), .regular)
             label.frame = CGRect(x: f.minX + 2, y: f.minY + 1, width: f.width - 4, height: top)
-            guideLabel.attributedText = guideText(fitting: CGSize(width: f.width - 2, height: f.height - top - 2))
-            guideLabel.frame = CGRect(x: f.minX + 1, y: f.minY + top, width: f.width - 2, height: f.height - top - 2)
+            g.attributedText = guideText(fitting: CGSize(width: f.width - 2, height: f.height - top - 2))
+            g.frame = CGRect(x: f.minX + 1, y: f.minY + top, width: f.width - 2, height: f.height - top - 2)
         } else if spec.isLetter {
-            label.font = Theme.font(Metrics.letterFont, .regular)
+            let lf = Theme.font(Metrics.letterFont, .regular)
+            if label.font !== lf { label.font = lf }
         }
-        // Digit hint in the cap's top-right corner.
-        hintLabel.frame = CGRect(x: f.maxX - 16, y: f.minY + 2, width: 12, height: 13)
+        if let h = hintLabel, !h.isHidden {
+            h.frame = CGRect(x: f.maxX - 16, y: f.minY + 2, width: 12, height: 13)
+        }
     }
 
     /// The guide's lines: the initial in the accent colour, then each final; the size shrinks until all lines fit.
@@ -299,54 +327,6 @@ final class KeyView: UIView {
         return out
     }
 
-    /// The cap's top edge, inset half a point: the two upper corners and the line between them, ending where the
-    /// sides turn straight.
-    static func rimPath(in size: CGSize) -> CGPath {
-        let r = min(Metrics.cornerRadius, size.height / 2, size.width / 2) - 0.5
-        let p = UIBezierPath()
-        p.move(to: CGPoint(x: 0.5, y: r + 0.5))
-        p.addArc(withCenter: CGPoint(x: r + 0.5, y: r + 0.5), radius: r, startAngle: .pi, endAngle: 1.5 * .pi, clockwise: true)
-        p.addLine(to: CGPoint(x: size.width - r - 0.5, y: 0.5))
-        p.addArc(withCenter: CGPoint(x: size.width - r - 0.5, y: r + 0.5), radius: r, startAngle: 1.5 * .pi, endAngle: 0, clockwise: true)
-        return p.cgPath
-    }
-
-    /// Mosto's two little bat wings at the ends of the space bar: a curved arm out to the tip, three scalloped
-    /// fingers below, tips outwards.
-    static func wingsPath(in size: CGSize) -> CGPath {
-        let w: CGFloat = 24, h: CGFloat = 13, inset: CGFloat = 12
-        let y = (size.height - h) / 2 + 1
-        let p = UIBezierPath()
-        func wing(_ x0: CGFloat, _ dir: CGFloat) {
-            func pt(_ x: CGFloat, _ yy: CGFloat) -> CGPoint { CGPoint(x: x0 + dir * x, y: y + yy) }
-            p.move(to: pt(0, 4))
-            p.addQuadCurve(to: pt(w, 0), controlPoint: pt(w * 0.45, -2))            // the arm
-            p.addQuadCurve(to: pt(w * 0.84, h * 0.80), controlPoint: pt(w * 0.98, h * 0.45))
-            p.addQuadCurve(to: pt(w * 0.52, h), controlPoint: pt(w * 0.70, h * 0.48))  // scallop, finger
-            p.addQuadCurve(to: pt(w * 0.22, h * 0.86), controlPoint: pt(w * 0.38, h * 0.50))
-            p.addQuadCurve(to: pt(0, h * 0.66), controlPoint: pt(w * 0.08, h * 0.56))
-            p.close()
-        }
-        wing(size.width - inset - w, 1)   // right wing, tip to the right
-        wing(inset + w, -1)               // left wing, tip to the left
-        return p.cgPath
-    }
-
-    /// Mosto's crown, worn askew on the 中 / 英 key: three points, matte gold, tilted, peeking over the top edge.
-    static func crownPath() -> CGPath {
-        let w: CGFloat = 15, h: CGFloat = 9
-        let p = UIBezierPath()
-        p.move(to: CGPoint(x: 0, y: h))
-        p.addLine(to: CGPoint(x: 0.5, y: 2.5))
-        p.addLine(to: CGPoint(x: w * 0.27, y: h * 0.55))
-        p.addLine(to: CGPoint(x: w * 0.5, y: 0))
-        p.addLine(to: CGPoint(x: w * 0.73, y: h * 0.55))
-        p.addLine(to: CGPoint(x: w - 0.5, y: 2.5))
-        p.addLine(to: CGPoint(x: w, y: h))
-        p.close()
-        return p.cgPath
-    }
-
     override func layoutSubviews() {
         super.layoutSubviews()
         layoutCap()
@@ -365,119 +345,71 @@ func cjkPunctuationOffset(_ text: String?, fontSize: CGFloat) -> CGPoint {
     return .zero
 }
 
-/// The key-press balloon, shaped like the iOS keyboard's: a wider cap above the key that narrows through a
-/// short neck into the key itself, so the pressed key appears to grow upwards rather than a box floating over it.
+/// Clean, horn-free, neck-free floating key pill shown above a pressed key when slow-tapped, held, or flicked.
 final class KeyPreview: UIView {
     let label = UILabel()
-    private let shape = CAShapeLayer()
-    /// Mosto's two cream horns on the balloon's top corners.
-    private let horns = CAShapeLayer()
-    private var capRect: CGRect = .zero
+    private var lastRadiusBounds: CGRect = .zero
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         isUserInteractionEnabled = false
-        backgroundColor = .clear
-        layer.addSublayer(horns)
-        layer.addSublayer(shape)
-        horns.fillColor = Theme.cream.cgColor
-        horns.strokeColor = Theme.hex(0xC9A86A).cgColor
-        horns.lineWidth = 0.8
-        shape.shadowColor = (Theme.plain ? UIColor.black : Theme.deepViolet).cgColor
-        shape.shadowOpacity = 0.16
-        shape.shadowRadius = 5
-        shape.shadowOffset = CGSize(width: 0, height: 2.5)
-        shape.lineWidth = 0.75
+        layer.cornerRadius = 11
+        layer.cornerCurve = .continuous
+        layer.borderWidth = 0.5
+        layer.shadowRadius = 2.0
+        layer.shadowOpacity = 0.10
+        layer.shadowOffset = CGSize(width: 0, height: 1.5)
         label.textAlignment = .center
-        label.font = Theme.font(32, .medium)
-        label.textColor = Theme.keyText
         label.adjustsFontSizeToFitWidth = true
         label.minimumScaleFactor = 0.5
         addSubview(label)
+        refreshStyle()
     }
     required init?(coder: NSCoder) { fatalError() }
 
+    func refreshStyle() {
+        let t = traitCollection
+        backgroundColor = Theme.bubble
+        layer.borderColor = Theme.bubbleLip.resolvedColor(with: t).cgColor
+        layer.shadowColor = (Theme.plain ? UIColor.black : Theme.deepViolet).cgColor
+        label.font = Theme.font(28, .medium)
+        label.textColor = Theme.keyText
+    }
+
     /// `key`: the key's frame; `limit`: the horizontal room available (container bounds), both in container space.
     func place(over key: CGRect, within limit: CGRect) {
-        // the top row has only the strip above it, and nothing can be drawn above the keyboard's own top edge: there
-        // the balloon grows only as tall as the room allows (never shorter than the key) instead of being cut off
-        let capW = max(key.width + 26, 52)
-        var capH = key.height * 1.12, neck: CGFloat = 10
-        let room = key.minY - limit.minY
-        if neck + capH > room {
-            neck = max(4, min(10, room - key.height * 0.95))
-            capH = max(key.height * 0.9, room - neck)
-        }
+        let capW = max(key.width + 16, 46)
+        let availAbove = max(36, key.minY - limit.minY - 4)
+        let capH = min(max(36, key.height * 1.04), availAbove)
         var capX = key.midX - capW / 2
-        capX = min(max(limit.minX + 1, capX), limit.maxX - capW - 1)
-        let top = key.minY - neck - capH
-        let minX = min(capX, key.minX), maxX = max(capX + capW, key.maxX)
-        frame = CGRect(x: minX, y: top, width: maxX - minX, height: key.maxY - top)
-        let cap = CGRect(x: capX - minX, y: 0, width: capW, height: capH)
-        let k = CGRect(x: key.minX - minX, y: capH + neck, width: key.width, height: key.height)
-        capRect = cap
-        let r: CGFloat = 11, kr = Metrics.cornerRadius
-        let p = UIBezierPath()
-        p.move(to: CGPoint(x: cap.minX, y: cap.minY + r))
-        p.addArc(withCenter: CGPoint(x: cap.minX + r, y: cap.minY + r), radius: r, startAngle: .pi, endAngle: 1.5 * .pi, clockwise: true)
-        p.addLine(to: CGPoint(x: cap.maxX - r, y: cap.minY))
-        p.addArc(withCenter: CGPoint(x: cap.maxX - r, y: cap.minY + r), radius: r, startAngle: 1.5 * .pi, endAngle: 0, clockwise: true)
-        p.addLine(to: CGPoint(x: cap.maxX, y: cap.maxY - 4))
-        p.addCurve(to: CGPoint(x: k.maxX, y: k.minY + 2),
-                   controlPoint1: CGPoint(x: cap.maxX, y: cap.maxY + neck * 0.55),
-                   controlPoint2: CGPoint(x: k.maxX, y: k.minY - neck * 0.45))
-        p.addLine(to: CGPoint(x: k.maxX, y: k.maxY - kr))
-        p.addArc(withCenter: CGPoint(x: k.maxX - kr, y: k.maxY - kr), radius: kr, startAngle: 0, endAngle: 0.5 * .pi, clockwise: true)
-        p.addLine(to: CGPoint(x: k.minX + kr, y: k.maxY))
-        p.addArc(withCenter: CGPoint(x: k.minX + kr, y: k.maxY - kr), radius: kr, startAngle: 0.5 * .pi, endAngle: .pi, clockwise: true)
-        p.addLine(to: CGPoint(x: k.minX, y: k.minY + 2))
-        p.addCurve(to: CGPoint(x: cap.minX, y: cap.maxY - 4),
-                   controlPoint1: CGPoint(x: k.minX, y: k.minY - neck * 0.45),
-                   controlPoint2: CGPoint(x: cap.minX, y: cap.maxY + neck * 0.55))
-        p.close()
-        CATransaction.begin(); CATransaction.setDisableActions(true)
-        shape.frame = bounds
-        shape.path = p.cgPath
-        shape.shadowPath = p.cgPath
-        shape.shadowColor = (Theme.plain ? UIColor.black : Theme.deepViolet).cgColor
-        shape.fillColor = Theme.bubble.resolvedColor(with: traitCollection).cgColor
-        shape.strokeColor = Theme.bubbleLip.resolvedColor(with: traitCollection).cgColor
-        horns.frame = bounds
-        horns.path = Self.hornsPath(cap)
-        horns.isHidden = top - 9 < limit.minY || Theme.plain   // no room above for his horns (none in 简洁)
-        CATransaction.commit()
-        setNeedsLayout()
+        capX = min(max(limit.minX + 2, capX), limit.maxX - capW - 2)
+        let top = max(limit.minY + 1, key.minY - capH - 4)
+        frame = CGRect(x: capX, y: top, width: capW, height: capH)
+        refreshStyle()
+        if bounds != lastRadiusBounds {
+            lastRadiusBounds = bounds
+            layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: 11).cgPath
+        }
+        layoutPreviewLabel()
+    }
+
+    private func layoutPreviewLabel() {
+        let o = cjkPunctuationOffset(label.text, fontSize: label.font.pointSize)
+        label.frame = bounds.insetBy(dx: 3, dy: 0).offsetBy(dx: o.x, dy: o.y)
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let o = cjkPunctuationOffset(label.text, fontSize: label.font.pointSize)
-        label.frame = capRect.insetBy(dx: 3, dy: 0).offsetBy(dx: o.x, dy: o.y - 1)
+        if bounds != lastRadiusBounds {
+            lastRadiusBounds = bounds
+            layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: 11).cgPath
+        }
+        layoutPreviewLabel()
     }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
         super.traitCollectionDidChange(previous)
-        shape.shadowColor = (Theme.plain ? UIColor.black : Theme.deepViolet).cgColor
-        shape.fillColor = Theme.bubble.resolvedColor(with: traitCollection).cgColor
-        shape.strokeColor = Theme.bubbleLip.resolvedColor(with: traitCollection).cgColor
-    }
-
-    /// Two small curled horns rising from the balloon's shoulders, out then up (as on Mosto's head); their bases
-    /// tuck under the balloon.
-    static func hornsPath(_ cap: CGRect) -> CGPath {
-        let p = UIBezierPath()
-        let base: CGFloat = 8, rise: CGFloat = 9
-        for dir: CGFloat in [-1, 1] {
-            let cx = dir < 0 ? cap.minX + 13 : cap.maxX - 13
-            let b0 = CGPoint(x: cx - base / 2, y: cap.minY + 4), b1 = CGPoint(x: cx + base / 2, y: cap.minY + 4)
-            let tip = CGPoint(x: cx + dir * 5, y: cap.minY - rise)
-            let outer = dir < 0 ? b0 : b1, inner = dir < 0 ? b1 : b0
-            p.move(to: inner)
-            p.addQuadCurve(to: tip, controlPoint: CGPoint(x: inner.x + dir * 1, y: cap.minY - rise * 0.5))
-            p.addQuadCurve(to: outer, controlPoint: CGPoint(x: outer.x + dir * 4, y: cap.minY - rise * 0.2))
-            p.close()
-        }
-        return p.cgPath
+        refreshStyle()
     }
 }
 
@@ -569,9 +501,19 @@ final class KeyboardView: UIView {
     private var rows: [[KeySpec]] = []
     private var keyViews: [KeyView] = []
     /// The style changed: every key redraws in it.
-    func themeChanged() { keyViews.forEach { $0.themeChanged() }; setNeedsLayout() }
+    func themeChanged() {
+        keyViews.forEach { $0.themeChanged() }
+        previewPool.forEach { $0.refreshStyle() }
+        for tr in tracked.values { tr.preview?.refreshStyle() }
+        setNeedsLayout()
+    }
     private var hitRects: [CGRect] = []
     private var globeButton: UIButton?
+    private var previewPool: [KeyPreview] = []
+    private var lastCharDownTime: CFTimeInterval = -1
+    static let rapidPreviewThreshold: CFTimeInterval = 0.13
+    var adaptivePreviewEnabled = true
+    private(set) var lastPreviewShownForTests = false
 
     private final class Tracked {
         var keyIndex: Int
@@ -613,7 +555,7 @@ final class KeyboardView: UIView {
         super.init(frame: .zero)
         isMultipleTouchEnabled = true
         clipsToBounds = false
-        backgroundColor = Theme.touchable   // never fully clear: see Theme.touchable
+        backgroundColor = .clear   // root provides single uniform hit-test backing (avoids stacked translucent band)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -813,10 +755,15 @@ final class KeyboardView: UIView {
         onKeyDown?(kv.spec.action, p)
         switch kv.spec.action {
         case .char(let s) where kv.spec.alt == nil:
-            // A key with nothing to choose on a long press types the moment the finger lands, as the fastest
-            // input methods do: the time the finger rests on the glass is no longer added to every keystroke.
-            // The balloon still shows while it is held.
-            showPreview(tr, text: kv.spec.label)
+            // Velocity-adaptive zero-ghost feedback: suppress occluding popup during rapid burst typing (<130ms).
+            let rapid = adaptivePreviewEnabled && lastCharDownTime > 0 && (time - lastCharDownTime) < Self.rapidPreviewThreshold
+            lastCharDownTime = time
+            if !rapid {
+                showPreview(tr, text: kv.spec.label)
+                lastPreviewShownForTests = (tr.preview != nil && tr.preview?.isHidden == false)
+            } else {
+                lastPreviewShownForTests = false
+            }
             tr.typedOnDown = true
             stats.emitted += 1
             if kv.spec.isLetter, let c = s.first {
@@ -829,7 +776,9 @@ final class KeyboardView: UIView {
             stats.emitted += 1
             onAction?(kv.spec.action, nil)
         case .char:
+            lastCharDownTime = time
             showPreview(tr, text: kv.spec.label)
+            lastPreviewShownForTests = (tr.preview != nil && tr.preview?.isHidden == false)
             tr.longPressTimer = schedule(after: 0.38, from: time) { [weak self, weak tr] _ in
                 guard let self, let tr else { return }
                 self.showAlt(tr)
@@ -914,17 +863,23 @@ final class KeyboardView: UIView {
                     if tr.flickedAlt == nil {
                         tr.flickedAlt = alt
                         tr.longPressTimer?.invalidate()
+                        if tr.preview == nil { showPreview(tr, text: alt) }
                         tr.preview?.label.text = alt
                         tr.preview?.label.textColor = Theme.correctedMark
                         tr.preview?.setNeedsLayout()
+                        lastPreviewShownForTests = (tr.preview != nil && tr.preview?.isHidden == false)
                         onFeedback?(.altMoved, p)
                     }
                     break
                 } else if tr.flickedAlt != nil && rise < 8 {
                     tr.flickedAlt = nil
-                    tr.preview?.label.text = kv.spec.label
-                    tr.preview?.label.textColor = Theme.keyText
-                    tr.preview?.setNeedsLayout()
+                    if kv.spec.style == .normal || kv.spec.action == .char("，") || kv.spec.action == .char("。") {
+                        tr.preview?.label.text = kv.spec.label
+                        tr.preview?.label.textColor = Theme.keyText
+                        tr.preview?.setNeedsLayout()
+                    } else {
+                        recyclePreview(tr.preview); tr.preview = nil
+                    }
                     break
                 } else if rise > 6 && driftX <= 28 {
                     break
@@ -937,8 +892,9 @@ final class KeyboardView: UIView {
                 tr.flickedAlt = nil
                 tr.keyIndex = idx
                 keyViews[idx].pressed = true
-                tr.preview?.removeFromSuperview(); tr.preview = nil   // never the old key's balloon over the new key
+                recyclePreview(tr.preview); tr.preview = nil   // never the old key's pill over the new key
                 showPreview(tr, text: keyViews[idx].spec.label)
+                lastPreviewShownForTests = (tr.preview != nil && tr.preview?.isHidden == false)
                 if keyViews[idx].spec.alt != nil {
                     tr.longPressTimer = schedule(after: 0.38, from: time) { [weak self, weak tr] _ in
                         guard let self, let tr else { return }
@@ -1093,7 +1049,7 @@ final class KeyboardView: UIView {
         if tr.dragging { setCursorMode(false, except: -1); onCursorEnd?() }
         tr.longPressTimer?.invalidate()
         tr.repeatTimer?.invalidate()
-        tr.preview?.removeFromSuperview()
+        recyclePreview(tr.preview)
         tr.preview = nil
         // a swipe on delete: lifted while armed, it clears; cancelled or put away, it never does
         let clears = emit && tr.clearSwipe?.armed == true
@@ -1164,12 +1120,13 @@ final class KeyboardView: UIView {
         }
     }
 
-    /// Snapshot support: show the balloon for a character key as if it were held.
+    /// Snapshot support: show the floating pill for a character key as if it were held.
     func demoPress(_ char: String) {
         guard let idx = keyViews.firstIndex(where: { $0.spec.action == .char(char) }) else { return }
         let tr = Tracked(keyIndex: idx, start: keyViews[idx].center, time: CACurrentMediaTime())
         keyViews[idx].pressed = true
         showPreview(tr, text: keyViews[idx].spec.label)
+        lastPreviewShownForTests = (tr.preview != nil && tr.preview?.isHidden == false)
     }
 
     /// Snapshot support: a key drawn held down (delete, during a swipe that clears).
@@ -1180,14 +1137,37 @@ final class KeyboardView: UIView {
 
     // MARK: - Popups
 
+    private func acquirePreview() -> KeyPreview {
+        if let reused = previewPool.popLast() {
+            reused.isHidden = false
+            return reused
+        }
+        let p = KeyPreview(frame: .zero)
+        addSubview(p)
+        return p
+    }
+
+    private func recyclePreview(_ p: KeyPreview?) {
+        guard let p else { return }
+        p.isHidden = true
+        if !previewPool.contains(where: { $0 === p }) {
+            if previewPool.count < 2 {
+                previewPool.append(p)
+            } else {
+                p.removeFromSuperview()
+            }
+        }
+    }
+
     private func showPreview(_ tr: Tracked, text: String) {
         guard tr.keyIndex < keyViews.count else { return }
         let kv = keyViews[tr.keyIndex]
-        guard kv.spec.style == .normal || kv.spec.action == .char("，") || kv.spec.action == .char("。") || tr.altShown else { return }
-        let p = tr.preview ?? KeyPreview(frame: .zero)
+        guard kv.spec.style == .normal || kv.spec.action == .char("，") || kv.spec.action == .char("。") || tr.flickedAlt != nil || tr.altShown else { return }
+        let p = tr.preview ?? acquirePreview()
         p.label.text = text
         p.label.textColor = Theme.keyText
-        if p.superview == nil { addSubview(p) }
+        if p.superview == nil { addSubview(p) } else { bringSubviewToFront(p) }
+        p.isHidden = false
         // the room above: up to the top of the keyboard's whole view (the strip included)
         let topY = superview.map { convert(CGPoint.zero, from: $0).y } ?? bounds.minY
         p.place(over: kv.frame, within: CGRect(x: bounds.minX, y: topY + 1, width: bounds.width, height: bounds.maxY - topY - 1))
@@ -1203,8 +1183,9 @@ final class KeyboardView: UIView {
         if tr.altOptions.count == 1 {
             showPreview(tr, text: alt)
             tr.preview?.label.textColor = Theme.correctedMark
+            lastPreviewShownForTests = (tr.preview != nil && tr.preview?.isHidden == false)
         } else {
-            tr.preview?.removeFromSuperview(); tr.preview = nil
+            recyclePreview(tr.preview); tr.preview = nil
             let f = kv.frame
             let cell = max(f.width, 34)
             let rowWidth = cell * CGFloat(tr.altOptions.count) + 8

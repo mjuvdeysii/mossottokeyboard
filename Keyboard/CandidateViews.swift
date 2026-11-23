@@ -86,9 +86,12 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     /// The test bench drives touches with its own clock: the hold is checked against it, no timer runs.
     private var benchTouches = false
     /// Mosto in the idle corner, by day and at night alike (only his light changes with the keyboard's).
-    var showsMosto = false { didSet { update(preedit: preeditRaw, candidates: candidates, prediction: isPrediction) } }
+    var showsMosto = false { didSet { if showsMosto != oldValue { update(preedit: preeditRaw, candidates: candidates, prediction: isPrediction) } } }
     private var mostoWanted = false
     private var mostoTimer: Timer?
+    private var lastExpandSym: String = ""
+    private var lastExpandExpanded = false
+    private static var expandImages: [String: UIImage] = [:]
     /// Raw typed-key pill at the start of the candidate row (when not writing inline marked text).
     var showsPreedit = false { didSet { setNeedsLayout() } }
     /// Xiaohe 2-key rhythm kerning in the raw-letter pill (adds subtle 2.5pt gap every 2 keys & accents odd trailing key).
@@ -122,7 +125,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        backgroundColor = Theme.touchable   // never fully clear: see Theme.touchable
+        backgroundColor = .clear   // root provides single uniform hit-test backing
         preeditDock.backgroundColor = Theme.preeditPillBg
         preeditDock.layer.borderWidth = 0.5
         preeditDock.layer.borderColor = Theme.preeditPillBorder.resolvedColor(with: traitCollection).cgColor
@@ -461,29 +464,31 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         if !on { onMostoShown?(false) }
         mostoTimer?.invalidate(); mostoTimer = nil
         guard on else { mosto.layer.removeAllAnimations(); mosto.isHidden = true; return }
-        // not on screen yet (the keyboard is being set up): simply there
-        if window == nil { mosto.alpha = 1; mosto.transform = .identity; mosto.isHidden = false; onMostoShown?(true); return }
-        let reduce = UIAccessibility.isReduceMotionEnabled
-        mostoTimer = Timer.scheduledTimer(withTimeInterval: 0.42, repeats: false) { [weak self] _ in
+        mosto.isHidden = false
+        mosto.transform = .identity
+        if window == nil || UIAccessibility.isReduceMotionEnabled {
+            mosto.alpha = 1
+            onMostoShown?(true)
+            return
+        }
+        mosto.alpha = 0
+        onMostoShown?(true)
+        UIView.animate(withDuration: 0.14, delay: 0, options: [.allowUserInteraction]) {
+            self.mosto.alpha = 1
+        }
+        mostoTimer = Timer.scheduledTimer(withTimeInterval: 0.26, repeats: false) { [weak self] _ in
             guard let self, self.mostoWanted else { return }
-            self.mosto.alpha = 0
-            if !reduce { self.mosto.transform = CGAffineTransform(scaleX: 0.92, y: 0.92) }
-            self.mosto.isHidden = false; self.onMostoShown?(true)
-            UIView.animate(withDuration: 0.28, delay: 0, usingSpringWithDamping: 0.68, initialSpringVelocity: 0.4, options: [.allowUserInteraction]) {
-                self.mosto.alpha = 1
-                self.mosto.transform = .identity
-            } completion: { done in
-                if done, self.mostoWanted { self.mosto.greet() }
-            }
+            self.mosto.greet()
         }
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
         let h = bounds.height
-        // high in the strip, clear of the q key below (the keys' reach band gives way to him: see reservedTop)
-        let ms = min(h - 8, 44)
-        mosto.frame = CGRect(x: 8, y: 1, width: ms, height: ms)
+        // Inset neatly inside the 28pt idle Mosto capsule (zero overflow or clipping mismatch).
+        let pillH = min(28, max(24, h - 12))
+        let mSize = min(24, pillH - 4)
+        mosto.frame = CGRect(x: 14, y: floor((h - mSize) / 2), width: mSize, height: mSize)
         let expandW: CGFloat = 36
         expandButton.frame = CGRect(x: bounds.width - expandW, y: 0, width: expandW, height: h)
         // Start at 10pt so the first element cleanly clears iOS 26/27 Liquid Glass top-left corner radius.
@@ -694,7 +699,26 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         let size = CGSize(width: total, height: rowH)
         if strip.contentSize != size { strip.contentSize = size }
         // ⌄: there are candidates past the edge (the full grid shows them all)
-        let idleGear = candidates.isEmpty && !typing && undoText == nil && !gridExpanded && window != nil; let sym = idleGear ? "slider.horizontal.3" : (gridExpanded ? "chevron.up" : "chevron.down"); expandButton.setImage(UIImage(systemName: sym, withConfiguration: UIImage.SymbolConfiguration(pointSize: idleGear ? 15 : 16, weight: gridExpanded ? .semibold : .regular)), for: .normal); expandButton.tintColor = gridExpanded ? Theme.candidateText : Theme.secondaryText; expandButton.backgroundColor = gridExpanded ? Theme.functionKey.withAlphaComponent(0.45) : .clear; expandButton.layer.cornerRadius = 14; expandButton.isHidden = !((total > viewW + 0.5 && !isPrediction) || gridExpanded || idleGear)
+        let idleGear = candidates.isEmpty && !typing && undoText == nil && !gridExpanded && window != nil
+        let sym = idleGear ? "slider.horizontal.3" : (gridExpanded ? "chevron.up" : "chevron.down")
+        let symKey = "\(sym)_\(idleGear ? 1 : 0)_\(gridExpanded ? 1 : 0)"
+        if symKey != lastExpandSym {
+            lastExpandSym = symKey
+            let img = Self.expandImages[symKey] ?? {
+                let cfg = UIImage.SymbolConfiguration(pointSize: idleGear ? 15 : 16, weight: gridExpanded ? .semibold : .regular)
+                let rendered = UIImage(systemName: sym, withConfiguration: cfg)
+                if let rendered { Self.expandImages[symKey] = rendered }
+                return rendered
+            }()
+            expandButton.setImage(img, for: .normal)
+        }
+        if gridExpanded != lastExpandExpanded {
+            lastExpandExpanded = gridExpanded
+            expandButton.tintColor = gridExpanded ? Theme.candidateText : Theme.secondaryText
+            expandButton.backgroundColor = gridExpanded ? Theme.functionKey.withAlphaComponent(0.45) : .clear
+            expandButton.layer.cornerRadius = 14
+        }
+        expandButton.isHidden = !((total > viewW + 0.5 && !isPrediction) || gridExpanded || idleGear)
         updateFade()
     }
 

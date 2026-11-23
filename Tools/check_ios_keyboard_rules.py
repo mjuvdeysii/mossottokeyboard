@@ -90,10 +90,15 @@ for dirpath, _dirs, files in os.walk(KEYBOARD):
             if rec and "KeyboardSettings.shared" in rec:
                 problems.append(f"{path}: reconfigure() reads KeyboardSettings.shared on keystroke hot path (cache flags in applySettings)")
 
-            # Rule 8: Never eagerly allocate emojiPanel inside applyAppearance()
+            # Rule 8: Never eagerly allocate panels inside applyAppearance()
             app = extract_func(code, r'private\s+func\s+applyAppearance\b')
-            if app and re.search(r'\bemojiPanel\.', app):
-                problems.append(f"{path}: applyAppearance() accesses eager emojiPanel instead of emojiPanelIfLoaded?")
+            if app and re.search(r'\b(emojiPanel|grid|settingsPanel)\.', app):
+                problems.append(f"{path}: applyAppearance() accesses eager panel instead of *IfLoaded?")
+
+            # Rule 13a: Never call engine.trim() inside viewDidDisappear() (drops warm caches between sessions)
+            vdd = extract_func(code, r'override\s+func\s+viewDidDisappear\b')
+            if vdd and "engine.trim()" in vdd:
+                problems.append(f"{path}: viewDidDisappear() calls engine.trim() — keep warm engine caches across dismiss")
 
             # Rule 9: setMarked(_:) must gate host.setMarkedText behind useInlineMarkedText (0 setMarkedText XPC in .appex)
             sm = extract_func(code, r'private\s+func\s+setMarked\b')
@@ -119,9 +124,17 @@ for dirpath, _dirs, files in os.walk(KEYBOARD):
                 if pressed and "CABasicAnimation" in pressed:
                     problems.append(f"{path}: KeyView.pressed spawns CABasicAnimation on keystroke hot path")
 
-                # Rule 5b: No lip.shadowOpacity > 0 without lip.shadowPath = UIBezierPath
-                if re.search(r'lip\.shadowOpacity\s*=\s*(?!0(?:\.0+)?\b)\S', kv) and "lip.shadowPath = UIBezierPath" not in kv:
-                    problems.append(f"{path}: KeyView sets lip.shadowOpacity > 0 without shadowPath (causes offscreen rasterization)")
+                # Rule 5b: No shadowOpacity > 0 without shadowPath in KeyView
+                for m in re.finditer(r'\bshadowOpacity\s*=\s*([^\s;\n]+)', kv):
+                    val = m.group(1)
+                    if not re.match(r'^0(?:\.0+)?$', val) and "shadowPath" not in kv:
+                        problems.append(f"{path}: KeyView sets shadowOpacity > 0 without shadowPath (causes offscreen rasterization)")
+                        break
+
+        if name == "AmbientLightView.swift":
+            # Rule 12: AmbientLightView must never attach a full-screen layer.mask or spawn CABasicAnimation
+            if "layer.mask" in code or "CABasicAnimation" in code:
+                problems.append(f"{path}: AmbientLightView must have zero layer.mask or CABasicAnimation over iOS Liquid Glass")
 
 for p in problems:
     print(f"FAIL ios-keyboard-rules: {p}")
