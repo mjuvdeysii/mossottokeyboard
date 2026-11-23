@@ -516,7 +516,7 @@ final class EngineHost {
             if !self.readingsReady, let lex = self.lexicon, let d = self.decoder {
                 if Self.isExtension { return }
                 self.readingsReady = true
-                if memoryFootprintMB() < 46 {
+                if !Self.isExtension || memoryFootprintMB() < 46 {
                     d.setReadings(Self.compactReadings(for: lex))
                 } else {
                     d.setReadings(["\0": []])
