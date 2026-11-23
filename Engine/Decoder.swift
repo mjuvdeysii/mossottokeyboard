@@ -265,24 +265,25 @@ public final class Decoder {
     /// How far below the best syllable of a position a corrected syllable may score and still be kept (R4).
     public var correctionMargin = 12.0
     /// How many corrected syllables (one key changed) each position keeps whatever their score (R4).
-    /// 漏按（小鹤）：一个键可以当作哪些音节的两键编码之一，按该音节最常用单字的分数排序。
+    /// 漏按（小鹤）：一个键可以当作哪些音节的两键编码之一，以及是否为该音节首键；按该音节最常用单字分数降序。
     /// 只遍历 414 个音节，不碰 187 万条词条——上一轮「点首选打空」的 P0 正是全词库懒加载。
-    private lazy var keyToSyllables: [Character: [UInt16]] = {
-        var out: [Character: [UInt16]] = [:]
+    private lazy var keyToSyllables: [Character: [(id: UInt16, isFirst: Bool)]] = {
+        var out: [Character: [(id: UInt16, isFirst: Bool)]] = [:]
         for id in 0..<UInt16(lexicon.syllables.count) {
             let code = spelling(of: id)
-            guard code.count == 2 else { continue }
-            for ch in code { out[ch, default: []].append(id) }
+            guard code.count == 2, let c0 = code.first, let c1 = code.last else { continue }
+            out[c0, default: []].append((id, true))
+            if c1 != c0 { out[c1, default: []].append((id, false)) }
         }
         let score = { (id: UInt16) -> Int in
             self.lexicon.singles(id).map { Int(self.lexicon.entry($0).score) }.max() ?? Int(Int16.min)
         }
-        for ch in out.keys { out[ch]?.sort { score($0) > score($1) } }
+        for ch in out.keys { out[ch]?.sort { score($0.id) > score($1.id) } }
         return out
     }()
     /// 小鹤漏按一键：由词驱动，只在组词时生成（kind 4）。关掉它门禁里的漏按门槛必须变红。
     public var missingKeyEnabled = true
-    public var xiaoheMissingPenalty   = 1.4
+    public var xiaoheMissingPenalty   = 3.0
     public var missingKeyAlternatives = 32 
 
     public var correctionKeep = 2  /// At most this many corrected syllables per position (R4).
@@ -627,10 +628,11 @@ public final class Decoder {
         var bucketList = [[Edge]](repeating: [], count: stride_ * stride_)
         var floorArr = [Double](repeating: -.infinity, count: stride_ * stride_ * 2)
         // 九宫格 input is far more ambiguous per key: keep more words per span
-        let wide = taps.contains { $0.group } ? (scheme == .xiaohe ? 4 : 1) : 1
+        let keypad = taps.contains { $0.group }
+        let wide = keypad ? (scheme == .xiaohe ? 4 : 1) : 1
         // 九宫格: every key is 3–4 letters, so a weak word (one the lexicon only lists, with no frequency of its own)
         // fits the keys far more often by accident than it is meant; there words need a little real weight
-        let minWord = taps.contains { $0.group } ? t9MinWordScore : -Double.infinity
+        let minWord = keypad ? t9MinWordScore : -Double.infinity
         @inline(__always) func cap(_ start: Int, _ syllables: Int) -> Int { (start == 0 ? (syllables == 1 ? 120 : 40) : 12) * wide }
         // a one-syllable word at the start may join a bucket while it holds fewer than 120; any other word, fewer than
         // its own cap — so each bucket has two bars, by the cap of the word asking
@@ -690,6 +692,26 @@ public final class Decoder {
             walk(1, first.end, first.spatial, first.corrected)
         }
 
+        /// Extend a multi-syllable missing-key word strictly through exact literal spans from `k = 2` onward.
+        func walkExactTail(_ syl: (Int) -> UInt16, count L: Int, cut0: Int, kind0: UInt8, cut1: Int, kind1: UInt8,
+                           sp12: Double, found: (_ end: Int, _ spatial: Double, _ cuts: [Int], _ kinds: [UInt8]) -> Void) {
+            cutBuf.removeAll(keepingCapacity: true); kindBuf.removeAll(keepingCapacity: true)
+            cutBuf.append(cut0); kindBuf.append(kind0)
+            cutBuf.append(cut1); kindBuf.append(kind1)
+            func walk(_ k: Int, _ pos: Int, _ sp: Double) {
+                if k == L { found(pos, sp, cutBuf, kindBuf); return }
+                guard pos < n else { return }
+                let si = slot[pos * S + Int(syl(k))]
+                guard si >= 0 else { return }
+                for s in groups[pos][Int(si)].spans where s.kind == 0 && !s.corrected {
+                    cutBuf.append(s.end); kindBuf.append(s.kind)
+                    walk(k + 1, s.end, sp + s.spatial)
+                    cutBuf.removeLast(); kindBuf.removeLast()
+                }
+            }
+            walk(2, cut1, sp12)
+        }
+
         // Only start words where a chain of syllables from the beginning can arrive, and from where one can
         // still reach the end (or stop early for a shorter candidate from position 0) — this skips the inside of
         // spelled-out syllables in 全拼 (the "hon" of "zhong").
@@ -702,12 +724,12 @@ public final class Decoder {
         // reachable too, so the Chinese words that follow it are read.
         var englishEdges: [Edge] = []
         var foreignSpans = Set<Int>()
-        let mixing = englishEnabled && mixedEnglish && english != nil && n >= 2 && !taps.contains(where: { $0.group })
+        let mixing = englishEnabled && mixedEnglish && english != nil && n >= 2 && !keypad
         let letters = mixing ? taps.map { $0.key.lowercased() } : []
         for i in 0..<n where reach[i] {
             for sp in spansFrom[i] { reach[sp.end] = true }
-            if scheme == .xiaohe && missingKeyEnabled && i + 3 <= n { reach[i + 3] = true }
-        if scheme == .xiaohe && transposeEnabled && correctionEnabled && i + 4 <= n { reach[i + 4] = true }
+            if scheme == .xiaohe && missingKeyEnabled && correctionEnabled && !keypad && i + 3 <= n { reach[i + 3] = true }
+            if scheme == .xiaohe && transposeEnabled && correctionEnabled && i + 4 <= n { reach[i + 4] = true }
             guard mixing, let english else { continue }
             var word = ""
             for j in i..<min(n, i + 16) {
@@ -735,6 +757,38 @@ public final class Decoder {
             }
         }
 
+        /// Insert 2-syllable and optional 3+ syllable exact-tail edges for a Xiaohe missing-key follower pair.
+        func insertMissingWord(first: UInt16, second: UInt16, start: Int, cut0: Int, kind0: UInt8,
+                               cut1: Int, kind1: UInt8, sp12: Double, missingTail: Bool) {
+            let follow = lexicon.followers(first: first, second: second)
+            guard !follow.pairs.isEmpty || (missingTail && !follow.longer.isEmpty) else { return }
+            let pairSp = sp12 - (foreignSpans.contains(start * 1024 + cut1) ? mixedSlipPenalty : 0)
+            for idx in follow.pairs {
+                let score = Double(lexicon.entry(idx).score) / 100
+                if score < minWord { break }
+                let base = score - wordPenalty
+                guard accepts(start, cut1, 2, base + pairSp) else { break }
+                insert(Edge(start: start, end: cut1, score: base + pairSp, corrected: true, entry: idx,
+                            userText: nil, ids: [], cuts: [cut0, cut1], kinds: [kind0, kind1]))
+            }
+            if missingTail, !follow.longer.isEmpty {
+                for idx in follow.longer {
+                    let e = lexicon.entry(idx)
+                    let score = Double(e.score) / 100
+                    if score < minWord { break }
+                    let third = Int(lexicon.syllable(e, 2))
+                    guard slot[cut1 * S + third] >= 0 else { continue }
+                    let base = score - wordPenalty
+                    walkExactTail({ self.lexicon.syllable(e, $0) }, count: e.sylCount,
+                                  cut0: cut0, kind0: kind0, cut1: cut1, kind1: kind1, sp12: pairSp) { end, sp, cuts, kinds in
+                        guard accepts(start, end, cuts.count, base + sp) else { return }
+                        insert(Edge(start: start, end: end, score: base + sp, corrected: true, entry: idx,
+                                    userText: nil, ids: [], cuts: cuts, kinds: kinds))
+                    }
+                }
+            }
+        }
+
         for i in 0..<n where reach[i] {
             // 跨音节换位 (小鹤): 词驱动 4 键跨界换位 (nhic → ni + hc = 你好)，只对两音节词库词生效
             if scheme == .xiaohe, transposeEnabled, correctionEnabled, i + 4 <= n {
@@ -757,6 +811,22 @@ public final class Decoder {
                                 }
                             }
                         }
+                    }
+                }
+            }
+            // 漏按一个键（小鹤 [1+2] 首音节漏按，词驱动）：首键补全为音节 + 紧随的精确两键音节，再向外延伸精确多字词。
+            if missingKeyEnabled, correctionEnabled, scheme == .xiaohe, !keypad, i + 3 <= n,
+               !taps[i].group, !taps[i + 1].group, !taps[i + 2].group {
+                let keyChar = Character(taps[i].key.lowercased())
+                let missingTail = i + 5 <= n
+                var pool: ArraySlice<(id: UInt16, isFirst: Bool)>?
+                for s2 in spansFrom[i + 1] where s2.kind == 0 && !s2.corrected && s2.end == i + 3 {
+                    let candidates = pool ?? (keyToSyllables[keyChar] ?? []).prefix(missingKeyAlternatives)
+                    pool = candidates
+                    for (sid, isFirst) in candidates {
+                        let sp1 = spatialWeight * (isFirst ? 0.0 : -0.4) - correctionPenalty - xiaoheMissingPenalty
+                        insertMissingWord(first: sid, second: s2.id, start: i, cut0: i + 1, kind0: 4,
+                                          cut1: i + 3, kind1: s2.kind, sp12: sp1 + s2.spatial, missingTail: missingTail)
                     }
                 }
             }
@@ -815,24 +885,15 @@ public final class Decoder {
                 // 但前提是词库里真有这样一对词（followers），所以 span 数由词候选数决定，
                 // 不是每个位置都生成，这正是上一轮朴素原型伤 extra.sentences 的原因。
                 // 只在小鹤生效：小鹤每个音节两键，全拼单键本就是完整音节。
-                if missingKeyEnabled, correctionEnabled, scheme == .xiaohe,
-               first.kind == 0, !first.corrected, firstEnd < n, !taps[firstEnd].group {
+                if missingKeyEnabled, correctionEnabled, scheme == .xiaohe, !keypad,
+                   first.kind == 0, !first.corrected, firstEnd < n, !taps[firstEnd].group {
                     let keyChar = Character(taps[firstEnd].key.lowercased())
-                    for sid in (keyToSyllables[keyChar] ?? []).prefix(missingKeyAlternatives) {
-                        let follow = lexicon.followers(first: first.id, second: sid)
-                        guard !follow.pairs.isEmpty || !follow.longer.isEmpty else { continue }
-                        let code = spelling(of: sid)
-                        guard let at = code.firstIndex(of: keyChar) else { continue }
-                        let cut = at == code.startIndex ? 0.0 : -0.4
-                        let sp: Double = spatialWeight * cut - correctionPenalty - xiaoheMissingPenalty
-                        let second = Span(end: firstEnd + 1, id: sid, spatial: sp, corrected: true, kind: 4)
-                        for idx in follow.pairs {
-                            let base: Double = Double(lexicon.entry(idx).score) / 100 - wordPenalty
-                            if base + sp < minWord { break }
-                            guard accepts(i, second.end, 2, base + fsp + sp) else { break }
-                            insert(Edge(start: i, end: second.end, score: base + fsp + sp, corrected: true, entry: idx,
-                                        userText: nil, ids: [], cuts: [firstEnd, second.end], kinds: [first.kind, 4]))
-                        }
+                    let secondEnd = firstEnd + 1
+                    let missingTail = secondEnd + 2 <= n
+                    for (sid, isFirst) in (keyToSyllables[keyChar] ?? []).prefix(missingKeyAlternatives) {
+                        let sp = spatialWeight * (isFirst ? 0.0 : -0.4) - correctionPenalty - xiaoheMissingPenalty
+                        insertMissingWord(first: first.id, second: sid, start: i, cut0: firstEnd, kind0: first.kind,
+                                          cut1: secondEnd, kind1: 4, sp12: fsp + sp, missingTail: missingTail)
                     }
                 }
 
@@ -888,7 +949,6 @@ public final class Decoder {
             edgeChars[ei] = c
             return c
         }
-        let keypad = taps.contains { $0.group }
         // per-context normalisation of the language model: on the full keyboard (九宫格 measured no better with it)
         grammar?.massWeight = keypad ? 0 : contextNormalisation
         grammar?.resetMassBudget()
@@ -1044,7 +1104,7 @@ public final class Decoder {
             for end in stride(from: n - 1, through: 1, by: -1) {
                 // a word on its own never reads a key as a slip: picked from the strip it would swallow the next
                 // word's first key (我们回 taking the j of jin)
-                let list = ending[end].filter { edges[$0].start == 0 && !edges[$0].kinds.contains(3) }
+                let list = ending[end].filter { edges[$0].start == 0 && !edges[$0].kinds.contains(3) && !edges[$0].kinds.contains(4) }
                     .sorted { edges[$0].score > edges[$1].score }
                 for ei in list {
                     let e = edges[ei]

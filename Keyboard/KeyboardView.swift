@@ -582,6 +582,10 @@ final class KeyboardView: UIView {
     var onClearPreview: ((Bool) -> Void)?
     /// Continuous normalized delete-left swipe progress in 0...1 and armed state for the bar's warm filament.
     var onClearProgress: ((CGFloat, Bool) -> Void)?
+    /// Continuous held-delete clutch ramp-up (`0...1`) before & during word-level deletion.
+    var onDeleteClutchProgress: ((CGFloat, Bool) -> Void)?
+    /// Called when a held-delete repeat gesture finishes on finger lift so any deleted words can offer undo.
+    var onDeleteRepeatEnded: (() -> Void)?
     /// A swipe left off delete was let go while armed: clear the composition.
     var onClearSwipe: (() -> Void)?
     /// The test bench's stand-in for the version before the swipe existed (the same touches, no swipe to clear).
@@ -644,6 +648,7 @@ final class KeyboardView: UIView {
         var lastMove: CFTimeInterval
         let began: CFTimeInterval
         var repeatCount = 0
+        var deleteRepeating = false
         var preview: KeyPreview?
         /// Finished (emitted or abandoned): never finished again.
         var finished = false
@@ -1373,6 +1378,11 @@ final class KeyboardView: UIView {
         if tr.clearSwipe != nil { onClearProgress?(0, false) }
         if tr.clearSwipe?.armed == true { onClearPreview?(false) }
         tr.clearSwipe = nil
+        if tr.deleteRepeating {
+            onDeleteClutchProgress?(0, false)
+            if emit { onDeleteRepeatEnded?() }
+        }
+        tr.deleteRepeating = false
         let chosen = tr.altPopup?.selected ?? 0
         tr.altPopup?.removeFromSuperview()
         tr.altPopup = nil
@@ -1415,6 +1425,7 @@ final class KeyboardView: UIView {
     /// stays controllable). Timers run in the common run-loop modes so they keep firing while a finger moves.
     private func startDeleteRepeat(_ tr: Tracked) {
         tr.repeatCount = 0
+        tr.deleteRepeating = true
         // held delete has started: this press no longer swipes to clear
         if tr.clearSwipe != nil { onClearProgress?(0, false) }
         tr.clearSwipe = nil
@@ -1423,9 +1434,18 @@ final class KeyboardView: UIView {
             tr.repeatCount += 1
             if tr.repeatCount < 20 {
                 self.onAction?(.delete, nil)
-            } else if tr.repeatCount % 3 == 0 {
-                self.onAction?(.deleteWord, nil)
-                self.onFeedback?(.deleteWord, nil)
+                if tr.repeatCount >= 8 {
+                    let clutch = CGFloat(tr.repeatCount - 7) / 13.0
+                    self.onDeleteClutchProgress?(clutch, false)
+                }
+            } else {
+                if tr.repeatCount == 20 {
+                    self.onDeleteClutchProgress?(1.0, true)
+                }
+                if tr.repeatCount % 3 == 0 {
+                    self.onAction?(.deleteWord, nil)
+                    self.onFeedback?(.deleteWord, nil)
+                }
             }
         }
     }

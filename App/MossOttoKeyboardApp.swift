@@ -771,8 +771,8 @@ private struct GestureAtlasView: View {
                     Divider()
                     atlasRow(
                         cap: "←⌫ ↩",
-                        title: "删键左划一次清空 + ↩ 找回",
-                        detail: "输入拼音时从删除键向左一划直接清空整串拼音，候选栏左侧立刻留下 ↩，轻点可完整恢复。",
+                        title: "删键左划清空 + 长按删词离合安全网",
+                        detail: "打拼音或英文单词时从删除键向左一划直接清空整词，候选栏左侧留下 ↩ 可一键恢复；长按删除超过 1 秒时底栏亮起琥珀蓄力丝并切入逐词快删，松手同样留 ↩ 防止删过头。",
                         demoTitle: nil
                     )
                     Divider()

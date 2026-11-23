@@ -938,7 +938,7 @@ case "bench", "gate":
             ("slip.words.edge.legal.top1", 85.5, true),   // on the key's edge (the gate's touch noise)
             ("slip.words.centre.legal.top1", 40.5, true), // on the neighbour's centre
             ("rare.kept", 99.5, true),         // uncommon words typed on purpose stay first (%)
-            ("missing.sentences.top1", 9.0, true), // 小鹤漏按一键：kind-4 由词驱动，全量 14.4%/留出 12.7%
+            ("missing.sentences.top1", 25.0, true), // 小鹤漏按一键：双向 [1+2]/[2+1] + 多字词 kind-4 由词驱动
             ("predict.cold.ms", 250.0, false), // 冷启动首次联想：实测 ~43ms；250ms 留 5x 余量，能拦住全词库懒加载
         ] : [
             ("words.on", 97.0, true),

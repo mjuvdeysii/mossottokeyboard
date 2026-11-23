@@ -135,6 +135,8 @@ enum KeyboardTests {
         r57PullCordAndOptical2D(window)
         r58CorrectionPinpointAndDetent(window)
         r59TrackpadEndStopAndNewlineDetent(window)
+        r60DeleteClutchAndBilingualUndo(window)
+        r60XiaoheMissingKeyRecovery(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -1918,6 +1920,152 @@ enum KeyboardTests {
         log(unavailNoClamp,
             "r59.Trackpad treats unavailable host context as free scroll without false boundary clamp",
             "endStop=\(kbNoCtx.trackpadEndStopForTests) badge=\(kbNoCtx.trackpadBadgeTextForTests ?? "nil")")
+        reset(vc, h)
+    }
+
+    // MARK: - R60: delete repeat clutch filament, word-delete undo safety net & English ClearSwipe
+
+    static func r60DeleteClutchAndBilingualUndo(_ window: UIWindow) {
+        guard let (vc, h) = makeKeyboard(scheme: 1, in: window) else {
+            log(false, "r60.setup", "engine did not load")
+            return
+        }
+        vc.feedbackPlayer = RecordingFeedbackPlayer()
+        let kb = vc.keyboardViewForTests
+        let bar = vc.candidateBarForTests
+        guard let delCap = kb.keyRectsForTests(.delete)?.cap else {
+            log(false, "r60.setup", "no delete key")
+            return
+        }
+        let dc = center(delCap)
+
+        // 1. English ClearSwipe: typing "thnaks", swipe left off delete clears whole word & ↩ restores it + suggestions
+        reset(vc, h)
+        vc.handle(.toggleLanguage, tap: nil)
+        h.insertText("hello ")
+        vc.textDidChange(nil)
+        type(vc, "thnaks")
+        drain(0.02)
+        let enSwipe = swipe(from: dc, to: CGVector(dx: -72, dy: 0), duration: 0.18)
+        kb.feedForTests(Array(enSwipe.dropLast()))
+        let enArmed = bar.clearPreviewForTests && bar.clearFilamentProgressForTests == 1
+        kb.feedForTests([enSwipe.last!])
+        drain(0.01)
+        let clearedText = h.string
+        let chipAfterClear = bar.undoTextForTests
+        bar.undoTapForTests()
+        drain(0.02)
+        let restoredText = h.string
+        let suggestionsRestored = bar.laidOutForTests >= 2
+        vc.handle(.space, tap: nil)
+        let correctedAfterRestore = h.string == "hello thanks "
+        log(enArmed && clearedText == "hello " && chipAfterClear == "thnaks"
+            && restoredText == "hello thnaks" && suggestionsRestored && correctedAfterRestore,
+            "r60.English ClearSwipe clears active word with filament and ↩ restores word + suggestions",
+            "armed=\(enArmed) cleared=\(clearedText) chip=\(chipAfterClear ?? "nil") restored=\(restoredText) sugg=\(suggestionsRestored) final=\(h.string)")
+
+        // 2. Held delete clutch ramps filament (ticks 8..19), locks at tick 20, deletes words at 21+, and offers ↩ undo on lift
+        reset(vc, h)
+        let seedText = "今天天气真好我们可以一起出去公园散步吧太开心啦好不好" // 26 Hanzi: 1 initial + 19 repeat = 20 chars -> 6 left ("今天天气真好"), then 2 word deletes -> 2 left ("今天")
+        h.insertText(seedText)
+        vc.textDidChange(nil)
+        let t0: CFTimeInterval = 100
+        kb.feedForTests([TouchSample(id: 1, phase: .began, point: dc, time: t0)])
+        // Tick 10 (0.42 + 10*0.07 = 1.12s): clutch ramping up without dimming stripBox
+        kb.advanceForTests(to: t0 + 1.13)
+        let midClutch = bar.clearFilamentProgressForTests
+        let notDimmed = !bar.clearPreviewForTests
+        // Tick 21 (0.42 + 21*0.07 = 1.89s): clutch locked & first word delete fired; tick 24 (2.10s): second word delete
+        kb.advanceForTests(to: t0 + 2.11)
+        let lockedClutch = bar.clearFilamentProgressForTests == 1
+        let textAfterHold = h.string
+        kb.feedForTests([TouchSample(id: 1, phase: .ended, point: dc, time: t0 + 2.12)])
+        drain(0.01)
+        let filamentReset = bar.clearFilamentProgressForTests == 0
+        let undoWordChip = bar.undoTextForTests
+        bar.undoTapForTests()
+        drain(0.01)
+        let textAfterUndo = h.string
+        log(midClutch > 0.1 && midClutch < 0.9 && notDimmed && lockedClutch
+            && textAfterHold == "今天" && filamentReset && undoWordChip == "天气真好" && textAfterUndo == "今天天气真好",
+            "r60.Held delete clutch shows progressive filament, engages word-delete, and ↩ restores deleted words",
+            "mid=\(midClutch) notDim=\(notDimmed) locked=\(lockedClutch) afterHold=\(textAfterHold) reset=\(filamentReset) chip=\(undoWordChip ?? "nil") restored=\(textAfterUndo)")
+
+        // 3. Typing another character after held word-delete dismisses the ↩ chip cleanly
+        type(vc, "nihao")
+        settle(vc)
+        let chipDismissed = bar.undoTextForTests == nil
+        log(chipDismissed, "r60.Next key dismisses word-delete ↩ chip", "chip=\(bar.undoTextForTests ?? "nil")")
+
+        // 4. Cancelled held delete resets filament without promoting a stale ↩ chip
+        reset(vc, h)
+        h.insertText(seedText)
+        vc.textDidChange(nil)
+        let t1: CFTimeInterval = 200
+        kb.feedForTests([TouchSample(id: 2, phase: .began, point: dc, time: t1)])
+        kb.advanceForTests(to: t1 + 1.90)
+        kb.feedForTests([TouchSample(id: 2, phase: .cancelled, point: dc, time: t1 + 1.91)])
+        drain(0.01)
+        log(bar.clearFilamentProgressForTests == 0 && bar.undoTextForTests == nil,
+            "r60.Cancelled held delete resets clutch filament without leaving ↩ chip",
+            "progress=\(bar.clearFilamentProgressForTests) chip=\(bar.undoTextForTests ?? "nil")")
+
+        // 5. Held word-delete crossing newlines sanitizes chip display cleanly while restoring exact raw newlines
+        reset(vc, h)
+        h.insertText("第一行\n")
+        vc.textDidChange(nil)
+        let t2: CFTimeInterval = 300
+        kb.feedForTests([TouchSample(id: 3, phase: .began, point: dc, time: t2)])
+        kb.advanceForTests(to: t2 + 2.00) // tick 21 -> deletes "\n" as word-delete
+        let afterNewlineDelete = h.string
+        kb.feedForTests([TouchSample(id: 3, phase: .ended, point: dc, time: t2 + 2.02)])
+        drain(0.01)
+        let nlChip = bar.undoTextForTests
+        bar.undoTapForTests()
+        drain(0.01)
+        log(nlChip == "↵" && h.string == "第一行\n",
+            "r60.Held word-delete over newline displays ↵ on ↩ chip and restores exact newline",
+            "afterDel=\(afterNewlineDelete.debugDescription) chip=\(nlChip ?? "nil") restored=\(h.string.debugDescription)")
+        reset(vc, h)
+    }
+
+    static func r60XiaoheMissingKeyRecovery(_ window: UIWindow) {
+        guard let (vc, h) = makeKeyboard(scheme: 0, in: window) else {
+            log(false, "r60.xiaohe.setup", "engine did not load")
+            return
+        }
+        let bar = vc.candidateBarForTests
+
+        // 1. Syllable-1 missing key [1+2]: jtmtmqihfhc -> 今天天气很好 + missing-key pinpoint on preedit
+        reset(vc, h)
+        type(vc, "jtmtmqihfhc"); settle(vc)
+        let jtmTop = vc.testState.candidates.first
+        let jtmHasPin = !bar.preeditPinpointForTests.missingAnchors.isEmpty
+        log(jtmTop == "今天天气很好" && jtmHasPin,
+            "r60.Xiaohe recovers [1+2] first-syllable missing key sentence (jtmtmqihfhc -> 今天天气很好) with missing pinpoint",
+            "top=\(jtmTop ?? "nil") pin=\(bar.preeditPinpointForTests) marked=\(vc.testState.marked ?? "nil")")
+
+        // 2. Full sentences with mid-sentence missing keys ([1+2] vegewftifmejpjt & hvyigddcxwusjdm)
+        reset(vc, h)
+        type(vc, "vegewftifmejpjt"); settle(vc)
+        let sent1Top = vc.testState.candidates.first
+        reset(vc, h)
+        type(vc, "hvyigddcxwusjdm"); settle(vc)
+        let sent2Top = vc.testState.candidates.first
+        log(sent1Top == "这个问题怎么解决" && sent2Top == "会议改到下午三点",
+            "r60.Xiaohe recovers full sentences with mid-sentence missing keys",
+            "s1=\(sent1Top ?? "nil") s2=\(sent2Top ?? "nil")")
+
+        // 3. Odd-length normal Xiaohe typing stays intact (keyil -> 可以了, nihcm -> 你好吗)
+        reset(vc, h)
+        type(vc, "keyil"); settle(vc)
+        let odd1 = vc.testState.candidates.first
+        reset(vc, h)
+        type(vc, "nihcm"); settle(vc)
+        let odd2 = vc.testState.candidates.first
+        log(odd1 == "可以了" && odd2 == "你好吗",
+            "r60.Xiaohe preserves normal odd-length next-syllable prediction (keyil / nihcm)",
+            "odd1=\(odd1 ?? "nil") odd2=\(odd2 ?? "nil")")
         reset(vc, h)
     }
 

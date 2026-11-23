@@ -459,12 +459,12 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         setNeedsLayout()
     }
 
-    /// Continuous delete-left swipe progress (`0...1`) drives the strip's bottom warm-amber filament synchronously.
-    func setClearProgress(_ progress: CGFloat, armed: Bool) {
+    /// Continuous delete-left swipe or held-delete clutch progress (`0...1`) drives the strip's bottom warm-amber filament synchronously.
+    func setClearProgress(_ progress: CGFloat, armed: Bool, dimContent: Bool = true) {
         let p = armed ? 1.0 : min(1, max(0, progress))
         clearSwipeProgress = p
         clearSwipeArmed = armed
-        let a: CGFloat = armed ? 0.35 : (p > 0.01 ? (1.0 - p * 0.40) : 1.0)
+        let a: CGFloat = dimContent ? (armed ? 0.35 : (p > 0.01 ? (1.0 - p * 0.40) : 1.0)) : 1.0
         stripBox.alpha = a
         expandButton.alpha = a
         preeditDock.alpha = a
