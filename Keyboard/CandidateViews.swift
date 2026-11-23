@@ -1171,6 +1171,7 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
     }
     final class Cell: UICollectionViewCell {
         let label = UILabel()
+        let correctionBar = CALayer()
         var baseBackground: UIColor = .clear
         var baseBorderColor: UIColor = .clear
         override init(frame: CGRect) {
@@ -1179,6 +1180,9 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
             label.textAlignment = .center
             label.textColor = Theme.candidateText
             contentView.addSubview(label)
+            correctionBar.cornerRadius = 1
+            correctionBar.isHidden = true
+            contentView.layer.addSublayer(correctionBar)
             contentView.backgroundColor = .clear
             contentView.layer.cornerRadius = 10
             contentView.layer.cornerCurve = .continuous
@@ -1192,10 +1196,16 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         override func traitCollectionDidChange(_ previous: UITraitCollection?) {
             super.traitCollectionDidChange(previous)
             contentView.layer.borderColor = baseBorderColor.resolvedColor(with: traitCollection).cgColor
+            correctionBar.backgroundColor = Theme.correctedMark.resolvedColor(with: traitCollection).cgColor
         }
         override func layoutSubviews() {
             super.layoutSubviews()
             label.frame = contentView.bounds.insetBy(dx: 4, dy: 0)
+            let barW = min(14, max(8, contentView.bounds.width - 18))
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            correctionBar.frame = CGRect(x: (contentView.bounds.width - barW) / 2, y: contentView.bounds.height - 4, width: barW, height: 2)
+            CATransaction.commit()
         }
         override var isHighlighted: Bool {
             didSet { contentView.backgroundColor = isHighlighted ? Theme.functionKey : baseBackground }
@@ -1346,6 +1356,8 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         cell.baseBorderColor = border
         cell.contentView.backgroundColor = bg
         cell.contentView.layer.borderColor = border.resolvedColor(with: traitCollection).cgColor
+        cell.correctionBar.backgroundColor = Theme.correctedMark.resolvedColor(with: traitCollection).cgColor
+        cell.correctionBar.isHidden = !(isFirst && c.corrected)
         return cell
     }
 

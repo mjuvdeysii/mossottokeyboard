@@ -137,6 +137,7 @@ enum KeyboardTests {
         r59TrackpadEndStopAndNewlineDetent(window)
         r60DeleteClutchAndBilingualUndo(window)
         r60XiaoheMissingKeyRecovery(window)
+        r61BilingualFlowAndPairOvertype(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -911,14 +912,16 @@ enum KeyboardTests {
             cb.touchForTests(path(from: center(f), legs: [(CGVector(dx: -6, dy: 5), 0.25)]))
             log(committed() == cands[1], "strip.tap (6 pt drift, 0.25 s) types the word under the finger", "text=\(committed()) want=\(cands[1])")
             compose()
+            let scrolledCands = vc.testState.candidates
+            let targetIdx = scrolledCands.count > 10 ? 10 : 8
             let box = cb.stripFrameForTests
             var n = 0
-            while n < 40, let g = cb.candidateFrameForTests(8), g.maxX > box.maxX - 1 { cb.stripPanForTests(dx: -40); n += 1 }
-            if let g = cb.candidateFrameForTests(8), g.minX >= box.minX, g.maxX <= box.maxX {
+            while n < 40, let g = cb.candidateFrameForTests(targetIdx), g.maxX > box.maxX - 1 { cb.stripPanForTests(dx: -40); n += 1 }
+            if targetIdx < scrolledCands.count, let g = cb.candidateFrameForTests(targetIdx), g.minX >= box.minX, g.maxX <= box.maxX {
                 let s0 = selects
                 cb.tapForTests(at: center(g), time: nextTime())
-                log(selects == s0 + 1 && committed() == cands[8], "strip.scrolled to the 9th, a tap types the 9th",
-                    "text=\(committed()) want=\(cands[8]) offset=\(cb.stripOffsetForTests)")
+                log(selects == s0 + 1 && committed() == scrolledCands[targetIdx], "strip.scrolled to the 9th, a tap types the 9th",
+                    "text=\(committed()) want=\(scrolledCands[targetIdx]) offset=\(cb.stripOffsetForTests)")
             } else { log(false, "strip.scrolled to the 9th, a tap types the 9th", "the 9th never came into view") }
         } else { log(false, "strip.tap types the word under the finger", "candidates=\(cands.prefix(10))") }
         // 6. a finger landing while the row still glides only stops it
@@ -2012,7 +2015,7 @@ enum KeyboardTests {
 
         // 5. Held word-delete crossing newlines sanitizes chip display cleanly while restoring exact raw newlines
         reset(vc, h)
-        h.insertText("第一行\n")
+        h.insertText("第一行\n一二三四五六七八九十一二三四五六七八九十")
         vc.textDidChange(nil)
         let t2: CFTimeInterval = 300
         kb.feedForTests([TouchSample(id: 3, phase: .began, point: dc, time: t2)])
@@ -2066,6 +2069,86 @@ enum KeyboardTests {
         log(odd1 == "可以了" && odd2 == "你好吗",
             "r60.Xiaohe preserves normal odd-length next-syllable prediction (keyil / nihcm)",
             "odd1=\(odd1 ?? "nil") odd2=\(odd2 ?? "nil")")
+        reset(vc, h)
+    }
+
+    // MARK: - R61: smart bracket overtype, English session literal respect & kaomoji carry-over delete
+
+    static func r61BilingualFlowAndPairOvertype(_ window: UIWindow) {
+        guard let (vc, h) = makeKeyboard(scheme: 1, in: window) else {
+            log(false, "r61.setup", "engine did not load")
+            return
+        }
+
+        // 1. Smart CJK bracket closing overtype: （ + nihao + space + ） -> （你好）| (zero duplicate closing bracket)
+        reset(vc, h)
+        vc.handle(.char("（"), tap: nil)
+        type(vc, "nihao"); settle(vc); vc.handle(.space, tap: nil)
+        let insidePair = h.string == "（你好）" && h.documentContextAfterInput == "）"
+        vc.handle(.char("）"), tap: nil)
+        let overtyped = h.string == "（你好）" && (h.documentContextAfterInput ?? "").isEmpty
+        // Typing another closing bracket right after steps normally as a character
+        vc.handle(.char("）"), tap: nil)
+        let extraInserted = h.string == "（你好））"
+        log(insidePair && overtyped && extraInserted,
+            "r61.Smart CJK bracket overtypes closing mark without duplicating it",
+            "inside=\(insidePair) overtyped=\(overtyped) extra=\(extraInserted) text=\(h.string)")
+
+        // 2. English session-scoped undo respect: undoing teh->the twice keeps teh literal for the rest of session
+        reset(vc, h)
+        if !vc.testState.english { vc.handle(.toggleLanguage, tap: nil) }
+        h.insertText("hello ")
+        vc.textDidChange(nil)
+        type(vc, "teh"); vc.handle(.space, tap: nil)
+        let firstFix = h.string == "hello the "
+        vc.handle(.delete, tap: nil) // 1st undo -> "teh"
+        vc.handle(.space, tap: nil)  // "teh "
+        type(vc, "teh"); vc.handle(.space, tap: nil)
+        let secondFix = h.string == "hello teh the "
+        vc.handle(.delete, tap: nil) // 2nd undo -> sessionLiteralEnglish learns "teh"
+        vc.handle(.space, tap: nil)  // "teh teh "
+        type(vc, "teh"); vc.handle(.space, tap: nil)
+        let stayedLiteral = h.string == "hello teh teh teh "
+        log(firstFix && secondFix && stayedLiteral,
+            "r61.English session undo twice stops autocorrect from fighting intentional spelling",
+            "first=\(firstFix) second=\(secondFix) stayed=\(stayedLiteral) text=\(h.string)")
+
+        // 3. Kaomoji carry-over delete: inserting ψ(｀∇´)ψ and returning to keyboard deletes the whole kaomoji in 1 tap
+        reset(vc, h)
+        if vc.testState.english { vc.handle(.toggleLanguage, tap: nil) }
+        h.insertText("早安 ")
+        vc.textDidChange(nil)
+        vc.candidateBarForTests.onMostoTap?()
+        drain(0.05)
+        vc.emojiPanelIfLoadedForTests?.onEmoji?("ψ(｀∇´)ψ")
+        vc.emojiPanelIfLoadedForTests?.onBack?()
+        drain(0.03)
+        let beforeDel = h.string
+        vc.handle(.delete, tap: nil)
+        let deletedWholeKaomoji = beforeDel == "早安 ψ(｀∇´)ψ" && h.string == "早安 "
+        log(deletedWholeKaomoji,
+            "r61.Returning from Kaomoji panel and tapping Delete removes the full kaomoji in one tap",
+            "before=\(beforeDel) after=\(h.string)")
+
+        // 4. CandidateGridView cell 0 marks corrected readings with its accent bar
+        reset(vc, h)
+        if vc.testState.english { vc.handle(.toggleLanguage, tap: nil) }
+        type(vc, "jintianttianqihenhao"); settle(vc)
+        vc.candidateBarForTests.onExpand?()
+        drain(0.03)
+        let grid = vc.gridIfLoadedForTests
+        var barVisible = false
+        var gridDetail = "grid=nil"
+        if let grid {
+            grid.layoutIfNeeded()
+            let coll = grid.subviews.compactMap { $0 as? UICollectionView }.first
+            coll?.layoutIfNeeded()
+            drain(0.01)
+            let cell = coll?.cellForItem(at: IndexPath(item: 0, section: 0)) as? CandidateGridView.Cell
+            barVisible = cell != nil && cell?.correctionBar.isHidden == false
+            gridDetail = "coll=\(coll != nil) cell=\(cell != nil) barHidden=\(cell?.correctionBar.isHidden ?? true)"
+        }
+        log(barVisible, "r61.CandidateGridView renders correctionBar accent under corrected slot 0", gridDetail)
         reset(vc, h)
     }
 

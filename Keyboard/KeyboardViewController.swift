@@ -57,6 +57,9 @@ final class KeyboardViewController: UIInputViewController {
     /// keep it literal for the rest of the session so autocorrect never fights intentional jargon/names.
     private var undoCountsByKeys: [String: Int] = [:]
     private var sessionLiteralKeys: Set<String> = []
+    /// Session-scoped undo respect for English mode: undoing an autocorrected word twice keeps it literal in this session.
+    private var enUndoCountsByWord: [String: Int] = [:]
+    private var sessionLiteralEnglish: Set<String> = []
 
     // State
     private var chinese = true
@@ -249,6 +252,7 @@ final class KeyboardViewController: UIInputViewController {
     /// The candidates shown are for the keys typed now (no decode still under way for them).
     var candidateBarForTests: CandidateBarView { candidateBar }
     var gridIfLoadedForTests: CandidateGridView? { gridIfLoaded }
+    var emojiPanelIfLoadedForTests: EmojiPanelView? { emojiPanelIfLoaded }
     var plainLightHiddenForTests: Bool { plainLightButton.isHidden }
     var mostoHintHiddenForTests: Bool { mostoHintButton.isHidden }
     var testSettled: Bool { taps.isEmpty || resultGeneration == generation }
@@ -639,6 +643,7 @@ final class KeyboardViewController: UIInputViewController {
         beforeEnDelete = nil
         deletedWordsBuffer = ""
         lastInsertedSpace = false
+        lastEmojiInserted = ""
         endEnglishWord()
     }
 
@@ -983,7 +988,10 @@ final class KeyboardViewController: UIInputViewController {
     func handle(_ action: KeyAction, tap: Tap?) {
         let t0 = CACurrentMediaTime()
         pairAdjustGeneration += 1
-        if action != .delete { justInsertedPair = nil }
+        if action != .delete {
+            justInsertedPair = nil
+            lastEmojiInserted = ""
+        }
         defer {
             // Only snapshot host context via XPC when idle with state that truly needs afterLastKey comparison.
             // Predictions alone do not need post-commit XPC in .appex (eliminates 2 XPC round-trips per committed word).
@@ -1144,6 +1152,17 @@ final class KeyboardViewController: UIInputViewController {
         let pairs: [String: (full: String, closing: String)] = [
             "《": ("《》", "》"), "（": ("（）", "）"), "【": ("【】", "】"), "「": ("「」", "」"), "『": ("『』", "』"), "“": ("“”", "”")
         ]
+        // Smart Pair Closing Overtype: typing the matching closing mark right before an auto-inserted closing bracket steps over it cleanly.
+        if chinese, inInsertedPair, Self.closingPairs.contains(out) {
+            inInsertedPair = false
+            if host.documentContextAfterInput?.hasPrefix(out) == true {
+                lastHostWriteTime = CACurrentMediaTime()
+                host.adjustTextPosition(byCharacterOffset: out.utf16.count)
+                lastInsertedSpace = false
+                afterLastKey = contextSnapshot()
+                return
+            }
+        }
         if let p = pairs[out] {
             host.insertText(p.full)
             let closing = p.closing
@@ -1315,6 +1334,17 @@ final class KeyboardViewController: UIInputViewController {
         if !enTaps.isEmpty {
             beforeEnDelete = (enTaps, enTyped)
         }
+        // Kaomoji carry-over delete: pressing Backspace right after closing the Emoji/Kaomoji panel removes the whole multi-char kaomoji in one tap.
+        if enTaps.isEmpty, !lastEmojiInserted.isEmpty {
+            let emoji = lastEmojiInserted
+            lastEmojiInserted = ""
+            if host.documentContextBeforeInput?.hasSuffix(emoji) == true {
+                lastHostWriteTime = CACurrentMediaTime()
+                for _ in emoji { host.deleteBackward() }
+                if !chinese { updateAutoShift(); reconfigure() }
+                return
+            }
+        }
         host.deleteBackward()
         if !enTaps.isEmpty {
             enTaps.removeLast()
@@ -1327,6 +1357,7 @@ final class KeyboardViewController: UIInputViewController {
     private static let matchingClosingPair: [Character: Character] = [
         "《": "》", "（": "）", "【": "】", "「": "」", "『": "』", "“": "”"
     ]
+    private static let closingPairs: Set<String> = ["》", "）", "】", "」", "』", "”"]
 
     // MARK: - English autocorrect
 
@@ -1335,7 +1366,10 @@ final class KeyboardViewController: UIInputViewController {
     private func updateEnglishSuggestions() {
         guard let english, !enTaps.isEmpty else { endEnglishWord(); return }
         let list = english.suggestions(enTaps)
-        let fix = KeyboardSettings.shared.autocorrect ? english.autocorrection(enTaps, suggestions: list) : nil
+        let typedLower = enTyped.lowercased()
+        let fix = (KeyboardSettings.shared.autocorrect && !sessionLiteralEnglish.contains(typedLower))
+            ? english.autocorrection(enTaps, suggestions: list)
+            : nil
         enCorrection = fix.map { EnglishDecoder.cased($0.text, like: enTyped) }
         var texts: [String] = []
         if let c = enCorrection { texts.append(c) }
@@ -1381,6 +1415,12 @@ final class KeyboardViewController: UIInputViewController {
         host.deleteBackward()                       // the space / mark
         for _ in u.corrected { host.deleteBackward() }
         host.insertText(u.typed)
+        let lower = u.typed.lowercased()
+        if !lower.isEmpty {
+            let count = (enUndoCountsByWord[lower] ?? 0) + 1
+            enUndoCountsByWord[lower] = count
+            if count >= 2 { sessionLiteralEnglish.insert(lower) }
+        }
         enTaps = u.taps
         enTyped = u.typed
         enCorrection = nil
@@ -1805,6 +1845,7 @@ final class KeyboardViewController: UIInputViewController {
     // MARK: - Candidates
 
     func candidateTapped(_ i: Int) {
+        lastEmojiInserted = ""
         if taps.isEmpty, enTaps.isEmpty, i < predictions.count {
             // a next-word suggestion (or math result) goes straight in; follow-up predictions only for language words
             let text = predictions[i]
