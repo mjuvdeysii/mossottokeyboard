@@ -162,15 +162,15 @@ enum Layouts {
         bottom += middleKeys(ctx)
         bottom.append(KeySpec(action: .space, label: ctx.chinese ? "空格" : "space", width: 0))
         bottom.append(ctx.chinese
-            ? KeySpec(action: .char("，"), label: "，", width: 1, alt: "。", style: .function, moreAlts: ["？", "！", "、", "…", "《", "（"])
-            : KeySpec(action: .char("."), label: ".", width: 1, alt: ",", style: .function, moreAlts: ["?", "!", "'", "\"", "-"]))
+            ? KeySpec(action: .char("，"), label: "，", width: 1, alt: "。", style: .function, hint: "。", moreAlts: ["？", "！", "、", "…", "《", "（"])
+            : KeySpec(action: .char("."), label: ".", width: 1, alt: ",", style: .function, hint: ",", moreAlts: ["?", "!", "'", "\"", "-"]))
         bottom.append(returnKey(ctx, width: ctx.showGlobe ? 1.75 : 2, wide: false))
         rows.append(bottom)
         return rows
     }
 
-    private static func charRow(_ s: [String], width: CGFloat = 1, alts: [String: String] = [:]) -> [KeySpec] {
-        s.map { KeySpec(action: .char($0), label: $0, width: width, alt: alts[$0]) }
+    private static func charRow(_ s: [String], width: CGFloat = 1, alts: [String: String] = [:], hints: [String: String] = [:]) -> [KeySpec] {
+        s.map { KeySpec(action: .char($0), label: $0, width: width, alt: alts[$0], hint: hints[$0] ?? alts[$0]) }
     }
 
     private static func bottomRow(_ ctx: LayoutContext) -> [KeySpec] {
@@ -200,7 +200,7 @@ enum Layouts {
     private static func pinyinPad(_ ctx: LayoutContext) -> [[KeySpec]] {
         let side: CGFloat = 1.6, mid: CGFloat = 6.8 / 3
         func k(_ d: Character, _ label: String) -> KeySpec { KeySpec(action: .t9(d), label: label, width: mid) }
-        func p(_ s: String, _ alt: String?) -> KeySpec { KeySpec(action: .char(s), label: s, width: side, alt: alt, style: .function) }
+        func p(_ s: String, _ alt: String?) -> KeySpec { KeySpec(action: .char(s), label: s, width: side, alt: alt, style: .function, hint: alt) }
         let row1 = [p("，", "、"), k("'", "分词"), k("2", "ABC"), k("3", "DEF"),
                     KeySpec(action: .delete, label: "", symbol: "delete.left", width: side, style: .function)]
         let row2 = [p("。", "…"), k("4", "GHI"), k("5", "JKL"), k("6", "MNO"),
@@ -223,7 +223,7 @@ enum Layouts {
     private static func numpad(_ ctx: LayoutContext) -> [[KeySpec]] {
         let side: CGFloat = 2, digit: CGFloat = 2
         func d(_ s: String) -> KeySpec { KeySpec(action: .char(s), label: s, width: digit) }
-        func p(_ s: String, _ alt: String? = nil) -> KeySpec { KeySpec(action: .char(s), label: s, width: side, alt: alt, style: .function) }
+        func p(_ s: String, _ alt: String? = nil) -> KeySpec { KeySpec(action: .char(s), label: s, width: side, alt: alt, style: .function, hint: alt) }
         let row1 = [p("+", "="), d("1"), d("2"), d("3"),
                     KeySpec(action: .delete, label: "", symbol: "delete.left", width: side, style: .function)]
         let row2 = [p("-", "_"), d("4"), d("5"), d("6"),
@@ -234,8 +234,8 @@ enum Layouts {
         let back = KeySpec(action: .page(.letters), label: ctx.chinese ? "拼音" : "ABC", width: side, style: .function)
         var row4: [KeySpec] = ctx.showGlobe ? [back, KeySpec(action: .globe, label: "", symbol: "globe", width: 1.2, style: .function)] : [back]
         let punct: CGFloat = ctx.showGlobe ? 1.4 : side
-        row4 += [KeySpec(action: .char("."), label: ".", width: punct, alt: ",", style: .function), d("0"),
-                 KeySpec(action: .char(":"), label: ":", width: punct, alt: "%", style: .function),
+        row4 += [KeySpec(action: .char("."), label: ".", width: punct, alt: ",", style: .function, hint: ","), d("0"),
+                 KeySpec(action: .char(":"), label: ":", width: punct, alt: "%", style: .function, hint: "%"),
                  KeySpec(action: .page(.numbers), label: ctx.chinese ? "符号" : "#+=", width: side, style: .function)]
         return [row1, row2, row3, row4]
     }
@@ -249,7 +249,7 @@ enum Layouts {
             : charRow(["_", "\\", "|", "~", "<", ">", "€", "£", "¥", "•"], alts: ["~": "°"])
         var row3: [KeySpec] = [KeySpec(action: .page(.numbers), label: "123", width: 1.5, style: .function)]
         row3 += ctx.chinese
-            ? charRow(["…", "，", "^_^", "？", "！", "'"], width: sixth, alts: ["…": "——", "^_^": "ψ(｀∇´)ψ", "'": "’"])
+            ? charRow(["…", "，", "^_^", "？", "！", "'"], width: sixth, alts: ["…": "——", "^_^": "ψ(｀∇´)ψ", "'": "’"], hints: ["…": "—", "^_^": "ψ"])
             : charRow([".", ",", "?", "!", "'", "`"], width: sixth)
         row3.append(KeySpec(action: .delete, label: "", symbol: "delete.left", width: 1.5, style: .function))
         return [row1, row2, row3, bottomRow(ctx)]

@@ -130,6 +130,7 @@ enum KeyboardTests {
         r52HardwareDeckAndOpticalCraft(window)
         r53GridParityAndIdleSeparation(window)
         r54OpticalTrackpadAndTactileProfiles(window)
+        r55DualLegendFlickAndMathBadge(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -1601,6 +1602,83 @@ enum KeyboardTests {
         log(ep.tabScrollOffsetXForTests > 20,
             "r54.EmojiPanelView auto-scrolls bottom dock to active Mosto tab on kaomoji open",
             "offsetX=\(ep.tabScrollOffsetXForTests)")
+    }
+
+    static func r55DualLegendFlickAndMathBadge(_ window: UIWindow) {
+        // 1. Sub-glyph micro-legends appear on flickable punctuation/symbol keys while keeping 26 letters pure
+        let kb = KeyboardView(spatial: SpatialModel.standard())
+        kb.frame = CGRect(x: 0, y: 0, width: 402, height: 214)
+        kb.configure(LayoutContext(page: .letters, chinese: true, showGlobe: false, returnLabel: nil, returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true))
+        kb.layoutIfNeeded()
+        let lettersPure = kb.keyHintTextForTests(.char("q")) == nil && kb.keyHintTextForTests(.char("a")) == nil
+        let commaHint = kb.keyHintTextForTests(.char("，")) == "。"
+
+        kb.configure(LayoutContext(page: .numbers, chinese: true, showGlobe: false, returnLabel: nil, returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true))
+        kb.layoutIfNeeded()
+        let numHints = kb.keyHintTextForTests(.char("/")) == "、" && kb.keyHintTextForTests(.char("¥")) == "$"
+
+        kb.configure(LayoutContext(page: .symbols, chinese: true, showGlobe: false, returnLabel: nil, returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true))
+        kb.layoutIfNeeded()
+        let symHints = kb.keyHintTextForTests(.char("…")) == "—" && kb.keyHintTextForTests(.char("^_^")) == "ψ"
+
+        kb.configure(LayoutContext(page: .letters, chinese: true, showGlobe: false, returnLabel: nil, returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true, pinyinGrid: true))
+        kb.layoutIfNeeded()
+        let t9Hints = kb.keyHintTextForTests(.char("，")) == "、" && kb.keyHintTextForTests(.char("。")) == "…" && kb.keyHintTextForTests(.char("？")) == "！"
+
+        kb.configure(LayoutContext(page: .numpad, chinese: true, showGlobe: false, returnLabel: nil, returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true))
+        kb.layoutIfNeeded()
+        let padHints = kb.keyHintTextForTests(.char("+")) == "=" && kb.keyHintTextForTests(.char(".")) == ","
+
+        log(lettersPure && commaHint && numHints && symHints && t9Hints && padHints,
+            "r55.KeyView exposes sub-glyph corner legends across punctuation/symbol pages while keeping letters pure",
+            "pure=\(lettersPure) comma=\(commaHint) num=\(numHints) sym=\(symHints) t9=\(t9Hints) pad=\(padHints)")
+
+        // 2. Kinetic state coupling: pre-arming rise lights corner legend; >=16pt lifts & accents KeyPreview; pull-back resets
+        kb.configure(LayoutContext(page: .letters, chinese: true, showGlobe: false, returnLabel: nil, returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true))
+        kb.layoutIfNeeded()
+        var emitted: [String] = []
+        kb.onAction = { act, _ in
+            if case .char(let s) = act { emitted.append(s) }
+        }
+        let commaRect = kb.keyRectsForTests(.char("，"))?.cap ?? CGRect(x: 290, y: 165, width: 34, height: 40)
+        let cp = CGPoint(x: commaRect.midX, y: commaRect.midY)
+        kb.feedForTests([TouchSample(id: 90, phase: .began, point: cp, time: 0.0)])
+        let restLit = kb.keyHintLitForTests(.char("，"))
+        kb.feedForTests([TouchSample(id: 90, phase: .moved, point: CGPoint(x: cp.x, y: cp.y - 9), time: 0.04)])
+        let preArmLit = kb.keyHintLitForTests(.char("，")) && !kb.activePreviewFlickedForTests
+        kb.feedForTests([TouchSample(id: 90, phase: .moved, point: CGPoint(x: cp.x, y: cp.y - 20), time: 0.08)])
+        let engaged = kb.keyHintLitForTests(.char("，")) && kb.activePreviewFlickedForTests
+        kb.feedForTests([TouchSample(id: 90, phase: .moved, point: CGPoint(x: cp.x, y: cp.y - 2), time: 0.12)])
+        let pulledBack = !kb.keyHintLitForTests(.char("，")) && !kb.activePreviewFlickedForTests
+        kb.feedForTests([TouchSample(id: 90, phase: .ended, point: CGPoint(x: cp.x, y: cp.y - 2), time: 0.14)])
+        kb.feedForTests([
+            TouchSample(id: 91, phase: .began, point: cp, time: 0.30),
+            TouchSample(id: 91, phase: .moved, point: CGPoint(x: cp.x, y: cp.y - 20), time: 0.35),
+            TouchSample(id: 91, phase: .ended, point: CGPoint(x: cp.x, y: cp.y - 20), time: 0.38),
+        ])
+        let resetAfterRelease = !kb.keyHintLitForTests(.char("，"))
+        log(!restLit && preArmLit && engaged && pulledBack && resetAfterRelease && emitted == ["，", "。"],
+            "r55.Flick-up pre-arm & engagement couple KeyView corner legend and KeyPreview cleanly",
+            "rest=\(restLit) preArm=\(preArmLit) engaged=\(engaged) back=\(pulledBack) reset=\(resetAfterRelease) emitted=\(emitted)")
+
+        // 3. Mental math candidate displays 心算 badge and commits cleanly without spurious Chinese follow-up predictions
+        if let pair = makeKeyboard(scheme: 1, in: window) {
+            let (vc, h) = pair
+            vc.handle(.page(.numbers), tap: nil)
+            for ch in ["3", "6", "5", "+", "1", "8", "="] {
+                vc.handle(.char(ch), tap: nil)
+            }
+            drain(0.03)
+            let cap = vc.candidateBarForTests.firstCaptionForTests
+            let preds = vc.testState.predictions
+            vc.candidateTapped(0)
+            drain(0.05)
+            log(cap == "心算" && preds == ["383"] && h.string == "365+18=383" && vc.testState.predictions.isEmpty,
+                "r55.Trailing arithmetic tags candidate with 心算 and commits without language prediction follow-up",
+                "cap=\(cap ?? "nil") preds=\(preds) text=\(h.string) afterPreds=\(vc.testState.predictions)")
+        } else {
+            log(false, "r55.math badge setup", "engine did not load")
+        }
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

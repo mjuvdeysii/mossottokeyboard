@@ -6,6 +6,7 @@ final class KeyView: UIView {
     private(set) var borders = false
     private let label = UILabel()
     private var hintLabel: UILabel?
+    private var hintLit = false
     /// 小鹤键位提示: lazily created only when guide is enabled.
     private var guideLabel: UILabel?
     private let icon = UIImageView()
@@ -14,7 +15,12 @@ final class KeyView: UIView {
     private var statusDot: CALayer?
     private var spaceNotch: CALayer?
 
-    var pressed = false { didSet { if pressed != oldValue { applyPressState() } } }
+    var pressed = false {
+        didSet {
+            if !pressed { setHintLit(false) }
+            if pressed != oldValue { applyPressState() }
+        }
+    }
     private var hasApplied = false
     private(set) var applyRunsForTests = 0
     /// While the space bar drives the cursor the other caps go blank, as in the iOS trackpad mode.
@@ -92,16 +98,19 @@ final class KeyView: UIView {
         applyRunsForTests += 1
         self.spec = spec
         self.borders = borders
+        hintLit = false
         label.text = spec.label
         if let hint = spec.hint {
             let h = hintLabel ?? {
                 let l = UILabel()
-                l.font = Theme.font(Metrics.hintFont, .regular)
-                l.textAlignment = .center
                 addSubview(l)
                 hintLabel = l
                 return l
             }()
+            h.font = Theme.font(bounds.height > 0 && bounds.height < 34 ? 8.5 : 9.5, .semibold)
+            h.textAlignment = .right
+            h.adjustsFontSizeToFitWidth = true
+            h.minimumScaleFactor = 0.65
             h.text = hint
             h.isHidden = false
         } else {
@@ -140,6 +149,7 @@ final class KeyView: UIView {
         isAccessibilityElement = true
         accessibilityTraits = .keyboardKey
         accessibilityLabel = Self.spokenName(spec)
+        accessibilityHint = spec.alt.map { "上滑或长按输入 \($0)" }
     }
 
     /// What VoiceOver reads for a key (icons have no text of their own).
@@ -217,11 +227,25 @@ final class KeyView: UIView {
             label.textColor = spec.action == .space ? restFg.withAlphaComponent(0.76) : restFg
             icon.tintColor = restFg
         }
-        if let h = hintLabel, !h.isHidden { h.textColor = Theme.secondaryText.resolvedColor(with: t) }
+        if let h = hintLabel, !h.isHidden {
+            let color = hintLit ? Theme.correctedMark : Theme.secondaryText.withAlphaComponent(0.78)
+            h.textColor = color.resolvedColor(with: t)
+        }
         if let g = guideLabel, !g.isHidden { g.attributedText = guideText() }
         applyPressState()
         if bounds.width > 0 && (bounds.size != lastCapSize || lastPlainMode != Theme.plain) { layoutCap() }
     }
+
+    func setHintLit(_ lit: Bool) {
+        guard lit != hintLit else { return }
+        hintLit = lit
+        guard let h = hintLabel, !h.isHidden else { return }
+        let color = lit ? Theme.correctedMark : Theme.secondaryText.withAlphaComponent(0.78)
+        h.textColor = color.resolvedColor(with: traitCollection)
+    }
+
+    var hintTextForTests: String? { (hintLabel?.isHidden == false) ? hintLabel?.text : nil }
+    var hintLitForTests: Bool { hintLit }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
         super.traitCollectionDidChange(previous)
@@ -285,8 +309,9 @@ final class KeyView: UIView {
         }
         CATransaction.commit()
 
+        let hasHint = !(hintLabel?.isHidden ?? true)
         let o = cjkPunctuationOffset(label.text, fontSize: label.font.pointSize, font: label.font)
-        label.frame = f.insetBy(dx: 2, dy: 0).offsetBy(dx: o.x, dy: o.y)
+        label.frame = f.insetBy(dx: 2, dy: 0).offsetBy(dx: o.x, dy: o.y + (hasHint ? 1.5 : 0))
         icon.frame = f
         // 键位提示: the letter moves up and smaller; the initial and finals sit under it (portrait only).
         let guided = !(spec.guideFinals.isEmpty && spec.guideInitial == nil) && f.height >= 34
@@ -310,7 +335,11 @@ final class KeyView: UIView {
             if label.font !== lf { label.font = lf }
         }
         if let h = hintLabel, !h.isHidden {
-            h.frame = CGRect(x: f.maxX - 16, y: f.minY + 2, width: 12, height: 13)
+            let compact = f.height < 34
+            h.font = Theme.font(compact ? 8.5 : 9.5, .semibold)
+            let hw = min(16, max(11, f.width * 0.36))
+            let hh: CGFloat = compact ? 11 : 13
+            h.frame = CGRect(x: f.width - hw - 3, y: compact ? 1.5 : 2, width: hw, height: hh)
         }
     }
 
@@ -373,6 +402,7 @@ func cjkPunctuationOffset(_ text: String?, fontSize: CGFloat, font: UIFont? = ni
 final class KeyPreview: UIView {
     let label = UILabel()
     private var lastRadiusBounds: CGRect = .zero
+    private(set) var isFlicked = false
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -394,20 +424,27 @@ final class KeyPreview: UIView {
     func refreshStyle() {
         let t = traitCollection
         backgroundColor = Theme.bubble
-        layer.borderColor = Theme.bubbleLip.resolvedColor(with: t).cgColor
+        layer.borderWidth = isFlicked ? 1.0 : 0.5
+        layer.borderColor = (isFlicked ? Theme.correctedMark : Theme.bubbleLip).resolvedColor(with: t).cgColor
         layer.shadowColor = (Theme.plain ? UIColor.black : Theme.deepViolet).cgColor
         label.font = Theme.font(28, .medium)
-        label.textColor = Theme.keyText
+        label.textColor = isFlicked ? Theme.correctedMark : Theme.keyText
+    }
+
+    func setFlicked(_ on: Bool) {
+        guard isFlicked != on else { return }
+        isFlicked = on
+        refreshStyle()
     }
 
     /// `key`: the key's frame; `limit`: the horizontal room available (container bounds), both in container space.
-    func place(over key: CGRect, within limit: CGRect) {
+    func place(over key: CGRect, within limit: CGRect, upwardLift: CGFloat = 0) {
         let capW = max(key.width + 16, 46)
         let availAbove = max(36, key.minY - limit.minY - 4)
         let capH = min(max(36, key.height * 1.04), availAbove)
         var capX = key.midX - capW / 2
         capX = min(max(limit.minX + 2, capX), limit.maxX - capW - 2)
-        let top = max(limit.minY + 1, key.minY - capH - 4)
+        let top = max(limit.minY + 1, key.minY - capH - 4 - upwardLift)
         frame = CGRect(x: capX, y: top, width: capW, height: capH)
         refreshStyle()
         if bounds != lastRadiusBounds {
@@ -965,29 +1002,30 @@ final class KeyboardView: UIView {
                 let rise = tr.start.y - p.y
                 let driftX = abs(p.x - tr.start.x)
                 if rise >= 16 && driftX <= 32 {
+                    kv.setHintLit(true)
                     if tr.flickedAlt == nil {
                         tr.flickedAlt = alt
                         tr.longPressTimer?.invalidate()
-                        if tr.preview == nil { showPreview(tr, text: alt) }
-                        tr.preview?.label.text = alt
-                        tr.preview?.label.textColor = Theme.correctedMark
-                        tr.preview?.setNeedsLayout()
+                        showPreview(tr, text: alt, flicked: true)
                         lastPreviewShownForTests = (tr.preview != nil && tr.preview?.isHidden == false)
                         onFeedback?(.altMoved, p)
                     }
                     break
                 } else if tr.flickedAlt != nil && rise < 8 {
                     tr.flickedAlt = nil
+                    kv.setHintLit(false)
                     if kv.spec.style == .normal || kv.spec.action == .char("，") || kv.spec.action == .char("。") {
-                        tr.preview?.label.text = kv.spec.label
-                        tr.preview?.label.textColor = Theme.keyText
-                        tr.preview?.setNeedsLayout()
+                        showPreview(tr, text: kv.spec.label, flicked: false)
                     } else {
                         recyclePreview(tr.preview); tr.preview = nil
                     }
                     break
-                } else if rise > 6 && driftX <= 28 {
+                } else if rise >= 6 && driftX <= 32 {
+                    kv.setHintLit(true)
                     break
+                } else if tr.flickedAlt == nil {
+                    kv.setHintLit(false)
+                    if rise > 6 && driftX <= 28 { break }
                 }
             }
             // Slide to a neighbouring character key before release (keys typed on landing stay typed).
@@ -1265,6 +1303,7 @@ final class KeyboardView: UIView {
 
     private func recyclePreview(_ p: KeyPreview?) {
         guard let p else { return }
+        p.setFlicked(false)
         p.isHidden = true
         if !previewPool.contains(where: { $0 === p }) {
             if previewPool.count < 2 {
@@ -1275,19 +1314,32 @@ final class KeyboardView: UIView {
         }
     }
 
-    private func showPreview(_ tr: Tracked, text: String) {
+    private func showPreview(_ tr: Tracked, text: String, flicked: Bool = false) {
         guard tr.keyIndex < keyViews.count else { return }
         let kv = keyViews[tr.keyIndex]
-        guard kv.spec.style == .normal || kv.spec.action == .char("，") || kv.spec.action == .char("。") || tr.flickedAlt != nil || tr.altShown else { return }
+        guard kv.spec.style == .normal || kv.spec.action == .char("，") || kv.spec.action == .char("。") || tr.flickedAlt != nil || tr.altShown || flicked else { return }
         let p = tr.preview ?? acquirePreview()
+        p.setFlicked(flicked)
         p.label.text = text
-        p.label.textColor = Theme.keyText
         if p.superview == nil { addSubview(p) } else { bringSubviewToFront(p) }
         p.isHidden = false
         // the room above: up to the top of the keyboard's whole view (the strip included)
         let topY = superview.map { convert(CGPoint.zero, from: $0).y } ?? bounds.minY
-        p.place(over: kv.frame, within: CGRect(x: bounds.minX, y: topY + 1, width: bounds.width, height: bounds.maxY - topY - 1))
+        p.place(over: kv.frame, within: CGRect(x: bounds.minX, y: topY + 1, width: bounds.width, height: bounds.maxY - topY - 1), upwardLift: flicked ? 3 : 0)
         tr.preview = p
+    }
+
+    func keyHintTextForTests(_ action: KeyAction) -> String? {
+        layoutIfNeeded()
+        return keyViews.first(where: { $0.spec.action == action })?.hintTextForTests
+    }
+
+    func keyHintLitForTests(_ action: KeyAction) -> Bool {
+        keyViews.first(where: { $0.spec.action == action })?.hintLitForTests ?? false
+    }
+
+    var activePreviewFlickedForTests: Bool {
+        tracked.values.contains { $0.preview?.isHidden == false && $0.preview?.isFlicked == true }
     }
 
     private func showAlt(_ tr: Tracked) {

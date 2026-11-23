@@ -79,6 +79,7 @@ final class KeyboardViewController: UIInputViewController {
     private var lastInsertedSpace = false
     /// 联想: next-word suggestions shown after a Chinese commit, until the next key.
     private var predictions: [String] = []
+    private var showingMathPrediction = false
     private var predictGeneration = 0
     /// The last auto-corrected commit made with the space bar, undone by an immediate delete (as on Gboard).
     private var undoable: (text: String, taps: [Tap], syllables: [UInt16])? {
@@ -1090,7 +1091,8 @@ final class KeyboardViewController: UIInputViewController {
             if let expr = calcInput, let ans = Self.evalTrailingArithmetic(expr) {
                 predictGeneration += 1
                 predictions = [ans]
-                candidateBar.update(preedit: "", candidates: predictionCandidates(), prediction: true)
+                showingMathPrediction = true
+                candidateBar.update(preedit: "", candidates: predictionCandidates(), prediction: true, mathResult: true)
                 updatePlainLightButton()
             }
         }
@@ -1677,15 +1679,16 @@ final class KeyboardViewController: UIInputViewController {
 
     func candidateTapped(_ i: Int) {
         if taps.isEmpty, enTaps.isEmpty, i < predictions.count {
-            // a next-word suggestion goes straight in, and the suggestions after it follow
+            // a next-word suggestion (or math result) goes straight in; follow-up predictions only for language words
             let text = predictions[i]
+            let wasMath = showingMathPrediction
             clearPredictions()
             forgetLastWord()
             lastHostWriteTime = CACurrentMediaTime()
             host.insertText(text)
             lastCommittedContext = String((lastCommittedContext + text).suffix(8))
             engine.setContext(lastCommittedContext)
-            requestPredictions(after: lastCommittedContext)
+            if !wasMath { requestPredictions(after: lastCommittedContext) }
             return
         }
         if taps.isEmpty, !enTaps.isEmpty, i < enSuggestions.count {
@@ -1746,6 +1749,7 @@ final class KeyboardViewController: UIInputViewController {
     /// Any key ends the suggestions (a late answer for them is dropped too).
     private func clearPredictions() {
         predictGeneration += 1
+        showingMathPrediction = false
         guard !predictions.isEmpty else { return }
         predictions = []
         if taps.isEmpty, enSuggestions.isEmpty { candidateBar.update(preedit: "", candidates: []) }; updatePlainLightButton()

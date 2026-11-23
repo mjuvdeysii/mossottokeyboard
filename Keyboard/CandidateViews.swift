@@ -78,7 +78,9 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     private var clearSwipeArmed = false
     /// What each pooled label shows now (so a label is only redrawn when it changes).
     private var poolKeys: [String] = []
-    private var isPrediction = false; var gridExpanded = false { didSet { if gridExpanded != oldValue { setNeedsLayout(); layoutIfNeeded() } } }
+    private var isPrediction = false
+    private var isMathResult = false
+    var gridExpanded = false { didSet { if gridExpanded != oldValue { setNeedsLayout(); layoutIfNeeded() } } }
     private var candidates: [Candidate] = []
     /// Candidates laid out so far (the row is laid out a screen or two ahead of what is shown), their widths, and
     /// measured widths by text and caption, kept through a composition.
@@ -404,6 +406,9 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
                 if i < candidates.count, !isPrediction, let cap = Self.caption(for: candidates[i]) {
                     e.accessibilityValue = cap.string == "已纠错" ? "已纠错"
                         : "已纠错：" + candidates[i].fixes.map { "\($0.typed) 改为 \($0.meant)" }.joined(separator: "，")
+                } else if isMathResult {
+                    e.accessibilityValue = "心算结果"
+                    e.accessibilityHint = "轻点插入"
                 } else if isPrediction {
                     e.accessibilityValue = "联想，键盘猜的下一个词"
                     e.accessibilityHint = "轻点插入"
@@ -455,14 +460,15 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     }
 
     /// `prediction`: the row shows next-word suggestions (联想) rather than candidates for typed keys.
-    func update(preedit text: String, candidates: [Candidate], prediction: Bool = false) {
+    func update(preedit text: String, candidates: [Candidate], prediction: Bool = false, mathResult: Bool = false) {
         if preeditRaw != text { applyPreeditText(text) }
         // another list (a new key, a commit): the row starts from the beginning again; the same list (the same keys
         // decoded once more) leaves it where the finger put it
-        let changed = prediction != isPrediction || candidates.count != self.candidates.count
+        let changed = prediction != isPrediction || mathResult != isMathResult || candidates.count != self.candidates.count
             || !zip(candidates, self.candidates).allSatisfy { $0.text == $1.text }
         self.candidates = candidates
         isPrediction = prediction
+        isMathResult = mathResult
         // widths are measured again from the cache (captions can change with the same words)
         widths = []
         if widthCache.count > 1500 { widthCache.removeAll(keepingCapacity: true) }
@@ -592,8 +598,11 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     }
 
     /// Keep the candidate strip pure and high-density while composing (zero jr->ke / 原键 clutter).
-    /// Only prediction mode keeps the subtle "联想" marker on slot 0.
+    /// Only prediction mode keeps the subtle "联想" marker on slot 0 (or "心算" for trailing arithmetic).
     private func captionFor(_ i: Int) -> NSAttributedString? {
+        if isMathResult {
+            return i == 0 ? NSAttributedString(string: "心算", attributes: [.font: Self.fixFont, .foregroundColor: Theme.correctedMark]) : nil
+        }
         if isPrediction {
             return i == 0 ? NSAttributedString(string: "联想", attributes: [.font: Self.fixFont, .foregroundColor: Theme.secondaryText]) : nil
         }
@@ -694,8 +703,8 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
                 }
             }
             // Clean, restrained focus highlight on slot 0 (spacebar target); zero text noise.
-            let firstBg = c.corrected ? Theme.correctedTint : Theme.firstCandidateTint
-            l.backgroundColor = n == pressed ? Theme.functionKey : (isFirst ? firstBg : .clear)
+            let firstBg = (c.corrected || (isMathResult && n == 0)) ? Theme.correctedTint : Theme.firstCandidateTint
+            l.backgroundColor = n == pressed ? Theme.functionKey : ((isFirst || (isMathResult && n == 0)) ? firstBg : .clear)
             if isFirst && c.corrected {
                 let barW: CGFloat = min(14, max(8, w - 16))
                 showCorrectionBar = true
