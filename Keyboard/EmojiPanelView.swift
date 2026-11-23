@@ -47,11 +47,11 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
 
     static let kaomojiName = "Mosto 颜文字"
 
-    /// Structured 10-mood Kaomoji tape (all 228 unique expressions, single source of truth).
+    /// Structured 10-mood Kaomoji tape (all 229 unique expressions, single source of truth).
     static let kaomojiMoodGroups: [MoodGroup] = [
         MoodGroup(title: "招牌", items: [
             "ψ(｀∇´)ψ", "(｀∀´)Ψ", "Ψ(￣∀￣)Ψ", "ψ(._. )>", "(¬‿¬)", "(￣y▽￣)╭",
-            "(▼∀▼)", "ψ(￣▽￣)ψ", "(ΦωΦ)✧", "(✧∀✧)", "ψ(｀▽´)ψ",
+            "(▼∀▼)", "ψ(￣▽￣)ψ", "(ΦωΦ)✧", "(✧∀✧)", "ψ(≧▽≦)ψ", "ψ( ˘ω˘ )ψ",
         ]),
         MoodGroup(title: "开心", items: [
             "(＾▽＾)", "ヾ(≧▽≦*)o", "(≧∇≦)ﾉ", "(*^▽^*)", "(●'◡'●)", "ヽ(✿ﾟ▽ﾟ)ノ",
@@ -120,6 +120,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     var moodMostoPoseNameForTests: String { currentMoodPoseName }
     var moodTitlesForTests: [String] { displayedMoods.map(\.title) }
     func tapMoodMostoForTests() { moodMostoTapped() }
+    var kaomojiRowHeightForTests: CGFloat { kaomojiRowHeight }
 
     final class Cell: UICollectionViewCell {
         let label = UILabel()
@@ -738,9 +739,17 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         section < sections.count && sections[section].name == Self.kaomojiName
     }
 
+    /// Integer-row fit prevents half-clipped kaomoji pills along the bottom dock across all height tiers.
+    private var kaomojiRowHeight: CGFloat {
+        let h = collection.bounds.height - 4
+        guard h > 80 else { return 44 }
+        let rows: CGFloat = h >= 166 ? 4 : (h < 108 ? 2 : 3)
+        return min(50, max(38, floor(h / rows)))
+    }
+
     func collectionView(_ collectionView: UICollectionView, layout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
         if kaomojiMode || isKaomoji(indexPath.section) {
-            return CGSize(width: max(60, floor((collectionView.bounds.width - 8) / 3)), height: 42)
+            return CGSize(width: max(60, floor((collectionView.bounds.width - 8) / 3)), height: kaomojiRowHeight)
         }
         return CGSize(width: cellSide, height: cellSide)
     }

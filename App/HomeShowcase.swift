@@ -24,7 +24,7 @@ enum StudioLampMode: Int, CaseIterable, Identifiable {
 
     var caption: String {
         switch self {
-        case .day: return "暖瓷桌台 · R50 哑光零重影"
+        case .day: return "暖瓷桌台 · 哑光单层键帽"
         case .night: return "深曜石夜桌 · 暖灯珠微光"
         case .plain: return "中性陶瓷 · 系统比例"
         }

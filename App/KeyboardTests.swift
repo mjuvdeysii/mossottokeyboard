@@ -140,6 +140,8 @@ enum KeyboardTests {
         r61BilingualFlowAndPairOvertype(window)
         r62NestedPairsMathAndKaomojiMoodSync(window)
         r63AdjustableHeightAndOpticalScale(window)
+        r64SpringLoadedModifierGlide(window)
+        r65VisualCraftAndOpticalFit(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -2343,6 +2345,260 @@ enum KeyboardTests {
         log(syncedFromModel && syncedFromDefaults,
             "r63.PlaygroundModel synchronizes adjustable keyboard height with KeyboardSettings",
             "fromModel=\(syncedFromModel) fromDefaults=\(syncedFromDefaults)")
+    }
+
+    // MARK: - R64: Spring-loaded Shift & 123/#+= modifier glide + two-finger chords
+
+    static func r64SpringLoadedModifierGlide(_ window: UIWindow) {
+        let s = KeyboardSettings.shared
+        let savedNumberPad = s.numberPad
+        defer { s.numberPad = savedNumberPad }
+
+        // 1. Single-finger Shift glide (Chinese mode): Shift -> P -> lift inserts "P" and springs back to lowercase Chinese
+        if let pair = makeKeyboard(scheme: 1, in: window) {
+            let (vc, h) = pair
+            let kb = vc.keyboardViewForTests
+            kb.layoutIfNeeded()
+            if let shiftRect = kb.keyRectsForTests(.shift)?.cap,
+               let pRect = kb.keyRectsForTests(.char("p"))?.cap {
+                let sp = center(shiftRect)
+                let pp = center(pRect)
+                var t = nextTime()
+                kb.feedForTests([
+                    TouchSample(id: 201, phase: .began, point: sp, time: t),
+                    TouchSample(id: 201, phase: .moved, point: pp, time: t + 0.05),
+                    TouchSample(id: 201, phase: .ended, point: pp, time: t + 0.09),
+                ])
+                let afterGlide = h.string
+                let backToLower = kb.context?.shifted == false && !vc.testState.english
+                // Slide from Shift onto Q and back to Shift: cancels without typing
+                if let qRect = kb.keyRectsForTests(.char("q"))?.cap {
+                    let qp = center(qRect)
+                    t = nextTime()
+                    kb.feedForTests([
+                        TouchSample(id: 202, phase: .began, point: sp, time: t),
+                        TouchSample(id: 202, phase: .moved, point: qp, time: t + 0.04),
+                        TouchSample(id: 202, phase: .moved, point: sp, time: t + 0.08),
+                        TouchSample(id: 202, phase: .ended, point: sp, time: t + 0.12),
+                    ])
+                }
+                log(afterGlide == "P" && backToLower && h.string == "P",
+                    "r64.Single-finger Shift glide types uppercase letter in Chinese mode and springs back; pull-back cancels",
+                    "afterGlide=\(afterGlide) backToLower=\(backToLower) final=\(h.string)")
+            } else {
+                log(false, "r64.Shift glide rect lookup")
+            }
+
+            // 2. Two-finger Shift chord: hold Shift + tap i, o, s + release Shift -> "IOS" and resets Shift
+            reset(vc, h)
+            kb.layoutIfNeeded()
+            if let shiftRect = kb.keyRectsForTests(.shift)?.cap,
+               let iRect = kb.keyRectsForTests(.char("i"))?.cap,
+               let oRect = kb.keyRectsForTests(.char("o"))?.cap,
+               let sRect = kb.keyRectsForTests(.char("s"))?.cap {
+                let t0 = nextTime()
+                kb.feedForTests([
+                    TouchSample(id: 210, phase: .began, point: center(shiftRect), time: t0),
+                    TouchSample(id: 211, phase: .began, point: center(iRect), time: t0 + 0.04),
+                    TouchSample(id: 211, phase: .ended, point: center(iRect), time: t0 + 0.08),
+                    TouchSample(id: 212, phase: .began, point: center(oRect), time: t0 + 0.12),
+                    TouchSample(id: 212, phase: .ended, point: center(oRect), time: t0 + 0.16),
+                    TouchSample(id: 213, phase: .began, point: center(sRect), time: t0 + 0.20),
+                    TouchSample(id: 213, phase: .ended, point: center(sRect), time: t0 + 0.24),
+                    TouchSample(id: 210, phase: .ended, point: center(shiftRect), time: t0 + 0.28),
+                ])
+                log(h.string == "IOS" && kb.context?.shifted == false,
+                    "r64.Two-finger Shift chord types uppercase run and resets Shift on release",
+                    "text=\(h.string) shifted=\(kb.context?.shifted ?? true) caps=\(kb.context?.capsLock ?? false) chordHeld=\(kb.isShiftChordHeld) ctxNil=\(kb.context == nil)")
+            } else {
+                log(false, "r64.Shift chord rect lookup")
+            }
+        } else {
+            log(false, "r64.Shift setup", "engine did not load")
+        }
+
+        // 3. Spring-loaded 123 glide (full numbers page + secondary #+= hop + two-finger chord + tap stays)
+        s.numberPad = false
+        if let pair = makeKeyboard(scheme: 1, in: window) {
+            let (vc, h) = pair
+            vc.applySettings()
+            let kb = vc.keyboardViewForTests
+            kb.layoutIfNeeded()
+            if let pageRect = kb.keyRectsForTests(.page(.numbers))?.cap {
+                let p123 = center(pageRect)
+                let t0 = nextTime()
+                // Normal tap on 123 -> stays on .numbers
+                kb.feedForTests([
+                    TouchSample(id: 220, phase: .began, point: p123, time: t0),
+                    TouchSample(id: 220, phase: .ended, point: p123, time: t0 + 0.06),
+                ])
+                let stayedOnNumbers = vc.testState.page == .numbers
+                let r5 = kb.keyRectsForTests(.char("5"))?.cap
+                vc.handle(.page(.letters), tap: nil)
+                kb.layoutIfNeeded()
+
+                // Glide 123 -> 5 -> lift -> inserts "5" and springs back to .letters
+                if let r5 {
+                    let p5 = center(r5)
+                    let t1 = nextTime()
+                    kb.feedForTests([
+                        TouchSample(id: 221, phase: .began, point: p123, time: t1),
+                        TouchSample(id: 221, phase: .moved, point: p5, time: t1 + 0.05),
+                        TouchSample(id: 221, phase: .ended, point: p5, time: t1 + 0.09),
+                    ])
+                }
+                let glidedDigit = h.string == "5" && vc.testState.page == .letters
+
+                // Glide 123 -> hover #+= (0.30s) -> % -> lift -> inserts "%" and springs back to .letters
+                kb.feedForTests([TouchSample(id: 222, phase: .began, point: p123, time: nextTime())])
+                let symRect = kb.keyRectsForTests(.page(.symbols))?.cap
+                let pctFromSyms: CGRect?
+                if let symRect {
+                    let t2 = nextTime()
+                    kb.feedForTests([TouchSample(id: 222, phase: .moved, point: center(symRect), time: t2)])
+                    kb.advanceForTests(to: t2 + 0.30)
+                    kb.layoutIfNeeded()
+                    pctFromSyms = kb.keyRectsForTests(.char("%"))?.cap
+                    if let pctFromSyms {
+                        kb.feedForTests([
+                            TouchSample(id: 222, phase: .moved, point: center(pctFromSyms), time: t2 + 0.36),
+                            TouchSample(id: 222, phase: .ended, point: center(pctFromSyms), time: t2 + 0.40),
+                        ])
+                    } else {
+                        kb.feedForTests([TouchSample(id: 222, phase: .ended, point: center(symRect), time: t2 + 0.36)])
+                    }
+                } else {
+                    pctFromSyms = nil
+                }
+                let hoppedToSymbols = h.string == "5%" && vc.testState.page == .letters
+
+                // Glide 123 -> 5 -> return (blocked) -> lift -> cancels accidental send and springs back to .letters
+                if let r5 {
+                    let t3 = nextTime()
+                    kb.feedForTests([TouchSample(id: 223, phase: .began, point: p123, time: t3)])
+                    let retRect = kb.keyRectsForTests(.ret)?.cap
+                    if let retRect {
+                        kb.feedForTests([
+                            TouchSample(id: 223, phase: .moved, point: center(r5), time: t3 + 0.04),
+                            TouchSample(id: 223, phase: .moved, point: center(retRect), time: t3 + 0.08),
+                            TouchSample(id: 223, phase: .ended, point: center(retRect), time: t3 + 0.12),
+                        ])
+                    }
+                }
+                let blockedSafe = h.string == "5%" && vc.testState.page == .letters
+
+                // Two-finger 123 chord: hold 123 + tap 2, 0, 2, 6 + release 123 -> "2026" and returns to .letters
+                reset(vc, h)
+                let t4 = nextTime()
+                kb.feedForTests([TouchSample(id: 224, phase: .began, point: p123, time: t4)])
+                if let r2 = kb.keyRectsForTests(.char("2"))?.cap,
+                   let r0 = kb.keyRectsForTests(.char("0"))?.cap,
+                   let r6 = kb.keyRectsForTests(.char("6"))?.cap {
+                    kb.feedForTests([
+                        TouchSample(id: 225, phase: .began, point: center(r2), time: t4 + 0.03),
+                        TouchSample(id: 225, phase: .ended, point: center(r2), time: t4 + 0.06),
+                        TouchSample(id: 226, phase: .began, point: center(r0), time: t4 + 0.09),
+                        TouchSample(id: 226, phase: .ended, point: center(r0), time: t4 + 0.12),
+                        TouchSample(id: 227, phase: .began, point: center(r2), time: t4 + 0.15),
+                        TouchSample(id: 227, phase: .ended, point: center(r2), time: t4 + 0.18),
+                        TouchSample(id: 228, phase: .began, point: center(r6), time: t4 + 0.21),
+                        TouchSample(id: 228, phase: .ended, point: center(r6), time: t4 + 0.24),
+                        TouchSample(id: 224, phase: .ended, point: p123, time: t4 + 0.28),
+                    ])
+                }
+                let chordOK = h.string == "2026" && vc.testState.page == .letters
+
+                log(stayedOnNumbers && glidedDigit && hoppedToSymbols && blockedSafe && chordOK,
+                    "r64.123 spring-loaded glide, #+= secondary hop, edge-block safety, and two-finger chord",
+                    "stay=\(stayedOnNumbers) glide=\(glidedDigit) sym=\(hoppedToSymbols) block=\(blockedSafe) chord=\(chordOK) text=\(h.string) page=\(vc.testState.page)")
+            } else {
+                log(false, "r64.123 rect lookup")
+            }
+        } else {
+            log(false, "r64.123 setup", "engine did not load")
+        }
+
+        // 4. Numpad spring-loaded glide (with numberPad = true)
+        s.numberPad = true
+        if let pair = makeKeyboard(scheme: 1, in: window) {
+            let (vc, h) = pair
+            vc.applySettings()
+            let kb = vc.keyboardViewForTests
+            kb.layoutIfNeeded()
+            if let padRect = kb.keyRectsForTests(.page(.numpad))?.cap {
+                let p123 = center(padRect)
+                let t0 = nextTime()
+                kb.feedForTests([TouchSample(id: 230, phase: .began, point: p123, time: t0)])
+                if let r8 = kb.keyRectsForTests(.char("8"))?.cap {
+                    kb.feedForTests([
+                        TouchSample(id: 230, phase: .moved, point: center(r8), time: t0 + 0.05),
+                        TouchSample(id: 230, phase: .ended, point: center(r8), time: t0 + 0.09),
+                    ])
+                }
+                log(h.string == "8" && vc.testState.page == .letters,
+                    "r64.Numpad 123 spring-loaded glide inserts digit and returns to letters",
+                    "text=\(h.string) page=\(vc.testState.page)")
+            } else {
+                log(false, "r64.numpad rect lookup")
+            }
+        } else {
+            log(false, "r64.numpad setup", "engine did not load")
+        }
+    }
+
+    // MARK: - R65: Visual craft, optical kaomoji row fit, console tile cap & honest copy
+
+    static func r65VisualCraftAndOpticalFit(_ window: UIWindow) {
+        // 1. 招牌 kaomoji deduplicated to 12 items, 229+ unique kaomoji overall
+        let signGroup = EmojiPanelView.kaomojiMoodGroups.first(where: { $0.title == "招牌" })?.items ?? []
+        let allK = EmojiPanelView.kaomoji
+        let signOk = signGroup.count == 12
+            && !signGroup.contains("ψ(｀▽´)ψ")
+            && signGroup.contains("ψ(≧▽≦)ψ")
+            && signGroup.contains("ψ( ˘ω˘ )ψ")
+            && allK.count >= 229
+            && Set(allK).count == allK.count
+        log(signOk,
+            "r65.招牌 kaomoji group is deduplicated to 12 distinct expressions across 229+ unique items",
+            "signCount=\(signGroup.count) total=\(allK.count) unique=\(Set(allK).count)")
+
+        // 2. Optical integer-row kaomoji cell height prevents half-clipped rows across all 4 height tiers
+        let ep = EmojiPanelView(frame: CGRect(x: 0, y: 0, width: 402, height: 242))
+        ep.load(kaomoji: true)
+        var measuredHeights: [CGFloat] = []
+        for h in [226, 242, 262, 284] as [CGFloat] {
+            ep.frame = CGRect(x: 0, y: 0, width: 402, height: h)
+            ep.setNeedsLayout()
+            ep.layoutIfNeeded()
+            measuredHeights.append(ep.kaomojiRowHeightForTests)
+        }
+        log(measuredHeights == [44, 50, 42, 48],
+            "r65.EmojiPanelView fits whole kaomoji rows cleanly across compact..tall tiers",
+            "rowHeights=\(measuredHeights)")
+
+        // 3. SettingsPanelView caps tile height on tall screens & keeps utilityRow non-overlapping on compact/narrow screens
+        let s = KeyboardSettings.shared
+        let prevScheme = s.scheme
+        defer { s.scheme = prevScheme }
+        let tallPanel = SettingsPanelView(frame: CGRect(x: 0, y: 0, width: 402, height: 800))
+        tallPanel.layoutIfNeeded()
+        let cappedTiles = tallPanel.maxTileHeightForTests <= 84 && tallPanel.maxTileHeightForTests >= 42
+        let narrowPanel = SettingsPanelView(frame: CGRect(x: 0, y: 0, width: 375, height: 226))
+        s.scheme = 0
+        narrowPanel.load(); narrowPanel.layoutIfNeeded()
+        let xiaoheClean = narrowPanel.utilityRowNonOverlappingForTests
+        s.scheme = 1
+        narrowPanel.load(); narrowPanel.layoutIfNeeded()
+        let quanpinClean = narrowPanel.utilityRowNonOverlappingForTests
+        log(cappedTiles && xiaoheClean && quanpinClean,
+            "r65.SettingsPanelView caps tile height on tall views and avoids utilityRow overlap at 375x226",
+            "maxTileH=\(tallPanel.maxTileHeightForTests) xiaohe=\(xiaoheClean) quanpin=\(quanpinClean)")
+
+        // 4. Companion app StudioLampMode day caption has no leaked milestone code
+        let dayCaption = StudioLampMode.day.caption
+        log(!dayCaption.contains("R50"),
+            "r65.StudioLampMode.day.caption avoids internal milestone jargon",
+            "caption=\(dayCaption)")
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

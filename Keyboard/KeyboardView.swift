@@ -566,6 +566,8 @@ enum CursorMoveOutcome: Equatable {
 /// and fast two-thumb typing rolls over instead of dropping letters.
 final class KeyboardView: UIView {
     var onAction: ((KeyAction, Tap?) -> Void)?
+    /// Called when a two-finger Shift chord finishes and the held Shift finger lifts.
+    var onShiftChordEnded: (() -> Void)?
     /// The space bar drags the cursor one character (+1 right, −1 left). Returns whether it passed a visible
     /// character (and whether it crossed a newline or hit a confirmed start/end boundary).
     var onCursorBegin: (() -> Void)?
@@ -659,6 +661,16 @@ final class KeyboardView: UIView {
         var clearSwipe: ClearSwipe?
         /// Upward flick off the Chinese comma key (，) emits a period (。) instantaneously without waiting for long-press.
         var flickedAlt: String?
+        /// Spring-loaded Shift glide / two-finger Shift chord tracking.
+        var shiftOriginIndex: Int?
+        var shiftGlided = false
+        var shiftEverGlided = false
+        var shiftChordUsed = false
+        /// Spring-loaded 123 / #+= page glide / two-finger page chord tracking.
+        var pageGlideReturn: KeyboardPage?
+        var pageGlideVisitedChar = false
+        var pageGlideChordUsed = false
+        var pageGlideBlocked = false
         init(keyIndex: Int, start: CGPoint, time: CFTimeInterval) {
             self.keyIndex = keyIndex; self.start = start; self.location = start; self.began = time; self.lastMove = time
         }
@@ -667,6 +679,13 @@ final class KeyboardView: UIView {
     private enum TouchKey: Hashable { case touch(ObjectIdentifier), sample(Int) }
     private var tracked: [TouchKey: Tracked] = [:]
     private var touchOrder: [TouchKey] = []
+    /// Touch ID currently switching pages via spring-loaded glide (preserved across `rebuild()`).
+    private var activePageGlideID: TouchKey?
+
+    /// True while a finger is holding Shift down without having glided onto a character key.
+    var isShiftChordHeld: Bool {
+        tracked.values.contains { !$0.finished && $0.shiftOriginIndex != nil && !$0.shiftGlided }
+    }
 
     init(spatial: SpatialModel) {
         self.spatial = spatial
@@ -848,7 +867,10 @@ final class KeyboardView: UIView {
         // a key that changes the layout (123, 中/英, 符号) was released while another finger still held a key:
         // that keystroke counts — emit it before the keys are rebuilt, rather than dropping it
         flushHeldKeys()
-        cancelAllTouches()
+        let preservedIDs = Set(tracked.compactMap { id, tr in
+            (!tr.finished && (id == activePageGlideID || tr.pageGlideReturn != nil)) ? id : nil
+        })
+        cancelTouches(except: preservedIDs)
         keyViews.forEach { $0.removeFromSuperview() }
         globeButton?.removeFromSuperview()
         globeButton = nil
@@ -864,6 +886,14 @@ final class KeyboardView: UIView {
             globeButton = b
         }
         setNeedsLayout()
+        if !preservedIDs.isEmpty {
+            layoutIfNeeded()
+            for id in preservedIDs {
+                guard let tr = tracked[id], let newIdx = keyIndex(at: tr.location), newIdx < keyViews.count else { continue }
+                tr.keyIndex = newIdx
+                keyViews[newIdx].pressed = true
+            }
+        }
     }
 
     override func layoutSubviews() {
@@ -1012,6 +1042,20 @@ final class KeyboardView: UIView {
         kv.pressed = true
         lastKeyDown = time
         onKeyDown?(kv.spec.action, p)
+        // Mark any held modifier/page key as having participated in a two-finger chord when another key is tapped.
+        switch kv.spec.action {
+        case .char, .space, .t9, .delete:
+            for (otherID, otherTr) in tracked where otherID != id && !otherTr.finished {
+                if otherTr.shiftOriginIndex != nil && !otherTr.shiftGlided {
+                    otherTr.shiftChordUsed = true
+                }
+                if otherTr.pageGlideReturn != nil && !otherTr.pageGlideVisitedChar {
+                    otherTr.pageGlideChordUsed = true
+                }
+            }
+        default:
+            break
+        }
         switch kv.spec.action {
         case .char(let s) where kv.spec.alt == nil:
             // Velocity-adaptive zero-ghost feedback: suppress occluding popup during rapid burst typing (<130ms).
@@ -1055,7 +1099,13 @@ final class KeyboardView: UIView {
                 self.startDeleteRepeat(tr)
             }
         case .shift:
+            tr.shiftOriginIndex = idx
             onAction?(.shift, nil)
+        case .page(let target) where target != .letters:
+            tr.pageGlideReturn = context?.page ?? .letters
+            activePageGlideID = id
+            onAction?(.page(target), nil)
+            activePageGlideID = nil
         case .emoji:
             // held: the keyboard settings (and the tap that follows is not an emoji tap)
             tr.longPressTimer = schedule(after: 0.45, from: time) { [weak self, weak tr] _ in
@@ -1073,6 +1123,10 @@ final class KeyboardView: UIView {
         let prev = tr.location
         tr.location = p
         let kv = keyViews[tr.keyIndex]
+        if tr.pageGlideReturn != nil && !tr.altShown {
+            followPageGlide(id: id, tr: tr, to: p, at: time)
+            return
+        }
         switch kv.spec.action {
         case .space:
             // Drag on the space bar moves the cursor (Gboard / iOS trackpad): the caps go blank, one character
@@ -1159,7 +1213,7 @@ final class KeyboardView: UIView {
                 if i != popup.selected { popup.selected = i; onFeedback?(.altMoved, p) }
             }
         case .char where !tr.altShown && !tr.typedOnDown:
-            if let alt = kv.spec.alt {
+            if !tr.shiftGlided, tr.pageGlideReturn == nil, let alt = kv.spec.alt {
                 let rise = tr.start.y - p.y
                 let driftX = abs(p.x - tr.start.x)
                 if rise >= 16 && driftX <= 32 {
@@ -1190,16 +1244,44 @@ final class KeyboardView: UIView {
                     if rise > 6 && driftX <= 28 { break }
                 }
             }
-            // Slide to a neighbouring character key before release (keys typed on landing stay typed).
+            // Slide to a neighbouring character key before release (or back to Shift to cancel a Shift-glide).
+            if let idx = keyIndex(at: p), idx < keyViews.count, idx != tr.keyIndex {
+                if tr.shiftGlided, idx == tr.shiftOriginIndex {
+                    if !tracked.values.contains(where: { $0 !== tr && $0.keyIndex == tr.keyIndex && !$0.finished }) { kv.pressed = false }
+                    tr.longPressTimer?.invalidate()
+                    tr.flickedAlt = nil
+                    tr.keyIndex = idx
+                    keyViews[idx].pressed = true
+                    recyclePreview(tr.preview); tr.preview = nil
+                    tr.shiftGlided = false
+                } else if case .char = keyViews[idx].spec.action {
+                    if !tracked.values.contains(where: { $0 !== tr && $0.keyIndex == tr.keyIndex && !$0.finished }) { kv.pressed = false }
+                    tr.longPressTimer?.invalidate()
+                    tr.flickedAlt = nil
+                    tr.keyIndex = idx
+                    keyViews[idx].pressed = true
+                    recyclePreview(tr.preview); tr.preview = nil   // never the old key's pill over the new key
+                    showPreview(tr, text: keyViews[idx].spec.label)
+                    lastPreviewShownForTests = (tr.preview != nil && tr.preview?.isHidden == false)
+                    if tr.shiftGlided { onFeedback?(.altMoved, p) }
+                    if keyViews[idx].spec.alt != nil {
+                        tr.longPressTimer = schedule(after: 0.38, from: time) { [weak self, weak tr] _ in
+                            guard let self, let tr else { return }
+                            self.showAlt(tr)
+                        }
+                    }
+                }
+            }
+        case .shift:
             if let idx = keyIndex(at: p), idx < keyViews.count, idx != tr.keyIndex, case .char = keyViews[idx].spec.action {
-                kv.pressed = false
-                tr.longPressTimer?.invalidate()
-                tr.flickedAlt = nil
+                tr.shiftGlided = true
+                tr.shiftEverGlided = true
+                if !tracked.values.contains(where: { $0 !== tr && $0.keyIndex == tr.keyIndex && !$0.finished }) { kv.pressed = false }
                 tr.keyIndex = idx
                 keyViews[idx].pressed = true
-                recyclePreview(tr.preview); tr.preview = nil   // never the old key's pill over the new key
                 showPreview(tr, text: keyViews[idx].spec.label)
                 lastPreviewShownForTests = (tr.preview != nil && tr.preview?.isHidden == false)
+                onFeedback?(.altMoved, p)
                 if keyViews[idx].spec.alt != nil {
                     tr.longPressTimer = schedule(after: 0.38, from: time) { [weak self, weak tr] _ in
                         guard let self, let tr else { return }
@@ -1209,6 +1291,61 @@ final class KeyboardView: UIView {
             }
         default:
             break
+        }
+    }
+
+    /// Track finger sliding across numbers/symbols during a spring-loaded 123 / #+= page glide.
+    private func followPageGlide(id: TouchKey, tr: Tracked, to p: CGPoint, at time: CFTimeInterval) {
+        guard let idx = keyIndex(at: p), idx < keyViews.count else { return }
+        if idx == tr.keyIndex && !tr.pageGlideBlocked { return }
+        if tr.keyIndex < keyViews.count,
+           !tracked.values.contains(where: { $0 !== tr && $0.keyIndex == tr.keyIndex && !$0.finished }) {
+            keyViews[tr.keyIndex].pressed = false
+        }
+        tr.longPressTimer?.invalidate()
+        tr.flickedAlt = nil
+        let targetKv = keyViews[idx]
+        switch targetKv.spec.action {
+        case .char:
+            tr.pageGlideBlocked = false
+            tr.pageGlideVisitedChar = true
+            tr.keyIndex = idx
+            targetKv.pressed = true
+            recyclePreview(tr.preview); tr.preview = nil
+            showPreview(tr, text: targetKv.spec.label, allowFunction: true)
+            lastPreviewShownForTests = (tr.preview != nil && tr.preview?.isHidden == false)
+            if targetKv.spec.alt != nil {
+                tr.longPressTimer = schedule(after: 0.38, from: time) { [weak self, weak tr] _ in
+                    guard let self, let tr else { return }
+                    self.showAlt(tr)
+                }
+            }
+            onFeedback?(.altMoved, p)
+        case .space:
+            tr.pageGlideBlocked = false
+            tr.pageGlideVisitedChar = true
+            tr.keyIndex = idx
+            targetKv.pressed = true
+            recyclePreview(tr.preview); tr.preview = nil
+            onFeedback?(.altMoved, p)
+        case .page(let nextPage):
+            tr.pageGlideBlocked = false
+            tr.keyIndex = idx
+            targetKv.pressed = true
+            recyclePreview(tr.preview); tr.preview = nil
+            if nextPage != .letters && nextPage != context?.page {
+                tr.longPressTimer = schedule(after: 0.28, from: time) { [weak self, weak tr] _ in
+                    guard let self, let tr, !tr.finished else { return }
+                    self.activePageGlideID = id
+                    self.onAction?(.page(nextPage), nil)
+                    self.activePageGlideID = nil
+                    self.onFeedback?(.altShown, tr.location)
+                }
+            }
+        default:
+            tr.pageGlideBlocked = true
+            tr.keyIndex = idx
+            recyclePreview(tr.preview); tr.preview = nil
         }
     }
 
@@ -1238,7 +1375,7 @@ final class KeyboardView: UIView {
     /// Keys a new finger finalises, so fast typing keeps the order it was typed in: characters, 九宫格 keys, return,
     /// and a space that is a tap (not a cursor drag).
     private func rollsOver(_ tr: Tracked) -> Bool {
-        guard tr.keyIndex < keyViews.count, !tr.altShown, !tr.finished else { return false }
+        guard tr.keyIndex < keyViews.count, !tr.altShown, !tr.finished, tr.pageGlideReturn == nil else { return false }
         switch keyViews[tr.keyIndex].spec.action {
         case .char, .t9, .ret: return true
         case .space: return !tr.dragging
@@ -1340,9 +1477,21 @@ final class KeyboardView: UIView {
 
     /// Put away (a panel over the keys, the keyboard dismissed): held keys let go, repeats stop, caps redrawn.
     func cancelAllTouches() {
-        for (_, tr) in tracked where !tr.finished { finish(tr, emit: false); if !tr.typedOnDown { stats.dropped += 1 } }
-        tracked.removeAll()
-        touchOrder.removeAll()
+        cancelTouches(except: [])
+    }
+
+    private func cancelTouches(except preserved: Set<TouchKey>) {
+        for (id, tr) in tracked where !preserved.contains(id) && !tr.finished {
+            finish(tr, emit: false)
+            if !tr.typedOnDown { stats.dropped += 1 }
+        }
+        if preserved.isEmpty {
+            tracked.removeAll()
+            touchOrder.removeAll()
+        } else {
+            tracked = tracked.filter { preserved.contains($0.key) }
+            touchOrder.removeAll { !preserved.contains($0) }
+        }
     }
 
     private func setCursorMode(_ on: Bool, except index: Int) {
@@ -1391,7 +1540,22 @@ final class KeyboardView: UIView {
         let kv = keyViews[tr.keyIndex]
         // still held by another finger: it stays down
         if !tracked.values.contains(where: { $0 !== tr && $0.keyIndex == tr.keyIndex && !$0.finished }) { kv.pressed = false }
-        guard emit, !tr.typedOnDown else { return }
+        let springBackIfNeeded = {
+            if let returnPage = tr.pageGlideReturn,
+               (tr.pageGlideVisitedChar || tr.pageGlideChordUsed || tr.pageGlideBlocked),
+               self.context?.page != returnPage,
+               !self.tracked.values.contains(where: { $0 !== tr && !$0.finished && $0.pageGlideReturn == nil }) {
+                self.onAction?(.page(returnPage), nil)
+            }
+        }
+        if tr.pageGlideBlocked {
+            springBackIfNeeded()
+            return
+        }
+        guard emit, !tr.typedOnDown else {
+            springBackIfNeeded()
+            return
+        }
         stats.emitted += 1
         if clears {
             clearSwipes += 1
@@ -1411,10 +1575,23 @@ final class KeyboardView: UIView {
             } else {
                 onAction?(.char(s), nil)
             }
+            springBackIfNeeded()
         case .space:
             if !tr.dragging { onAction?(.space, nil) }
-        case .delete, .shift, .globe:
+            springBackIfNeeded()
+        case .delete, .globe:
             break
+        case .shift:
+            if (tr.shiftChordUsed || tr.shiftEverGlided) && !tr.shiftGlided {
+                onShiftChordEnded?()
+            }
+        case .page(let p):
+            if tr.pageGlideReturn == nil {
+                onAction?(.page(p), nil)
+            } else if (tr.pageGlideVisitedChar || tr.pageGlideChordUsed),
+                      let returnPage = tr.pageGlideReturn, context?.page != returnPage {
+                onAction?(.page(returnPage), nil)
+            }
         case .emoji:
             if !tr.altShown { onAction?(.emoji, nil) }
         default:
@@ -1502,10 +1679,10 @@ final class KeyboardView: UIView {
         }
     }
 
-    private func showPreview(_ tr: Tracked, text: String, flicked: Bool = false) {
+    private func showPreview(_ tr: Tracked, text: String, flicked: Bool = false, allowFunction: Bool = false) {
         guard tr.keyIndex < keyViews.count else { return }
         let kv = keyViews[tr.keyIndex]
-        guard kv.spec.style == .normal || kv.spec.action == .char("，") || kv.spec.action == .char("。") || tr.flickedAlt != nil || tr.altShown || flicked else { return }
+        guard allowFunction || kv.spec.style == .normal || kv.spec.action == .char("，") || kv.spec.action == .char("。") || tr.flickedAlt != nil || tr.altShown || flicked else { return }
         let p = tr.preview ?? acquirePreview()
         p.setFlicked(flicked)
         p.label.text = text

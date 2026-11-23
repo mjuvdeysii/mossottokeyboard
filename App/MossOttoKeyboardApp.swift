@@ -349,42 +349,48 @@ struct UnifiedTypingBench: View {
                     }
                 }
 
-                // In-place live bench toggles (WrapLayout keeps all pills crisp & visible in snapshots too)
-                WrapLayout(spacing: 6, lineSpacing: 6) {
-                    schemePill(title: "全拼", tag: 0)
-                    schemePill(title: "小鹤双拼", tag: 1)
-                    schemePill(title: "九宫格", tag: 2)
-                    if model.layout == 1 {
-                        benchToggle(title: "键位提示", isOn: $model.guide)
-                    }
-                    benchToggle(title: "触感", isOn: $model.feedback)
-                    benchToggle(title: "声效", isOn: $model.keySound)
-                    Button {
-                        let next = model.heightPreset.next
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
-                            model.keyboardHeight = next.rawValue
+                // Balanced 2-row hardware strip (Row 1: engine + guide, Row 2: feel + 4-tier height)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        schemePill(title: "全拼", tag: 0)
+                        schemePill(title: "小鹤双拼", tag: 1)
+                        schemePill(title: "九宫格", tag: 2)
+                        if model.layout == 1 {
+                            benchToggle(title: "键位提示", isOn: $model.guide)
                         }
-                    } label: {
-                        HStack(spacing: 5) {
-                            HStack(alignment: .bottom, spacing: 1.8) {
-                                ForEach(0..<KeyboardHeightPreset.allCases.count, id: \.self) { idx in
-                                    RoundedRectangle(cornerRadius: 0.8, style: .continuous)
-                                        .fill(Color(uiColor: idx <= model.heightPreset.rawValue ? Theme.statusLedActive : Theme.statusLedMuted))
-                                        .frame(width: 2.2, height: CGFloat(5 + idx * 2))
-                                }
+                        Spacer(minLength: 0)
+                    }
+                    HStack(spacing: 6) {
+                        benchToggle(title: "触感", isOn: $model.feedback)
+                        benchToggle(title: "声效", isOn: $model.keySound)
+                        Button {
+                            let next = model.heightPreset.next
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                                model.keyboardHeight = next.rawValue
                             }
-                            Text("高度 · \(model.heightPreset.title)")
-                                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                                .foregroundStyle(.primary)
+                        } label: {
+                            HStack(spacing: 5) {
+                                HStack(alignment: .bottom, spacing: 1.8) {
+                                    ForEach(0..<KeyboardHeightPreset.allCases.count, id: \.self) { idx in
+                                        RoundedRectangle(cornerRadius: 0.8, style: .continuous)
+                                            .fill(Color(uiColor: idx <= model.heightPreset.rawValue ? Theme.statusLedActive : Theme.statusLedMuted))
+                                            .frame(width: 2.2, height: CGFloat(5 + idx * 2))
+                                    }
+                                }
+                                Text("高度 · \(model.heightPreset.title)")
+                                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(.primary)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Capsule().fill(Color.primary.opacity(0.06)))
+                            .overlay(Capsule().strokeBorder(Color(uiColor: Theme.keyBorder), lineWidth: 0.5))
                         }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(Capsule().fill(Color.primary.opacity(0.06)))
-                        .overlay(Capsule().strokeBorder(Color(uiColor: Theme.keyBorder), lineWidth: 0.5))
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("键盘高度")
+                        .accessibilityValue(model.heightPreset.title)
+                        Spacer(minLength: 0)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("键盘高度")
-                    .accessibilityValue(model.heightPreset.title)
                 }
             }
             .padding(12)
@@ -652,7 +658,7 @@ struct HandbookContent: View {
                 Usage(
                     icon: "slider.horizontal.3",
                     title: "系统键盘偏好在哪里调整",
-                    text: "出于离线隐私隔离，伴侣 App 不写入系统键盘配置文件；实际输入时的双拼、九宫格、外观与声效，请直接在键盘内按住表情键打开「Mosto 控制台」调整。"
+                    text: "出于离线隐私隔离，伴侣 App 不写入系统键盘配置文件；实际输入时的双拼、九宫格、四档高度、外观与声效，请直接在键盘内按住表情键打开「Mosto 控制台」调整。"
                 )
             }
 
@@ -786,6 +792,13 @@ private struct GestureAtlasView: View {
                         cap: "，↑。",
                         title: "任意标点轻上滑直出副符号",
                         detail: "从 ，轻向上滑立刻输出 。；数符页 /→、 、¥→$、（→【 等均支持无延迟直出，无需长按等待。",
+                        demoTitle: nil
+                    )
+                    Divider()
+                    atlasRow(
+                        cap: "123↗",
+                        title: "123 / Shift 按住滑键直出回弹",
+                        detail: "按住 123 滑向数字或符号松手，输入后自动弹回拼音；按住 Shift 滑向字母直出单个大写字母，也支持左手按住、右手连打后松手自动复位。",
                         demoTitle: nil
                     )
                     Divider()

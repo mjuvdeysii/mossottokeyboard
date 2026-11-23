@@ -284,6 +284,14 @@ final class KeyboardViewController: UIInputViewController {
 
         keyboard.inputController = self
         keyboard.onAction = { [weak self] action, tap in self?.handle(action, tap: tap) }
+        keyboard.onShiftChordEnded = { [weak self] in
+            guard let self else { return }
+            self.lastShiftTap = .distantPast
+            if self.shifted && !self.capsLock {
+                self.shifted = false
+                self.reconfigure()
+            }
+        }
         keyboard.canMoveCursor = { [weak self] in self?.taps.isEmpty ?? false }
         keyboard.stripIsEmpty = { [weak self] in
             guard let self else { return true }
@@ -1003,7 +1011,10 @@ final class KeyboardViewController: UIInputViewController {
 
     func handle(_ action: KeyAction, tap: Tap?) {
         let t0 = CACurrentMediaTime()
-        pairAdjustGeneration += 1
+        switch action {
+        case .page, .shift, .globe: break
+        default: pairAdjustGeneration += 1
+        }
         if action != .delete {
             justInsertedPair = nil
             lastEmojiInserted = ""
@@ -1145,8 +1156,9 @@ final class KeyboardViewController: UIInputViewController {
             enTyped += typed
             updateEnglishSuggestions()
         }
-        if shifted && !capsLock {
+        if shifted && !capsLock && !keyboard.isShiftChordHeld {
             shifted = false
+            lastShiftTap = .distantPast
             reconfigure()
         }
     }

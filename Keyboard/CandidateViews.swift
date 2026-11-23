@@ -1612,7 +1612,7 @@ final class SettingsPanelView: UIView {
         guidePill.addTarget(self, action: #selector(toggleGuide), for: .touchUpInside)
         utilityRow.addSubview(guidePill)
 
-        offlineStatusLabel.text = "纯本机离线词库 · 零联网"
+        offlineStatusLabel.text = "纯离线 · 零联网"
         offlineStatusLabel.font = Theme.font(11.5, .medium)
         offlineStatusLabel.textColor = Theme.secondaryText
         utilityRow.addSubview(offlineStatusLabel)
@@ -1634,7 +1634,7 @@ final class SettingsPanelView: UIView {
         heightPill.addSubview(heightLabel)
         utilityRow.addSubview(heightPill)
 
-        moreButton.setTitle("更多偏好 · 清空 ›", for: .normal)
+        moreButton.setTitle("更多 · 清空 ›", for: .normal)
         moreButton.titleLabel?.font = Theme.font(12, .semibold)
         moreButton.titleLabel?.adjustsFontSizeToFitWidth = true
         moreButton.titleLabel?.minimumScaleFactor = 0.85
@@ -2121,6 +2121,12 @@ final class SettingsPanelView: UIView {
     func toggleMoreForTests() { if moreScroll.isHidden { openMore() } else { closeMore() } }
     func tapSchemeTileForTests() { toggleScheme() }
     func tapHapticTileForTests() { toggleHaptic() }
+    var maxTileHeightForTests: CGFloat { hardwareTiles.map(\.frame.height).max() ?? 0 }
+    var utilityRowNonOverlappingForTests: Bool {
+        !guidePill.frame.intersects(heightPill.frame)
+            && !heightPill.frame.intersects(moreButton.frame)
+            && !offlineStatusLabel.frame.intersects(heightPill.frame)
+    }
 
     override func layoutSubviews() {
         super.layoutSubviews()
@@ -2146,7 +2152,7 @@ final class SettingsPanelView: UIView {
         let padTop: CGFloat = h < 205 ? 6 : 10
         let padBot: CGFloat = h < 205 ? 6 : 10
         let availH = bodyFrame.height - padTop - padBot - utilH - bannerH - gapY * (accessBanner.isHidden ? 2 : 3)
-        let rowH = max(42, floor(availH / 2))
+        let rowH = min(84, max(42, floor(availH / 2)))
         let colW = max(40, (w - padX * 2 - gapX * 2) / 3)
         let row1 = [schemeTile, layoutTile, lightTile]
         let row2 = [hapticTile, soundTile, correctTile]
@@ -2164,8 +2170,8 @@ final class SettingsPanelView: UIView {
         }
         utilityRow.frame = CGRect(x: padX, y: min(nextY, bodyFrame.height - utilH - 4), width: w - padX * 2, height: utilH)
         let uw = utilityRow.bounds.width
-        let moreW = min(124, max(98, (uw * 0.34).rounded()))
-        let heightW = min(98, max(78, (uw * 0.25).rounded()))
+        let moreW = min(106, max(84, (uw * 0.28).rounded()))
+        let heightW = min(104, max(84, (uw * 0.28).rounded()))
         moreButton.frame = CGRect(x: uw - moreW, y: 0, width: moreW, height: utilH)
         heightPill.frame = CGRect(x: uw - moreW - 6 - heightW, y: 0, width: heightW, height: utilH)
         let leftSpace = max(68, uw - moreW - heightW - 12)
