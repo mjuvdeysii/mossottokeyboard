@@ -48,8 +48,8 @@ final class KeyboardViewController: UIInputViewController {
     private var heightConstraint: NSLayoutConstraint?
     private var pairAdjustGeneration = 0
     private var justInsertedPair: (open: Character, close: Character)?
-    /// True while the user is typing inside a freshly inserted CJK bracket pair (gates closing-bracket space jump-out for 0-XPC spacebar).
-    private var inInsertedPair = false
+    /// Stack of closing marks for active freshly inserted CJK bracket pairs (supports nested pairs with 0 XPC on ordinary pauses).
+    private var pairCloseStack: [Character] = []
     private var cursorDragBefore: [Character] = []
     private var cursorDragAfterReversed: [Character] = []
     private var cursorDragHasContext = false
@@ -298,7 +298,7 @@ final class KeyboardViewController: UIInputViewController {
             self.undoable = nil
             self.enUndo = nil
             self.cleared = nil
-            self.inInsertedPair = false
+            self.pairCloseStack.removeAll(keepingCapacity: true)
             self.lastCommittedContext = ""
             self.endEnglishWord()
             let before = self.host.documentContextBeforeInput
@@ -465,7 +465,7 @@ final class KeyboardViewController: UIInputViewController {
         lastEchoed = ""
         lastCommittedContext = ""
         cachedFieldContext = ""
-        inInsertedPair = false
+        pairCloseStack.removeAll(keepingCapacity: true)
         candidateBar.showsPreedit = !useInlineMarkedText
         userToggledModeInField = false
         forgetLastWord()
@@ -1033,7 +1033,7 @@ final class KeyboardViewController: UIInputViewController {
         case .delete:
             delete()
         case .ret:
-            inInsertedPair = false
+            pairCloseStack.removeAll(keepingCapacity: true)
             if !taps.isEmpty { commitRaw() } else { lastHostWriteTime = CACurrentMediaTime(); host.insertText("\n"); lastCommittedContext = "" }
             lastInsertedSpace = false
             if !chinese { updateAutoShift() }
@@ -1153,8 +1153,8 @@ final class KeyboardViewController: UIInputViewController {
             "《": ("《》", "》"), "（": ("（）", "）"), "【": ("【】", "】"), "「": ("「」", "」"), "『": ("『』", "』"), "“": ("“”", "”")
         ]
         // Smart Pair Closing Overtype: typing the matching closing mark right before an auto-inserted closing bracket steps over it cleanly.
-        if chinese, inInsertedPair, Self.closingPairs.contains(out) {
-            inInsertedPair = false
+        if chinese, let expectedClose = pairCloseStack.last, out == String(expectedClose) {
+            pairCloseStack.removeLast()
             if host.documentContextAfterInput?.hasPrefix(out) == true {
                 lastHostWriteTime = CACurrentMediaTime()
                 host.adjustTextPosition(byCharacterOffset: out.utf16.count)
@@ -1162,13 +1162,15 @@ final class KeyboardViewController: UIInputViewController {
                 afterLastKey = contextSnapshot()
                 return
             }
+            pairCloseStack.removeAll(keepingCapacity: true)
         }
         if let p = pairs[out] {
             host.insertText(p.full)
             let closing = p.closing
             if let openCh = out.first, let closeCh = closing.first {
                 justInsertedPair = (openCh, closeCh)
-                inInsertedPair = true
+                if pairCloseStack.count >= 6 { pairCloseStack.removeFirst() }
+                pairCloseStack.append(closeCh)
             }
             if Bundle.main.bundlePath.hasSuffix(".appex") {
                 let gen = pairAdjustGeneration
@@ -1201,7 +1203,7 @@ final class KeyboardViewController: UIInputViewController {
     private static func evalTrailingArithmetic(_ text: String) -> String? {
         let trimmed = text.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return nil }
-        let allowed = Set("0123456789.+-*/×÷＋－＊／() ")
+        let allowed = Set("0123456789.+-*/×÷＋－＊／()（） ")
         var tailChars: [Character] = []
         for ch in trimmed.reversed() {
             if allowed.contains(ch) { tailChars.append(ch) } else { break }
@@ -1212,6 +1214,7 @@ final class KeyboardViewController: UIInputViewController {
             .replacingOccurrences(of: "×", with: "*").replacingOccurrences(of: "＊", with: "*")
             .replacingOccurrences(of: "÷", with: "/").replacingOccurrences(of: "／", with: "/")
             .replacingOccurrences(of: "＋", with: "+").replacingOccurrences(of: "－", with: "-")
+            .replacingOccurrences(of: "（", with: "(").replacingOccurrences(of: "）", with: ")")
             .replacingOccurrences(of: " ", with: "")
         guard normalized.contains(where: { "+-*/".contains($0) }),
               normalized.contains(where: { $0.isNumber }) else { return nil }
@@ -1295,14 +1298,15 @@ final class KeyboardViewController: UIInputViewController {
             reconfigure()
             return
         }
-        // Gate closing-bracket jump-out behind inInsertedPair so ordinary Chinese spacebar pauses do 0 XPC calls.
-        if chinese, inInsertedPair {
-            inInsertedPair = false
-            if let after = proxy.documentContextAfterInput,
-               let closing = ["》", "）", "】", "」", "』", "”"].first(where: { after.hasPrefix($0) }) {
+        // Gate closing-bracket jump-out behind pairCloseStack so ordinary Chinese spacebar pauses do 0 XPC calls.
+        if chinese, let expectedClose = pairCloseStack.last {
+            pairCloseStack.removeLast()
+            let closing = String(expectedClose)
+            if let after = proxy.documentContextAfterInput, after.hasPrefix(closing) {
                 proxy.adjustTextPosition(byCharacterOffset: closing.utf16.count)
                 return
             }
+            pairCloseStack.removeAll(keepingCapacity: true)
         }
         proxy.insertText(" ")
         lastInsertedSpace = true
@@ -1324,8 +1328,8 @@ final class KeyboardViewController: UIInputViewController {
             if chinese, enTaps.isEmpty,
                host.documentContextBeforeInput?.last == pair.open,
                host.documentContextAfterInput?.first == pair.close {
-                inInsertedPair = false
-                   host.adjustTextPosition(byCharacterOffset: pair.close.utf16.count)
+                if pairCloseStack.last == pair.close { pairCloseStack.removeLast() }
+                host.adjustTextPosition(byCharacterOffset: pair.close.utf16.count)
                 host.deleteBackward()
                 host.deleteBackward()
                 return
@@ -1811,7 +1815,7 @@ final class KeyboardViewController: UIInputViewController {
         beforeDelete = nil
         beforeEnDelete = nil
         deletedWordsBuffer = ""
-        inInsertedPair = false
+        pairCloseStack.removeAll(keepingCapacity: true)
         endEnglishWord()
         if !taps.isEmpty { clearComposition() }
         afterLastKey = contextSnapshot()

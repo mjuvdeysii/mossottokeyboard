@@ -138,6 +138,7 @@ enum KeyboardTests {
         r60DeleteClutchAndBilingualUndo(window)
         r60XiaoheMissingKeyRecovery(window)
         r61BilingualFlowAndPairOvertype(window)
+        r62NestedPairsMathAndKaomojiMoodSync(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -2150,6 +2151,99 @@ enum KeyboardTests {
         }
         log(barVisible, "r61.CandidateGridView renders correctionBar accent under corrected slot 0", gridDetail)
         reset(vc, h)
+    }
+
+    static func r62NestedPairsMathAndKaomojiMoodSync(_ window: UIWindow) {
+        // 1. Nested CJK bracket pairs overtype & delete cleanly across multiple depths
+        if let pair = makeKeyboard(scheme: 1, in: window) {
+            let (vc, h) = pair
+            vc.handle(.char("（"), tap: nil)
+            type(vc, "jian"); settle(vc); vc.handle(.space, tap: nil)
+            vc.handle(.char("「"), tap: nil)
+            type(vc, "fulu"); settle(vc); vc.handle(.space, tap: nil)
+            vc.handle(.char("」"), tap: nil)
+            type(vc, "shuom"); settle(vc); vc.handle(.space, tap: nil)
+            vc.handle(.char("）"), tap: nil)
+            drain(0.03)
+            let nestedText = h.string
+            let nestedOk = nestedText.hasPrefix("（")
+                && nestedText.contains("「")
+                && nestedText.contains("」")
+                && nestedText.hasSuffix("）")
+                && nestedText.filter { $0 == "）" }.count == 1
+                && nestedText.filter { $0 == "」" }.count == 1
+                && h.cursor == h.text.count
+            reset(vc, h)
+
+            // Inner pair smart backspace followed by outer closing bracket overtype
+            vc.handle(.char("（"), tap: nil)
+            vc.handle(.char("「"), tap: nil)
+            vc.handle(.delete, tap: nil)
+            vc.handle(.char("）"), tap: nil)
+            drain(0.02)
+            let unwindOk = h.string == "（）" && h.cursor == 2
+            log(nestedOk && unwindOk,
+                "r62.Nested CJK pair stack overtypes & unwinds cleanly without duplicate closing marks",
+                "nested=\(nestedText) unwind=\(h.string) cursor=\(h.cursor)")
+            reset(vc, h)
+
+            // 2. Trailing arithmetic accepts Chinese fullwidth parentheses （ ）
+            vc.handle(.char("（"), tap: nil)
+            for ch in ["1", "2", "+", "8"] { vc.handle(.char(ch), tap: nil) }
+            vc.handle(.char("）"), tap: nil)
+            for ch in ["*", "3", "="] { vc.handle(.char(ch), tap: nil) }
+            drain(0.03)
+            let mathPreds = vc.testState.predictions
+            let mathCap = vc.candidateBarForTests.firstCaptionForTests
+            vc.candidateTapped(0)
+            drain(0.03)
+            log(mathPreds == ["60"] && mathCap == "心算" && h.string == "（12+8）*3=60",
+                "r62.Trailing arithmetic evaluates expressions containing Chinese fullwidth parentheses",
+                "preds=\(mathPreds) cap=\(mathCap ?? "nil") text=\(h.string)")
+            reset(vc, h)
+        } else {
+            log(false, "r62.pair and math setup", "engine did not load")
+        }
+
+        // 3. EmojiPanelView mood pose coupling, Mosto toggle, and live 常用 sync
+        let savedRecent = UserDefaults.standard.array(forKey: "recentKaomoji")
+        UserDefaults.standard.set(["(｡･ω･｡)"], forKey: "recentKaomoji")
+        defer {
+            if let savedRecent {
+                UserDefaults.standard.set(savedRecent, forKey: "recentKaomoji")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "recentKaomoji")
+            }
+        }
+        let ep = EmojiPanelView(frame: CGRect(x: 0, y: 0, width: 402, height: 264))
+        ep.layoutIfNeeded()
+        ep.load(kaomoji: true)
+        let titlesBefore = ep.moodTitlesForTests
+        let nightIdx = titlesBefore.firstIndex(of: "晚安") ?? -1
+        let yawnIdx = titlesBefore.firstIndex(of: "摸鱼") ?? -1
+        let signIdx = titlesBefore.firstIndex(of: "招牌") ?? -1
+        var nightPose = ""
+        var yawnPose = ""
+        if nightIdx >= 0 {
+            ep.selectMoodForTests(nightIdx)
+            nightPose = ep.moodMostoPoseNameForTests
+        }
+        if yawnIdx >= 0 {
+            ep.selectMoodForTests(yawnIdx)
+            yawnPose = ep.moodMostoPoseNameForTests
+        }
+        ep.tapMoodMostoForTests()
+        let toggledToRecent = ep.activeMoodIndexForTests == 0 && ep.displayedKaomojiCountForTests == 1
+        ep.tapMoodMostoForTests()
+        let toggledToSign = ep.activeMoodIndexForTests == signIdx
+        if let cv = ep.subviews.compactMap({ $0 as? UICollectionView }).first {
+            ep.collectionView(cv, didSelectItemAt: IndexPath(item: 0, section: 0))
+        }
+        ep.selectMoodForTests(0)
+        let syncedRecentCount = ep.displayedKaomojiCountForTests
+        log(titlesBefore.first == "常用" && nightPose == "mosto_night" && yawnPose == "mosto_yawn" && toggledToRecent && toggledToSign && syncedRecentCount == 2,
+            "r62.EmojiPanelView couples mood pose, Mosto shortcut toggle, and live 常用 kaomoji sync",
+            "titles0=\(titlesBefore.first ?? "nil") night=\(nightPose) yawn=\(yawnPose) recent=\(toggledToRecent) sign=\(toggledToSign) count=\(syncedRecentCount)")
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

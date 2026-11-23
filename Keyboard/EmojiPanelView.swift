@@ -22,6 +22,8 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     private var displayedMoods: [(title: String, items: [String])] = []
     private var selectedMood = 0
     private var kaomojiMode = false
+    private var moodPoseGeneration = 0
+    private var currentMoodPoseName = "mosto_day"
 
     private let dockBar = UIView()
     private let dockHairline = CALayer()
@@ -115,6 +117,9 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     var activeMoodIndexForTests: Int { selectedMood }
     func selectMoodForTests(_ index: Int) { selectMood(index) }
     var displayedKaomojiCountForTests: Int { kaomojiMode ? (displayedMoods.indices.contains(selectedMood) ? displayedMoods[selectedMood].items.count : 0) : 0 }
+    var moodMostoPoseNameForTests: String { currentMoodPoseName }
+    var moodTitlesForTests: [String] { displayedMoods.map(\.title) }
+    func tapMoodMostoForTests() { moodMostoTapped() }
 
     final class Cell: UICollectionViewCell {
         let label = UILabel()
@@ -209,6 +214,11 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         moodHeader.isHidden = true
         moodMosto.contentMode = .scaleAspectFit
         moodMosto.image = UIImage(named: "mosto_day", in: Bundle(for: EmojiPanelView.self), with: nil)
+        moodMosto.isUserInteractionEnabled = true
+        moodMosto.isAccessibilityElement = true
+        moodMosto.accessibilityTraits = .button
+        moodMosto.accessibilityLabel = "切换常用与招牌颜文字"
+        moodMosto.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(moodMostoTapped)))
         moodHeader.addSubview(moodMosto)
         moodFade.startPoint = CGPoint(x: 0, y: 0.5)
         moodFade.endPoint = CGPoint(x: 1, y: 0.5)
@@ -363,6 +373,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         deleteButton.backgroundColor = Theme.functionKey
         deleteButton.tintColor = Theme.keyText
         gear.tintColor = Theme.secondaryText
+        updateMoodMostoPose(animated: false)
     }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
@@ -456,6 +467,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         guard displayedMoods.indices.contains(index) else { return }
         selectedMood = index
         refreshMoodRibbonStyle()
+        updateMoodMostoPose(animated: true)
         layoutMoodPills()
         if index < moodButtons.count {
             moodScroll.scrollRectToVisible(moodButtons[index].frame.insetBy(dx: -16, dy: 0), animated: true)
@@ -470,6 +482,55 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         selectMood(b.tag)
     }
 
+    @objc private func moodMostoTapped() {
+        let hasRecent = displayedMoods.first?.title == "常用"
+        let target: Int
+        if hasRecent && selectedMood != 0 {
+            target = 0
+        } else {
+            target = displayedMoods.firstIndex(where: { $0.title == "招牌" }) ?? 0
+        }
+        selectMood(target)
+        guard !UIAccessibility.isReduceMotionEnabled else { return }
+        UIView.animate(withDuration: 0.10, animations: {
+            self.moodMosto.transform = CGAffineTransform(scaleX: 1.16, y: 0.88).translatedBy(x: 0, y: -2)
+        }) { _ in
+            UIView.animate(withDuration: 0.16) {
+                self.moodMosto.transform = .identity
+            }
+        }
+    }
+
+    private func updateMoodMostoPose(animated: Bool) {
+        let t = traitCollection
+        let night = KeyboardSettings.shared.appearance == 2 || (KeyboardSettings.shared.appearance == 0 && t.userInterfaceStyle == .dark)
+        let title = displayedMoods.indices.contains(selectedMood) ? displayedMoods[selectedMood].title : "招牌"
+        let basePose: String
+        switch title {
+        case "晚安":
+            basePose = "mosto_night"
+        case "摸鱼", "破防":
+            basePose = "mosto_yawn"
+        default:
+            basePose = night ? "mosto_night" : "mosto_day"
+        }
+        moodPoseGeneration &+= 1
+        let gen = moodPoseGeneration
+        let bundle = Bundle(for: EmojiPanelView.self)
+        if animated && !night && !UIAccessibility.isReduceMotionEnabled && ["开心", "萌宠", "贴贴", "加油"].contains(title) {
+            currentMoodPoseName = "mosto_blink"
+            moodMosto.image = UIImage(named: "mosto_blink", in: bundle, with: nil)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+                guard let self, self.moodPoseGeneration == gen else { return }
+                self.currentMoodPoseName = basePose
+                self.moodMosto.image = UIImage(named: basePose, in: bundle, with: nil)
+            }
+        } else {
+            currentMoodPoseName = basePose
+            moodMosto.image = UIImage(named: basePose, in: bundle, with: nil)
+        }
+    }
+
     /// `kaomoji`: open directly on the 10-mood Kaomoji Tape Deck.
     func load(kaomoji: Bool = false) {
         let recent = Self.recents()
@@ -479,6 +540,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         kaomojiMode = kaomoji
         selectedMood = 0
         refreshMoodRibbonStyle()
+        updateMoodMostoPose(animated: false)
         selected = -1
         pendingScrollToSelectedTab = true
         returnButton.isHidden = true
@@ -701,7 +763,11 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         } else {
             var rk = Self.recentKaomoji().filter { $0 != e }
             rk.insert(e, at: 0)
-            UserDefaults.standard.set(Array(rk.prefix(24)), forKey: Self.recentKaomojiKey)
+            let capped = Array(rk.prefix(24))
+            UserDefaults.standard.set(capped, forKey: Self.recentKaomojiKey)
+            if kaomojiMode, displayedMoods.first?.title == "常用", selectedMood != 0 {
+                displayedMoods[0].items = Array(capped.prefix(9))
+            }
         }
         onEmoji?(e)
         collectionView.deselectItem(at: indexPath, animated: false)
