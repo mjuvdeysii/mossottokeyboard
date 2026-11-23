@@ -35,6 +35,7 @@ enum SnapshotRenderer {
             Shot(name: "letters_predict", page: .letters, state: "predict", borders: true, panel: nil),
             Shot(name: "letters_undo", page: .letters, state: "undo", borders: true, panel: nil),
             Shot(name: "plain_composing", page: .letters, state: "composing", borders: true, panel: nil),
+            Shot(name: "plain_appex_pill", page: .letters, state: "composing", borders: true, panel: nil),
             Shot(name: "plain_numbers", page: .numbers, state: "idle", borders: true, panel: nil),
             Shot(name: "letters_guide", page: .letters, state: "idle", borders: true, panel: nil),
             Shot(name: "letters_shift", page: .letters, state: "shift", borders: true, panel: nil),
@@ -110,6 +111,10 @@ enum SnapshotRenderer {
                 let bar = CandidateBarView(frame: CGRect(x: inset, y: 0, width: width, height: barH))
                 bar.mosto.setNight(night)
                 bar.showsMosto = !Theme.plain
+                if shot.name == "plain_appex_pill" {
+                    bar.showsPreedit = true
+                    bar.xiaoheRhythm = true
+                }
                 root.addSubview(bar)
                 let kb = KeyboardView(spatial: SpatialModel.standard(width: Double(width)))
                 kb.frame = CGRect(x: inset, y: barH, width: width, height: 4 * pitch)
@@ -126,7 +131,7 @@ enum SnapshotRenderer {
                 switch shot.state {
                 case "composing" where shot.panel == "scrolled":
                     bar.update(preedit: "ni hao", candidates: composing + candidates(["倪", "霓", "匿", "妮", "昵", "溺", "睨", "鲵", "旎", "怩"]))
-                case "composing": bar.update(preedit: "ni hao", candidates: composing)
+                case "composing": bar.update(preedit: shot.name == "plain_appex_pill" ? "nihcj" : "ni hao", candidates: composing)
                 case "cleared":
                     bar.setUndo("nihap", spoken: "撤回清空，恢复为 nihap")
                     bar.update(preedit: "", candidates: [])

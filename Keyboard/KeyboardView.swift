@@ -166,17 +166,21 @@ final class KeyView: UIView {
             under = Theme.accentLip; fg = Theme.accentText
         }
         CATransaction.begin(); CATransaction.setDisableActions(true)
-        // Subtle vertical luminance fall-off gives porcelain / Liquid Glass / soft-vinyl caps crisp tactile volume.
+        // Convex top-lit cap at rest; inverted concave shading + extinguished specular rim when depressed.
         let topR = top.resolvedColor(with: t), b = bottom.resolvedColor(with: t), u = under.resolvedColor(with: t)
-        if Theme.plain {
+        if pressed {
+            face.colors = Theme.plain
+                ? [Theme.mix(b, u, 0.08).cgColor, b.cgColor, b.cgColor]
+                : [Theme.mix(b, u, 0.12).cgColor, b.cgColor, topR.cgColor]
+        } else if Theme.plain {
             face.colors = [topR.cgColor, b.cgColor, b.cgColor]
         } else {
-            face.colors = [topR.cgColor, b.cgColor, Theme.mix(b, u, pressed ? 0.04 : 0.10).cgColor]
+            face.colors = [topR.cgColor, b.cgColor, Theme.mix(b, u, 0.10).cgColor]
         }
         lip.backgroundColor = u.cgColor
         lip.shadowOpacity = 0
         let hi = Theme.keyHighlight.resolvedColor(with: t)
-        let rimScale: CGFloat = pressed ? 0.22 : (style == .accent ? (Theme.plain ? 0.42 : 0.80) : (style == .function && Theme.plain ? 0.38 : 1.0))
+        let rimScale: CGFloat = pressed ? 0.06 : (style == .accent ? (Theme.plain ? 0.42 : 0.80) : (style == .function && Theme.plain ? 0.38 : 1.0))
         rim.strokeColor = hi.withAlphaComponent(hi.cgColor.alpha * rimScale).cgColor
         wings.fillColor = Theme.wing.resolvedColor(with: t).cgColor
         crown.fillColor = Theme.accentKey.resolvedColor(with: t).cgColor
@@ -597,6 +601,8 @@ final class KeyboardView: UIView {
         var typedOnDown = false
         /// On delete, while something is being composed: the swipe left that clears it (rounds/R3.md).
         var clearSwipe: ClearSwipe?
+        /// Upward flick off the Chinese comma key (，) emits a period (。) instantaneously without waiting for long-press.
+        var flickedAlt: String?
         init(keyIndex: Int, start: CGPoint, time: CFTimeInterval) {
             self.keyIndex = keyIndex; self.start = start; self.location = start; self.began = time; self.lastMove = time
         }
@@ -904,11 +910,35 @@ final class KeyboardView: UIView {
                 let i = popup.index(at: p.x)
                 if i != popup.selected { popup.selected = i; onFeedback?(.altMoved, p) }
             }
-        case .char where !tr.altShown && !tr.typedOnDown:
+        case .char(let s) where !tr.altShown && !tr.typedOnDown:
+            if s == "，" && kv.spec.alt == "。" {
+                let rise = tr.start.y - p.y
+                let driftX = abs(p.x - tr.start.x)
+                if rise >= 16 && driftX <= 32 {
+                    if tr.flickedAlt == nil {
+                        tr.flickedAlt = "。"
+                        tr.longPressTimer?.invalidate()
+                        tr.preview?.label.text = "。"
+                        tr.preview?.label.textColor = Theme.correctedMark
+                        tr.preview?.setNeedsLayout()
+                        onFeedback?(.altMoved, p)
+                    }
+                    break
+                } else if tr.flickedAlt != nil && rise < 8 {
+                    tr.flickedAlt = nil
+                    tr.preview?.label.text = "，"
+                    tr.preview?.label.textColor = Theme.keyText
+                    tr.preview?.setNeedsLayout()
+                    break
+                } else if rise > 6 && driftX <= 28 {
+                    break
+                }
+            }
             // Slide to a neighbouring character key before release (keys typed on landing stay typed).
             if let idx = keyIndex(at: p), idx < keyViews.count, idx != tr.keyIndex, case .char = keyViews[idx].spec.action {
                 kv.pressed = false
                 tr.longPressTimer?.invalidate()
+                tr.flickedAlt = nil
                 tr.keyIndex = idx
                 keyViews[idx].pressed = true
                 tr.preview?.removeFromSuperview(); tr.preview = nil   // never the old key's balloon over the new key
@@ -1092,6 +1122,8 @@ final class KeyboardView: UIView {
         case .char(let s):
             if tr.altShown, chosen < tr.altOptions.count {
                 onAction?(.char(tr.altOptions[chosen]), nil)
+            } else if let flick = tr.flickedAlt {
+                onAction?(.char(flick), nil)
             } else if kv.spec.isLetter, let c = s.first {
                 let tap = spatial.tap(x: Double(tr.location.x), y: Double(tr.location.y), hitKey: c)
                 onAction?(.char(s), tap)

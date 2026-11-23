@@ -123,6 +123,7 @@ enum KeyboardTests {
         feedback(window)
         strip(window)
         clearSwipe(window)
+        r48Features(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -1149,6 +1150,79 @@ enum KeyboardTests {
             reset(vc, h)
         } else { log(false, "clearSwipe.九宫格 setup", "engine did not load") }
         pr.window2.rootViewController = nil
+    }
+
+    // MARK: - R48: comma flick-up period, Xiaohe rhythm pill, 2pt correction glow & single-char grid filter
+
+    static func r48Features(_ window: UIWindow) {
+        // 1. Comma flick-up emits 。 instantly; normal tap and flick-then-pull-back still emit ，
+        if let kb = makeKeyboard(scheme: 0, in: window) {
+            let (vc, h) = kb
+            let kview = vc.keyboardViewForTests
+            if let r = kview.keyRectsForTests(.char("，")) {
+                let c = CGPoint(x: r.cap.midX, y: r.cap.midY)
+                let up = CGPoint(x: c.x, y: c.y - 24)
+                let back = CGPoint(x: c.x, y: c.y - 2)
+                kview.feedForTests([
+                    TouchSample(id: 1, phase: .began, point: c, time: 1.00),
+                    TouchSample(id: 1, phase: .ended, point: c, time: 1.06),
+                    TouchSample(id: 2, phase: .began, point: c, time: 2.00),
+                    TouchSample(id: 2, phase: .moved, point: up, time: 2.04),
+                    TouchSample(id: 2, phase: .ended, point: up, time: 2.08),
+                    TouchSample(id: 3, phase: .began, point: c, time: 3.00),
+                    TouchSample(id: 3, phase: .moved, point: up, time: 3.04),
+                    TouchSample(id: 3, phase: .moved, point: back, time: 3.08),
+                    TouchSample(id: 3, phase: .ended, point: back, time: 3.12),
+                ])
+                log(h.string == "，。，", "r48.comma flick-up emits 。 while tap & pull-back keep ，", "got=\(h.string)")
+            } else {
+                log(false, "r48.comma key rect lookup", "missing ， key")
+            }
+        } else { log(false, "r48.comma setup", "engine did not load") }
+
+        // 2. Xiaohe 2-key rhythm kerning in raw-letter pill + 2pt zero-text correction glow bar
+        let bar = CandidateBarView(frame: CGRect(x: 0, y: 0, width: 402, height: 44))
+        bar.showsPreedit = true
+        bar.xiaoheRhythm = true
+        let correctedList = [
+            Candidate(text: "你好", tapCount: 4, syllables: [1, 2], corrected: true, score: 0),
+            Candidate(text: "你", tapCount: 2, syllables: [1], corrected: false, score: 0),
+        ]
+        bar.update(preedit: "nihcj", candidates: correctedList)
+        let attr = bar.preeditAttributedForTests
+        let kern1 = (attr?.attribute(.kern, at: 1, effectiveRange: nil) as? NSNumber)?.doubleValue ?? 0
+        let kern3 = (attr?.attribute(.kern, at: 3, effectiveRange: nil) as? NSNumber)?.doubleValue ?? 0
+        log(bar.preeditShownForTests && attr?.string == "nihcj" && abs(kern1 - 2.5) < 0.01 && abs(kern3 - 2.5) < 0.01,
+            "r48.xiaohe pill keeps exact raw letters with 2-key breathing kerning",
+            "shown=\(bar.preeditShownForTests) text=\(attr?.string ?? "nil") kern1=\(kern1) kern3=\(kern3)")
+        log(bar.correctionBarShownForTests, "r48.2pt correction glow bar shows when slot 0 is corrected")
+
+        let plainList = [Candidate(text: "你好", tapCount: 4, syllables: [1, 2], corrected: false, score: 0)]
+        bar.update(preedit: "nihc", candidates: plainList)
+        log(!bar.correctionBarShownForTests, "r48.2pt correction glow bar hides when slot 0 is not corrected")
+
+        bar.update(preedit: "", candidates: correctedList, prediction: true)
+        log(!bar.correctionBarShownForTests && !bar.preeditShownForTests, "r48.prediction mode hides both glow bar and raw-letter pill")
+
+        // 3. CandidateGridView single-character quick filter maps back to real candidate index
+        let grid = CandidateGridView(frame: CGRect(x: 0, y: 0, width: 402, height: 220))
+        let mixed = [
+            Candidate(text: "你好", tapCount: 4, syllables: [1, 2], corrected: false, score: 0),
+            Candidate(text: "世界", tapCount: 4, syllables: [3, 4], corrected: false, score: 0),
+            Candidate(text: "你", tapCount: 2, syllables: [1], corrected: false, score: 0),
+            Candidate(text: "拟", tapCount: 2, syllables: [1], corrected: false, score: 0),
+        ]
+        grid.show(mixed)
+        let initialOk = !grid.singleCharButtonHiddenForTests && grid.displayedCountForTests == 4
+        grid.toggleSingleCharForTests()
+        var picked = -1
+        grid.onSelect = { picked = $0 }
+        grid.selectDisplayedForTests(1)
+        log(initialOk && grid.displayedCountForTests == 2 && picked == 3,
+            "r48.grid single-char filter shows only 1-char candidates and emits real index",
+            "initialOk=\(initialOk) count=\(grid.displayedCountForTests) picked=\(picked)")
+        grid.show([Candidate(text: "你", tapCount: 2, syllables: [1], corrected: false, score: 0)])
+        log(grid.singleCharButtonHiddenForTests, "r48.grid hides single-char filter when all candidates are already 1-char")
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

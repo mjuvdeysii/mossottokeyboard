@@ -320,6 +320,7 @@ final class KeyboardViewController: UIInputViewController {
         }
         grid.onSelect = { [weak self] i in self?.feel(.candidate); self?.showGrid(false); self?.candidateTapped(i) }
         grid.onClose = { [weak self] in self?.showGrid(false) }
+        grid.onFilterToggle = { [weak self] in self?.feel(.candidate) }
         grid.onDelete = { [weak self] in
             guard let self else { return }
             self.handle(.delete, tap: nil)
@@ -771,7 +772,9 @@ final class KeyboardViewController: UIInputViewController {
     private var lastContext: LayoutContext?
 
     private func reconfigure() {
-        candidateBar.typing = !taps.isEmpty; updatePlainLightButton()
+        candidateBar.typing = !taps.isEmpty
+        candidateBar.xiaoheRhythm = chinese && scheme == .xiaohe && !pinyinGridOn && !taps.contains(where: { $0.group })
+        updatePlainLightButton()
         let (label, accent) = returnLabel()
         let ctx = LayoutContext(page: page, chinese: chinese, showGlobe: needsInputModeSwitchKey,
                                          returnLabel: label, returnIsAccent: accent,

@@ -65,6 +65,8 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     private var labels: [UILabel] = []
     private var pool: [UILabel] = []
     private var dividerPool: [CALayer] = []
+    /// Zero-width 2pt focus glow bar beneath slot 0 when autocorrect engaged (replaces noisy jr->ke text).
+    private let correctionBar = CALayer()
     /// What each pooled label shows now (so a label is only redrawn when it changes).
     private var poolKeys: [String] = []
     private var isPrediction = false; var gridExpanded = false { didSet { if gridExpanded != oldValue { setNeedsLayout(); layoutIfNeeded() } } }
@@ -78,11 +80,14 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     /// The test bench drives touches with its own clock: the hold is checked against it, no timer runs.
     private var benchTouches = false
     /// Mosto in the idle corner, by day and at night alike (only his light changes with the keyboard's).
-    var showsMosto = false { didSet { update(preedit: preedit.text ?? "", candidates: candidates, prediction: isPrediction) } }
+    var showsMosto = false { didSet { update(preedit: preeditRaw, candidates: candidates, prediction: isPrediction) } }
     private var mostoWanted = false
     private var mostoTimer: Timer?
     /// Raw typed-key pill at the start of the candidate row (when not writing inline marked text).
     var showsPreedit = false { didSet { setNeedsLayout() } }
+    /// Xiaohe 2-key rhythm kerning in the raw-letter pill (adds subtle 2.5pt gap every 2 keys & accents odd trailing key).
+    var xiaoheRhythm = false { didSet { if xiaoheRhythm != oldValue { applyPreeditText(preeditRaw) } } }
+    private var preeditRaw = ""
 
     static var font: UIFont { Theme.font(19, .regular) }
     static var firstFont: UIFont { Theme.font(19, .medium) }
@@ -143,6 +148,10 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         strip.contentInsetAdjustmentBehavior = .never; if #available(iOS 26.0, *) { strip.topEdgeEffect.isHidden = true; strip.bottomEdgeEffect.isHidden = true; strip.leftEdgeEffect.isHidden = true; strip.rightEdgeEffect.isHidden = true }
         strip.backgroundColor = .clear
         strip.panGestureRecognizer.addTarget(self, action: #selector(stripPanned(_:)))
+        correctionBar.cornerRadius = 1
+        correctionBar.zPosition = 10
+        correctionBar.isHidden = true
+        strip.layer.addSublayer(correctionBar)
         stripBox.backgroundColor = .clear
         stripBox.addSubview(strip)
         fade.startPoint = CGPoint(x: 0, y: 0.5)
@@ -189,13 +198,48 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
 
     @objc private func expandTapped() { if gridExpanded || !candidates.isEmpty { onExpand?() } else { onSettings?() } }
 
+    /// Formats the raw-key preview pill: exact keys typed, with subtle 2-key breathing kerning in Xiaohe mode.
+    private func applyPreeditText(_ text: String) {
+        preeditRaw = text
+        guard !text.isEmpty else {
+            preedit.attributedText = nil
+            preedit.text = ""
+            return
+        }
+        let font = Theme.font(11.5, .medium)
+        let baseColor = Theme.secondaryText.resolvedColor(with: traitCollection)
+        guard xiaoheRhythm, text.allSatisfy({ $0.isASCII && $0.isLetter }) else {
+            preedit.attributedText = nil
+            preedit.font = font
+            preedit.textColor = baseColor
+            preedit.text = text
+            return
+        }
+        let attr = NSMutableAttributedString(string: text, attributes: [.font: font, .foregroundColor: baseColor])
+        let len = attr.length
+        if len >= 3 {
+            var i = 1
+            while i < len - 1 {
+                attr.addAttribute(.kern, value: 2.5, range: NSRange(location: i, length: 1))
+                i += 2
+            }
+        }
+        // Highlight an odd trailing key (mid-syllable in 2-key Xiaohe) so key parity is legible at a glance.
+        if len % 2 == 1 {
+            attr.addAttribute(.foregroundColor, value: Theme.correctedMark.resolvedColor(with: traitCollection), range: NSRange(location: len - 1, length: 1))
+        }
+        preedit.attributedText = attr
+    }
+
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
         super.traitCollectionDidChange(previous)
         if previous?.userInterfaceStyle != traitCollection.userInterfaceStyle {
             preedit.backgroundColor = Theme.preeditPillBg
             preedit.layer.borderColor = Theme.preeditPillBorder.resolvedColor(with: traitCollection).cgColor
+            applyPreeditText(preeditRaw)
             let divColor = Theme.candidateDivider.resolvedColor(with: traitCollection).cgColor
             for d in dividerPool { d.backgroundColor = divColor }
+            correctionBar.backgroundColor = Theme.correctedMark.resolvedColor(with: traitCollection).cgColor
             poolKeys = poolKeys.map { _ in "" }
             setNeedsLayout()
         }
@@ -208,6 +252,8 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         preedit.font = Theme.font(11.5, .medium)
         preedit.backgroundColor = Theme.preeditPillBg
         preedit.layer.borderColor = Theme.preeditPillBorder.resolvedColor(with: traitCollection).cgColor
+        applyPreeditText(preeditRaw)
+        correctionBar.backgroundColor = Theme.correctedMark.resolvedColor(with: traitCollection).cgColor
         var uc = undoChip.configuration
         uc?.baseBackgroundColor = Theme.correctedTint
         uc?.baseForegroundColor = Theme.correctedMark
@@ -225,6 +271,9 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     var predictionMarkForTests: Bool { isPrediction }
     var undoTextForTests: String? { undoText }
     func undoTapForTests() { onUndo?() }
+    var correctionBarShownForTests: Bool { !correctionBar.isHidden }
+    var preeditShownForTests: Bool { !preedit.isHidden }
+    var preeditAttributedForTests: NSAttributedString? { preedit.attributedText }
 
     /// Offer (or withdraw, with nil) putting back keys: the ones a correction replaced, or the ones a swipe cleared.
     /// `spoken`: what VoiceOver says for it (by default, that it takes back a correction).
@@ -261,11 +310,21 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         override func accessibilityActivate() -> Bool { activate?(); return true }
     }
 
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        if let hit = super.hitTest(point, with: event), hit !== self { return hit }
+        if showsPreedit && !preedit.isHidden && !preeditRaw.isEmpty && preedit.frame.width > 0 {
+            let expanded = CGRect(x: preedit.frame.minX, y: 0, width: preedit.frame.width, height: bounds.height)
+            if expanded.contains(point) { return preedit }
+        }
+        return super.hitTest(point, with: event)
+    }
+
     override var accessibilityElements: [Any]? {
         get {
             var out: [Any] = []
             if !mosto.isHidden { out.append(mosto) }
             if !undoChip.isHidden { out.append(undoChip) }
+            if showsPreedit && !preedit.isHidden && !preeditRaw.isEmpty { out.append(preedit) }
             for (i, l) in labels.enumerated() where !l.isHidden {
                 let e = CandidateElement(accessibilityContainer: self)
                 e.accessibilityLabel = i < candidates.count ? candidates[i].text : l.text
@@ -311,10 +370,10 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     @objc private func mostoTapped() { onMostoTap?() }
     @objc private func mostoDoubleTapped() { mosto.hop(); onMostoDoubleTap?() }
 
-    /// Immediately show typed keys in the leading single-row pinyin pill (0 ms, 0 XPC).
+    /// Immediately show typed keys in the leading single-row raw-key pill (0 ms, 0 XPC).
     func setPreedit(_ text: String) {
-        let changed = preedit.text != text
-        preedit.text = text
+        let changed = preeditRaw != text
+        if changed { applyPreeditText(text) }
         let show = showsPreedit && !isPrediction && !text.isEmpty
         if preedit.isHidden != !show || changed {
             preedit.isHidden = !show
@@ -324,7 +383,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
 
     /// `prediction`: the row shows next-word suggestions (联想) rather than candidates for typed keys.
     func update(preedit text: String, candidates: [Candidate], prediction: Bool = false) {
-        preedit.text = text
+        if preeditRaw != text { applyPreeditText(text) }
         // another list (a new key, a commit): the row starts from the beginning again; the same list (the same keys
         // decoded once more) leaves it where the finger put it
         let changed = prediction != isPrediction || candidates.count != self.candidates.count
@@ -403,13 +462,18 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             undoChip.frame = CGRect(x: 10, y: (h - sz.height) / 2, width: sz.width, height: sz.height)
             lead = undoChip.frame.maxX + 6
             preedit.frame = .zero
-        } else if showsPreedit && !preedit.isHidden, let txt = preedit.text, !txt.isEmpty {
-            let rawW = ceil((txt as NSString).size(withAttributes: [.font: preedit.font ?? Theme.font(11.5, .medium)]).width) + 12
-            let pillW = min(max(26, rawW), 64)
+        } else if showsPreedit && !preedit.isHidden, !preeditRaw.isEmpty {
+            let textW: CGFloat
+            if let attr = preedit.attributedText, attr.length > 0 {
+                textW = ceil(attr.size().width)
+            } else {
+                textW = ceil((preeditRaw as NSString).size(withAttributes: [.font: preedit.font ?? Theme.font(11.5, .medium)]).width)
+            }
+            let pillW = min(max(26, textW + 12), 68)
             let pillH = min(22, max(19, h - 18))
             preedit.layer.cornerRadius = pillH / 2
             preedit.frame = CGRect(x: 10, y: (h - pillH) / 2, width: pillW, height: pillH)
-            lead = preedit.frame.maxX + 4
+            lead = preedit.frame.maxX + 6
         } else {
             preedit.frame = .zero
         }
@@ -486,6 +550,8 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         let divY: CGFloat = (rowH - divH) / 2
         var x: CGFloat = 0
         var n = 0
+        var showCorrectionBar = false
+        var correctionFrame = CGRect.zero
         CATransaction.begin(); CATransaction.setDisableActions(true)
         while n < candidates.count && (x < need || n == 0) {
             let w: CGFloat
@@ -526,6 +592,11 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             // Clean, restrained focus highlight on slot 0 (spacebar target); zero text noise.
             let firstBg = c.corrected ? Theme.correctedTint : Theme.firstCandidateTint
             l.backgroundColor = n == pressed ? Theme.functionKey : (isFirst ? firstBg : .clear)
+            if isFirst && c.corrected {
+                let barW: CGFloat = min(14, max(8, w - 16))
+                showCorrectionBar = true
+                correctionFrame = CGRect(x: x + (w - barW) / 2, y: topY + labelH - 3, width: barW, height: 2)
+            }
             if n > 0 {
                 let di = n - 1
                 if dividerPool.count <= di {
@@ -548,6 +619,11 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         let usedDivs = max(0, n - 1)
         if dividerPool.count > usedDivs {
             for d in dividerPool.dropFirst(usedDivs) where !d.isHidden { d.isHidden = true }
+        }
+        correctionBar.isHidden = !showCorrectionBar
+        if showCorrectionBar {
+            correctionBar.backgroundColor = Theme.correctedMark.resolvedColor(with: traitCollection).cgColor
+            correctionBar.frame = correctionFrame
         }
         CATransaction.commit()
         if visibleCount != n || labels.count != n {
@@ -615,7 +691,8 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     /// The candidate under a point of this view (an index into the full list), where the row shows it.
     private func candidateIndex(at p: CGPoint) -> Int? {
         let q = convert(p, to: strip)
-        guard q.y >= -16, q.x >= strip.bounds.minX - 12, q.x < strip.bounds.maxX else { return nil }
+        let leftSlop: CGFloat = (showsPreedit && !preedit.isHidden) ? 4 : 12
+        guard q.y >= -16, q.x >= strip.bounds.minX - leftSlop, q.x < strip.bounds.maxX else { return nil }
         if let exact = labels.firstIndex(where: { ($0.frame.minX - 6) <= q.x && q.x < ($0.frame.maxX + 6) }) {
             return exact
         }
@@ -780,12 +857,37 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
     var onSelect: ((Int) -> Void)?
     var onClose: (() -> Void)?
     var onDelete: (() -> Void)?
+    var onFilterToggle: (() -> Void)?
 
-    private var candidates: [Candidate] = []
+    private var allCandidates: [Candidate] = []
+    private var displayedIndices: [Int] = []
+    private var singleCharOnly = false
     private let collection: UICollectionView
     private let closeButton = UIButton(type: .system)
     private let deleteButton = UIButton(type: .system)
+    private let singleCharButton = UIButton(type: .system)
 
+    private func updateFilterButtonStyle() {
+        let active = singleCharOnly
+        singleCharButton.titleLabel?.font = Theme.font(14, .semibold)
+        singleCharButton.backgroundColor = active ? Theme.accentKey : Theme.functionKey
+        singleCharButton.setTitleColor(active ? Theme.accentText : Theme.functionText, for: .normal)
+        singleCharButton.layer.cornerRadius = Metrics.cornerRadius
+        singleCharButton.layer.shadowOffset = CGSize(width: 0, height: Metrics.lip)
+        singleCharButton.layer.shadowColor = (active ? Theme.accentLip : Theme.functionLip).resolvedColor(with: traitCollection).cgColor
+        singleCharButton.accessibilityTraits = active ? [.button, .selected] : .button
+    }
+
+    private func rebuildDisplayed() {
+        if singleCharOnly {
+            displayedIndices = allCandidates.indices.filter { allCandidates[$0].text.count == 1 }
+        } else {
+            displayedIndices = Array(allCandidates.indices)
+        }
+        let hasSingle = allCandidates.contains(where: { $0.text.count == 1 })
+        let hasMulti = allCandidates.contains(where: { $0.text.count > 1 })
+        singleCharButton.isHidden = !(hasSingle && hasMulti)
+    }
 
     func themeChanged() {
         for b in [closeButton, deleteButton] {
@@ -795,6 +897,7 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
             b.layer.shadowOffset = CGSize(width: 0, height: Metrics.lip)
             b.layer.shadowColor = Theme.functionLip.resolvedColor(with: traitCollection).cgColor
         }
+        updateFilterButtonStyle()
         collection.reloadData()
         setNeedsLayout()
     }
@@ -849,7 +952,8 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         let cfg = UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
         closeButton.setImage(UIImage(systemName: "chevron.up", withConfiguration: cfg), for: .normal)
         deleteButton.setImage(UIImage(systemName: "delete.left", withConfiguration: cfg), for: .normal)
-        for b in [closeButton, deleteButton] {
+        singleCharButton.setTitle("单字", for: .normal)
+        for b in [closeButton, deleteButton, singleCharButton] {
             b.tintColor = Theme.functionText
             b.backgroundColor = Theme.functionKey
             b.layer.cornerRadius = Metrics.cornerRadius
@@ -861,25 +965,40 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
             b.layer.shadowColor = Theme.functionLip.resolvedColor(with: traitCollection).cgColor
             addSubview(b)
         }
+        updateFilterButtonStyle()
+        singleCharButton.isHidden = true
         closeButton.accessibilityLabel = "收起候选"
         deleteButton.accessibilityLabel = "删除"
+        singleCharButton.accessibilityLabel = "只看单字"
         closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
-
         deleteButton.addTarget(self, action: #selector(deleteTapped), for: .touchUpInside)
+        singleCharButton.addTarget(self, action: #selector(toggleSingleChar), for: .touchUpInside)
     }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
         super.traitCollectionDidChange(previous)
         for b in [closeButton, deleteButton] { b.layer.shadowColor = Theme.functionLip.resolvedColor(with: traitCollection).cgColor }
+        updateFilterButtonStyle()
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
     @objc private func closeTapped() { onClose?() }
     @objc private func deleteTapped() { onDelete?() }
+    @objc private func toggleSingleChar() {
+        singleCharOnly.toggle()
+        rebuildDisplayed()
+        updateFilterButtonStyle()
+        onFilterToggle?()
+        collection.reloadData()
+        collection.setContentOffset(.zero, animated: false)
+    }
 
     func show(_ candidates: [Candidate]) {
-        self.candidates = candidates
+        allCandidates = candidates
+        singleCharOnly = false
+        rebuildDisplayed()
+        updateFilterButtonStyle()
         collection.reloadData()
         collection.setContentOffset(.zero, animated: false)
     }
@@ -889,17 +1008,21 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         let side: CGFloat = 56; closeButton.isHidden = true; closeButton.frame = .zero
         collection.frame = bounds; collection.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: 52, right: 0)
         let bh: CGFloat = 40
+        singleCharButton.frame = CGRect(x: 8, y: bounds.height - bh - 6, width: 64, height: bh)
+        singleCharButton.layer.shadowPath = UIBezierPath(roundedRect: singleCharButton.bounds, cornerRadius: Metrics.cornerRadius).cgPath
+        bringSubviewToFront(singleCharButton)
         deleteButton.frame = CGRect(x: bounds.width - side + 4, y: bounds.height - bh - 6, width: side - 10, height: bh)
         deleteButton.layer.shadowPath = UIBezierPath(roundedRect: deleteButton.bounds, cornerRadius: Metrics.cornerRadius).cgPath
         bringSubviewToFront(deleteButton)
     }
 
-    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int { candidates.count }
+    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int { displayedIndices.count }
 
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "c", for: indexPath) as! Cell
-        let c = candidates[indexPath.item]
-        let isFirst = indexPath.item == 0
+        let realIndex = displayedIndices[indexPath.item]
+        let c = allCandidates[realIndex]
+        let isFirst = realIndex == 0
         let bg = isFirst ? (c.corrected ? Theme.correctedTint : Theme.firstCandidateTint) : Theme.preeditPillBg
         cell.label.text = c.text
         cell.label.font = isFirst ? CandidateBarView.firstFont : CandidateBarView.font
@@ -912,14 +1035,20 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
 
     func collectionView(_ collectionView: UICollectionView, layout l: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
         let maxW = collectionView.bounds.width - 16
-        let f = indexPath.item == 0 ? CandidateBarView.firstFont : CandidateBarView.font
-        let w = ceil((candidates[indexPath.item].text as NSString).size(withAttributes: [.font: f]).width) + 18
+        let realIndex = displayedIndices[indexPath.item]
+        let f = realIndex == 0 ? CandidateBarView.firstFont : CandidateBarView.font
+        let w = ceil((allCandidates[realIndex].text as NSString).size(withAttributes: [.font: f]).width) + 18
         return CGSize(width: min(maxW, max(42, w)), height: 40)
     }
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
-        onSelect?(indexPath.item)
+        onSelect?(displayedIndices[indexPath.item])
     }
+
+    var displayedCountForTests: Int { displayedIndices.count }
+    var singleCharButtonHiddenForTests: Bool { singleCharButton.isHidden }
+    func toggleSingleCharForTests() { toggleSingleChar() }
+    func selectDisplayedForTests(_ i: Int) { if i < displayedIndices.count { onSelect?(displayedIndices[i]) } }
 }
 
 /// In-keyboard settings, laid out like iOS Settings: a fixed header (Mosto, title, 完成) over grouped, rounded

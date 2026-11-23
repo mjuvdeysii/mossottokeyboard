@@ -87,9 +87,11 @@ protocol FeedbackPlayer: AnyObject {
 final class SystemFeedbackPlayer: FeedbackPlayer {
     private weak var view: UIView?
     private var light: UIImpactFeedbackGenerator
+    private var rigid: UIImpactFeedbackGenerator
     private var soft: UIImpactFeedbackGenerator
     private var tick: UISelectionFeedbackGenerator
     private let plainLight = UIImpactFeedbackGenerator(style: .light)
+    private let plainRigid = UIImpactFeedbackGenerator(style: .rigid)
     private let plainSoft = UIImpactFeedbackGenerator(style: .soft)
     private let plainTick = UISelectionFeedbackGenerator()
     private(set) var played = 0
@@ -103,10 +105,12 @@ final class SystemFeedbackPlayer: FeedbackPlayer {
         self.view = view
         if #available(iOS 17.5, *) {
             light = UIImpactFeedbackGenerator(style: .light, view: view)
+            rigid = UIImpactFeedbackGenerator(style: .rigid, view: view)
             soft = UIImpactFeedbackGenerator(style: .soft, view: view)
             tick = UISelectionFeedbackGenerator(view: view)
         } else {
             light = UIImpactFeedbackGenerator(style: .light)
+            rigid = UIImpactFeedbackGenerator(style: .rigid)
             soft = UIImpactFeedbackGenerator(style: .soft)
             tick = UISelectionFeedbackGenerator()
         }
@@ -117,7 +121,7 @@ final class SystemFeedbackPlayer: FeedbackPlayer {
     private var centre: CGPoint? { view.map { CGPoint(x: $0.bounds.midX, y: $0.bounds.midY) } }
 
     func prepare() {
-        if attached { light.prepare(); tick.prepare() } else { plainLight.prepare(); plainTick.prepare() }
+        if attached { light.prepare(); rigid.prepare(); tick.prepare() } else { plainLight.prepare(); plainRigid.prepare(); plainTick.prepare() }
     }
 
     func play(_ kind: FeedbackKind, intensity: CGFloat, at point: CGPoint?) {
@@ -128,9 +132,12 @@ final class SystemFeedbackPlayer: FeedbackPlayer {
             if now - lastImpactTime < Self.minImpactInterval { return }
             lastImpactTime = now
             played += 1
-            let g = onView ? light : plainLight
-            if #available(iOS 17.5, *), onView, let point = point ?? centre { g.impactOccurred(intensity: intensity, at: point) }
-            else { g.impactOccurred(intensity: intensity) }
+            // Tactile key weighting: crisp feather-light letters (0.66 .light) vs solid anchored action/space keys (0.78 .rigid).
+            let firm = intensity >= 0.95
+            let g = firm ? (onView ? rigid : plainRigid) : (onView ? light : plainLight)
+            let tuned: CGFloat = firm ? 0.78 : 0.66
+            if #available(iOS 17.5, *), onView, let point = point ?? centre { g.impactOccurred(intensity: tuned, at: point) }
+            else { g.impactOccurred(intensity: tuned) }
             if onView { g.prepare() }
         case .soft:
             played += 1
