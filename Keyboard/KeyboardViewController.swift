@@ -211,6 +211,11 @@ final class KeyboardViewController: UIInputViewController {
     var plainLightHiddenForTests: Bool { plainLightButton.isHidden }
     var mostoHintHiddenForTests: Bool { mostoHintButton.isHidden }
     var testSettled: Bool { taps.isEmpty || resultGeneration == generation }
+    var onCandidatesUpdated: (() -> Void)?
+    var activeFirstFixesForTests: [Fix] {
+        guard !taps.isEmpty, resultGeneration == generation, let first = result?.candidates.first, first.corrected else { return [] }
+        return first.fixes
+    }
 
     // MARK: - Lifecycle
 
@@ -623,6 +628,7 @@ final class KeyboardViewController: UIInputViewController {
         candidateBar.update(preedit: "", candidates: [])
         showGrid(false)
         reconfigure()
+        onCandidatesUpdated?()
     }
 
     /// What `adaptToField` looks at: a new identifier with the same traits is the same kind of field.
@@ -1442,6 +1448,7 @@ final class KeyboardViewController: UIInputViewController {
             let s = p.index < r.candidates.count ? r.candidates[p.index] : p.shown
             select(p.index, shown: s)
         }
+        onCandidatesUpdated?()
     }
 
     /// The candidates for exactly the keys typed now (a commit needs them): the last ones received when they are
@@ -1679,6 +1686,7 @@ final class KeyboardViewController: UIInputViewController {
         candidateBar.update(preedit: "", candidates: [])
         showGrid(false)
         reconfigure()
+        onCandidatesUpdated?()
     }
 
     // MARK: - Candidates

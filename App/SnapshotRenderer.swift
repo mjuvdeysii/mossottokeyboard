@@ -241,6 +241,7 @@ enum SnapshotRenderer {
             studio.step = 2
             studio.before = "你好今天很热"
             studio.marked = "jintiantiaqi"
+            studio.activeFixes = [Fix(typed: "tia", meant: "tian")]
             studio.applyLampMode(night ? .night : .day)
             let vol = VolumeMonitor(defaults: .standard, observeSystem: false, initialVolume: 0.42)
             let parts: [(String, AnyView)] = [

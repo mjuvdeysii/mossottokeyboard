@@ -1036,6 +1036,7 @@ final class KeyboardView: UIView {
                 } else if tr.flickedAlt != nil && rise < 8 {
                     tr.flickedAlt = nil
                     kv.setHintLit(false)
+                    onFeedback?(.altMoved, p)
                     if kv.spec.style == .normal || kv.spec.action == .char("，") || kv.spec.action == .char("。") {
                         showPreview(tr, text: kv.spec.label, flicked: false)
                     } else {

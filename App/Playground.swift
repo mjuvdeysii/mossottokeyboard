@@ -74,6 +74,7 @@ enum BenchMode: String, CaseIterable, Identifiable {
 final class PlaygroundModel: ObservableObject {
     @Published var before = ""
     @Published var marked = ""
+    @Published var activeFixes: [Fix] = []
     @Published var step = lessons.count
     @Published var justPassed = false
     @Published var firstDone = false
@@ -165,7 +166,9 @@ final class PlaygroundModel: ObservableObject {
             before = String(all[..<r.lowerBound]); marked = m
         } else {
             before = all; marked = ""
+            if !activeFixes.isEmpty { activeFixes = [] }
         }
+        syncActiveFixes()
         evaluateSpeedProgress()
         guard step < lessons.count, !justPassed, let kb = keyboard else { return }
         let lesson = lessons[step], state = kb.testState
@@ -260,6 +263,15 @@ final class PlaygroundModel: ObservableObject {
         keyboard?.applySettings()
     }
 
+    func syncActiveFixes() {
+        guard !marked.isEmpty else {
+            if !activeFixes.isEmpty { activeFixes = [] }
+            return
+        }
+        let next = keyboard?.activeFirstFixesForTests ?? []
+        if next != activeFixes { activeFixes = next }
+    }
+
     func clear() {
         host.clear()
         refresh()
@@ -317,6 +329,7 @@ struct KeyboardHostView: UIViewControllerRepresentable {
             vc.view.bottomAnchor.constraint(equalTo: box.view.bottomAnchor),
         ])
         vc.didMove(toParent: box)
+        vc.onCandidatesUpdated = { [weak model] in model?.syncActiveFixes() }
         model.keyboard = vc
         DispatchQueue.main.async { model.ready = true; model.applyLayout() }
         return box
@@ -337,6 +350,16 @@ struct StudioTextPaper: View {
                 Label("桌面试打纸", systemImage: "text.cursor")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(MossOttoStyle.inkSecondary)
+                if let fixBadge {
+                    Text(fixBadge)
+                        .font(.caption2.weight(.semibold).monospaced())
+                        .foregroundStyle(MossOttoStyle.correctionAccent)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2.5)
+                        .background(Capsule().fill(MossOttoStyle.correctionAccent.opacity(0.13)))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
                 Spacer()
                 if !model.before.isEmpty || !model.marked.isEmpty {
                     Button("清空") { model.clear() }
@@ -363,9 +386,7 @@ struct StudioTextPaper: View {
             (
                 Text(model.before)
                     .foregroundColor(MossOttoStyle.inkPrimary)
-                + Text(model.marked)
-                    .underline()
-                    .foregroundColor(MossOttoStyle.inkPrimary)
+                + Text(pinpointedMarked)
                 + Text(blink ? "|" : " ")
                     .foregroundColor(MossOttoStyle.violet)
             )
@@ -403,6 +424,30 @@ struct StudioTextPaper: View {
                 blink.toggle()
             }
         }
+    }
+
+    private var fixBadge: String? {
+        guard !model.marked.isEmpty, !model.activeFixes.isEmpty else { return nil }
+        return model.activeFixes.prefix(2).map { "\($0.typed)→\($0.meant)" }.joined(separator: " ")
+    }
+
+    private var pinpointedMarked: AttributedString {
+        var out = AttributedString(model.marked)
+        out.foregroundColor = MossOttoStyle.inkPrimary
+        out.underlineStyle = .single
+        let pinpoint = CandidateBarView.correctionPinpoint(in: model.marked, fixes: model.activeFixes)
+        guard !pinpoint.isEmpty else { return out }
+        for (i, idx) in out.characters.indices.enumerated() {
+            let next = out.characters.index(after: idx)
+            if pinpoint.slipped.contains(i) {
+                out[idx..<next].foregroundColor = MossOttoStyle.correctionAccent
+                out[idx..<next].underlineStyle = Text.LineStyle(pattern: .solid, color: MossOttoStyle.correctionAccent)
+            } else if pinpoint.missingAnchors.contains(i) {
+                out[idx..<next].foregroundColor = MossOttoStyle.correctionAccent
+                out[idx..<next].underlineStyle = Text.LineStyle(pattern: .dot, color: MossOttoStyle.correctionAccent)
+            }
+        }
+        return out
     }
 
     private var placeholderText: String {

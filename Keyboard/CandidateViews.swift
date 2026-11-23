@@ -78,6 +78,8 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     private var clearSwipeArmed = false
     /// What each pooled label shows now (so a label is only redrawn when it changes).
     private var poolKeys: [String] = []
+    private var activeFixes: [Fix] = []
+    private var activePinpoint = CorrectionPinpoint(slipped: [], missingAnchors: [])
     private var isPrediction = false
     private var isMathResult = false
     var gridExpanded = false { didSet { if gridExpanded != oldValue { setNeedsLayout(); layoutIfNeeded() } } }
@@ -229,18 +231,130 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
 
     @objc private func expandTapped() { if gridExpanded || !candidates.isEmpty { onExpand?() } else { onSettings?() } }
 
-    /// Formats the raw-key live dock: exact keys typed, with subtle 2-key breathing kerning in Xiaohe mode.
-    private func applyPreeditText(_ text: String) {
+    /// Exact character indices in the raw typed preedit string highlighted by active autocorrection `fixes`.
+    struct CorrectionPinpoint: Equatable {
+        let slipped: Set<Int>
+        let missingAnchors: Set<Int>
+        var isEmpty: Bool { slipped.isEmpty && missingAnchors.isEmpty }
+    }
+
+    /// Maps decoder `Fix` syllables back onto the live raw keystroke string so slipped, extra, or omitted keys
+    /// light up in place inside `preeditDock` and `StudioTextPaper`.
+    static func correctionPinpoint(in raw: String, fixes: [Fix]) -> CorrectionPinpoint {
+        guard !raw.isEmpty, !fixes.isEmpty, raw.allSatisfy({ $0.isASCII && $0.isLetter }) else {
+            return CorrectionPinpoint(slipped: [], missingAnchors: [])
+        }
+        let rawChars = Array(raw)
+        var cursor = 0
+        var slipped: Set<Int> = []
+        var missingAnchors: Set<Int> = []
+
+        for (fixIdx, fix) in fixes.enumerated() {
+            let typed = Array(fix.typed)
+            let meant = Array(fix.meant)
+            guard !typed.isEmpty, !meant.isEmpty, typed != meant, cursor < rawChars.count else { continue }
+            var matchStart: Int?
+            if let exact = fix.offset, exact >= cursor, exact + typed.count <= rawChars.count,
+               Array(rawChars[exact..<(exact + typed.count)]) == typed {
+                matchStart = exact
+            } else if typed.count == 1 {
+                let matches = (cursor..<rawChars.count).filter { rawChars[$0] == typed[0] }
+                if matches.count == 1 {
+                    matchStart = matches[0]
+                } else if fixIdx == fixes.count - 1, let last = matches.last, last == rawChars.count - 1 {
+                    matchStart = last
+                }
+            } else if typed.count <= rawChars.count - cursor {
+                let limit = rawChars.count - typed.count
+                for s in cursor...limit {
+                    var ok = true
+                    for k in 0..<typed.count where rawChars[s + k] != typed[k] {
+                        ok = false; break
+                    }
+                    guard ok else { continue }
+                    // Avoid mistaking an earlier complete syllable (e.g. "tia" inside "jintian") for an omitted syllable.
+                    if meant.count > typed.count, s + meant.count <= rawChars.count,
+                       Array(rawChars[s..<(s + meant.count)]) == meant {
+                        continue
+                    }
+                    matchStart = s
+                    break
+                }
+            }
+            guard let start = matchStart else { continue }
+            let n = typed.count, m = meant.count
+            var dp = Array(repeating: Array(repeating: 0, count: m + 1), count: n + 1)
+            for i in 0...n { dp[i][0] = i }
+            for j in 0...m { dp[0][j] = j }
+            for i in 1...n {
+                for j in 1...m {
+                    let sub = dp[i - 1][j - 1] + (typed[i - 1] == meant[j - 1] ? 0 : 1)
+                    dp[i][j] = min(sub, dp[i - 1][j] + 1, dp[i][j - 1] + 1)
+                }
+            }
+            var i = n, j = m
+            var hadOmission = false
+            var hadTapEdit = false
+            while i > 0 || j > 0 {
+                if i > 0, j > 0, dp[i][j] == dp[i - 1][j - 1] + (typed[i - 1] == meant[j - 1] ? 0 : 1) {
+                    if typed[i - 1] != meant[j - 1] {
+                        slipped.insert(start + i - 1)
+                        hadTapEdit = true
+                    }
+                    i -= 1; j -= 1
+                } else if i > 0, dp[i][j] == dp[i - 1][j] + 1 {
+                    slipped.insert(start + i - 1)
+                    hadTapEdit = true
+                    i -= 1
+                } else {
+                    hadOmission = true
+                    j -= 1
+                }
+            }
+            if hadOmission && !hadTapEdit {
+                missingAnchors.insert(start + n - 1)
+            }
+            cursor = start + n
+        }
+        return CorrectionPinpoint(slipped: slipped, missingAnchors: missingAnchors)
+    }
+
+    private func updatePreeditChrome() {
+        let resolvedMark = Theme.correctedMark.resolvedColor(with: traitCollection)
+        if !activePinpoint.isEmpty {
+            preeditDock.layer.borderColor = resolvedMark.withAlphaComponent(0.42).cgColor
+            preeditCaret.backgroundColor = resolvedMark.withAlphaComponent(0.95).cgColor
+        } else {
+            preeditDock.layer.borderColor = Theme.preeditPillBorder.resolvedColor(with: traitCollection).cgColor
+            preeditCaret.backgroundColor = resolvedMark.withAlphaComponent(0.78).cgColor
+        }
+    }
+
+    /// Formats the raw-key live dock: exact keys typed, 2-key breathing kerning in Xiaohe mode, and live
+    /// autocorrection pinpoint highlights on slipped/omitted characters.
+    private func applyPreeditText(_ text: String, fixes: [Fix] = []) {
         preeditRaw = text
+        activeFixes = fixes
+        let pinpoint = Self.correctionPinpoint(in: text, fixes: fixes)
+        activePinpoint = pinpoint
         preeditDock.accessibilityLabel = text.isEmpty ? nil : "输入原字母 \(text)"
+        if !pinpoint.isEmpty, !fixes.isEmpty {
+            preeditDock.accessibilityValue = "已自动纠正：" + fixes.map { "\($0.typed) 改为 \($0.meant)" }.joined(separator: "，")
+        } else {
+            preeditDock.accessibilityValue = nil
+        }
+        updatePreeditChrome()
         guard !text.isEmpty else {
             preedit.attributedText = nil
             preedit.text = ""
             return
         }
         let font = Theme.font(11.5, .medium)
+        let boldFont = Theme.font(11.5, .semibold)
         let baseColor = Theme.secondaryText.resolvedColor(with: traitCollection)
-        guard xiaoheRhythm, text.allSatisfy({ $0.isASCII && $0.isLetter }) else {
+        let markColor = Theme.correctedMark.resolvedColor(with: traitCollection)
+        let asciiLetters = text.allSatisfy { $0.isASCII && $0.isLetter }
+        guard (xiaoheRhythm && asciiLetters) || !pinpoint.isEmpty else {
             preedit.attributedText = nil
             preedit.font = font
             preedit.textColor = baseColor
@@ -249,7 +363,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         }
         let attr = NSMutableAttributedString(string: text, attributes: [.font: font, .foregroundColor: baseColor])
         let len = attr.length
-        if len >= 3 {
+        if xiaoheRhythm && asciiLetters && len >= 3 {
             var i = 1
             while i < len - 1 {
                 attr.addAttribute(.kern, value: 2.5, range: NSRange(location: i, length: 1))
@@ -257,8 +371,23 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             }
         }
         // Highlight an odd trailing key (mid-syllable in 2-key Xiaohe) so key parity is legible at a glance.
-        if len % 2 == 1 {
-            attr.addAttribute(.foregroundColor, value: Theme.correctedMark.resolvedColor(with: traitCollection), range: NSRange(location: len - 1, length: 1))
+        if xiaoheRhythm && asciiLetters && len % 2 == 1 && !pinpoint.slipped.contains(len - 1) && !pinpoint.missingAnchors.contains(len - 1) {
+            attr.addAttribute(.foregroundColor, value: markColor, range: NSRange(location: len - 1, length: 1))
+        }
+        for idx in pinpoint.slipped where idx >= 0 && idx < len {
+            attr.addAttributes([
+                .foregroundColor: markColor,
+                .font: boldFont,
+                .underlineStyle: NSUnderlineStyle.single.rawValue,
+                .underlineColor: markColor,
+            ], range: NSRange(location: idx, length: 1))
+        }
+        for idx in pinpoint.missingAnchors where idx >= 0 && idx < len {
+            attr.addAttributes([
+                .foregroundColor: markColor,
+                .underlineStyle: NSUnderlineStyle.single.rawValue | NSUnderlineStyle.patternDot.rawValue,
+                .underlineColor: markColor,
+            ], range: NSRange(location: idx, length: 1))
         }
         preedit.attributedText = attr
     }
@@ -267,9 +396,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         super.traitCollectionDidChange(previous)
         if previous?.userInterfaceStyle != traitCollection.userInterfaceStyle {
             preeditDock.backgroundColor = Theme.preeditPillBg
-            preeditDock.layer.borderColor = Theme.preeditPillBorder.resolvedColor(with: traitCollection).cgColor
-            preeditCaret.backgroundColor = Theme.correctedMark.resolvedColor(with: traitCollection).withAlphaComponent(0.78).cgColor
-            applyPreeditText(preeditRaw)
+            applyPreeditText(preeditRaw, fixes: activeFixes)
             let divColor = Theme.candidateDivider.resolvedColor(with: traitCollection).cgColor
             for d in dividerPool { d.backgroundColor = divColor }
             correctionBar.backgroundColor = Theme.correctedMark.resolvedColor(with: traitCollection).cgColor
@@ -285,9 +412,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         preedit.textColor = Theme.secondaryText
         preedit.font = Theme.font(11.5, .medium)
         preeditDock.backgroundColor = Theme.preeditPillBg
-        preeditDock.layer.borderColor = Theme.preeditPillBorder.resolvedColor(with: traitCollection).cgColor
-        preeditCaret.backgroundColor = Theme.correctedMark.resolvedColor(with: traitCollection).withAlphaComponent(0.78).cgColor
-        applyPreeditText(preeditRaw)
+        applyPreeditText(preeditRaw, fixes: activeFixes)
         correctionBar.backgroundColor = Theme.correctedMark.resolvedColor(with: traitCollection).cgColor
         layoutClearFilament()
         var uc = undoChip.configuration
@@ -310,6 +435,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     var correctionBarShownForTests: Bool { !correctionBar.isHidden }
     var preeditShownForTests: Bool { !preeditDock.isHidden }
     var preeditAttributedForTests: NSAttributedString? { preedit.attributedText }
+    var preeditPinpointForTests: CorrectionPinpoint { activePinpoint }
     var preeditDockFrameForTests: CGRect { preeditDock.frame }
     var preeditOverflowFadeForTests: Bool { preeditClip.layer.mask === preeditFade }
     var widthCacheCountForTests: Int { widthCache.count }
@@ -450,8 +576,8 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
 
     /// Immediately show typed keys in the leading single-row live keystroke dock (0 ms, 0 XPC).
     func setPreedit(_ text: String) {
-        let changed = preeditRaw != text
-        if changed { applyPreeditText(text) }
+        let changed = preeditRaw != text || !activeFixes.isEmpty
+        if changed { applyPreeditText(text, fixes: []) }
         let show = showsPreedit && !isPrediction && !text.isEmpty
         if preeditDock.isHidden != !show || changed {
             preeditDock.isHidden = !show
@@ -461,7 +587,10 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
 
     /// `prediction`: the row shows next-word suggestions (联想) rather than candidates for typed keys.
     func update(preedit text: String, candidates: [Candidate], prediction: Bool = false, mathResult: Bool = false) {
-        if preeditRaw != text { applyPreeditText(text) }
+        let firstFixes = (!prediction && !mathResult && candidates.first?.corrected == true) ? candidates[0].fixes : []
+        if preeditRaw != text || activeFixes != firstFixes {
+            applyPreeditText(text, fixes: firstFixes)
+        }
         // another list (a new key, a commit): the row starts from the beginning again; the same list (the same keys
         // decoded once more) leaves it where the finger put it
         let changed = prediction != isPrediction || mathResult != isMathResult || candidates.count != self.candidates.count
@@ -580,7 +709,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
                 preedit.frame = CGRect(x: 0, y: 0, width: textW, height: pillH)
                 preeditCaret.frame = CGRect(x: startX + textW + caretGap, y: (pillH - 12) / 2, width: caretW, height: 12)
             }
-            preeditCaret.backgroundColor = Theme.correctedMark.resolvedColor(with: traitCollection).withAlphaComponent(0.78).cgColor
+            updatePreeditChrome()
             CATransaction.commit()
         } else {
             preeditDock.frame = .zero

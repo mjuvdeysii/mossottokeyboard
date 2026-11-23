@@ -71,6 +71,7 @@ enum MossOttoStyle {
     /// Shared IP studio family accents: Mosto violet, lamp-bead amber, Moss sprout green, Otto indigo.
     static let violet = dynamic(hex(0x633EBF), hex(0xA78BFA))
     static let lampAmber = dynamic(hex(0xD69A34), hex(0xFFC45A))
+    static let correctionAccent = dynamic(hex(0x633EBF), hex(0xFFC45A))
     static let moss = dynamic(hex(0x55704A), hex(0x7EA86E))
     static let ottoIndigo = dynamic(hex(0x203872), hex(0x7FA6E8))
 

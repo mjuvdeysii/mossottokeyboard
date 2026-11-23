@@ -448,6 +448,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             b.backgroundColor = active ? Theme.selection : Theme.preeditPillBg
             b.setTitleColor(active ? Theme.selectionText : Theme.keyText, for: .normal)
             b.layer.borderColor = (active ? UIColor.clear : Theme.keyBorder).resolvedColor(with: t).cgColor
+            b.accessibilityTraits = active ? [.button, .selected] : .button
         }
     }
 

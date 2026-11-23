@@ -25,7 +25,12 @@ public struct Candidate: Equatable {
 public struct Fix: Equatable {
     public let typed: String
     public let meant: String
-    public init(typed: String, meant: String) { self.typed = typed; self.meant = meant }
+    public let offset: Int?
+    public init(typed: String, meant: String, offset: Int? = nil) {
+        self.typed = typed
+        self.meant = meant
+        self.offset = offset
+    }
 }
 
 /// The two ways of spelling a syllable this keyboard accepts.
@@ -1313,10 +1318,16 @@ public final class Decoder {
             }
         }
         var out: [Fix] = []
-        for k in spells.indices where changed[k] {
-            // a half-typed last syllable is shown as far as it was typed
-            let meant = k == spells.count - 1 ? String(spells[k].prefix(endJ - lastStart)) : String(spells[k])
-            if typedOf[k] != meant { out.append(Fix(typed: typedOf[k], meant: meant)) }
+        var runningOffset = 0
+        for k in spells.indices {
+            if changed[k] {
+                // a half-typed last syllable is shown as far as it was typed
+                let meant = k == spells.count - 1 ? String(spells[k].prefix(endJ - lastStart)) : String(spells[k])
+                if typedOf[k] != meant {
+                    out.append(Fix(typed: typedOf[k], meant: meant, offset: latin.isEmpty ? runningOffset : nil))
+                }
+            }
+            runningOffset += typedOf[k].count
         }
         return out
     }

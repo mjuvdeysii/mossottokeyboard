@@ -133,6 +133,7 @@ enum KeyboardTests {
         r55DualLegendFlickAndMathBadge(window)
         r56DualSchemeLessonsAndMostoState(window)
         r57PullCordAndOptical2D(window)
+        r58CorrectionPinpointAndDetent(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -1753,6 +1754,79 @@ enum KeyboardTests {
         log(symHint == "ψ" && symFontSize <= 19.5,
             "r57.Multi-char symbol key ^_^ separates cleanly below its top-right ψ corner legend",
             "hint=\(symHint ?? "nil") fontSize=\(symFontSize)")
+    }
+
+    static func r58CorrectionPinpointAndDetent(_ window: UIWindow) {
+        // 1. Live correctionPinpoint maps substitution, Xiaohe slip, extra tap, and omission accurately
+        let subPin = CandidateBarView.correctionPinpoint(in: "nihap", fixes: [Fix(typed: "hap", meant: "hao")])
+        let xiaohePin = CandidateBarView.correctionPinpoint(in: "jbtmtmqohfhc", fixes: [Fix(typed: "qo", meant: "qi")])
+        let extraPin = CandidateBarView.correctionPinpoint(in: "jintianttianqihenhao", fixes: [Fix(typed: "ttian", meant: "tian")])
+        let missPin = CandidateBarView.correctionPinpoint(in: "jintiantiaqihenhao", fixes: [Fix(typed: "tia", meant: "tian")])
+        let mismatchPin = CandidateBarView.correctionPinpoint(in: "nihcj", fixes: [Fix(typed: "hap", meant: "hao")])
+        log(subPin.slipped == [4] && subPin.missingAnchors.isEmpty
+            && xiaohePin.slipped == [7]
+            && !extraPin.slipped.isEmpty
+            && missPin.slipped.isEmpty && missPin.missingAnchors == [9]
+            && mismatchPin.isEmpty,
+            "r58.correctionPinpoint isolates slipped, extra, and omitted key indices accurately",
+            "sub=\(subPin) xiaohe=\(xiaohePin) extra=\(extraPin) miss=\(missPin) mismatch=\(mismatchPin)")
+
+        // 2. CandidateBarView preeditDock renders pinpoint highlights, clears stale fixes on new key, & updates VoiceOver
+        let bar = CandidateBarView(frame: CGRect(x: 0, y: 0, width: 402, height: 42))
+        bar.showsPreedit = true
+        bar.xiaoheRhythm = true
+        var c = Candidate(text: "今天天气很好", tapCount: 12, syllables: [1], corrected: true, score: 0)
+        c.fixes = [Fix(typed: "qo", meant: "qi")]
+        bar.update(preedit: "jbtmtmqohfhc", candidates: [c])
+        bar.layoutIfNeeded()
+        let activePinOk = bar.preeditPinpointForTests.slipped == [7] && bar.preeditAttributedForTests != nil
+        bar.setPreedit("jbtmtmqohfhcx")
+        let clearedOnKey = bar.preeditPinpointForTests.isEmpty
+        log(activePinOk && clearedOnKey,
+            "r58.CandidateBarView preeditDock lights slipped Xiaohe key and resets cleanly on next keystroke",
+            "activePinOk=\(activePinOk) clearedOnKey=\(clearedOnKey)")
+
+        // 3. Flick-up pull-back fires bidirectional selection detent feedback (.altMoved on engage & cancel)
+        let kb = KeyboardView(spatial: SpatialModel.standard())
+        kb.frame = CGRect(x: 0, y: 0, width: 402, height: 214)
+        kb.configure(LayoutContext(page: .letters, chinese: true, showGlobe: false, returnLabel: nil, returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true))
+        kb.layoutIfNeeded()
+        var feedbackEvents: [FeedbackEvent] = []
+        kb.onFeedback = { ev, _ in feedbackEvents.append(ev) }
+        let commaRect = kb.keyRectsForTests(.char("，"))?.cap ?? CGRect(x: 290, y: 165, width: 34, height: 40)
+        let cp = CGPoint(x: commaRect.midX, y: commaRect.midY)
+        kb.feedForTests([
+            TouchSample(id: 95, phase: .began, point: cp, time: 0.0),
+            TouchSample(id: 95, phase: .moved, point: CGPoint(x: cp.x, y: cp.y - 20), time: 0.05),
+            TouchSample(id: 95, phase: .moved, point: CGPoint(x: cp.x, y: cp.y - 2), time: 0.09),
+            TouchSample(id: 95, phase: .ended, point: CGPoint(x: cp.x, y: cp.y - 2), time: 0.12),
+        ])
+        let altMoves = feedbackEvents.filter { $0 == .altMoved }.count
+        log(altMoves == 2,
+            "r58.Flick-up pull-back emits bidirectional detent feedback on engage and snap-back",
+            "events=\(feedbackEvents)")
+
+        // 4. Studio PlaygroundModel receives live activeFixes for slipped Xiaohe & Quanpin input
+        if let pair = makeKeyboard(scheme: 0, in: window) {
+            let vc = pair.0
+            let model = PlaygroundModel()
+            model.layout = 1
+            vc.hostOverride = model.host
+            model.keyboard = vc
+            vc.onCandidatesUpdated = { [weak model] in model?.syncActiveFixes() }
+            type(vc, "jbtmtmqohfhc"); settle(vc); drain(0.03)
+            model.refresh()
+            let pinpoint = CandidateBarView.correctionPinpoint(in: model.marked, fixes: model.activeFixes)
+            let hasXiaoheFixes = !model.activeFixes.isEmpty && pinpoint.slipped == [7]
+            vc.handle(.space, tap: nil); drain(0.03)
+            model.refresh()
+            let clearedFixesAfterSpace = model.activeFixes.isEmpty
+            log(hasXiaoheFixes && clearedFixesAfterSpace,
+                "r58.PlaygroundModel syncs live correction fixes while composing and clears on commit",
+                "before=\(model.before) marked=\(model.marked) pinpoint=\(pinpoint) fixes=\(model.activeFixes) had=\(hasXiaoheFixes)")
+        } else {
+            log(false, "r58.PlaygroundModel activeFixes setup", "engine did not load")
+        }
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key
