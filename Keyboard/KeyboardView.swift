@@ -1,4 +1,5 @@
 import UIKit
+import CoreText
 
 final class KeyView: UIView {
     private(set) var spec: KeySpec
@@ -35,6 +36,26 @@ final class KeyView: UIView {
     private var restFg: UIColor = Theme.keyText
     private var pressedFg: UIColor = Theme.keyText
     private static var symbolCache: [String: UIImage] = [:]
+    private static let opticalPunctuation: Set<String> = ["，", "。", "？", "！", "、", "；", "：", "（", "）", "「", "」", "【", "】", "《", "》"]
+    private static var opticalOffsetCache: [String: CGFloat] = [:]
+
+    /// Measures true glyph ink bounds vs typographic advance so asymmetric fullwidth CJK punctuation
+    /// optically centers inside keycaps and previews.
+    static func opticalHorizontalOffset(for text: String, font: UIFont) -> CGFloat {
+        guard text.count == 1, opticalPunctuation.contains(text) else { return 0 }
+        let key = "\(text)|\(Int((font.pointSize * 10).rounded()))"
+        if let cached = opticalOffsetCache[key] { return cached }
+        let attr = NSAttributedString(string: text, attributes: [.font: font])
+        let line = CTLineCreateWithAttributedString(attr)
+        let adv = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
+        let img = CTLineGetImageBounds(line, nil)
+        var dx: CGFloat = 0
+        if adv > 0, !img.isNull, img.width > 0 {
+            dx = min(4.0, max(-4.0, adv * 0.5 - (img.minX + img.width * 0.5)))
+        }
+        opticalOffsetCache[key] = dx
+        return dx
+    }
 
     private static func cachedSymbol(_ name: String) -> UIImage? {
         let k = name + (Theme.plain ? "_p" : "_m")
@@ -264,7 +285,7 @@ final class KeyView: UIView {
         }
         CATransaction.commit()
 
-        let o = cjkPunctuationOffset(label.text, fontSize: label.font.pointSize)
+        let o = cjkPunctuationOffset(label.text, fontSize: label.font.pointSize, font: label.font)
         label.frame = f.insetBy(dx: 2, dy: 0).offsetBy(dx: o.x, dy: o.y)
         icon.frame = f
         // 键位提示: the letter moves up and smaller; the initial and finals sit under it (portrait only).
@@ -332,12 +353,17 @@ final class KeyView: UIView {
 }
 
 /// Key popup shown above a pressed character key.
-/// Optical centring for full-width CJK punctuation: 。，、 sit in the lower-left of their em box, so on a key
-/// they look dropped and off to the side. Returns the offset that moves the glyph to the visual centre.
-func cjkPunctuationOffset(_ text: String?, fontSize: CGFloat) -> CGPoint {
+/// Optical centring for full-width CJK punctuation using CoreText ink bounds, keeping asymmetric marks visually centered.
+func cjkPunctuationOffset(_ text: String?, fontSize: CGFloat, font: UIFont? = nil) -> CGPoint {
     guard let t = text else { return .zero }
-    if ["。", "，", "、", "．"].contains(t) { return CGPoint(x: fontSize * 0.22, y: -fontSize * 0.2) }
-    // full-width brackets hug the inside edge of their em box: an opening one sits right, a closing one left
+    let resolved = font ?? Theme.font(fontSize, .medium)
+    let measuredX = KeyView.opticalHorizontalOffset(for: t, font: resolved)
+    if ["。", "，", "、", "．"].contains(t) {
+        let dx = abs(measuredX) > 0.1 ? measuredX : fontSize * 0.22
+        return CGPoint(x: dx, y: -fontSize * 0.2)
+    }
+    if abs(measuredX) > 0.1 { return CGPoint(x: measuredX, y: 0) }
+    // Fallback for symmetric/bracket cases without non-zero CoreText bounds delta
     if ["（", "「", "『", "《", "〈", "【", "〔", "｛"].contains(t) { return CGPoint(x: -fontSize * 0.25, y: 0) }
     if ["）", "」", "』", "》", "〉", "】", "〕", "｝"].contains(t) { return CGPoint(x: fontSize * 0.25, y: 0) }
     return .zero
@@ -392,7 +418,7 @@ final class KeyPreview: UIView {
     }
 
     private func layoutPreviewLabel() {
-        let o = cjkPunctuationOffset(label.text, fontSize: label.font.pointSize)
+        let o = cjkPunctuationOffset(label.text, fontSize: label.font.pointSize, font: label.font)
         label.frame = bounds.insetBy(dx: 3, dy: 0).offsetBy(dx: o.x, dy: o.y)
     }
 

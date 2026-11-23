@@ -571,28 +571,49 @@ struct VolumeCheckSheet: View {
                 }
                 .buttonStyle(.plain)
 
-                VStack(alignment: .leading, spacing: 6) {
-                    Toggle("互动与按键音", isOn: $soundEnabled)
-                        .font(.subheadline.weight(.semibold))
-                        .tint(MossOttoStyle.violet)
-                        .onChange(of: soundEnabled) { enabled in
-                            KeyboardSettings.shared.keySound = enabled
-                            onSoundChanged()
+                Button {
+                    soundEnabled.toggle()
+                    KeyboardSettings.shared.keySound = soundEnabled
+                    UISelectionFeedbackGenerator().selectionChanged()
+                    onSoundChanged()
+                } label: {
+                    HStack(spacing: 10) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("按键声效")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(MossOttoStyle.inkPrimary)
+                            Text(soundEnabled ? "已开启 · 轻脆原声" : "已静音 · 仅触感")
+                                .font(.caption2)
+                                .foregroundStyle(MossOttoStyle.inkSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
-                    Text(soundEnabled ? "已开启 · 如在安静环境可先关掉" : "已静音 · 仅保留轻触震动反馈")
-                        .font(.caption2)
-                        .foregroundStyle(MossOttoStyle.inkSecondary)
+                        Spacer(minLength: 4)
+                        ZStack(alignment: soundEnabled ? .trailing : .leading) {
+                            Capsule()
+                                .fill(soundEnabled ? MossOttoStyle.moss : MossOttoStyle.surfaceMuted)
+                                .frame(width: 44, height: 26)
+                            Circle()
+                                .fill(Color.white)
+                                .frame(width: 22, height: 22)
+                                .padding(2)
+                                .shadow(color: Color.black.opacity(0.14), radius: 1, y: 1)
+                        }
+                        .animation(.spring(response: 0.24, dampingFraction: 0.8), value: soundEnabled)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity, minHeight: 60)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(MossOttoStyle.surface)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(MossOttoStyle.hairline, lineWidth: 0.7)
+                    )
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(MossOttoStyle.surface)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(MossOttoStyle.hairline, lineWidth: 0.7)
-                )
+                .buttonStyle(.plain)
+                .accessibilityLabel("按键声效，\(soundEnabled ? "已开启" : "已静音")")
             }
 
             Button {

@@ -326,18 +326,16 @@ struct UnifiedTypingBench: View {
                     }
                 }
 
-                // In-place live bench toggles (apply immediately to the keyboard right below)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        schemePill(title: "全拼", tag: 0)
-                        schemePill(title: "小鹤双拼", tag: 1)
-                        schemePill(title: "九宫格", tag: 2)
-                        if model.layout == 1 {
-                            benchToggle(title: "键位提示", isOn: $model.guide)
-                        }
-                        benchToggle(title: "触感", isOn: $model.feedback)
-                        benchToggle(title: "声效", isOn: $model.keySound)
+                // In-place live bench toggles (WrapLayout keeps all pills crisp & visible in snapshots too)
+                WrapLayout(spacing: 6, lineSpacing: 6) {
+                    schemePill(title: "全拼", tag: 0)
+                    schemePill(title: "小鹤双拼", tag: 1)
+                    schemePill(title: "九宫格", tag: 2)
+                    if model.layout == 1 {
+                        benchToggle(title: "键位提示", isOn: $model.guide)
                     }
+                    benchToggle(title: "触感", isOn: $model.feedback)
+                    benchToggle(title: "声效", isOn: $model.keySound)
                 }
             }
             .padding(12)
@@ -347,38 +345,34 @@ struct UnifiedTypingBench: View {
             // Mode-specific calm helper above the writing paper
             switch model.benchMode {
             case .free:
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        inspirationChip("按错纠错：打 jintianhenrw")
-                        inspirationChip("心算：打 365+18=")
-                        inspirationChip("上滑，出。 / 轻点 Mosto")
-                    }
+                WrapLayout(spacing: 6, lineSpacing: 6) {
+                    inspirationChip("按错纠错：打 jintianhenrw")
+                    inspirationChip("心算：打 365+18=")
+                    inspirationChip("上滑，出。 / 轻点 Mosto")
                 }
             case .demos:
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(Array(lessons.enumerated()), id: \.offset) { idx, l in
-                            let current = model.step == idx
-                            let done = model.passedTitles.contains(l.title)
-                            Button {
-                                UISelectionFeedbackGenerator().selectionChanged()
-                                model.jump(to: idx)
-                            } label: {
-                                HStack(spacing: 5) {
-                                    if done {
-                                        Circle().fill(MossOttoStyle.moss).frame(width: 6, height: 6)
-                                    }
-                                    Text(l.title)
-                                        .font(.caption.weight(.semibold))
+                WrapLayout(spacing: 6, lineSpacing: 6) {
+                    ForEach(Array(lessons.enumerated()), id: \.offset) { idx, l in
+                        let current = model.step == idx
+                        let done = model.passedTitles.contains(l.title)
+                        Button {
+                            UISelectionFeedbackGenerator().selectionChanged()
+                            model.jump(to: idx)
+                        } label: {
+                            HStack(spacing: 5) {
+                                if done {
+                                    Circle().fill(MossOttoStyle.moss).frame(width: 6, height: 6)
                                 }
-                                .foregroundStyle(current ? Color.white : MossOttoStyle.inkPrimary)
-                                .padding(.horizontal, 11)
-                                .padding(.vertical, 6.5)
-                                .background(Capsule().fill(current ? MossOttoStyle.violet : MossOttoStyle.surface))
-                                .overlay(Capsule().strokeBorder(current ? Color.clear : MossOttoStyle.hairline, lineWidth: 0.7))
+                                Text(l.title)
+                                    .font(.caption.weight(.semibold))
                             }
-                            .buttonStyle(.plain)
+                            .foregroundStyle(current ? Color.white : MossOttoStyle.inkPrimary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Capsule().fill(current ? MossOttoStyle.violet : MossOttoStyle.surface))
+                            .overlay(Capsule().strokeBorder(current ? Color.clear : MossOttoStyle.hairline, lineWidth: 0.7))
                         }
+                        .buttonStyle(.plain)
                     }
                 }
                 LessonCard(model: model, index: model.step)
@@ -592,7 +586,7 @@ struct HandbookContent: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             Card(title: "系统键盘与真机启用") {
-                NavigationLink {
+                cardLink {
                     EnableScreen()
                 } label: {
                     handbookRow(
@@ -602,19 +596,18 @@ struct HandbookContent: View {
                         subtitle: "包含一键前往系统设置与真机切换验证框"
                     )
                 }
-                .buttonStyle(.plain)
 
                 Divider()
 
                 Usage(
                     icon: "slider.horizontal.3",
                     title: "系统键盘偏好在哪里调整",
-                    text: "出于离线隐私隔离，伴侣 App 不写入系统键盘配置文件；实际输入时的双拼、九宫格、外观与声效，请直接在键盘内按住表情键调整。"
+                    text: "出于离线隐私隔离，伴侣 App 不写入系统键盘配置文件；实际输入时的双拼、九宫格、外观与声效，请直接在键盘内按住表情键打开「Mosto 控制台」调整。"
                 )
             }
 
             Card(title: "双拼与手势图鉴") {
-                NavigationLink {
+                cardLink {
                     XiaoheGuideView(volume: nav?.volume)
                 } label: {
                     handbookRow(
@@ -624,11 +617,10 @@ struct HandbookContent: View {
                         subtitle: "声母韵母分布、零声母打法、交互指法练习与版权声明"
                     )
                 }
-                .buttonStyle(.plain)
 
                 Divider()
 
-                NavigationLink {
+                cardLink {
                     GestureAtlasView(nav: nav)
                 } label: {
                     handbookRow(
@@ -638,11 +630,10 @@ struct HandbookContent: View {
                         subtitle: "标点上滑副符号、空格滑移光标、删键左划清空、心算与日期"
                     )
                 }
-                .buttonStyle(.plain)
             }
 
             Card(title: "离线隐私与开源合规") {
-                NavigationLink {
+                cardLink {
                     PrivacyArchitectureView()
                 } label: {
                     handbookRow(
@@ -652,11 +643,10 @@ struct HandbookContent: View {
                         subtitle: "0 联网 · 0 剪贴板 · 0 跨进程共享 · 45 MB 只读词库"
                     )
                 }
-                .buttonStyle(.plain)
 
                 ForEach(LegalText.docs, id: \.id) { doc in
                     Divider()
-                    NavigationLink {
+                    cardLink {
                         LegalView(doc: doc)
                     } label: {
                         handbookRow(
@@ -666,11 +656,23 @@ struct HandbookContent: View {
                             subtitle: "离线完整文本"
                         )
                     }
-                    .buttonStyle(.plain)
                 }
             }
 
             StudioVersionFooter()
+        }
+    }
+
+    @ViewBuilder
+    private func cardLink<Dest: View, Label: View>(
+        @ViewBuilder destination: () -> Dest,
+        @ViewBuilder label: () -> Label
+    ) -> some View {
+        if SnapshotRenderer.requested {
+            label()
+        } else {
+            NavigationLink(destination: destination(), label: label)
+                .buttonStyle(.plain)
         }
     }
 

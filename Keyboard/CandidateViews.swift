@@ -948,6 +948,8 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
     private var displayedIndices: [Int] = []
     private var singleCharOnly = false
     private let collection: UICollectionView
+    private let dockBar = UIView()
+    private let dockHairline = CALayer()
     private let closeButton = UIButton(type: .system)
     private let deleteButton = UIButton(type: .system)
     private let singleCharButton = UIButton(type: .system)
@@ -975,6 +977,7 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
     }
 
     func themeChanged() {
+        dockHairline.backgroundColor = Theme.separator.resolvedColor(with: traitCollection).cgColor
         for b in [closeButton, deleteButton] {
             b.tintColor = Theme.functionText
             b.backgroundColor = Theme.functionKey
@@ -988,18 +991,19 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
     }
     final class Cell: UICollectionViewCell {
         let label = UILabel()
-        var baseBackground: UIColor = Theme.preeditPillBg
+        var baseBackground: UIColor = .clear
+        var baseBorderColor: UIColor = .clear
         override init(frame: CGRect) {
             super.init(frame: frame)
             label.font = CandidateBarView.font
             label.textAlignment = .center
             label.textColor = Theme.candidateText
             contentView.addSubview(label)
-            contentView.backgroundColor = Theme.preeditPillBg
+            contentView.backgroundColor = .clear
             contentView.layer.cornerRadius = 10
             contentView.layer.cornerCurve = .continuous
             contentView.layer.borderWidth = 0.5
-            contentView.layer.borderColor = Theme.preeditPillBorder.resolvedColor(with: traitCollection).cgColor
+            contentView.layer.borderColor = UIColor.clear.cgColor
             isAccessibilityElement = true
             accessibilityTraits = .button
         }
@@ -1007,7 +1011,7 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         override var accessibilityLabel: String? { get { label.text } set { } }
         override func traitCollectionDidChange(_ previous: UITraitCollection?) {
             super.traitCollectionDidChange(previous)
-            contentView.layer.borderColor = Theme.preeditPillBorder.resolvedColor(with: traitCollection).cgColor
+            contentView.layer.borderColor = baseBorderColor.resolvedColor(with: traitCollection).cgColor
         }
         override func layoutSubviews() {
             super.layoutSubviews()
@@ -1020,13 +1024,14 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
 
     override init(frame: CGRect) {
         let layout = UICollectionViewFlowLayout()
-        layout.minimumInteritemSpacing = 5
-        layout.minimumLineSpacing = 5
+        layout.minimumInteritemSpacing = 4
+        layout.minimumLineSpacing = 4
         layout.sectionInset = UIEdgeInsets(top: 6, left: 8, bottom: 6, right: 8)
         collection = UICollectionView(frame: .zero, collectionViewLayout: layout)
         super.init(frame: frame)
         backgroundColor = Theme.touchable   // on the system glass, like the keys (never fully clear: see Theme.touchable)
         collection.backgroundColor = .clear
+        collection.clipsToBounds = true
         collection.contentInsetAdjustmentBehavior = .never; if #available(iOS 26.0, *) { collection.topEdgeEffect.isHidden = true; collection.bottomEdgeEffect.isHidden = true }
         collection.alwaysBounceHorizontal = false
         collection.showsHorizontalScrollIndicator = false
@@ -1034,6 +1039,10 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         collection.delegate = self
         collection.register(Cell.self, forCellWithReuseIdentifier: "c")
         addSubview(collection)
+        dockHairline.backgroundColor = Theme.separator.resolvedColor(with: traitCollection).cgColor
+        dockBar.backgroundColor = .clear
+        dockBar.layer.addSublayer(dockHairline)
+        addSubview(dockBar)
         let cfg = UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
         closeButton.setImage(UIImage(systemName: "chevron.up", withConfiguration: cfg), for: .normal)
         deleteButton.setImage(UIImage(systemName: "delete.left", withConfiguration: cfg), for: .normal)
@@ -1062,6 +1071,7 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
         super.traitCollectionDidChange(previous)
+        dockHairline.backgroundColor = Theme.separator.resolvedColor(with: traitCollection).cgColor
         for b in [closeButton, deleteButton] { b.layer.shadowColor = Theme.functionLip.resolvedColor(with: traitCollection).cgColor }
         updateFilterButtonStyle()
     }
@@ -1093,12 +1103,17 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
     override func layoutSubviews() {
         super.layoutSubviews()
         let side: CGFloat = 56; closeButton.isHidden = true; closeButton.frame = .zero
-        collection.frame = bounds; collection.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: 52, right: 0)
+        let dockH: CGFloat = 52
+        collection.frame = CGRect(x: 0, y: 0, width: bounds.width, height: max(0, bounds.height - dockH))
+        collection.contentInset = UIEdgeInsets(top: 2, left: 0, bottom: 6, right: 0)
+        dockBar.frame = CGRect(x: 0, y: bounds.height - dockH, width: bounds.width, height: dockH)
+        dockHairline.frame = CGRect(x: 10, y: 0, width: max(0, bounds.width - 20), height: 1 / UIScreen.main.scale)
         let bh: CGFloat = 40
-        singleCharButton.frame = CGRect(x: 8, y: bounds.height - bh - 6, width: 64, height: bh)
+        let by = bounds.height - bh - 6
+        singleCharButton.frame = CGRect(x: 8, y: by, width: 64, height: bh)
         singleCharButton.layer.shadowPath = UIBezierPath(roundedRect: singleCharButton.bounds, cornerRadius: Metrics.cornerRadius).cgPath
         bringSubviewToFront(singleCharButton)
-        deleteButton.frame = CGRect(x: bounds.width - side + 4, y: bounds.height - bh - 6, width: side - 10, height: bh)
+        deleteButton.frame = CGRect(x: bounds.width - side + 4, y: by, width: side - 10, height: bh)
         deleteButton.layer.shadowPath = UIBezierPath(roundedRect: deleteButton.bounds, cornerRadius: Metrics.cornerRadius).cgPath
         bringSubviewToFront(deleteButton)
     }
@@ -1110,13 +1125,15 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         let realIndex = displayedIndices[indexPath.item]
         let c = allCandidates[realIndex]
         let isFirst = realIndex == 0
-        let bg = isFirst ? (c.corrected ? Theme.correctedTint : Theme.firstCandidateTint) : Theme.preeditPillBg
+        let bg: UIColor = isFirst ? (c.corrected ? Theme.correctedTint : Theme.firstCandidateTint) : .clear
+        let border: UIColor = isFirst ? Theme.preeditPillBorder : .clear
         cell.label.text = c.text
         cell.label.font = isFirst ? CandidateBarView.firstFont : CandidateBarView.font
-        cell.label.textColor = Theme.candidateText
+        cell.label.textColor = isFirst && c.corrected ? Theme.correctedMark : Theme.candidateText
         cell.baseBackground = bg
+        cell.baseBorderColor = border
         cell.contentView.backgroundColor = bg
-        cell.contentView.layer.borderColor = Theme.preeditPillBorder.resolvedColor(with: traitCollection).cgColor
+        cell.contentView.layer.borderColor = border.resolvedColor(with: traitCollection).cgColor
         return cell
     }
 
@@ -1138,136 +1155,292 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
     func selectDisplayedForTests(_ i: Int) { if i < displayedIndices.count { onSelect?(displayedIndices[i]) } }
 }
 
-/// In-keyboard settings, laid out like iOS Settings: a fixed header (Mosto, title, 完成) over grouped, rounded
-/// sections that scroll vertically. Every change applies at once (no App Group or full access needed).
+/// R50/R52 single-layer OTTOSSOM physical toggle tile with a 4.5pt hardware micro-LED and grounded shadowPath.
+private final class HardwareTileButton: UIControl {
+    private let eyebrowLabel = UILabel()
+    private let valueLabel = UILabel()
+    private let ledDot = CALayer()
+    private var activeTint: Bool = false
+    private var locked: Bool = false
+    private var lastShadowSize: CGSize = .zero
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        layer.cornerRadius = Metrics.cornerRadius
+        layer.cornerCurve = .continuous
+        layer.borderWidth = 0.5
+        layer.shadowRadius = 0
+        layer.shadowOffset = CGSize(width: 0, height: Metrics.lip)
+        layer.shadowOpacity = 1
+
+        eyebrowLabel.font = Theme.font(10.5, .medium)
+        eyebrowLabel.isUserInteractionEnabled = false
+        addSubview(eyebrowLabel)
+
+        valueLabel.font = Theme.font(14.5, .semibold)
+        valueLabel.adjustsFontSizeToFitWidth = true
+        valueLabel.minimumScaleFactor = 0.72
+        valueLabel.isUserInteractionEnabled = false
+        addSubview(valueLabel)
+
+        ledDot.cornerRadius = 2.25
+        layer.addSublayer(ledDot)
+
+        isAccessibilityElement = true
+        accessibilityTraits = .button
+        refreshAppearance()
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func configure(eyebrow: String, value: String, active: Bool, locked: Bool = false) {
+        eyebrowLabel.text = eyebrow
+        valueLabel.text = value
+        self.activeTint = active
+        self.locked = locked
+        accessibilityLabel = "\(eyebrow)：\(value)"
+        refreshAppearance()
+    }
+
+    func refreshAppearance() {
+        let t = traitCollection
+        let pressed = isHighlighted && !locked
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.backgroundColor = (pressed ? Theme.keyPressed : Theme.key).resolvedColor(with: t).cgColor
+        layer.borderColor = Theme.keyBorder.resolvedColor(with: t).cgColor
+        layer.shadowColor = Theme.keyLip.resolvedColor(with: t).cgColor
+        layer.shadowOpacity = pressed ? 0 : 1
+        let ledColor: UIColor = locked
+            ? Theme.statusLedMuted.withAlphaComponent(0.35)
+            : (activeTint ? Theme.statusLedActive : Theme.statusLedMuted)
+        ledDot.backgroundColor = ledColor.resolvedColor(with: t).cgColor
+        CATransaction.commit()
+        eyebrowLabel.textColor = Theme.secondaryText
+        eyebrowLabel.font = Theme.font(10.5, .medium)
+        valueLabel.textColor = locked ? Theme.secondaryText : Theme.keyText
+        valueLabel.font = Theme.font(14.5, .semibold)
+    }
+
+    override var isHighlighted: Bool {
+        didSet { if isHighlighted != oldValue { refreshAppearance() } }
+    }
+
+    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+        super.traitCollectionDidChange(previous)
+        refreshAppearance()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let b = bounds
+        guard b.width > 0, b.height > 0 else { return }
+        if b.size != lastShadowSize {
+            lastShadowSize = b.size
+            layer.shadowPath = UIBezierPath(roundedRect: b, cornerRadius: Metrics.cornerRadius).cgPath
+        }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        ledDot.frame = CGRect(x: b.width - 13, y: 8.5, width: 4.5, height: 4.5)
+        CATransaction.commit()
+        let compact = b.height < 52
+        let padX: CGFloat = 10
+        let topPad: CGFloat = compact ? 6 : 9
+        eyebrowLabel.frame = CGRect(x: padX, y: topPad, width: max(0, b.width - padX - 18), height: 14)
+        valueLabel.frame = CGRect(x: padX, y: eyebrowLabel.frame.maxY + (compact ? 1 : 3), width: max(0, b.width - padX * 2), height: max(18, b.height - eyebrowLabel.frame.maxY - 8))
+    }
+}
+
+/// OTTOSSOM zero-scroll hardware control deck (2x3 tactile tiles + contextual Xiaohe guide pill) with a clean
+/// secondary drawer (`更多偏好`) for low-frequency toggles, learned lexicon stats & diagnostics.
 final class SettingsPanelView: UIView {
     var onClose: (() -> Void)?
     var onChange: (() -> Void)?
     var onResetLearning: (() -> Void)?
 
     private let header = UIView()
+    private let headerHairline = CALayer()
     private let statusLabel = UILabel()
+    private let titleLabel = UILabel()
     private let mostoImage = UIImageView()
-    private let scroll = UIScrollView()
+    private let doneButton = UIButton(type: .system)
+
+    // Primary zero-scroll deck
+    private let deckContainer = UIView()
+    private let schemeTile = HardwareTileButton()
+    private let layoutTile = HardwareTileButton()
+    private let lightTile = HardwareTileButton()
+    private let hapticTile = HardwareTileButton()
+    private let soundTile = HardwareTileButton()
+    private let correctTile = HardwareTileButton()
+    private var hardwareTiles: [HardwareTileButton] { [schemeTile, layoutTile, lightTile, hapticTile, soundTile, correctTile] }
+
+    private let accessBanner = UILabel()
+    private let utilityRow = UIView()
+    private let guidePill = UIButton(type: .custom)
+    private let guideLed = CALayer()
+    private let offlineStatusLabel = UILabel()
+    private let moreButton = UIButton(type: .system)
+
+    // Secondary low-frequency preferences drawer
+    private let moreScroll = UIScrollView()
+    private let backDeckButton = UIButton(type: .system)
     private let stack = UIStackView()
 
-    private let schemeControl = UISegmentedControl(items: ["小鹤双拼", "全拼"])
-    private let layoutControl = UISegmentedControl(items: ["全键盘", "九宫格"])
     private let numberControl = UISegmentedControl(items: ["完整页", "九宫格"])
     private let englishSwitch = UISwitch()
-    private let guideSwitch = UISwitch()
-    private let correctionSwitch = UISwitch()
-    private let feedbackSwitch = UISwitch()
-    private let soundSwitch = UISwitch()
     private let appearance = UISegmentedControl(items: ["自动", "日光", "夜灯"])
-    /// 风格: Mosto (the vinyl toy keys, Mosto in the strip) or 简洁 (no theme: plain keys in the system's greys).
     private let styleControl = UISegmentedControl(items: ["Mosto", "简洁"])
     private let learnedLabel = UILabel()
     private let diagLabel = UILabel()
-    private let accessLabel = UILabel()
     private let note = UILabel()
     private var groups: [UIView] = []
+    private var feedbackAvailable = true
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        backgroundColor = Theme.touchable   // the system glass shows through (never fully clear: see Theme.touchable)
-        // Mosto's colours on every control: violet by day, crown gold at night
+        backgroundColor = Theme.touchable
         tintColor = Theme.selection
-        for sw in [englishSwitch, guideSwitch, correctionSwitch, feedbackSwitch, soundSwitch] { sw.onTintColor = Theme.selection }
-        // the three input choices share one width, so their left and right edges line up down the card
-        for sc in [schemeControl, layoutControl, numberControl] {
-            sc.translatesAutoresizingMaskIntoConstraints = false
-            sc.widthAnchor.constraint(equalToConstant: 168).isActive = true
-            for i in 0..<sc.numberOfSegments { sc.setWidth(84, forSegmentAt: i) }
-        }
-        for sc in [schemeControl, layoutControl, numberControl, appearance, styleControl] {
+        for sw in [englishSwitch] { sw.onTintColor = Theme.selection }
+        numberControl.translatesAutoresizingMaskIntoConstraints = false
+        numberControl.widthAnchor.constraint(equalToConstant: 156).isActive = true
+        for i in 0..<numberControl.numberOfSegments { numberControl.setWidth(78, forSegmentAt: i) }
+        for sc in [numberControl, appearance, styleControl] {
             sc.selectedSegmentTintColor = Theme.selection
-            sc.setTitleTextAttributes([.foregroundColor: Theme.selectionText, .font: Theme.font(14, .semibold)], for: .selected)
-            sc.setTitleTextAttributes([.foregroundColor: Theme.keyText, .font: Theme.font(14, .medium)], for: .normal)
+            sc.setTitleTextAttributes([.foregroundColor: Theme.selectionText, .font: Theme.font(13.5, .semibold)], for: .selected)
+            sc.setTitleTextAttributes([.foregroundColor: Theme.keyText, .font: Theme.font(13.5, .medium)], for: .normal)
+            sc.setContentHuggingPriority(.required, for: .horizontal)
         }
 
-        // Header: Mosto (day or night), the name, 完成 — fixed above the scrolling list
+        // Header: Mosto + OTTOSSOM Control Deck title + status + Done pill
         mostoImage.contentMode = .scaleAspectFit
         mostoImage.image = UIImage(named: "mosto_day", in: Bundle(for: SettingsPanelView.self), with: nil)
-        let title = UILabel()
-        title.text = "Mosto键盘"
-        title.font = Theme.font(17, .bold)
-        title.textColor = Theme.keyText
-        title.tag = Self.tagPrimary
-        statusLabel.font = .systemFont(ofSize: 12)
+        titleLabel.text = "Mosto 控制台"
+        titleLabel.font = Theme.font(16, .bold)
+        titleLabel.textColor = Theme.keyText
+        titleLabel.tag = Self.tagPrimary
+        statusLabel.font = Theme.font(11.5, .medium)
         statusLabel.textColor = Theme.secondaryText
         statusLabel.tag = Self.tagSecondary
-        let titles = UIStackView(arrangedSubviews: [title, statusLabel])
+        let titles = UIStackView(arrangedSubviews: [titleLabel, statusLabel])
         titles.axis = .vertical
         titles.spacing = 1
-        let done = UIButton(type: .system)
-        done.setTitle("完成", for: .normal)
-        done.titleLabel?.font = Theme.font(17, .bold)
-        done.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
-        let h = UIStackView(arrangedSubviews: [mostoImage, titles, UIView(), done])
+
+        doneButton.setTitle("完成", for: .normal)
+        doneButton.titleLabel?.font = Theme.font(14, .bold)
+        doneButton.layer.cornerRadius = 14
+        doneButton.layer.cornerCurve = .continuous
+        doneButton.translatesAutoresizingMaskIntoConstraints = false
+        doneButton.widthAnchor.constraint(equalToConstant: 56).isActive = true
+        doneButton.heightAnchor.constraint(equalToConstant: 28).isActive = true
+        doneButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
+
+        let h = UIStackView(arrangedSubviews: [mostoImage, titles, UIView(), doneButton])
         h.alignment = .center
         h.spacing = 8
-        mostoImage.widthAnchor.constraint(equalToConstant: 40).isActive = true
-        mostoImage.heightAnchor.constraint(equalToConstant: 40).isActive = true
+        mostoImage.widthAnchor.constraint(equalToConstant: 28).isActive = true
+        mostoImage.heightAnchor.constraint(equalToConstant: 28).isActive = true
         header.addSubview(h)
         h.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            h.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 14),
-            h.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -16),
+            h.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 12),
+            h.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -12),
             h.centerYAnchor.constraint(equalTo: header.centerYAnchor),
         ])
+        headerHairline.backgroundColor = Theme.separator.resolvedColor(with: traitCollection).cgColor
+        header.layer.addSublayer(headerHairline)
         addSubview(header)
+
+        // Primary 2x3 Hardware Tile Deck
+        addSubview(deckContainer)
+        schemeTile.addTarget(self, action: #selector(toggleScheme), for: .touchUpInside)
+        layoutTile.addTarget(self, action: #selector(toggleLayout), for: .touchUpInside)
+        lightTile.addTarget(self, action: #selector(cycleLight), for: .touchUpInside)
+        hapticTile.addTarget(self, action: #selector(toggleHaptic), for: .touchUpInside)
+        soundTile.addTarget(self, action: #selector(toggleSound), for: .touchUpInside)
+        correctTile.addTarget(self, action: #selector(toggleAutocorrect), for: .touchUpInside)
+        for t in hardwareTiles { deckContainer.addSubview(t) }
+
+        accessBanner.text = "震动与声效需在 系统设置 › 通用 › 键盘 开启「允许完全访问」"
+        accessBanner.font = Theme.font(11.5, .medium)
+        accessBanner.textColor = Theme.correctedMark
+        accessBanner.textAlignment = .center
+        accessBanner.numberOfLines = 1
+        accessBanner.adjustsFontSizeToFitWidth = true
+        accessBanner.minimumScaleFactor = 0.78
+        accessBanner.isHidden = true
+        deckContainer.addSubview(accessBanner)
+
+        deckContainer.addSubview(utilityRow)
+        guidePill.setTitle("   小鹤键位提示", for: .normal)
+        guidePill.titleLabel?.font = Theme.font(12, .semibold)
+        guidePill.layer.cornerRadius = 15
+        guidePill.layer.cornerCurve = .continuous
+        guidePill.layer.borderWidth = 0.5
+        guideLed.cornerRadius = 2.25
+        guidePill.layer.addSublayer(guideLed)
+        guidePill.addTarget(self, action: #selector(toggleGuide), for: .touchUpInside)
+        utilityRow.addSubview(guidePill)
+
+        offlineStatusLabel.text = "纯本机离线词库 · 零联网"
+        offlineStatusLabel.font = Theme.font(11.5, .medium)
+        offlineStatusLabel.textColor = Theme.secondaryText
+        utilityRow.addSubview(offlineStatusLabel)
+
+        moreButton.setTitle("更多偏好 · 清空 ›", for: .normal)
+        moreButton.titleLabel?.font = Theme.font(12, .semibold)
+        moreButton.layer.cornerRadius = 15
+        moreButton.layer.cornerCurve = .continuous
+        moreButton.addTarget(self, action: #selector(openMore), for: .touchUpInside)
+        utilityRow.addSubview(moreButton)
+
+        // Secondary Drawer (`moreScroll`)
+        moreScroll.isHidden = true
+        moreScroll.alwaysBounceHorizontal = false
+        moreScroll.showsHorizontalScrollIndicator = false
+        moreScroll.contentInsetAdjustmentBehavior = .never
+        if #available(iOS 26.0, *) { moreScroll.topEdgeEffect.isHidden = true; moreScroll.bottomEdgeEffect.isHidden = true }
+        addSubview(moreScroll)
 
         stack.axis = .vertical
         stack.spacing = 6
-        scroll.addSubview(stack)
-        scroll.alwaysBounceHorizontal = false
-        scroll.showsHorizontalScrollIndicator = false
-        scroll.contentInsetAdjustmentBehavior = .never; if #available(iOS 26.0, *) { scroll.topEdgeEffect.isHidden = true; scroll.bottomEdgeEffect.isHidden = true }   // no safe-area inset: the list starts under the header
-        addSubview(scroll)
+        moreScroll.addSubview(stack)
 
-        section("输入", rows: [
-            row("输入方案", schemeControl),
-            row("中文键盘", layoutControl),
-            row("123 键", numberControl),
+        backDeckButton.setTitle("‹ 返回控制台", for: .normal)
+        backDeckButton.titleLabel?.font = Theme.font(13.5, .semibold)
+        backDeckButton.contentHorizontalAlignment = .leading
+        backDeckButton.addTarget(self, action: #selector(closeMore), for: .touchUpInside)
+        stack.addArrangedSubview(inset(backDeckButton))
+        stack.setCustomSpacing(8, after: stack.arrangedSubviews.last!)
+
+        section("输入细节", rows: [
             row("中英混输", englishSwitch),
-        ], footer: "九宫格下小鹤双拼与全拼均可使用（左侧选音节，“分词”切分）；打 ok、ios 直接出 OK、iOS。所有设置持久保存，更新不重置。")
-        section("小鹤双拼", rows: [
-            row("键位提示", guideSwitch),
-        ], footer: "小鹤双拼方案下在键帽显示声韵母对应关系（zh/ch/sh 在 V/I/U），熟练后可随时关闭。")
-        section("自动纠错", rows: [
-            row("按触点位置纠错", correctionSwitch),
-        ], footer: "自动按触点落点纠错，上屏后点左侧 ↩ 或立即按删除可撤回原键；轻点最左侧字母胶囊可直接上屏原字母。")
-        section("键盘", rows: [
-            row("按键震动", feedbackSwitch),
-            row("按键音", soundSwitch),
-            accessLabel,
-        ], footer: "震动与按键音在按下的一瞬间发出（与系统键盘一样）；按键音跟随静音开关。")
-        section("外观", rows: [row("风格", styleControl), row("光线", appearance)], footer: "Mosto 风格配备软胶键帽与小魔王互动（轻点选颜文字、双击切日光/夜灯、长按伸懒腰）；简洁风格在空闲左角同样提供日光/夜光一键切换，右角滑块图标可随时直达本设置页。")
+            row("123 数字键", numberControl),
+        ], footer: "九宫格下小鹤双拼与全拼均可使用；打 ok、ios 直接出 OK、iOS。")
 
-        accessLabel.text = "按键震动与按键音需要允许完全访问：设置 › 通用 › 键盘 › 键盘 › Mosto键盘。"
-        accessLabel.font = .systemFont(ofSize: 13)
-        accessLabel.textColor = Theme.secondaryText
-        accessLabel.tag = Self.tagSecondary
-        accessLabel.numberOfLines = 0
-        accessLabel.isHidden = true
-        setFeedbackAvailable(true)
-        learnedLabel.font = .systemFont(ofSize: 15)
+        section("外观微调", rows: [
+            row("风格", styleControl),
+            row("光线", appearance),
+        ], footer: "Mosto 配备软胶单层键帽；简洁复刻系统 Liquid Glass。")
+
+        learnedLabel.font = .systemFont(ofSize: 14)
         learnedLabel.textColor = Theme.secondaryText
         learnedLabel.tag = Self.tagSecondary
         learnedLabel.numberOfLines = 0
         resetButton.setTitle("清空已学习的词语与触点习惯", for: .normal)
         resetButton.setTitleColor(.systemRed, for: .normal)
-        resetButton.titleLabel?.font = .systemFont(ofSize: 15)
+        resetButton.titleLabel?.font = .systemFont(ofSize: 14.5)
         resetButton.contentHorizontalAlignment = .leading
         resetButton.addTarget(self, action: #selector(resetTapped), for: .touchUpInside)
-        section("学习", rows: [learnedLabel, resetButton], footer: nil)
-        diagLabel.font = .monospacedDigitSystemFont(ofSize: 13, weight: .regular)
+        section("本机学习词库", rows: [learnedLabel, resetButton], footer: nil)
+
+        diagLabel.font = .monospacedDigitSystemFont(ofSize: 12.5, weight: .regular)
         diagLabel.textColor = Theme.secondaryText
         diagLabel.tag = Self.tagSecondary
         diagLabel.numberOfLines = 0
-        // 诊断: for testers (TestFlight) only — nobody else needs to read key timings
-        if Self.isTestFlight { section("诊断", rows: [diagLabel], footer: "打一段字后打开这里：“丢弃”是被系统取消、没能输入的按键；“按键响应”是每次按键在主线程上花的时间（字母按下即上屏），“候选出现”是按键到候选显示出来的时间（在后台线程解码）。") }
+        if Self.isTestFlight {
+            section("测试诊断", rows: [diagLabel], footer: nil)
+        }
 
         note.numberOfLines = 0
         note.font = .systemFont(ofSize: 12)
@@ -1275,19 +1448,51 @@ final class SettingsPanelView: UIView {
         note.tag = Self.tagSecondary
         stack.addArrangedSubview(inset(note))
 
-        for c in [schemeControl, layoutControl, appearance, styleControl] {
-            c.addTarget(self, action: #selector(changed), for: .valueChanged)
-            c.setContentHuggingPriority(.required, for: .horizontal)
-        }
         numberControl.addTarget(self, action: #selector(numberChanged), for: .valueChanged)
-        numberControl.setContentHuggingPriority(.required, for: .horizontal)
-        for sw in [englishSwitch, guideSwitch, correctionSwitch, feedbackSwitch, soundSwitch] {
-            sw.addTarget(self, action: #selector(changed), for: .valueChanged)
-        }
+        for c in [appearance, styleControl] { c.addTarget(self, action: #selector(drawerChanged), for: .valueChanged) }
+        englishSwitch.addTarget(self, action: #selector(drawerChanged), for: .valueChanged)
+
+        styleChrome()
         load()
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    private func styleChrome() {
+        let t = traitCollection
+        tintColor = Theme.selection
+        headerHairline.backgroundColor = Theme.separator.resolvedColor(with: t).cgColor
+        mostoImage.isHidden = Theme.plain
+        doneButton.backgroundColor = Theme.plain ? Theme.selection : Theme.accentKey
+        doneButton.setTitleColor(Theme.plain ? Theme.selectionText : Theme.accentText, for: .normal)
+        moreButton.backgroundColor = Theme.functionKey
+        moreButton.setTitleColor(Theme.functionText, for: .normal)
+        backDeckButton.setTitleColor(Theme.selection, for: .normal)
+        accessBanner.textColor = Theme.correctedMark
+        for sc in [numberControl, appearance, styleControl] {
+            sc.selectedSegmentTintColor = Theme.selection
+            sc.setTitleTextAttributes([.foregroundColor: Theme.selectionText, .font: Theme.font(13.5, .semibold)], for: .selected)
+            sc.setTitleTextAttributes([.foregroundColor: Theme.keyText, .font: Theme.font(13.5, .medium)], for: .normal)
+        }
+        englishSwitch.onTintColor = Theme.selection
+        for tile in hardwareTiles { tile.refreshAppearance() }
+        refreshGuidePill()
+    }
+
+    private func refreshGuidePill() {
+        let s = KeyboardSettings.shared
+        let on = s.xiaoheGuide
+        let t = traitCollection
+        guidePill.isHidden = s.scheme != 0
+        offlineStatusLabel.isHidden = !guidePill.isHidden
+        guidePill.backgroundColor = (on ? Theme.key : Theme.functionKey)
+        guidePill.setTitleColor(on ? Theme.keyText : Theme.functionText, for: .normal)
+        guidePill.layer.borderColor = Theme.keyBorder.resolvedColor(with: t).cgColor
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        guideLed.backgroundColor = (on ? Theme.statusLedActive : Theme.statusLedMuted).resolvedColor(with: t).cgColor
+        CATransaction.commit()
+    }
 
     private func inset(_ v: UIView) -> UIView {
         let wrap = UIView()
@@ -1302,11 +1507,10 @@ final class SettingsPanelView: UIView {
         return wrap
     }
 
-    /// One iOS-style group: a small grey caption, rounded rows separated by hairlines, an optional footnote.
     private func section(_ title: String, rows: [UIView], footer: String?) {
         let cap = UILabel()
         cap.text = title
-        cap.font = .systemFont(ofSize: 13)
+        cap.font = .systemFont(ofSize: 12.5)
         cap.textColor = Theme.secondaryText
         cap.tag = Self.tagSecondary
         let capWrap = inset(cap)
@@ -1334,9 +1538,9 @@ final class SettingsPanelView: UIView {
             NSLayoutConstraint.activate([
                 r.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 14),
                 r.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -12),
-                r.topAnchor.constraint(equalTo: cell.topAnchor, constant: 7),
-                r.bottomAnchor.constraint(equalTo: cell.bottomAnchor, constant: -7),
-                cell.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
+                r.topAnchor.constraint(equalTo: cell.topAnchor, constant: 6),
+                r.bottomAnchor.constraint(equalTo: cell.bottomAnchor, constant: -6),
+                cell.heightAnchor.constraint(greaterThanOrEqualToConstant: 40),
             ])
             inner.addArrangedSubview(cell)
         }
@@ -1363,34 +1567,32 @@ final class SettingsPanelView: UIView {
             let f = UILabel()
             f.text = footer
             f.numberOfLines = 0
-            f.font = .systemFont(ofSize: 12)
+            f.font = .systemFont(ofSize: 11.5)
             f.textColor = Theme.secondaryText
             f.tag = Self.tagSecondary
             stack.setCustomSpacing(4, after: wrap)
             let fw = inset(f)
             stack.addArrangedSubview(fw)
-            stack.setCustomSpacing(14, after: fw)
+            stack.setCustomSpacing(12, after: fw)
         } else {
-            stack.setCustomSpacing(14, after: wrap)
+            stack.setCustomSpacing(12, after: wrap)
         }
     }
 
-    private func row(_ text: String, _ control: UIView, icon: String? = nil) -> UIView { var views: [UIView] = []; if let icon { let badge = UIView(); badge.backgroundColor = Theme.correctedTint; badge.layer.cornerRadius = 6; badge.translatesAutoresizingMaskIntoConstraints = false; badge.widthAnchor.constraint(equalToConstant: 26).isActive = true; badge.heightAnchor.constraint(equalToConstant: 26).isActive = true; let img = UIImageView(image: UIImage(systemName: icon, withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .semibold))); img.tintColor = Theme.selection; img.contentMode = .scaleAspectFit; img.translatesAutoresizingMaskIntoConstraints = false; badge.addSubview(img); NSLayoutConstraint.activate([img.centerXAnchor.constraint(equalTo: badge.centerXAnchor), img.centerYAnchor.constraint(equalTo: badge.centerYAnchor)]); views.append(badge) }
+    private func row(_ text: String, _ control: UIView) -> UIView {
         let l = UILabel()
         l.text = text
-        l.font = .systemFont(ofSize: 16)
+        l.font = .systemFont(ofSize: 15.5)
         l.textColor = Theme.keyText
         l.tag = Self.tagPrimary
         l.numberOfLines = 0
         l.setContentCompressionResistancePriority(.required, for: .horizontal)
-        views.append(contentsOf: [l, UIView(), control]); let s = UIStackView(arrangedSubviews: views)
+        let s = UIStackView(arrangedSubviews: [l, UIView(), control])
         s.alignment = .center
         s.spacing = 10
         return s
     }
 
-    /// Mosto in the header shows the light the keyboard is in.
-    /// A TestFlight build (its receipt is the sandbox one).
     static let isTestFlight: Bool = {
         if Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt" { return true }
         #if DEBUG
@@ -1402,16 +1604,8 @@ final class SettingsPanelView: UIView {
 
     private static let tagPrimary = 9_701, tagSecondary = 9_702, tagGroup = 9_703, tagLine = 9_704
 
-    /// The style changed (Mosto / 简洁): every colour set at creation follows; no Mosto in 简洁.
     func themeChanged() {
-        tintColor = Theme.selection
-        for sw in [englishSwitch, guideSwitch, correctionSwitch, feedbackSwitch, soundSwitch] { sw.onTintColor = Theme.selection }
-        for sc in [schemeControl, layoutControl, numberControl, appearance, styleControl] {
-            sc.selectedSegmentTintColor = Theme.selection
-            sc.setTitleTextAttributes([.foregroundColor: Theme.selectionText, .font: Theme.font(14, .semibold)], for: .selected)
-            sc.setTitleTextAttributes([.foregroundColor: Theme.keyText, .font: Theme.font(14, .medium)], for: .normal)
-        }
-        mostoImage.isHidden = Theme.plain
+        styleChrome()
         func walk(_ v: UIView) {
             switch v.tag {
             case Self.tagPrimary: (v as? UILabel)?.textColor = Theme.keyText
@@ -1423,7 +1617,7 @@ final class SettingsPanelView: UIView {
             v.subviews.forEach(walk)
         }
         walk(self)
-        updateStatus()
+        load()
     }
 
     func setNight(_ night: Bool) {
@@ -1431,7 +1625,11 @@ final class SettingsPanelView: UIView {
         updateStatus(night: night)
     }
 
-    /// The line under the name: the light, the scheme and the layout in use, at a glance.
+    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+        super.traitCollectionDidChange(previous)
+        styleChrome()
+    }
+
     private func updateStatus(night: Bool? = nil) {
         let s = KeyboardSettings.shared
         let nightName = s.style == 1 ? "夜光" : "夜灯"
@@ -1442,85 +1640,242 @@ final class SettingsPanelView: UIView {
     func load() {
         let s = KeyboardSettings.shared
         updateStatus()
-        schemeControl.selectedSegmentIndex = s.scheme
-        layoutControl.selectedSegmentIndex = s.pinyinGrid ? 1 : 0
+
+        schemeTile.configure(eyebrow: "输入方案", value: s.scheme == 0 ? "小鹤双拼" : "全拼", active: s.scheme == 0)
+        layoutTile.configure(eyebrow: "键盘布局", value: s.pinyinGrid ? "九宫格" : "全键盘", active: s.pinyinGrid)
+        let lightTitle: String
+        if s.style == 1 {
+            lightTitle = "简洁模式"
+        } else {
+            lightTitle = ["跟随系统", "暖瓷日光", "深曜夜灯"][s.appearance]
+        }
+        lightTile.configure(eyebrow: "台灯光效", value: lightTitle, active: s.style == 0)
+
+        hapticTile.configure(
+            eyebrow: "按键震动",
+            value: feedbackAvailable ? (s.feedback ? "轻触开启" : "已关闭") : "需完全访问",
+            active: feedbackAvailable && s.feedback,
+            locked: !feedbackAvailable
+        )
+        soundTile.configure(
+            eyebrow: "按键声效",
+            value: feedbackAvailable ? (s.keySound ? "原声开启" : "已静音") : "需完全访问",
+            active: feedbackAvailable && s.keySound,
+            locked: !feedbackAvailable
+        )
+        correctTile.configure(eyebrow: "触点纠错", value: s.autocorrect ? "智能开启" : "已关闭", active: s.autocorrect)
+
         numberControl.selectedSegmentIndex = s.numberPad ? 1 : 0
         englishSwitch.isOn = s.english
-        guideSwitch.isOn = s.xiaoheGuide
-        correctionSwitch.isOn = s.autocorrect
-        feedbackSwitch.isOn = s.feedback
-        soundSwitch.isOn = s.keySound
         appearance.selectedSegmentIndex = s.appearance
         styleControl.selectedSegmentIndex = s.style
+        refreshGuidePill()
+        setNeedsLayout()
     }
 
     func setNote(_ text: String) { note.text = text }
-    /// Without 允许完全访问 the system plays no haptics or click sounds for a keyboard: the two switches show it
-    /// (greyed, the choice kept) and say what they need.
+
     func setFeedbackAvailable(_ ok: Bool) {
-        feedbackSwitch.isEnabled = ok
-        soundSwitch.isEnabled = ok
-        accessLabel.isHidden = ok
-        // the line it sits on, and the hairline above it, only while there is something to say
-        if let cell = accessLabel.superview, let list = cell.superview as? UIStackView,
-           let i = list.arrangedSubviews.firstIndex(of: cell) {
-            cell.isHidden = ok
-            if i > 0 { list.arrangedSubviews[i - 1].isHidden = ok }
-        }
+        feedbackAvailable = ok
+        accessBanner.isHidden = ok
+        hapticTile.isEnabled = ok
+        soundTile.isEnabled = ok
+        load()
     }
+
     func setLearned(_ text: String) { learnedLabel.text = text }
     func setDiagnostics(_ text: String) { diagLabel.text = text }
-    /// Snapshot support: the list scrolled so the 键盘 section (震动、按键音 and, without 允许完全访问, why) starts at
-    /// the top, as far as the list goes.
+
+    /// Snapshot & compatibility helper: keeps the primary zero-scroll Hardware Deck focused.
     func demoScrollToFeedback() {
-        layoutIfNeeded()
-        stack.layoutIfNeeded()
-        guard let group = groups.first(where: { feedbackSwitch.isDescendant(of: $0) }), let wrap = group.superview,
-              let i = stack.arrangedSubviews.firstIndex(of: wrap) else { return }
-        // from its caption (the line above the group)
-        let top = i > 0 ? stack.arrangedSubviews[i - 1].frame.minY : wrap.frame.minY
-        let y = stack.frame.minY + top - 6
-        let maxY = max(0, scroll.contentSize.height - scroll.bounds.height)
-        scroll.contentOffset = CGPoint(x: 0, y: min(max(0, y), maxY))
+        moreScroll.isHidden = true
+        deckContainer.isHidden = false
+        setNeedsLayout()
     }
+
     var diagnosticsText: String { diagLabel.text ?? "" }
 
+    // MARK: - Actions & Test Hooks
+
     private let resetButton = UIButton(type: .system)
-    private var resetConfirming = false; @objc private func changed() { if KeyboardSettings.shared.feedback { UISelectionFeedbackGenerator().selectionChanged() }
-        let s = KeyboardSettings.shared
-        s.scheme = schemeControl.selectedSegmentIndex
-        s.pinyinGrid = layoutControl.selectedSegmentIndex == 1
-        s.english = englishSwitch.isOn
-        s.xiaoheGuide = guideSwitch.isOn
-        s.autocorrect = correctionSwitch.isOn
-        s.feedback = feedbackSwitch.isOn
-        s.keySound = soundSwitch.isOn
-        s.appearance = appearance.selectedSegmentIndex
-        s.style = styleControl.selectedSegmentIndex
-        // until chosen here, the number pad follows the Chinese layout (shown at once when that changes)
-        numberControl.selectedSegmentIndex = s.numberPad ? 1 : 0
-        updateStatus()
+    private var resetConfirming = false
+
+    private func notifyTileChange() {
+        if KeyboardSettings.shared.feedback { UISelectionFeedbackGenerator().selectionChanged() }
+        load()
         onChange?()
     }
 
-    @objc private func numberChanged() { if KeyboardSettings.shared.feedback { UISelectionFeedbackGenerator().selectionChanged() }
+    @objc private func toggleScheme() {
+        let s = KeyboardSettings.shared
+        s.scheme = s.scheme == 0 ? 1 : 0
+        notifyTileChange()
+    }
+
+    @objc private func toggleLayout() {
+        let s = KeyboardSettings.shared
+        s.pinyinGrid.toggle()
+        notifyTileChange()
+    }
+
+    @objc private func cycleLight() {
+        let s = KeyboardSettings.shared
+        if s.style == 1 {
+            s.style = 0; s.appearance = 0
+        } else if s.appearance == 0 {
+            s.appearance = 1
+        } else if s.appearance == 1 {
+            s.appearance = 2
+        } else {
+            s.style = 1; s.appearance = 0
+        }
+        notifyTileChange()
+    }
+
+    @objc private func toggleHaptic() {
+        guard feedbackAvailable else { return }
+        KeyboardSettings.shared.feedback.toggle()
+        notifyTileChange()
+    }
+
+    @objc private func toggleSound() {
+        guard feedbackAvailable else { return }
+        KeyboardSettings.shared.keySound.toggle()
+        notifyTileChange()
+    }
+
+    @objc private func toggleAutocorrect() {
+        KeyboardSettings.shared.autocorrect.toggle()
+        notifyTileChange()
+    }
+
+    @objc private func toggleGuide() {
+        KeyboardSettings.shared.xiaoheGuide.toggle()
+        notifyTileChange()
+    }
+
+    @objc private func openMore() {
+        if KeyboardSettings.shared.feedback { UISelectionFeedbackGenerator().selectionChanged() }
+        deckContainer.isHidden = true
+        moreScroll.isHidden = false
+        moreScroll.setContentOffset(.zero, animated: false)
+        setNeedsLayout()
+    }
+
+    @objc private func closeMore() {
+        if KeyboardSettings.shared.feedback { UISelectionFeedbackGenerator().selectionChanged() }
+        moreScroll.isHidden = true
+        deckContainer.isHidden = false
+        setNeedsLayout()
+    }
+
+    @objc private func drawerChanged() {
+        if KeyboardSettings.shared.feedback { UISelectionFeedbackGenerator().selectionChanged() }
+        let s = KeyboardSettings.shared
+        s.english = englishSwitch.isOn
+        s.appearance = appearance.selectedSegmentIndex
+        s.style = styleControl.selectedSegmentIndex
+        load()
+        onChange?()
+    }
+
+    @objc private func numberChanged() {
+        if KeyboardSettings.shared.feedback { UISelectionFeedbackGenerator().selectionChanged() }
         KeyboardSettings.shared.numberPad = numberControl.selectedSegmentIndex == 1
         onChange?()
     }
 
-    @objc private func closeTapped() { if KeyboardSettings.shared.feedback { UISelectionFeedbackGenerator().selectionChanged() }; resetConfirming = false; resetButton.setTitle("清空已学习的词语与触点习惯", for: .normal); onClose?() }
-    @objc private func resetTapped() { if !resetConfirming { resetConfirming = true; if KeyboardSettings.shared.feedback { UINotificationFeedbackGenerator().notificationOccurred(.warning) }; resetButton.setTitle("确认清空？再点一次立即清空", for: .normal); DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in guard let self, self.resetConfirming else { return }; self.resetConfirming = false; self.resetButton.setTitle("清空已学习的词语与触点习惯", for: .normal) } } else { resetConfirming = false; if KeyboardSettings.shared.feedback { UINotificationFeedbackGenerator().notificationOccurred(.success) }; resetButton.setTitle("清空已学习的词语与触点习惯", for: .normal); onResetLearning?() } }
+    @objc private func closeTapped() {
+        if KeyboardSettings.shared.feedback { UISelectionFeedbackGenerator().selectionChanged() }
+        resetConfirming = false
+        resetButton.setTitle("清空已学习的词语与触点习惯", for: .normal)
+        moreScroll.isHidden = true
+        deckContainer.isHidden = false
+        onClose?()
+    }
+
+    @objc private func resetTapped() {
+        if !resetConfirming {
+            resetConfirming = true
+            if KeyboardSettings.shared.feedback { UINotificationFeedbackGenerator().notificationOccurred(.warning) }
+            resetButton.setTitle("确认清空？再点一次立即清空", for: .normal)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+                guard let self, self.resetConfirming else { return }
+                self.resetConfirming = false
+                self.resetButton.setTitle("清空已学习的词语与触点习惯", for: .normal)
+            }
+        } else {
+            resetConfirming = false
+            if KeyboardSettings.shared.feedback { UINotificationFeedbackGenerator().notificationOccurred(.success) }
+            resetButton.setTitle("清空已学习的词语与触点习惯", for: .normal)
+            onResetLearning?()
+        }
+    }
+
+    var hardwareTileCountForTests: Int { hardwareTiles.count }
+    var showingMoreForTests: Bool { !moreScroll.isHidden }
+    func toggleMoreForTests() { if moreScroll.isHidden { openMore() } else { closeMore() } }
+    func tapSchemeTileForTests() { toggleScheme() }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        header.frame = CGRect(x: 0, y: 0, width: bounds.width, height: 48)
-        scroll.frame = CGRect(x: 0, y: 48, width: bounds.width, height: bounds.height - 48)
-        let w = bounds.width
-        let size = stack.systemLayoutSizeFitting(CGSize(width: w, height: 0),
-                                                 withHorizontalFittingPriority: .required,
-                                                 verticalFittingPriority: .fittingSizeLevel)
-        stack.frame = CGRect(x: 0, y: 4, width: w, height: size.height)
-        scroll.contentSize = CGSize(width: w, height: size.height + 16)
+        let w = bounds.width, h = bounds.height
+        guard w > 60, h > 60 else { return }
+        let headH: CGFloat = h < 205 ? 36 : 42
+        header.frame = CGRect(x: 0, y: 0, width: w, height: headH)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        headerHairline.frame = CGRect(x: 12, y: headH - 0.5, width: max(0, w - 24), height: 1 / UIScreen.main.scale)
+        CATransaction.commit()
+
+        let bodyFrame = CGRect(x: 0, y: headH, width: w, height: max(0, h - headH))
+        deckContainer.frame = bodyFrame
+        moreScroll.frame = bodyFrame
+
+        // Layout 2x3 Hardware Tile Matrix inside `deckContainer` (0 scroll in portrait & landscape)
+        let padX: CGFloat = 10
+        let gapX: CGFloat = 8
+        let gapY: CGFloat = h < 205 ? 6 : 8
+        let bannerH: CGFloat = accessBanner.isHidden ? 0 : 18
+        let utilH: CGFloat = 30
+        let padTop: CGFloat = h < 205 ? 6 : 10
+        let padBot: CGFloat = h < 205 ? 6 : 10
+        let availH = bodyFrame.height - padTop - padBot - utilH - bannerH - gapY * (accessBanner.isHidden ? 2 : 3)
+        let rowH = max(42, floor(availH / 2))
+        let colW = max(40, (w - padX * 2 - gapX * 2) / 3)
+        let row1 = [schemeTile, layoutTile, lightTile]
+        let row2 = [hapticTile, soundTile, correctTile]
+        for (i, tile) in row1.enumerated() {
+            tile.frame = CGRect(x: padX + CGFloat(i) * (colW + gapX), y: padTop, width: colW, height: rowH)
+        }
+        let y2 = padTop + rowH + gapY
+        for (i, tile) in row2.enumerated() {
+            tile.frame = CGRect(x: padX + CGFloat(i) * (colW + gapX), y: y2, width: colW, height: rowH)
+        }
+        var nextY = y2 + rowH + gapY
+        if !accessBanner.isHidden {
+            accessBanner.frame = CGRect(x: padX, y: nextY, width: w - padX * 2, height: bannerH)
+            nextY += bannerH + gapY
+        }
+        utilityRow.frame = CGRect(x: padX, y: min(nextY, bodyFrame.height - utilH - 4), width: w - padX * 2, height: utilH)
+        let moreW = min(136, max(108, (utilityRow.bounds.width) * 0.42))
+        moreButton.frame = CGRect(x: utilityRow.bounds.width - moreW, y: 0, width: moreW, height: utilH)
+        let guideW = min(142, max(96, utilityRow.bounds.width - moreW - 10))
+        guidePill.frame = CGRect(x: 0, y: 0, width: guideW, height: utilH)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        guideLed.frame = CGRect(x: 10, y: (utilH - 4.5) / 2, width: 4.5, height: 4.5)
+        CATransaction.commit()
+        offlineStatusLabel.frame = CGRect(x: 2, y: 0, width: utilityRow.bounds.width - moreW - 8, height: utilH)
+
+        // Layout secondary `moreScroll`
+        let size = stack.systemLayoutSizeFitting(
+            CGSize(width: w, height: 0),
+            withHorizontalFittingPriority: .required,
+            verticalFittingPriority: .fittingSizeLevel
+        )
+        stack.frame = CGRect(x: 0, y: 6, width: w, height: size.height)
+        moreScroll.contentSize = CGSize(width: w, height: size.height + 16)
     }
 }
 

@@ -127,6 +127,7 @@ enum KeyboardTests {
         r49Features(window)
         r50CraftAndReadiness(window)
         r51CompanionAndFluency(window)
+        r52HardwareDeckAndOpticalCraft(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -1433,6 +1434,46 @@ enum KeyboardTests {
         } else {
             log(false, "r51.widthCache setup", "engine did not load")
         }
+    }
+
+    static func r52HardwareDeckAndOpticalCraft(_ window: UIWindow) {
+        // 1. SettingsPanelView OTTOSSOM zero-scroll hardware deck + secondary drawer
+        let sp = SettingsPanelView(frame: CGRect(x: 0, y: 0, width: 402, height: 264))
+        sp.layoutIfNeeded()
+        let prevScheme = KeyboardSettings.shared.scheme
+        defer { KeyboardSettings.shared.scheme = prevScheme }
+        KeyboardSettings.shared.scheme = 1
+        sp.load()
+        sp.tapSchemeTileForTests()
+        let toggledScheme = KeyboardSettings.shared.scheme
+        sp.tapSchemeTileForTests()
+        let restoredScheme = KeyboardSettings.shared.scheme
+        let initialDrawer = sp.showingMoreForTests
+        sp.toggleMoreForTests()
+        let openedDrawer = sp.showingMoreForTests
+        sp.toggleMoreForTests()
+        log(sp.hardwareTileCountForTests == 6 && toggledScheme == 0 && restoredScheme == 1 && !initialDrawer && openedDrawer && !sp.showingMoreForTests,
+            "r52.SettingsPanelView exposes 6 hardware tiles, toggles scheme cleanly, and switches secondary drawer",
+            "tiles=\(sp.hardwareTileCountForTests) scheme=(\(toggledScheme),\(restoredScheme)) drawer=(\(initialDrawer),\(openedDrawer))")
+
+        // 2. EmojiPanelView 10-mood Kaomoji tape & 228 unique expressions
+        let ep = EmojiPanelView(frame: CGRect(x: 0, y: 0, width: 402, height: 264))
+        ep.layoutIfNeeded()
+        ep.load(kaomoji: true)
+        let moodCount = EmojiPanelView.moodGroupCountForTests
+        let firstCount = ep.displayedKaomojiCountForTests
+        ep.selectMoodForTests(max(0, moodCount - 1))
+        let lastIdx = ep.activeMoodIndexForTests
+        let allK = EmojiPanelView.kaomoji
+        log(moodCount >= 8 && firstCount > 0 && lastIdx == max(0, moodCount - 1) && allK.count >= 220 && Set(allK).count == allK.count,
+            "r52.EmojiPanelView organizes kaomoji into mood tape while preserving unique expressions",
+            "moods=\(moodCount) firstCount=\(firstCount) lastIdx=\(lastIdx) total=\(allK.count)")
+
+        // 3. CoreText fullwidth CJK punctuation optical centering
+        let dxComma = KeyView.opticalHorizontalOffset(for: "，", font: Theme.font(24, .medium))
+        log(dxComma.isFinite && dxComma > 0.5,
+            "r52.KeyView optically nudges fullwidth CJK comma right toward key center",
+            "dxComma=\(dxComma)")
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

@@ -1,8 +1,6 @@
 import UIKit
 
-/// 表情: the emoji page, as the iOS / Gboard emoji keyboards — every emoji in the Unicode order under the iOS
-/// categories, with 常用 (recently used) first. It scrolls vertically only; the category bar along the bottom jumps
-/// to a category and follows the scrolling. Emoji newer than this iOS can draw are left out.
+/// 表情与颜文字面板: Emoji categories + OTTOSSOM Mood-Tape Kaomoji deck + comfortable scrollable bottom dock.
 final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionViewDelegateFlowLayout {
     var onEmoji: ((String) -> Void)?
     var onDelete: (() -> Void)?
@@ -10,83 +8,107 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     var onSettings: (() -> Void)?
 
     struct Category { let name: String; let symbol: String; var items: [String] }
+    struct MoodGroup { let title: String; let items: [String] }
 
-    /// Section 0 is 常用; the rest are the file's categories.
     private var sections: [Category] = []
     private let collection: UICollectionView
-    private let titleLabel = UILabel()
-    private let bar = UIStackView()
+    private let moodHeader = UIView()
+    private let moodMosto = UIImageView()
+    private let moodScroll = UIScrollView()
+    private let moodHairline = CALayer()
+    private var moodButtons: [UIButton] = []
+    private var displayedMoods: [(title: String, items: [String])] = []
+    private var selectedMood = 0
+    private var kaomojiMode = false
+
+    private let dockBar = UIView()
+    private let dockHairline = CALayer()
+    private let tabScroll = UIScrollView()
     private var tabButtons: [UIButton] = []
-    private let backButton = UIButton(type: .custom)   // custom: its title always draws (a .system title stayed blank)
+    private let backButton = UIButton(type: .custom)
     private let deleteButton = UIButton(type: .system)
-    /// Opened from Mosto (颜文字): the delete key's place holds 返回, in the return key's crown gold, so a pick and a
-    /// tap bring the keys straight back under the thumb.
     private let returnButton = UIButton(type: .system)
+    private let gear = UIButton(type: .system)
     private var selected = -1
     private var deleteTimer: Timer?
-    private let gear = UIButton(type: .system)
 
     static let categoryNames: [(String, String)] = [
         ("笑脸与人物", "face.smiling"), ("动物与自然", "pawprint"), ("食物与饮料", "fork.knife"), ("活动", "soccerball"),
         ("旅行与地点", "car"), ("物品", "lightbulb"), ("符号", "heart"), ("旗帜", "flag"),
     ]
 
-    /// Mosto 的颜文字: the last tab, under Mosto's own face — the little devil's ψ(｀∇´)ψ first, then the everyday ones.
-    /// Text, so they go into any field; three to a row.
     static let kaomojiName = "Mosto 颜文字"
-    static let kaomoji: [String] = [
-        // Mosto 招牌小魔王
-        "ψ(｀∇´)ψ", "(｀∀´)Ψ", "Ψ(￣∀￣)Ψ", "ψ(._. )>", "(¬‿¬)", "(￣y▽￣)╭",
-        "(▼∀▼)", "ψ(￣▽￣)ψ", "(ΦωΦ)✧", "(✧∀✧)", "ψ(｀▽´)ψ",
-        // 开心 · 欢呼 · 得意
-        "(＾▽＾)", "ヾ(≧▽≦*)o", "(≧∇≦)ﾉ", "(*^▽^*)", "(●'◡'●)", "ヽ(✿ﾟ▽ﾟ)ノ",
-        "♪(^∇^*)", "(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧", "o(*￣▽￣*)ブ", "(￣▽￣)／", "ヾ(•ω•`)o", "(〃＾▽＾〃)",
-        "(*^ω^*)", "(^▽^)", "o(^▽^)o", "(≧∀≦)ゞ", "ヾ(^▽^*)))", "ヽ(^o^)丿",
-        "(*≧∀≦*)", "(^o^)/", "٩(ˊᗜˋ*)و", "(*￣︶￣)", "(￣∀￣)", "( ´ ▽ ` )",
-        "(☆▽☆)", "(★ω★)", "(✧ω✧)", "ヽ(•̀ω•́ )ゝ", "(*ﾟ▽ﾟ*)", "(｡◕‿◕｡)",
-        // 卖萌 · 猫猫 · 小动物
-        "(・ω・)", "(｡･ω･｡)", "(=^･ω･^=)", "(=｀ω´=)", "(ฅ´ω`ฅ)", "ʕ•ᴥ•ʔ",
-        "U•ェ•*U", "(▽◕ ᴥ ◕▽)", "(●—●)", "(=^･ｪ･^=)", "(=´∇｀=)", "(´･ω･`)",
-        "(・∀・)", "(✿◡‿◡)", "(✿◠‿◠)", "(=・ω・=)", "(=^･^=)", "(ฅ'ω'ฅ)",
-        "ʕ·ᴥ·ʔ", "(・(ｪ)・)", "(◕ᴥ◕)", "(ᵔᴥᵔ)", "( ´(00)ˋ )", "(*ΦωΦ*)",
-        "(/ =ω=)/", "(｡･ω･｡)ﾉ", "( ・◇・)？", "(・ω< )",
-        // 害羞 · 贴贴 · 比心 · 抱抱
-        "(*/ω＼*)", "(⁄ ⁄•⁄ω⁄•⁄ ⁄)", "(/▽＼)", "(´,,•ω•,,)♡", "(´∀`)♡", "(｡･ω･｡)ﾉ♡",
-        "(♡˙︶˙♡)", "(｡•ㅅ•｡)♡", "(´▽`ʃ♡ƪ)", "(づ｡◕‿‿◕｡)づ", "(づ￣ ³￣)づ", "(っ´▽`)っ",
-        "(つ´ω`)つ", "⊂(・▽・⊂)", "(*╯3╰)", "(っ˘ω˘ς )", "( ˘ ³˘)♥", "(´ε｀ )♡",
-        "(灬º‿º灬)♡", "(〃∀〃)", "(*/▽＼*)", "(*ﾉωﾉ)", "(っ•̀ω•́)っ♡", "♡(ŐωŐ人)",
-        "(づ◡﹏◡)づ", "(⊃｡•́‿•̀｡)⊃", "(つ≧▽≦)つ", "(*´∀`*)",
-        // 加油 · 收到 · 打气 · 比耶
-        "(๑•̀ㅂ•́)و✧", "(｡•̀ᴗ-)✧", "(ง •_•)ง", "(ง •̀_•́)ง", "ᕦ(ò_óˇ)ᕤ", "٩( 'ω' )و",
-        "( •̀ ω •́ )✧", "(｡･∀･)ﾉﾞ", "( ´ ▽ ` )ﾉ", "(^_−)☆", "( ￣▽￣)σ", "(╭☞•́⍛•̀)╭☞",
-        "(￣︶￣)↗", "♪(´▽｀)", "(*•̀ᴗ•́*)و ̑̑", "v(￣︶￣)y", "(^o^)v", "( •̀∀•́ )",
-        "(๑•̀ω•́)ノ", "(｀・ω・´)ゞ", "(￣^￣)ゞ", "( • ̀ω•́ )✧", "✧٩(ˊωˋ*)و✧", "(๑˃̵ᴗ˂̵)و",
-        // 无语 · 摊手 · 摸鱼 · 躺平
-        "¯\\_(ツ)_/¯", "╮(￣▽￣)╭", "╮(╯▽╰)╭", "(￣_,￣ )", "(¬_¬ )", "( →_→)",
-        "(←_← )", "( ˙꒳˙ )", "(￣.￣)", "( ´_ゝ`)", "( -_-)旦~", "_(:з」∠)_",
-        "_(:3」∠)_", "(:3[▓▓]", "(:3[＿＿]", "(¦3[▓▓]", "(=_=)", "(⌐■_■)",
-        "(▀̿Ĺ̯▀̿ ̿)", "(~￣▽￣)~", "╰(￣ω￣ｏ)", "( ´･･)ﾉ(._.`)", "ヾ(´･ω･｀)ﾉ", "(눈_눈)",
-        "(ー_ー)!!", "(￣ω￣;)", "(￣▽￣\")", "(´-ι_-｀)", "(¬､¬)", "(°_°)",
-        "(:3_ヽ)_", "__(⌒(_´-ω-)_",
-        // 委屈 · 哭哭 · 破防
-        "(ಥ_ಥ)", "(T_T)", "QAQ", "QvQ", "(｡•́︿•̀｡)", "(´;ω;`)",
-        "( >﹏<。)", "o(TヘTo)", "(；′⌒`)", "(｡•́ - •̀｡)", "(ノへ￣、)", "(´-ω-`)",
-        "(；´д｀)ゞ", "orz", "OTZ", "(´；ω；`)", "(╥_╥)", "(っ- ‸ - ς)",
-        "(ToT)", "(;´༎ຶД༎ຶ`)", "(ノДＴ)", "(´•̥ ̯ •̥`)", "o(╥﹏╥)o", "(p_q)",
-        // 震惊 · 吃瓜 · 疑惑
-        "(⊙ˍ⊙)", "Σ(っ °Д °;)っ", "∑(っ°Д°;)っ", "(⊙_⊙)？", "(⊙x⊙;)", "(°ー°〃)",
-        "щ(゜Д゜щ)", "(x_x)", "(◔◡◔)", "┌( ಠ_ಠ)┘", "(・_・;)", "(°ロ°)!",
-        "(?_?)", "(O_O;)", "Σ(°△°|||)", "(°Д°)", "(⊙o⊙)", "w(ﾟДﾟ)w",
-        "(゜ロ゜)", "(´⊙ω⊙`)", "ε=ε=┌(;￣◇￣)┘",
-        // 生气 · 掀桌
-        "(╯°□°）╯︵ ┻━┻", "(╯‵□′)╯︵┻━┻", "┬─┬ノ( º _ ºノ)", "(╬▔皿▔)╯", "(╬ Ò﹏Ó)", "(＃°Д°)",
-        "(｀⌒´メ)", "(๑`^´๑)", "( `д´)", "(`皿´#)", "(╬ಠ益ಠ)", "(ノಠ益ಠ)ノ彡┻━┻",
-        "凸(｀0´)凸", "(҂ `з´ )",
-        // 晚安 · 犯困 · 吃喝 · 告别
-        "(～﹃～)~zZ", "(∪｡∪)｡｡｡zzz", "(￣o￣) . z Z", "(-_-) zzz", "(￣﹃￣)", "( ˘ω˘ ) ｽﾔｧ…",
-        "(๑´ㅂ`๑)", "(￣～￣) 嚼嚼", "( ^_^)／▼☆▼＼(^_^ )", "( ^_^)/~~", "( ´ ▽ ` )ﾉ~~", "( ˘ ³˘)ﾉ~~",
-        "(*￣▽￣)d", "(っ˘ڡ˘ς)", "( ´▽｀)つ旦", "( ^_^)／□☆□＼(^_^ )",
+
+    /// Structured 10-mood Kaomoji tape (all 228 unique expressions, single source of truth).
+    static let kaomojiMoodGroups: [MoodGroup] = [
+        MoodGroup(title: "招牌", items: [
+            "ψ(｀∇´)ψ", "(｀∀´)Ψ", "Ψ(￣∀￣)Ψ", "ψ(._. )>", "(¬‿¬)", "(￣y▽￣)╭",
+            "(▼∀▼)", "ψ(￣▽￣)ψ", "(ΦωΦ)✧", "(✧∀✧)", "ψ(｀▽´)ψ",
+        ]),
+        MoodGroup(title: "开心", items: [
+            "(＾▽＾)", "ヾ(≧▽≦*)o", "(≧∇≦)ﾉ", "(*^▽^*)", "(●'◡'●)", "ヽ(✿ﾟ▽ﾟ)ノ",
+            "♪(^∇^*)", "(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧", "o(*￣▽￣*)ブ", "(￣▽￣)／", "ヾ(•ω•`)o", "(〃＾▽＾〃)",
+            "(*^ω^*)", "(^▽^)", "o(^▽^)o", "(≧∀≦)ゞ", "ヾ(^▽^*)))", "ヽ(^o^)丿",
+            "(*≧∀≦*)", "(^o^)/", "٩(ˊᗜˋ*)و", "(*￣︶￣)", "(￣∀￣)", "( ´ ▽ ` )",
+            "(☆▽☆)", "(★ω★)", "(✧ω✧)", "ヽ(•̀ω•́ )ゝ", "(*ﾟ▽ﾟ*)", "(｡◕‿◕｡)",
+        ]),
+        MoodGroup(title: "萌宠", items: [
+            "(・ω・)", "(｡･ω･｡)", "(=^･ω･^=)", "(=｀ω´=)", "(ฅ´ω`ฅ)", "ʕ•ᴥ•ʔ",
+            "U•ェ•*U", "(▽◕ ᴥ ◕▽)", "(●—●)", "(=^･ｪ･^=)", "(=´∇｀=)", "(´･ω･`)",
+            "(・∀・)", "(✿◡‿◡)", "(✿◠‿◠)", "(=・ω・=)", "(=^･^=)", "(ฅ'ω'ฅ)",
+            "ʕ·ᴥ·ʔ", "(・(ｪ)・)", "(◕ᴥ◕)", "(ᵔᴥᵔ)", "( ´(00)ˋ )", "(*ΦωΦ*)",
+            "(/ =ω=)/", "(｡･ω･｡)ﾉ", "( ・◇・)？", "(・ω< )",
+        ]),
+        MoodGroup(title: "贴贴", items: [
+            "(*/ω＼*)", "(⁄ ⁄•⁄ω⁄•⁄ ⁄)", "(/▽＼)", "(´,,•ω•,,)♡", "(´∀`)♡", "(｡･ω･｡)ﾉ♡",
+            "(♡˙︶˙♡)", "(｡•ㅅ•｡)♡", "(´▽`ʃ♡ƪ)", "(づ｡◕‿‿◕｡)づ", "(づ￣ ³￣)づ", "(っ´▽`)っ",
+            "(つ´ω`)つ", "⊂(・▽・⊂)", "(*╯3╰)", "(っ˘ω˘ς )", "( ˘ ³˘)♥", "(´ε｀ )♡",
+            "(灬º‿º灬)♡", "(〃∀〃)", "(*/▽＼*)", "(*ﾉωﾉ)", "(っ•̀ω•́)っ♡", "♡(ŐωŐ人)",
+            "(づ◡﹏◡)づ", "(⊃｡•́‿•̀｡)⊃", "(つ≧▽≦)つ", "(*´∀`*)",
+        ]),
+        MoodGroup(title: "加油", items: [
+            "(๑•̀ㅂ•́)و✧", "(｡•̀ᴗ-)✧", "(ง •_•)ง", "(ง •̀_•́)ง", "ᕦ(ò_óˇ)ᕤ", "٩( 'ω' )و",
+            "( •̀ ω •́ )✧", "(｡･∀･)ﾉﾞ", "( ´ ▽ ` )ﾉ", "(^_−)☆", "( ￣▽￣)σ", "(╭☞•́⍛•̀)╭☞",
+            "(￣︶￣)↗", "♪(´▽｀)", "(*•̀ᴗ•́*)و ̑̑", "v(￣︶￣)y", "(^o^)v", "( •̀∀•́ )",
+            "(๑•̀ω•́)ノ", "(｀・ω・´)ゞ", "(￣^￣)ゞ", "( • ̀ω•́ )✧", "✧٩(ˊωˋ*)و✧", "(๑˃̵ᴗ˂̵)و",
+        ]),
+        MoodGroup(title: "摸鱼", items: [
+            "¯\\_(ツ)_/¯", "╮(￣▽￣)╭", "╮(╯▽╰)╭", "(￣_,￣ )", "(¬_¬ )", "( →_→)",
+            "(←_← )", "( ˙꒳˙ )", "(￣.￣)", "( ´_ゝ`)", "( -_-)旦~", "_(:з」∠)_",
+            "_(:3」∠)_", "(:3[▓▓]", "(:3[＿＿]", "(¦3[▓▓]", "(=_=)", "(⌐■_■)",
+            "(▀̿Ĺ̯▀̿ ̿)", "(~￣▽￣)~", "╰(￣ω￣ｏ)", "( ´･･)ﾉ(._.`)", "ヾ(´･ω･｀)ﾉ", "(눈_눈)",
+            "(ー_ー)!!", "(￣ω￣;)", "(￣▽￣\")", "(´-ι_-｀)", "(¬､¬)", "(°_°)",
+            "(:3_ヽ)_", "__(⌒(_´-ω-)_",
+        ]),
+        MoodGroup(title: "破防", items: [
+            "(ಥ_ಥ)", "(T_T)", "QAQ", "QvQ", "(｡•́︿•̀｡)", "(´;ω;`)",
+            "( >﹏<。)", "o(TヘTo)", "(；′⌒`)", "(｡•́ - •̀｡)", "(ノへ￣、)", "(´-ω-`)",
+            "(；´д｀)ゞ", "orz", "OTZ", "(´；ω；`)", "(╥_╥)", "(っ- ‸ - ς)",
+            "(ToT)", "(;´༎ຶД༎ຶ`)", "(ノДＴ)", "(´•̥ ̯ •̥`)", "o(╥﹏╥)o", "(p_q)",
+        ]),
+        MoodGroup(title: "吃瓜", items: [
+            "(⊙ˍ⊙)", "Σ(っ °Д °;)っ", "∑(っ°Д°;)っ", "(⊙_⊙)？", "(⊙x⊙;)", "(°ー°〃)",
+            "щ(゜Д゜щ)", "(x_x)", "(◔◡◔)", "┌( ಠ_ಠ)┘", "(・_・;)", "(°ロ°)!",
+            "(?_?)", "(O_O;)", "Σ(°△°|||)", "(°Д°)", "(⊙o⊙)", "w(ﾟДﾟ)w",
+            "(゜ロ゜)", "(´⊙ω⊙`)", "ε=ε=┌(;￣◇￣)┘",
+        ]),
+        MoodGroup(title: "掀桌", items: [
+            "(╯°□°）╯︵ ┻━┻", "(╯‵□′)╯︵┻━┻", "┬─┬ノ( º _ ºノ)", "(╬▔皿▔)╯", "(╬ Ò﹏Ó)", "(＃°Д°)",
+            "(｀⌒´メ)", "(๑`^´๑)", "( `д´)", "(`皿´#)", "(╬ಠ益ಠ)", "(ノಠ益ಠ)ノ彡┻━┻",
+            "凸(｀0´)凸", "(҂ `з´ )",
+        ]),
+        MoodGroup(title: "晚安", items: [
+            "(～﹃～)~zZ", "(∪｡∪)｡｡｡zzz", "(￣o￣) . z Z", "(-_-) zzz", "(￣﹃￣)", "( ˘ω˘ ) ｽﾔｧ…",
+            "(๑´ㅂ`๑)", "(￣～￣) 嚼嚼", "( ^_^)／▼☆▼＼(^_^ )", "( ^_^)/~~", "( ´ ▽ ` )ﾉ~~", "( ˘ ³˘)ﾉ~~",
+            "(*￣▽￣)d", "(っ˘ڡ˘ς)", "( ´▽｀)つ旦", "( ^_^)／□☆□＼(^_^ )",
+        ]),
     ]
+
+    static let kaomoji: [String] = kaomojiMoodGroups.flatMap(\.items)
+    static var moodGroupCountForTests: Int { kaomojiMoodGroups.count }
+    var activeMoodIndexForTests: Int { selectedMood }
+    func selectMoodForTests(_ index: Int) { selectMood(index) }
+    var displayedKaomojiCountForTests: Int { kaomojiMode ? (displayedMoods.indices.contains(selectedMood) ? displayedMoods[selectedMood].items.count : 0) : 0 }
 
     final class Cell: UICollectionViewCell {
         let label = UILabel()
@@ -96,13 +118,13 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             label.textAlignment = .center
             label.adjustsFontSizeToFitWidth = true
             label.minimumScaleFactor = 0.6
-            label.layer.cornerRadius = 10
+            label.layer.cornerRadius = 9
             label.layer.cornerCurve = .continuous
             label.layer.borderWidth = 0.5
             label.layer.borderColor = UIColor.clear.cgColor
             label.clipsToBounds = true
             contentView.addSubview(label)
-            contentView.layer.cornerRadius = 10
+            contentView.layer.cornerRadius = 9
             contentView.layer.cornerCurve = .continuous
             isAccessibilityElement = true
             accessibilityTraits = .keyboardKey
@@ -111,7 +133,9 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         override func traitCollectionDidChange(_ previous: UITraitCollection?) {
             super.traitCollectionDidChange(previous)
             if tag == 1 {
-                label.layer.borderColor = Theme.preeditPillBorder.resolvedColor(with: traitCollection).cgColor
+                label.layer.borderColor = Theme.keyBorder.resolvedColor(with: traitCollection).cgColor
+                label.backgroundColor = Theme.key
+                label.textColor = Theme.keyText
             }
         }
         override func layoutSubviews() {
@@ -121,20 +145,24 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         override var isHighlighted: Bool {
             didSet {
                 contentView.backgroundColor = .clear
-                label.backgroundColor = tag == 1 ? (isHighlighted ? Theme.functionKey : Theme.preeditPillBg) : (isHighlighted ? Theme.functionKey : .clear)
+                if tag == 1 {
+                    label.backgroundColor = isHighlighted ? Theme.keyPressed : Theme.key
+                } else {
+                    label.backgroundColor = isHighlighted ? Theme.functionKey : .clear
+                }
             }
         }
     }
 
     final class Header: UICollectionReusableView {
         let label = UILabel()
-        /// Mosto himself beside the name of his own 颜文字.
         let mosto = UIImageView(image: UIImage(named: "mosto_day", in: Bundle(for: EmojiPanelView.self), with: nil))
         override init(frame: CGRect) {
             super.init(frame: frame)
             label.font = Theme.font(13, .bold)
             label.textColor = Theme.secondaryText
-            backgroundColor = Theme.touchable; addSubview(label)
+            backgroundColor = Theme.touchable
+            addSubview(label)
             mosto.contentMode = .scaleAspectFit
             mosto.isHidden = true
             addSubview(mosto)
@@ -142,8 +170,8 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         required init?(coder: NSCoder) { fatalError() }
         override func layoutSubviews() {
             super.layoutSubviews()
-            let m: CGFloat = mosto.isHidden ? 0 : 26
-            mosto.frame = CGRect(x: 6, y: (bounds.height - 26) / 2, width: 26, height: 26)
+            let m: CGFloat = mosto.isHidden ? 0 : 24
+            mosto.frame = CGRect(x: 6, y: (bounds.height - 24) / 2, width: 24, height: 24)
             label.frame = bounds.insetBy(dx: 10, dy: 0).offsetBy(dx: m, dy: 0)
         }
     }
@@ -153,13 +181,16 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         layout.scrollDirection = .vertical
         layout.minimumInteritemSpacing = 0
         layout.minimumLineSpacing = 0
-        layout.sectionInset = UIEdgeInsets(top: 0, left: 4, bottom: 6, right: 4)
+        layout.sectionInset = UIEdgeInsets(top: 2, left: 4, bottom: 6, right: 4)
         layout.sectionHeadersPinToVisibleBounds = true
         collection = UICollectionView(frame: .zero, collectionViewLayout: layout)
         super.init(frame: frame)
-        backgroundColor = Theme.touchable   // on the system glass (never fully clear: see Theme.touchable)
+        backgroundColor = Theme.touchable
+
         collection.backgroundColor = .clear
-        collection.contentInsetAdjustmentBehavior = .never; if #available(iOS 26.0, *) { collection.topEdgeEffect.isHidden = true; collection.bottomEdgeEffect.isHidden = true }
+        collection.clipsToBounds = true
+        collection.contentInsetAdjustmentBehavior = .never
+        if #available(iOS 26.0, *) { collection.topEdgeEffect.isHidden = true; collection.bottomEdgeEffect.isHidden = true }
         collection.alwaysBounceHorizontal = false
         collection.showsHorizontalScrollIndicator = false
         collection.delaysContentTouches = false
@@ -169,6 +200,34 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         collection.register(Header.self, forSupplementaryViewOfKind: UICollectionView.elementKindSectionHeader, withReuseIdentifier: "h")
         addSubview(collection)
 
+        // Top Kaomoji Mood Tape Ribbon (replaces static section header only in kaomojiMode)
+        moodHeader.isHidden = true
+        moodMosto.contentMode = .scaleAspectFit
+        moodMosto.image = UIImage(named: "mosto_day", in: Bundle(for: EmojiPanelView.self), with: nil)
+        moodHeader.addSubview(moodMosto)
+        moodScroll.showsHorizontalScrollIndicator = false
+        moodScroll.alwaysBounceHorizontal = true
+        moodScroll.delaysContentTouches = false
+        moodScroll.contentInsetAdjustmentBehavior = .never
+        if #available(iOS 26.0, *) { moodScroll.leftEdgeEffect.isHidden = true; moodScroll.rightEdgeEffect.isHidden = true }
+        moodHeader.addSubview(moodScroll)
+        moodHairline.backgroundColor = Theme.separator.resolvedColor(with: traitCollection).cgColor
+        moodHeader.layer.addSublayer(moodHairline)
+        addSubview(moodHeader)
+
+        // Bottom Comfortable Scrollable Dock
+        dockHairline.backgroundColor = Theme.separator.resolvedColor(with: traitCollection).cgColor
+        dockBar.backgroundColor = .clear
+        dockBar.layer.addSublayer(dockHairline)
+        addSubview(dockBar)
+
+        tabScroll.showsHorizontalScrollIndicator = false
+        tabScroll.alwaysBounceHorizontal = true
+        tabScroll.delaysContentTouches = false
+        tabScroll.contentInsetAdjustmentBehavior = .never
+        if #available(iOS 26.0, *) { tabScroll.leftEdgeEffect.isHidden = true; tabScroll.rightEdgeEffect.isHidden = true }
+        dockBar.addSubview(tabScroll)
+
         let cfg = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
         backButton.setTitle("ABC", for: .normal)
         backButton.titleLabel?.font = Theme.font(16, .semibold)
@@ -176,29 +235,29 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         backButton.setTitleColor(Theme.secondaryText, for: .highlighted)
         backButton.accessibilityLabel = "返回键盘"
         backButton.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
+
         deleteButton.setImage(UIImage(systemName: "delete.left", withConfiguration: cfg), for: .normal)
-        // delete repeats while held, as the delete key does
         deleteButton.addTarget(self, action: #selector(deleteDown), for: .touchDown)
         deleteButton.addTarget(self, action: #selector(deleteUp), for: [.touchUpInside, .touchUpOutside, .touchCancel])
+
         returnButton.setTitle("返回", for: .normal)
         returnButton.titleLabel?.font = Theme.font(16, .bold)
         returnButton.accessibilityLabel = "返回键盘"
         returnButton.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
         returnButton.isHidden = true
+
         for b in [backButton, deleteButton, returnButton] {
             b.tintColor = Theme.keyText
             b.setTitleColor(Theme.keyText, for: .normal)
             b.backgroundColor = Theme.functionKey
-            b.layer.cornerRadius = 8
+            b.layer.cornerRadius = Metrics.cornerRadius
             b.layer.cornerCurve = .continuous
-            addSubview(b)
+            dockBar.addSubview(b)
         }
         returnButton.backgroundColor = Theme.accentKey
         returnButton.setTitleColor(Theme.accentText, for: .normal)
         applyLips()
-        bar.axis = .horizontal
-        bar.distribution = .fillEqually
-        addSubview(bar)
+
         let tabCfg = UIImage.SymbolConfiguration(pointSize: 15, weight: .regular)
         for (i, (name, symbol)) in ([("常用", "clock")] + Self.categoryNames).enumerated() {
             let b = UIButton(type: .system)
@@ -206,94 +265,99 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             b.tintColor = Theme.secondaryText
             b.tag = i
             b.accessibilityLabel = name
-            b.layer.cornerRadius = 7
+            b.layer.cornerRadius = 8
             b.layer.cornerCurve = .continuous
             b.addTarget(self, action: #selector(tabTapped(_:)), for: .touchUpInside)
-            bar.addArrangedSubview(b)
+            tabScroll.addSubview(b)
             tabButtons.append(b)
         }
-        // the last tab: Mosto's face (his 颜文字)
+
         let mosto = UIButton(type: .custom)
-        // drawn at the size of the other tab icons (a 24 pt face), so the button needs no insets
         if let face = UIImage(named: "mosto_day", in: Bundle(for: EmojiPanelView.self), with: nil) {
-            let side: CGFloat = 24
-            let small = UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { _ in
-                let scale = min(side / face.size.width, side / face.size.height)
-                let w = face.size.width * scale, h = face.size.height * scale
-                face.draw(in: CGRect(x: (side - w) / 2, y: (side - h) / 2, width: w, height: h))
-            }
-            mosto.setImage(small, for: .normal)
+            mosto.setImage(Self.resizedFace(face), for: .normal)
         }
         mosto.tag = Self.categoryNames.count + 1
         mosto.accessibilityLabel = Self.kaomojiName
-        mosto.layer.cornerRadius = 7
+        mosto.layer.cornerRadius = 8
         mosto.layer.cornerCurve = .continuous
         mosto.addTarget(self, action: #selector(tabTapped(_:)), for: .touchUpInside)
-        bar.addArrangedSubview(mosto)
+        tabScroll.addSubview(mosto)
         tabButtons.append(mosto)
-        // settings stay one long press away from here too (the 表情 key's long press opens them as well)
+
         gear.setImage(UIImage(systemName: "gearshape", withConfiguration: tabCfg), for: .normal)
         gear.tintColor = Theme.secondaryText
         gear.accessibilityLabel = "设置"
+        gear.layer.cornerRadius = 8
+        gear.layer.cornerCurve = .continuous
         gear.addTarget(self, action: #selector(settingsTapped), for: .touchUpInside)
-        bar.addArrangedSubview(gear)
+        tabScroll.addSubview(gear)
 
-        titleLabel.font = Theme.font(12, .bold)
-        titleLabel.textColor = Theme.secondaryText
-        // the category names are the headers in the list itself (as on the system emoji keyboard); a second, pinned
-        // name above them showed the same words twice
-        titleLabel.isHidden = true
         load()
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func themeChanged() {
-        applyLips()
-        collection.reloadData()
+    private static func resizedFace(_ face: UIImage) -> UIImage {
+        let side: CGFloat = 24
+        return UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { _ in
+            let scale = min(side / face.size.width, side / face.size.height)
+            let w = face.size.width * scale, h = face.size.height * scale
+            face.draw(in: CGRect(x: (side - w) / 2, y: (side - h) / 2, width: w, height: h))
+        }
     }
 
-    /// The bar's keys are vinyl caps like the keyboard's: a darker lip under each (a hard, unblurred shadow).
+    func themeChanged() {
+        applyLips()
+        moodMosto.isHidden = Theme.plain
+        refreshMoodRibbonStyle()
+        collection.reloadData()
+        setNeedsLayout()
+    }
+
     private func applyLips() {
+        let t = traitCollection
+        dockHairline.backgroundColor = Theme.separator.resolvedColor(with: t).cgColor
+        moodHairline.backgroundColor = Theme.separator.resolvedColor(with: t).cgColor
         for (b, lip) in [(backButton, Theme.functionLip), (deleteButton, Theme.functionLip), (returnButton, Theme.accentLip)] {
-            b.layer.shadowColor = lip.resolvedColor(with: traitCollection).cgColor
+            b.layer.shadowColor = lip.resolvedColor(with: t).cgColor
             b.layer.shadowOpacity = 1
             b.layer.shadowRadius = 0
             b.layer.shadowOffset = CGSize(width: 0, height: Metrics.lip)
             b.layer.cornerRadius = Metrics.cornerRadius
         }
-        backButton.backgroundColor = Theme.functionKey
+        backButton.backgroundColor = kaomojiMode ? Theme.accentKey : Theme.functionKey
+        backButton.setTitleColor(kaomojiMode ? Theme.accentText : Theme.keyText, for: .normal)
+        backButton.layer.shadowColor = (kaomojiMode ? Theme.accentLip : Theme.functionLip).resolvedColor(with: t).cgColor
         if let kaomojiTab = tabButtons.last {
             if Theme.plain {
                 let cfg = UIImage.SymbolConfiguration(pointSize: 16, weight: .medium)
                 kaomojiTab.imageView?.overrideUserInterfaceStyle = .light
                 kaomojiTab.setImage(UIImage(systemName: "face.smiling", withConfiguration: cfg)?.withRenderingMode(.alwaysTemplate), for: .normal)
                 let isSel = selected == tabButtons.count - 1
-                kaomojiTab.tintColor = (isSel ? Theme.keyText : Theme.secondaryText).resolvedColor(with: traitCollection)
-                kaomojiTab.setTitle(nil, for: .normal)
-            } else if let face = UIImage(named: "mosto_day", in: Bundle(for: EmojiPanelView.self), with: nil) {
-                kaomojiTab.imageView?.overrideUserInterfaceStyle = .unspecified
-                let side: CGFloat = 24
-                let small = UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { _ in
-                    let scale = min(side / face.size.width, side / face.size.height)
-                    let w = face.size.width * scale, h = face.size.height * scale
-                    face.draw(in: CGRect(x: (side - w) / 2, y: (side - h) / 2, width: w, height: h))
+                kaomojiTab.tintColor = (isSel ? Theme.keyText : Theme.secondaryText).resolvedColor(with: t)
+            } else {
+                let night = KeyboardSettings.shared.appearance == 2 || (KeyboardSettings.shared.appearance == 0 && t.userInterfaceStyle == .dark)
+                let imgName = night ? "mosto_night" : "mosto_day"
+                if let face = UIImage(named: imgName, in: Bundle(for: EmojiPanelView.self), with: nil) {
+                    kaomojiTab.imageView?.overrideUserInterfaceStyle = .unspecified
+                    kaomojiTab.setImage(Self.resizedFace(face), for: .normal)
                 }
-                kaomojiTab.setImage(small, for: .normal)
-                kaomojiTab.setTitle(nil, for: .normal)
+                moodMosto.image = UIImage(named: imgName, in: Bundle(for: EmojiPanelView.self), with: nil)
             }
         }
         deleteButton.backgroundColor = Theme.functionKey
+        deleteButton.tintColor = Theme.keyText
+        gear.tintColor = Theme.secondaryText
     }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
         super.traitCollectionDidChange(previous)
         applyLips()
+        refreshMoodRibbonStyle()
     }
 
     // MARK: - Data
 
-    /// The emoji this iOS can draw: by the Emoji version each first appeared in (iOS 16.4 → 15.0, 17.4 → 15.1, 18.4 → 16.0).
     static var supportedEmojiVersion: Double {
         if #available(iOS 18.4, *) { return 17.0 }
         if #available(iOS 17.4, *) { return 15.1 }
@@ -330,25 +394,91 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         UserDefaults.standard.set(Array(r.prefix(32)), forKey: recentKey)
     }
 
-    /// `kaomoji`: open on Mosto 颜文字 (a tap on Mosto) instead of 常用.
+    private static let recentKaomojiKey = "recentKaomoji"
+    static func recentKaomoji() -> [String] {
+        (UserDefaults.standard.array(forKey: recentKaomojiKey) as? [String]) ?? []
+    }
+
+    private func rebuildMoodData() {
+        var groups: [(title: String, items: [String])] = []
+        let recents = Array(Self.recentKaomoji().prefix(9))
+        if !recents.isEmpty {
+            groups.append(("常用", recents))
+        }
+        for g in Self.kaomojiMoodGroups {
+            groups.append((g.title, g.items))
+        }
+        displayedMoods = groups
+        moodButtons.forEach { $0.removeFromSuperview() }
+        moodButtons = groups.enumerated().map { idx, g in
+            let b = UIButton(type: .system)
+            b.setTitle(g.title, for: .normal)
+            b.titleLabel?.font = Theme.font(12.5, .semibold)
+            b.tag = idx
+            b.layer.cornerRadius = 12
+            b.layer.cornerCurve = .continuous
+            b.layer.borderWidth = 0.5
+            b.addTarget(self, action: #selector(moodTapped(_:)), for: .touchUpInside)
+            moodScroll.addSubview(b)
+            return b
+        }
+        selectedMood = min(selectedMood, max(0, displayedMoods.count - 1))
+        refreshMoodRibbonStyle()
+    }
+
+    private func refreshMoodRibbonStyle() {
+        let t = traitCollection
+        for (i, b) in moodButtons.enumerated() {
+            let active = i == selectedMood
+            b.backgroundColor = active ? Theme.selection : Theme.preeditPillBg
+            b.setTitleColor(active ? Theme.selectionText : Theme.keyText, for: .normal)
+            b.layer.borderColor = (active ? UIColor.clear : Theme.keyBorder).resolvedColor(with: t).cgColor
+        }
+    }
+
+    private func selectMood(_ index: Int) {
+        guard displayedMoods.indices.contains(index) else { return }
+        selectedMood = index
+        refreshMoodRibbonStyle()
+        layoutMoodPills()
+        if index < moodButtons.count {
+            moodScroll.scrollRectToVisible(moodButtons[index].frame.insetBy(dx: -16, dy: 0), animated: true)
+        }
+        if kaomojiMode {
+            collection.reloadData()
+            collection.setContentOffset(.zero, animated: false)
+        }
+    }
+
+    @objc private func moodTapped(_ b: UIButton) {
+        selectMood(b.tag)
+    }
+
+    /// `kaomoji`: open directly on the 10-mood Kaomoji Tape Deck.
     func load(kaomoji: Bool = false) {
         let recent = Self.recents()
-        var cats = Self.categories(); let rk = (UserDefaults.standard.array(forKey: "recentKaomoji") as? [String]) ?? []; if !rk.isEmpty, let ki = cats.firstIndex(where: { $0.name == Self.kaomojiName }) { cats[ki].items = rk + cats[ki].items.filter { !rk.contains($0) } }; sections = [Category(name: "常用", symbol: "clock", items: recent)] + cats
+        let cats = Self.categories()
+        sections = [Category(name: "常用", symbol: "clock", items: recent)] + cats
+        rebuildMoodData()
+        kaomojiMode = kaomoji
+        selectedMood = 0
+        refreshMoodRibbonStyle()
         selected = -1
         returnButton.isHidden = true
-        backButton.backgroundColor = kaomoji ? Theme.accentKey : Theme.functionKey
-        backButton.setTitleColor(kaomoji ? Theme.accentText : Theme.keyText, for: .normal)
-        backButton.layer.shadowColor = (kaomoji ? Theme.accentLip : Theme.functionLip).resolvedColor(with: traitCollection).cgColor
         deleteButton.isHidden = false
+        applyLips()
+        moodHeader.isHidden = !kaomoji
+        moodMosto.isHidden = Theme.plain
         collection.reloadData()
-        guard bounds.width > 100, bounds.height > 100 else { return }   // shown with a frame later: load() runs again
+        setNeedsLayout()
+        guard bounds.width > 100, bounds.height > 100 else { return }
         layoutIfNeeded()
         collection.layoutIfNeeded()
-        if kaomoji, let k = sections.firstIndex(where: { $0.name == Self.kaomojiName }) {
-            scrollTo(k, animated: false)
+        if kaomoji {
+            setSelected(Self.categoryNames.count + 1)
+            collection.setContentOffset(.zero, animated: false)
             return
         }
-        // open on 常用 when there is something in it, else on the faces
         scrollTo(recent.isEmpty ? 1 : 0, animated: false)
     }
 
@@ -360,52 +490,121 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     // MARK: - Layout
 
     private var cellSide: CGFloat {
-        // 8 across in portrait (as the iOS emoji keyboard), more in landscape
         let w = collection.bounds.width - 8
-        guard w > 100 else { return 40 }      // not laid out yet: never a zero or negative item size
+        guard w > 100 else { return 40 }
         let across = max(8, Int(w / 46))
         return floor(w / CGFloat(across))
+    }
+
+    private func layoutMoodPills() {
+        var x: CGFloat = 4
+        let h: CGFloat = 24
+        let y: CGFloat = max(0, (moodScroll.bounds.height - h) / 2)
+        for b in moodButtons {
+            let title = b.title(for: .normal) ?? ""
+            let tw = ceil((title as NSString).size(withAttributes: [.font: Theme.font(12.5, .semibold)]).width)
+            let w = max(44, tw + 18)
+            b.frame = CGRect(x: x, y: y, width: w, height: h)
+            x += w + 6
+        }
+        moodScroll.contentSize = CGSize(width: x + 4, height: moodScroll.bounds.height)
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
         let b = bounds
-        guard b.width > 100, b.height > 100 else { return }   // before the panel has its real frame
-        // 底栏键帽 44pt（HIG 的最小可点尺寸）。原 40 → 键高 36pt，只有标准的 82%，
-        // 单手在表情页点「ABC」返回时容易落空。只改这一个常量：三键、分类条同高，
-        // 列表高度相应少 8pt，首行 emoji 顶边不变（深泽直人：无意识设计）。
+        guard b.width > 100, b.height > 100 else { return }
         let barH: CGFloat = 48
-        titleLabel.frame = CGRect(x: 12, y: 0, width: b.width - 24, height: 24)
-        collection.frame = CGRect(x: 0, y: 2, width: b.width, height: b.height - 2 - barH - 4)
+        let topH: CGFloat = kaomojiMode ? 36 : 2
+
+        if kaomojiMode {
+            moodHeader.isHidden = false
+            moodHeader.frame = CGRect(x: 0, y: 0, width: b.width, height: topH)
+            let showMosto = !Theme.plain
+            moodMosto.isHidden = !showMosto
+            let lead: CGFloat = showMosto ? 38 : 8
+            moodMosto.frame = CGRect(x: 10, y: (topH - 24) / 2, width: 24, height: 24)
+            moodScroll.frame = CGRect(x: lead, y: 0, width: max(0, b.width - lead - 8), height: topH)
+            layoutMoodPills()
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            moodHairline.frame = CGRect(x: 8, y: topH - 0.5, width: max(0, b.width - 16), height: 1 / UIScreen.main.scale)
+            CATransaction.commit()
+        } else {
+            moodHeader.isHidden = true
+        }
+
+        collection.frame = CGRect(x: 0, y: topH, width: b.width, height: max(0, b.height - topH - barH))
+
+        dockBar.frame = CGRect(x: 0, y: b.height - barH, width: b.width, height: barH)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        dockHairline.frame = CGRect(x: 8, y: 0, width: max(0, b.width - 16), height: 1 / UIScreen.main.scale)
+        CATransaction.commit()
+
         let side: CGFloat = 56
-        backButton.frame = CGRect(x: 4, y: b.height - barH - 2, width: side, height: barH - 4)
-        deleteButton.frame = CGRect(x: b.width - side - 4, y: b.height - barH - 2, width: side, height: barH - 4)
+        let btnH: CGFloat = barH - 8
+        let btnY: CGFloat = 4
+        backButton.frame = CGRect(x: 6, y: btnY, width: side, height: btnH)
+        deleteButton.frame = CGRect(x: b.width - side - 6, y: btnY, width: side, height: btnH)
         returnButton.frame = deleteButton.frame
         for btn in [backButton, deleteButton, returnButton] {
             btn.layer.shadowPath = UIBezierPath(roundedRect: btn.bounds, cornerRadius: Metrics.cornerRadius).cgPath
         }
-        // narrow phones: the gear gives its room to the tabs (settings stay a long press on the 表情 key away)
-        gear.isHidden = b.width - 2 * side - 16 < 230
-        bar.frame = CGRect(x: side + 8, y: b.height - barH, width: b.width - 2 * side - 16, height: barH - 4)
+
+        // Scrollable horizontal category pills between backButton and deleteButton (36x34pt touch targets, zero squish)
+        let tabLeft = backButton.frame.maxX + 6
+        let tabRight = deleteButton.frame.minX - 6
+        tabScroll.frame = CGRect(x: tabLeft, y: 0, width: max(0, tabRight - tabLeft), height: barH)
+        let dockItems = tabButtons + [gear]
+        let itemW: CGFloat = 36
+        let itemH: CGFloat = 34
+        let itemGap: CGFloat = 4
+        var tx: CGFloat = 2
+        let ty = (barH - itemH) / 2
+        for item in dockItems {
+            item.frame = CGRect(x: tx, y: ty, width: itemW, height: itemH)
+            tx += itemW + itemGap
+        }
+        let totalTabW = tx - itemGap + 2
+        if totalTabW < tabScroll.bounds.width {
+            let extra = (tabScroll.bounds.width - totalTabW) / 2
+            for item in dockItems { item.frame.origin.x += extra }
+        }
+        tabScroll.contentSize = CGSize(width: max(tabScroll.bounds.width, totalTabW), height: barH)
+
         collection.collectionViewLayout.invalidateLayout()
-        updateSelection()
+        if !kaomojiMode { updateSelection() }
     }
 
     // MARK: - Collection
 
-    func numberOfSections(in collectionView: UICollectionView) -> Int { sections.count }
-    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int { sections[section].items.count }
+    func numberOfSections(in collectionView: UICollectionView) -> Int {
+        kaomojiMode ? 1 : sections.count
+    }
+
+    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
+        if kaomojiMode {
+            guard displayedMoods.indices.contains(selectedMood) else { return 0 }
+            return displayedMoods[selectedMood].items.count
+        }
+        return sections[section].items.count
+    }
 
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         let c = collectionView.dequeueReusableCell(withReuseIdentifier: "e", for: indexPath) as! Cell
-        let e = sections[indexPath.section].items[indexPath.item]
+        let kao = kaomojiMode || isKaomoji(indexPath.section)
+        let e: String
+        if kaomojiMode {
+            e = displayedMoods[selectedMood].items[indexPath.item]
+        } else {
+            e = sections[indexPath.section].items[indexPath.item]
+        }
         c.label.text = e
-        let kao = isKaomoji(indexPath.section)
         c.tag = kao ? 1 : 0
-        c.label.backgroundColor = kao ? Theme.preeditPillBg : .clear
-        c.label.layer.borderColor = kao ? Theme.preeditPillBorder.resolvedColor(with: traitCollection).cgColor : UIColor.clear.cgColor
-        c.label.font = kao ? .systemFont(ofSize: 15, weight: .medium) : .systemFont(ofSize: 30)
-        // 颜文字长短差很大：下限从 10.2pt 抬到 13.6pt（Susan Kare：小字不能糊成一团）
+        c.label.backgroundColor = kao ? Theme.key : .clear
+        c.label.layer.borderColor = kao ? Theme.keyBorder.resolvedColor(with: traitCollection).cgColor : UIColor.clear.cgColor
+        c.label.font = kao ? .systemFont(ofSize: 14.5, weight: .medium) : .systemFont(ofSize: 30)
         c.label.minimumScaleFactor = kao ? 0.58 : 0.6
         c.label.textColor = Theme.keyText
         c.accessibilityLabel = e
@@ -414,40 +613,58 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
 
     func collectionView(_ collectionView: UICollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> UICollectionReusableView {
         let h = collectionView.dequeueReusableSupplementaryView(ofKind: kind, withReuseIdentifier: "h", for: indexPath) as! Header
+        if kaomojiMode {
+            h.label.text = nil
+            h.mosto.isHidden = true
+            return h
+        }
         h.label.text = (isKaomoji(indexPath.section) && Theme.plain) ? "常用颜文字" : sections[indexPath.section].name
-        let night = KeyboardSettings.shared.appearance == 2 || (KeyboardSettings.shared.appearance == 0 && traitCollection.userInterfaceStyle == .dark); h.mosto.image = UIImage(named: night ? "mosto_night" : "mosto_day", in: Bundle(for: EmojiPanelView.self), with: nil); h.mosto.isHidden = !isKaomoji(indexPath.section) || Theme.plain
+        let night = KeyboardSettings.shared.appearance == 2 || (KeyboardSettings.shared.appearance == 0 && traitCollection.userInterfaceStyle == .dark)
+        h.mosto.image = UIImage(named: night ? "mosto_night" : "mosto_day", in: Bundle(for: EmojiPanelView.self), with: nil)
+        h.mosto.isHidden = !isKaomoji(indexPath.section) || Theme.plain
         h.setNeedsLayout()
         return h
     }
 
-    private func isKaomoji(_ section: Int) -> Bool { sections[section].name == Self.kaomojiName }
+    private func isKaomoji(_ section: Int) -> Bool {
+        section < sections.count && sections[section].name == Self.kaomojiName
+    }
 
     func collectionView(_ collectionView: UICollectionView, layout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
-        if isKaomoji(indexPath.section) {
+        if kaomojiMode || isKaomoji(indexPath.section) {
             return CGSize(width: max(60, floor((collectionView.bounds.width - 8) / 3)), height: 42)
         }
         return CGSize(width: cellSide, height: cellSide)
     }
 
     func collectionView(_ collectionView: UICollectionView, layout: UICollectionViewLayout, referenceSizeForHeaderInSection section: Int) -> CGSize {
-        // the first section's name is the panel title; later ones get a small header where they begin
-        sections[section].items.isEmpty ? .zero : CGSize(width: collectionView.bounds.width, height: 28)
+        if kaomojiMode { return .zero }
+        return sections[section].items.isEmpty ? .zero : CGSize(width: collectionView.bounds.width, height: 28)
     }
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
-        let e = sections[indexPath.section].items[indexPath.item]
-        if !isKaomoji(indexPath.section) {
+        let kao = kaomojiMode || isKaomoji(indexPath.section)
+        let e: String
+        if kaomojiMode {
+            e = displayedMoods[selectedMood].items[indexPath.item]
+        } else {
+            e = sections[indexPath.section].items[indexPath.item]
+        }
+        if !kao {
             Self.remember(e)
         } else {
-            var rk = ((UserDefaults.standard.array(forKey: "recentKaomoji") as? [String]) ?? []).filter { $0 != e }
+            var rk = Self.recentKaomoji().filter { $0 != e }
             rk.insert(e, at: 0)
-            UserDefaults.standard.set(Array(rk.prefix(24)), forKey: "recentKaomoji")
+            UserDefaults.standard.set(Array(rk.prefix(24)), forKey: Self.recentKaomojiKey)
         }
         onEmoji?(e)
         collectionView.deselectItem(at: indexPath, animated: false)
     }
 
-    func scrollViewDidScroll(_ scrollView: UIScrollView) { updateSelection() }
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        guard scrollView === collection, !kaomojiMode else { return }
+        updateSelection()
+    }
 
     // MARK: - Categories
 
@@ -455,25 +672,26 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         guard section < sections.count, !sections[section].items.isEmpty else { return }
         if section == 0 {
             collection.setContentOffset(.zero, animated: animated)
-        } else if section < collection.numberOfSections, let attr = collection.layoutAttributesForSupplementaryElement(ofKind: UICollectionView.elementKindSectionHeader,
-                                                                                  at: IndexPath(item: 0, section: section)) {
+        } else if section < collection.numberOfSections,
+                  let attr = collection.layoutAttributesForSupplementaryElement(
+                      ofKind: UICollectionView.elementKindSectionHeader,
+                      at: IndexPath(item: 0, section: section)
+                  ) {
             let maxY = max(0, collection.contentSize.height - collection.bounds.height)
             collection.setContentOffset(CGPoint(x: 0, y: min(attr.frame.minY, maxY)), animated: animated)
         }
         setSelected(section)
     }
 
-    /// The category whose emoji fill the top of the view.
     private func updateSelection() {
         let y = collection.contentOffset.y + 30
         var current = sections.firstIndex { !$0.items.isEmpty } ?? 1
-        // the collection may not have taken in the sections yet (a layout pass right after reloadData): only ask it
-        // about sections it already has, or UIKit throws
         let known = min(sections.count, collection.numberOfSections)
         for s in 1..<max(1, known) where !sections[s].items.isEmpty {
-            if let attr = collection.layoutAttributesForSupplementaryElement(ofKind: UICollectionView.elementKindSectionHeader,
-                                                                              at: IndexPath(item: 0, section: s)),
-               attr.frame.minY <= y { current = s }
+            if let attr = collection.layoutAttributesForSupplementaryElement(
+                ofKind: UICollectionView.elementKindSectionHeader,
+                at: IndexPath(item: 0, section: s)
+            ), attr.frame.minY <= y { current = s }
         }
         setSelected(current)
     }
@@ -481,15 +699,33 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     private func setSelected(_ s: Int) {
         guard s != selected, s < sections.count else { return }
         selected = s
-        titleLabel.text = sections[s].name
         for (i, b) in tabButtons.enumerated() {
             b.tintColor = (i == s ? Theme.keyText : Theme.secondaryText).resolvedColor(with: traitCollection)
             b.backgroundColor = i == s ? Theme.functionKey : .clear
             b.isEnabled = !sections[i].items.isEmpty
         }
+        if s < tabButtons.count {
+            tabScroll.scrollRectToVisible(tabButtons[s].frame.insetBy(dx: -12, dy: 0), animated: true)
+        }
     }
 
-    @objc private func tabTapped(_ b: UIButton) { scrollTo(b.tag, animated: false) }
+    @objc private func tabTapped(_ b: UIButton) {
+        let tapKaomoji = b.tag == Self.categoryNames.count + 1
+        if tapKaomoji != kaomojiMode {
+            kaomojiMode = tapKaomoji
+            applyLips()
+            collection.reloadData()
+            setNeedsLayout()
+            layoutIfNeeded()
+        }
+        if kaomojiMode {
+            setSelected(b.tag)
+            collection.setContentOffset(.zero, animated: false)
+        } else {
+            scrollTo(b.tag, animated: false)
+        }
+    }
+
     @objc private func backTapped() { onBack?() }
     @objc private func settingsTapped() { onSettings?() }
 
@@ -505,7 +741,6 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         deleteTimer = t
     }
 
-    // hidden or taken off screen with the delete key still held (a second finger on 拼音): the repeat stops
     override var isHidden: Bool { didSet { if isHidden { deleteUp() } } }
     override func didMoveToWindow() {
         super.didMoveToWindow()
