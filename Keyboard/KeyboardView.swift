@@ -100,15 +100,11 @@ final class KeyView: UIView {
         if let name = spec.symbol {
             let cfg = UIImage.SymbolConfiguration(pointSize: Metrics.iconSize, weight: Theme.plain ? .regular : .semibold)
             // Keep face.smiling in its crisp outline variant in dark mode so it harmonizes with shift & delete.
-            if name == "face.smiling" {
-                icon.image = UIImage(systemName: name, compatibleWith: UITraitCollection(userInterfaceStyle: .light))?
-                    .applyingSymbolConfiguration(cfg)?
-                    .withRenderingMode(.alwaysTemplate)
-            } else {
-                icon.image = UIImage(systemName: name, withConfiguration: cfg)
-            }
+            icon.overrideUserInterfaceStyle = (name == "face.smiling") ? .light : .unspecified
+            icon.image = UIImage(systemName: name, withConfiguration: cfg)?.withRenderingMode(.alwaysTemplate)
             icon.isHidden = false
         } else {
+            icon.overrideUserInterfaceStyle = .unspecified
             icon.image = nil
             icon.isHidden = true
         }
@@ -190,7 +186,7 @@ final class KeyView: UIView {
         label.textColor = spec.action == .space ? fg.withAlphaComponent(0.76) : fg
         hintLabel.textColor = Theme.secondaryText
         if !guideLabel.isHidden { guideLabel.attributedText = guideText() }
-        icon.tintColor = fg
+        icon.tintColor = fg.resolvedColor(with: t)
         if bounds.width > 0 { layoutCap() }
     }
 
