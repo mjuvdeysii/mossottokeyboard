@@ -359,6 +359,32 @@ struct UnifiedTypingBench: View {
                     }
                     benchToggle(title: "触感", isOn: $model.feedback)
                     benchToggle(title: "声效", isOn: $model.keySound)
+                    Button {
+                        let next = model.heightPreset.next
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                            model.keyboardHeight = next.rawValue
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            HStack(alignment: .bottom, spacing: 1.8) {
+                                ForEach(0..<KeyboardHeightPreset.allCases.count, id: \.self) { idx in
+                                    RoundedRectangle(cornerRadius: 0.8, style: .continuous)
+                                        .fill(Color(uiColor: idx <= model.heightPreset.rawValue ? Theme.statusLedActive : Theme.statusLedMuted))
+                                        .frame(width: 2.2, height: CGFloat(5 + idx * 2))
+                                }
+                            }
+                            Text("高度 · \(model.heightPreset.title)")
+                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.primary)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Capsule().fill(Color.primary.opacity(0.06)))
+                        .overlay(Capsule().strokeBorder(Color(uiColor: Theme.keyBorder), lineWidth: 0.5))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("键盘高度")
+                    .accessibilityValue(model.heightPreset.title)
                 }
             }
             .padding(12)
@@ -572,7 +598,8 @@ private struct BenchKeyboardDock: View {
                     .accessibilityLabel("轻点先确认手机音量后开始试用桌面键盘")
             }
         }
-        .frame(height: 264)
+        .frame(height: model.preferredKeyboardHeight)
+        .animation(.spring(response: 0.28, dampingFraction: 0.86), value: model.preferredKeyboardHeight)
         .background(
             Color(UIColor {
                 $0.userInterfaceStyle == .dark
@@ -779,7 +806,7 @@ private struct GestureAtlasView: View {
                     atlasRow(
                         cap: "☺︎ ⚙",
                         title: "按住表情键直达系统键盘设置",
-                        detail: "轻点进入 Emoji / 200+ 颜文字分类；按住 0.45 秒打开键盘面板，切换全拼/小鹤/九宫格、外观与音震。",
+                        detail: "轻点进入 Emoji / 200+ 颜文字分类；按住 0.45 秒打开键盘面板，调节全拼/小鹤/九宫格、四档键盘高度、外观与音震。",
                         demoTitle: nil
                     )
                 }

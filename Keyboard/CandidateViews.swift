@@ -1505,6 +1505,9 @@ final class SettingsPanelView: UIView {
     private let utilityRow = UIView()
     private let guidePill = UIButton(type: .custom)
     private let guideLed = CALayer()
+    private let heightPill = UIButton(type: .custom)
+    private let heightLabel = UILabel()
+    private var heightBars: [CALayer] = []
     private let offlineStatusLabel = UILabel()
     private let moreButton = UIButton(type: .system)
 
@@ -1517,6 +1520,7 @@ final class SettingsPanelView: UIView {
     private let englishSwitch = UISwitch()
     private let appearance = UISegmentedControl(items: ["自动", "日光", "夜灯"])
     private let styleControl = UISegmentedControl(items: ["Mosto", "简洁"])
+    private let heightControl = UISegmentedControl(items: KeyboardHeightPreset.allCases.map(\.title))
     private let learnedLabel = UILabel()
     private let diagLabel = UILabel()
     private let note = UILabel()
@@ -1531,7 +1535,7 @@ final class SettingsPanelView: UIView {
         numberControl.translatesAutoresizingMaskIntoConstraints = false
         numberControl.widthAnchor.constraint(equalToConstant: 156).isActive = true
         for i in 0..<numberControl.numberOfSegments { numberControl.setWidth(78, forSegmentAt: i) }
-        for sc in [numberControl, appearance, styleControl] {
+        for sc in [numberControl, appearance, styleControl, heightControl] {
             sc.selectedSegmentTintColor = Theme.selection
             sc.setTitleTextAttributes([.foregroundColor: Theme.selectionText, .font: Theme.font(13.5, .semibold)], for: .selected)
             sc.setTitleTextAttributes([.foregroundColor: Theme.keyText, .font: Theme.font(13.5, .medium)], for: .normal)
@@ -1613,8 +1617,27 @@ final class SettingsPanelView: UIView {
         offlineStatusLabel.textColor = Theme.secondaryText
         utilityRow.addSubview(offlineStatusLabel)
 
+        heightPill.layer.cornerRadius = 15
+        heightPill.layer.cornerCurve = .continuous
+        heightPill.addTarget(self, action: #selector(cycleHeight), for: .touchUpInside)
+        for _ in 0..<KeyboardHeightPreset.allCases.count {
+            let bar = CALayer()
+            bar.cornerRadius = 1.0
+            heightPill.layer.addSublayer(bar)
+            heightBars.append(bar)
+        }
+        heightLabel.font = Theme.font(11.5, .semibold)
+        heightLabel.textAlignment = .left
+        heightLabel.adjustsFontSizeToFitWidth = true
+        heightLabel.minimumScaleFactor = 0.82
+        heightLabel.isUserInteractionEnabled = false
+        heightPill.addSubview(heightLabel)
+        utilityRow.addSubview(heightPill)
+
         moreButton.setTitle("更多偏好 · 清空 ›", for: .normal)
         moreButton.titleLabel?.font = Theme.font(12, .semibold)
+        moreButton.titleLabel?.adjustsFontSizeToFitWidth = true
+        moreButton.titleLabel?.minimumScaleFactor = 0.85
         moreButton.layer.cornerRadius = 15
         moreButton.layer.cornerCurve = .continuous
         moreButton.addTarget(self, action: #selector(openMore), for: .touchUpInside)
@@ -1646,7 +1669,8 @@ final class SettingsPanelView: UIView {
         section("外观微调", rows: [
             row("风格", styleControl),
             row("光线", appearance),
-        ], footer: "Mosto 配备软胶单层键帽；简洁复刻系统 Liquid Glass。")
+            row("高度", heightControl),
+        ], footer: "Mosto 配备软胶单层键帽；简洁复刻系统 Liquid Glass。高度按 紧凑 / 标准 / 舒展 / 宽大 四档适配单手与双手输入。")
 
         learnedLabel.font = .systemFont(ofSize: 14)
         learnedLabel.textColor = Theme.secondaryText
@@ -1674,7 +1698,7 @@ final class SettingsPanelView: UIView {
         stack.addArrangedSubview(inset(note))
 
         numberControl.addTarget(self, action: #selector(numberChanged), for: .valueChanged)
-        for c in [appearance, styleControl] { c.addTarget(self, action: #selector(drawerChanged), for: .valueChanged) }
+        for c in [appearance, styleControl, heightControl] { c.addTarget(self, action: #selector(drawerChanged), for: .valueChanged) }
         englishSwitch.addTarget(self, action: #selector(drawerChanged), for: .valueChanged)
 
         styleChrome()
@@ -1694,7 +1718,7 @@ final class SettingsPanelView: UIView {
         moreButton.setTitleColor(Theme.functionText, for: .normal)
         backDeckButton.setTitleColor(Theme.selection, for: .normal)
         accessBanner.textColor = Theme.correctedMark
-        for sc in [numberControl, appearance, styleControl] {
+        for sc in [numberControl, appearance, styleControl, heightControl] {
             sc.selectedSegmentTintColor = Theme.selection
             sc.setTitleTextAttributes([.foregroundColor: Theme.selectionText, .font: Theme.font(13.5, .semibold)], for: .selected)
             sc.setTitleTextAttributes([.foregroundColor: Theme.keyText, .font: Theme.font(13.5, .medium)], for: .normal)
@@ -1702,6 +1726,39 @@ final class SettingsPanelView: UIView {
         englishSwitch.onTintColor = Theme.selection
         for tile in hardwareTiles { tile.refreshAppearance() }
         refreshGuidePill()
+        refreshHeightPill()
+    }
+
+    var heightPresetForTests: KeyboardHeightPreset { KeyboardHeightPreset.clamped(KeyboardSettings.shared.keyboardHeight) }
+    var heightPillTitleForTests: String { heightLabel.text ?? "" }
+    func tapHeightPillForTests() { cycleHeight() }
+
+    private func refreshHeightPill() {
+        let preset = KeyboardHeightPreset.clamped(KeyboardSettings.shared.keyboardHeight)
+        heightPill.backgroundColor = Theme.settingsGroup
+        heightPill.layer.borderColor = Theme.keyBorder.cgColor
+        heightPill.layer.borderWidth = 0.5
+        heightLabel.textColor = Theme.guideText
+        heightLabel.text = "高度·\(preset.title)"
+        heightPill.accessibilityLabel = "键盘高度"
+        heightPill.accessibilityValue = preset.title
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for (i, bar) in heightBars.enumerated() {
+            bar.backgroundColor = (i <= preset.rawValue ? Theme.statusLedActive : Theme.statusLedMuted).cgColor
+        }
+        CATransaction.commit()
+    }
+
+    @objc private func cycleHeight() {
+        let s = KeyboardSettings.shared
+        let next = KeyboardHeightPreset.clamped(s.keyboardHeight).next
+        s.keyboardHeight = next.rawValue
+        if canProvideHaptic {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred(intensity: next.hapticIntensity)
+        }
+        load()
+        onChange?()
     }
 
     private func refreshGuidePill() {
@@ -1859,7 +1916,8 @@ final class SettingsPanelView: UIView {
         let s = KeyboardSettings.shared
         let nightName = s.style == 1 ? "夜光" : "夜灯"
         let light = night.map { $0 ? nightName : "日光" } ?? (["自动", "日光", nightName][s.appearance])
-        statusLabel.text = "\(s.style == 1 ? "简洁" : "Mosto") · \(light) · \(s.scheme == 0 ? "小鹤双拼" : "全拼") · \(s.pinyinGrid ? "九宫格" : "全键盘")"
+        let heightName = KeyboardHeightPreset.clamped(s.keyboardHeight).title
+        statusLabel.text = "\(s.style == 1 ? "简洁" : "Mosto") · \(light) · \(s.scheme == 0 ? "小鹤双拼" : "全拼") · \(s.pinyinGrid ? "九宫格" : "全键盘") · \(heightName)"
     }
 
     func load() {
@@ -1895,7 +1953,9 @@ final class SettingsPanelView: UIView {
         englishSwitch.isOn = s.english
         appearance.selectedSegmentIndex = s.appearance
         styleControl.selectedSegmentIndex = s.style
+        heightControl.selectedSegmentIndex = KeyboardHeightPreset.clamped(s.keyboardHeight).rawValue
         refreshGuidePill()
+        refreshHeightPill()
         setNeedsLayout()
     }
 
@@ -2018,6 +2078,7 @@ final class SettingsPanelView: UIView {
         s.english = englishSwitch.isOn
         s.appearance = appearance.selectedSegmentIndex
         s.style = styleControl.selectedSegmentIndex
+        s.keyboardHeight = KeyboardHeightPreset.clamped(heightControl.selectedSegmentIndex).rawValue
         load()
         onChange?()
     }
@@ -2102,15 +2163,30 @@ final class SettingsPanelView: UIView {
             nextY += bannerH + gapY
         }
         utilityRow.frame = CGRect(x: padX, y: min(nextY, bodyFrame.height - utilH - 4), width: w - padX * 2, height: utilH)
-        let moreW = min(136, max(108, (utilityRow.bounds.width) * 0.42))
-        moreButton.frame = CGRect(x: utilityRow.bounds.width - moreW, y: 0, width: moreW, height: utilH)
-        let guideW = min(142, max(96, utilityRow.bounds.width - moreW - 10))
+        let uw = utilityRow.bounds.width
+        let moreW = min(124, max(98, (uw * 0.34).rounded()))
+        let heightW = min(98, max(78, (uw * 0.25).rounded()))
+        moreButton.frame = CGRect(x: uw - moreW, y: 0, width: moreW, height: utilH)
+        heightPill.frame = CGRect(x: uw - moreW - 6 - heightW, y: 0, width: heightW, height: utilH)
+        let leftSpace = max(68, uw - moreW - heightW - 12)
+        let guideW = min(142, max(84, leftSpace))
         guidePill.frame = CGRect(x: 0, y: 0, width: guideW, height: utilH)
+        let barW: CGFloat = 2.2
+        let barGap: CGFloat = 2.0
+        let startX: CGFloat = 8
+        let barHeights: [CGFloat] = [5, 7.5, 10, 12.5]
+        let bottomY = (utilH + 12.5) / 2
+        let labelX = startX + CGFloat(barHeights.count) * barW + CGFloat(max(0, barHeights.count - 1)) * barGap + 4
+        heightLabel.frame = CGRect(x: labelX, y: 0, width: max(20, heightW - labelX - 6), height: utilH)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         guideLed.frame = CGRect(x: 10, y: (utilH - 4.5) / 2, width: 4.5, height: 4.5)
+        for (i, bar) in heightBars.enumerated() where i < barHeights.count {
+            let bh = barHeights[i]
+            bar.frame = CGRect(x: startX + CGFloat(i) * (barW + barGap), y: bottomY - bh, width: barW, height: bh)
+        }
         CATransaction.commit()
-        offlineStatusLabel.frame = CGRect(x: 2, y: 0, width: utilityRow.bounds.width - moreW - 8, height: utilH)
+        offlineStatusLabel.frame = CGRect(x: 2, y: 0, width: max(64, heightPill.frame.minX - 8), height: utilH)
 
         // Layout secondary `moreScroll`
         let size = stack.systemLayoutSizeFitting(
@@ -2142,7 +2218,7 @@ final class KeyboardSettings {
         let standard = UserDefaults.standard
         if let group = UserDefaults(suiteName: Self.appGroupID) {
             if !group.bool(forKey: "migratedToAppGroup") {
-                let keys = ["scheme", "autocorrect", "xiaoheGuide", "english", "pinyinGrid", "numberPad", "style", "appearance", "feedback", "hapticProfile", "keySound", "keyOffsets", "offsetX", "offsetY"]
+                let keys = ["scheme", "autocorrect", "xiaoheGuide", "english", "pinyinGrid", "numberPad", "style", "appearance", "keyboardHeight", "feedback", "hapticProfile", "keySound", "keyOffsets", "offsetX", "offsetY"]
                 for k in keys where group.object(forKey: k) == nil {
                     if let v = standard.object(forKey: k) { group.set(v, forKey: k) }
                 }
@@ -2202,6 +2278,20 @@ final class KeyboardSettings {
     var appearance: Int {
         get { min(d.object(forKey: "appearance") as? Int ?? 0, 3) % 3 }
         set { d.set(newValue, forKey: "appearance"); notify() }
+    }
+
+    /// Keyboard elevation tier: 0 紧凑 / 1 标准 (default) / 2 舒展 / 3 宽大.
+    var keyboardHeight: Int {
+        get {
+            guard let raw = d.object(forKey: "keyboardHeight") as? Int else {
+                return KeyboardHeightPreset.standard.rawValue
+            }
+            return KeyboardHeightPreset.clamped(raw).rawValue
+        }
+        set {
+            d.set(KeyboardHeightPreset.clamped(newValue).rawValue, forKey: "keyboardHeight")
+            notify()
+        }
     }
     /// Haptic tap on key down (the key kept its old name: it used to switch sound and haptics together).
     var feedback: Bool {

@@ -74,6 +74,75 @@ struct LayoutContext: Equatable {
     var xiaoheGuide: Bool = false
 }
 
+/// 4 calibrated hardware-aligned keyboard height tiers (OTTOSSOM desk deck elevation).
+/// `.standard` preserves the exact baseline Gboard-calibrated geometry (242 pt portrait / 198 pt landscape).
+enum KeyboardHeightPreset: Int, CaseIterable {
+    case compact = 0
+    case standard = 1
+    case comfortable = 2
+    case tall = 3
+
+    static func clamped(_ raw: Int) -> KeyboardHeightPreset {
+        KeyboardHeightPreset(rawValue: min(max(raw, compact.rawValue), tall.rawValue)) ?? .standard
+    }
+
+    var title: String {
+        switch self {
+        case .compact: return "紧凑"
+        case .standard: return "标准"
+        case .comfortable: return "舒展"
+        case .tall: return "宽大"
+        }
+    }
+
+    var next: KeyboardHeightPreset {
+        KeyboardHeightPreset(rawValue: (rawValue + 1) % Self.allCases.count) ?? .standard
+    }
+
+    func rowPitch(landscape: Bool) -> CGFloat {
+        switch (self, landscape) {
+        case (.compact, false): return 46
+        case (.standard, false): return Metrics.rowPitch
+        case (.comfortable, false): return 55
+        case (.tall, false): return 60
+        case (.compact, true): return 37
+        case (.standard, true): return Metrics.rowPitchLandscape
+        case (.comfortable, true): return 43
+        case (.tall, true): return 46
+        }
+    }
+
+    func toolbarHeight(landscape: Bool) -> CGFloat {
+        switch (self, landscape) {
+        case (.tall, false): return 44
+        case (.tall, true): return 40
+        case (_, false): return Metrics.toolbarHeight
+        case (_, true): return Metrics.toolbarHeightLandscape
+        }
+    }
+
+    func totalHeight(landscape: Bool) -> CGFloat {
+        toolbarHeight(landscape: landscape) + 4 * rowPitch(landscape: landscape)
+    }
+
+    /// Stepped tactile weight paired with mechanical travel (compact click -> tall cushion).
+    var hapticIntensity: CGFloat {
+        switch self {
+        case .compact: return 0.42
+        case .standard: return 0.56
+        case .comfortable: return 0.72
+        case .tall: return 0.88
+        }
+    }
+
+    /// Optical letter font size anchored at baseline 40 pt cap height -> 24 pt, scaled in 0.5 pt steps.
+    static func letterFontSize(forCapHeight capHeight: CGFloat) -> CGFloat {
+        let raw = Metrics.letterFont + (capHeight - 40) * 0.25
+        let clamped = min(26.5, max(20.5, raw))
+        return (clamped * 2).rounded() / 2
+    }
+}
+
 /// Geometry measured from Gboard iOS 2.3 on a 402 pt wide iPhone (1206 px screenshots):
 /// toolbar 65 pt, row pitch 53 pt, key gaps ~5.5 pt × 11 pt, space bar 42 pt tall with ~6 pt corners,
 /// borderless keys, letter glyphs ~24 pt. (Gboard's top-row digit hints and letter long-press symbols are left out.)

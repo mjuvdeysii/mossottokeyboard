@@ -139,6 +139,7 @@ enum KeyboardTests {
         r60XiaoheMissingKeyRecovery(window)
         r61BilingualFlowAndPairOvertype(window)
         r62NestedPairsMathAndKaomojiMoodSync(window)
+        r63AdjustableHeightAndOpticalScale(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -2244,6 +2245,104 @@ enum KeyboardTests {
         log(titlesBefore.first == "常用" && nightPose == "mosto_night" && yawnPose == "mosto_yawn" && toggledToRecent && toggledToSign && syncedRecentCount == 2,
             "r62.EmojiPanelView couples mood pose, Mosto shortcut toggle, and live 常用 kaomoji sync",
             "titles0=\(titlesBefore.first ?? "nil") night=\(nightPose) yawn=\(yawnPose) recent=\(toggledToRecent) sign=\(toggledToSign) count=\(syncedRecentCount)")
+    }
+
+    static func r63AdjustableHeightAndOpticalScale(_ window: UIWindow) {
+        let s = KeyboardSettings.shared
+        let prevHeight = s.keyboardHeight
+        defer { s.keyboardHeight = prevHeight }
+
+        // 1. 4-tier KeyboardHeightPreset totals, clamping, cycling & optical letter sizing
+        let heightsOk = KeyboardHeightPreset.compact.totalHeight(landscape: false) == 226
+            && KeyboardHeightPreset.standard.totalHeight(landscape: false) == 242
+            && KeyboardHeightPreset.comfortable.totalHeight(landscape: false) == 262
+            && KeyboardHeightPreset.tall.totalHeight(landscape: false) == 284
+            && KeyboardHeightPreset.compact.totalHeight(landscape: true) == 186
+            && KeyboardHeightPreset.standard.totalHeight(landscape: true) == 198
+            && KeyboardHeightPreset.comfortable.totalHeight(landscape: true) == 210
+            && KeyboardHeightPreset.tall.totalHeight(landscape: true) == 224
+            && KeyboardHeightPreset.clamped(-3) == .compact
+            && KeyboardHeightPreset.clamped(99) == .tall
+            && KeyboardHeightPreset.tall.next == .compact
+            && KeyboardHeightPreset.letterFontSize(forCapHeight: 37) == 23.5
+            && KeyboardHeightPreset.letterFontSize(forCapHeight: 40) == 24.0
+            && KeyboardHeightPreset.letterFontSize(forCapHeight: 48) == 26.0
+        log(heightsOk,
+            "r63.KeyboardHeightPreset tiers, clamping and optical font scale match calibrated geometry",
+            "portrait=[\(KeyboardHeightPreset.compact.totalHeight(landscape: false)),\(KeyboardHeightPreset.standard.totalHeight(landscape: false)),\(KeyboardHeightPreset.comfortable.totalHeight(landscape: false)),\(KeyboardHeightPreset.tall.totalHeight(landscape: false))]")
+
+        // 2. SettingsPanelView 4-bar height pill cycles tiers & clamps persisted values
+        s.keyboardHeight = 99
+        let clampedSetting = s.keyboardHeight == KeyboardHeightPreset.tall.rawValue
+        s.keyboardHeight = KeyboardHeightPreset.standard.rawValue
+        let sp = SettingsPanelView(frame: CGRect(x: 0, y: 0, width: 402, height: 226))
+        sp.load()
+        sp.layoutIfNeeded()
+        var cycled: [String] = []
+        for _ in 0..<4 {
+            sp.tapHeightPillForTests()
+            cycled.append("\(sp.heightPresetForTests.rawValue):\(sp.heightPillTitleForTests)")
+        }
+        let panelOk = clampedSetting && cycled == ["2:高度·舒展", "3:高度·宽大", "0:高度·紧凑", "1:高度·标准"]
+        log(panelOk,
+            "r63.SettingsPanelView height pill cycles 4 tiers cleanly even at compact height",
+            "clamped=\(clampedSetting) cycled=\(cycled)")
+
+        // 3. KeyboardViewController height propagation & onHeightChanged callback
+        if let pair = makeKeyboard(scheme: 0, in: window) {
+            let (vc, _) = pair
+            var reported: [CGFloat] = []
+            vc.onHeightChanged = { reported.append($0) }
+            s.keyboardHeight = KeyboardHeightPreset.compact.rawValue
+            vc.applySettings()
+            drain(0.02)
+            let hCompact = (vc.preferredHeightForTests, vc.heightForTests(landscape: true))
+            s.keyboardHeight = KeyboardHeightPreset.tall.rawValue
+            vc.applySettings()
+            drain(0.02)
+            let hTall = (vc.preferredHeightForTests, vc.heightForTests(landscape: true))
+            log(hCompact == (226, 186) && hTall == (284, 224) && reported == [226, 284],
+                "r63.KeyboardViewController updates preferred height and notifies listeners on tier changes",
+                "compact=\(hCompact) tall=\(hTall) reported=\(reported)")
+        } else {
+            log(false, "r63.KeyboardViewController setup", "engine did not load")
+        }
+
+        // 4. KeyboardView optical cap font scaling & >= 36 pt cap touch target in compact mode
+        func firstLetterFontSize(in kb: KeyboardView) -> CGFloat {
+            func findQ(_ v: UIView) -> UILabel? {
+                for sub in v.subviews {
+                    if let l = sub as? UILabel, l.text?.lowercased() == "q" { return l }
+                    if let found = findQ(sub) { return found }
+                }
+                return nil
+            }
+            return findQ(kb)?.font.pointSize ?? 0
+        }
+        let kb = KeyboardView(spatial: SpatialModel.standard())
+        let ctx = LayoutContext(page: .letters, chinese: true, showGlobe: false, returnLabel: nil, returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true)
+        kb.frame = CGRect(x: 0, y: 0, width: 402, height: 184)
+        kb.configure(ctx)
+        kb.layoutIfNeeded()
+        let compactFont = firstLetterFontSize(in: kb)
+        kb.frame = CGRect(x: 0, y: 0, width: 402, height: 240)
+        kb.setNeedsLayout()
+        kb.layoutIfNeeded()
+        let tallFont = firstLetterFontSize(in: kb)
+        log(compactFont == 23.5 && tallFont == 26.0,
+            "r63.KeyboardView scales letter cap typography optically across compact and tall tiers",
+            "compactFont=\(compactFont) tallFont=\(tallFont)")
+
+        // 5. PlaygroundModel bidirectional height synchronization
+        let model = PlaygroundModel()
+        model.keyboardHeight = KeyboardHeightPreset.comfortable.rawValue
+        let syncedFromModel = s.keyboardHeight == 2 && model.preferredKeyboardHeight == 262
+        s.keyboardHeight = KeyboardHeightPreset.compact.rawValue
+        model.syncKeyboardSettings()
+        let syncedFromDefaults = model.keyboardHeight == 0 && model.preferredKeyboardHeight == 226
+        log(syncedFromModel && syncedFromDefaults,
+            "r63.PlaygroundModel synchronizes adjustable keyboard height with KeyboardSettings",
+            "fromModel=\(syncedFromModel) fromDefaults=\(syncedFromDefaults)")
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

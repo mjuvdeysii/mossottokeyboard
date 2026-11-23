@@ -111,6 +111,7 @@ final class PlaygroundModel: ObservableObject {
         feedback = s.feedback
         hapticProfile = s.hapticProfile
         keySound = s.keySound
+        keyboardHeight = KeyboardHeightPreset.clamped(s.keyboardHeight).rawValue
         host.onChange = { [weak self] in self?.refresh() }
     }
 
@@ -234,8 +235,12 @@ final class PlaygroundModel: ObservableObject {
     @Published var hapticProfile = 0 { didSet { applyLayout() } }
     @Published var keySound = true { didSet { applyLayout() } }
     @Published var numberPad = false { didSet { applyLayout() } }
+    @Published var keyboardHeight = KeyboardHeightPreset.standard.rawValue { didSet { applyLayout() } }
     @Published var keyboardVisible = true
     @Published var guide = false { didSet { applyLayout() } }
+
+    var heightPreset: KeyboardHeightPreset { KeyboardHeightPreset.clamped(keyboardHeight) }
+    var preferredKeyboardHeight: CGFloat { heightPreset.totalHeight(landscape: false) }
 
     func applyLayout() {
         let s = KeyboardSettings.shared
@@ -251,6 +256,7 @@ final class PlaygroundModel: ObservableObject {
         s.feedback = feedback
         s.hapticProfile = hapticProfile
         s.keySound = keySound
+        s.keyboardHeight = KeyboardHeightPreset.clamped(keyboardHeight).rawValue
         keyboard?.applySettings()
     }
 
@@ -260,6 +266,7 @@ final class PlaygroundModel: ObservableObject {
         if keySound != s.keySound { keySound = s.keySound }
         if feedback != s.feedback { feedback = s.feedback }
         if hapticProfile != s.hapticProfile { hapticProfile = s.hapticProfile }
+        if keyboardHeight != s.keyboardHeight { keyboardHeight = s.keyboardHeight }
         keyboard?.applySettings()
     }
 
@@ -330,6 +337,11 @@ struct KeyboardHostView: UIViewControllerRepresentable {
         ])
         vc.didMove(toParent: box)
         vc.onCandidatesUpdated = { [weak model] in model?.syncActiveFixes() }
+        vc.onHeightChanged = { [weak model] _ in
+            DispatchQueue.main.async {
+                model?.syncKeyboardSettings()
+            }
+        }
         model.keyboard = vc
         DispatchQueue.main.async { model.ready = true; model.applyLayout() }
         return box

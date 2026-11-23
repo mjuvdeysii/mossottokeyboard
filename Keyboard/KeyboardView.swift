@@ -349,7 +349,8 @@ final class KeyView: UIView {
             g.attributedText = guideText(fitting: CGSize(width: f.width - 2, height: f.height - top - 2))
             g.frame = CGRect(x: f.minX + 1, y: f.minY + top, width: f.width - 2, height: f.height - top - 2)
         } else if spec.isLetter {
-            let lf = Theme.font(Metrics.letterFont, .regular)
+            let capH = f.height > 0 ? f.height : 40
+            let lf = Theme.font(KeyboardHeightPreset.letterFontSize(forCapHeight: capH), .regular)
             if label.font !== lf { label.font = lf }
         }
         if let h = hintLabel, !h.isHidden {
@@ -871,7 +872,7 @@ final class KeyboardView: UIView {
         let rowH = (bounds.height - topReach) / CGFloat(rows.count)
         let unit = bounds.width / 10
         let gapX = Metrics.gapX
-        let gapY = min(Metrics.gapY, rowH * 0.22)
+        let gapY = min(12, max(8, (rowH * 0.20).rounded()))
         hitRects = []
         var i = 0
         var spatialKeys: [SpatialModel.Key] = []

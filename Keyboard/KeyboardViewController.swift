@@ -222,7 +222,8 @@ final class KeyboardViewController: UIInputViewController {
     static let inExtension = Bundle.main.bundleURL.pathExtension == "appex"
 
     private var isLandscape: Bool { view.bounds.width > view.bounds.height && view.bounds.height > 0 }
-    private var barHeight: CGFloat { isLandscape ? Metrics.toolbarHeightLandscape : Metrics.toolbarHeight }
+    private var barHeight: CGFloat { heightPreset.toolbarHeight(landscape: isLandscape) }
+    var onHeightChanged: ((CGFloat) -> Void)?
 
     // MARK: - Test bench
 
@@ -253,6 +254,8 @@ final class KeyboardViewController: UIInputViewController {
     var candidateBarForTests: CandidateBarView { candidateBar }
     var gridIfLoadedForTests: CandidateGridView? { gridIfLoaded }
     var emojiPanelIfLoadedForTests: EmojiPanelView? { emojiPanelIfLoaded }
+    var preferredHeightForTests: CGFloat { preferredHeight() }
+    func heightForTests(landscape: Bool) -> CGFloat { preferredHeight(landscape: landscape) }
     var plainLightHiddenForTests: Bool { plainLightButton.isHidden }
     var mostoHintHiddenForTests: Bool { mostoHintButton.isHidden }
     var testSettled: Bool { taps.isEmpty || resultGeneration == generation }
@@ -456,8 +459,11 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        heightPreset = KeyboardHeightPreset.clamped(KeyboardSettings.shared.keyboardHeight)
         inputView?.allowsSelfSizing = true
-        heightConstraint?.constant = preferredHeight()
+        let targetH = preferredHeight()
+        heightConstraint?.constant = targetH
+        onHeightChanged?(targetH)
         view.setNeedsUpdateConstraints()
         lastDocumentID = host.documentIdentifier
         cachedShowGlobe = needsInputModeSwitchKey
@@ -533,8 +539,7 @@ final class KeyboardViewController: UIInputViewController {
         } else {
             isLandscape = UIScreen.main.bounds.width > UIScreen.main.bounds.height
         }
-        return isLandscape ? Metrics.toolbarHeightLandscape + 4 * Metrics.rowPitchLandscape
-                           : Metrics.toolbarHeight + 4 * Metrics.rowPitch
+        return heightPreset.totalHeight(landscape: isLandscape)
     }
 
     override func viewDidLayoutSubviews() {
@@ -897,6 +902,11 @@ final class KeyboardViewController: UIInputViewController {
         soundOn = s.keySound
         numberPadOn = s.numberPad
         pinyinGridOn = s.pinyinGrid
+        let prevHeightPreset = heightPreset
+        heightPreset = KeyboardHeightPreset.clamped(s.keyboardHeight)
+        let targetH = preferredHeight()
+        let heightChanged = prevHeightPreset != heightPreset || abs((heightConstraint?.constant ?? targetH) - targetH) > 0.5
+        heightConstraint?.constant = targetH
         if let sp = settingsPanelIfLoaded, !sp.isHidden {
             let n = engine.counts()
             sp.setLearned("词库 \(n.lexicon) 条 · 已学习 \(n.learned) 个词")
@@ -907,6 +917,11 @@ final class KeyboardViewController: UIInputViewController {
         }
         reconfigure()
         applyAppearance()
+        if heightChanged {
+            view.setNeedsLayout()
+            view.layoutIfNeeded()
+            onHeightChanged?(targetH)
+        }
         if !taps.isEmpty { refresh() }
     }
 
@@ -916,6 +931,7 @@ final class KeyboardViewController: UIInputViewController {
     private var soundOn = true
     private var numberPadOn = false
     private var pinyinGridOn = false
+    private var heightPreset: KeyboardHeightPreset = .standard
     /// Felt and heard as the table says (FeedbackModel), when the switches and 允许完全访问 allow it.
     func feel(_ event: FeedbackEvent, at point: CGPoint? = nil) {
         guard feedbackAllowed else { return }
