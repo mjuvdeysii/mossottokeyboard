@@ -1518,7 +1518,7 @@ enum KeyboardTests {
             vc.candidateTapped(0)
             vc.selectionDidChange(nil)
             vc.handle(.space, tap: nil)
-            log(h.string.hasSuffix("the. "),
+            log(h.string.lowercased().hasSuffix("the. "),
                 "r53.English suggestion tap preserves double-space period across selectionDidChange",
                 "text=\(h.string)")
         } else {

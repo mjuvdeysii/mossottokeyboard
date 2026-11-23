@@ -421,3 +421,16 @@ enum Theme {
     private static let mosto_selectionText: UIColor = dyn(.white, hex(0x2B1961))
     private static let plain_selectionText: UIColor = UIColor.white
 }
+
+extension UIScrollView {
+    /// Disables all four iOS 26+ Liquid Glass scroll-edge blur curtains so compact ribbons & panels stay razor-sharp.
+    func disableAllEdgeEffects() {
+        contentInsetAdjustmentBehavior = .never
+        if #available(iOS 26.0, *) {
+            topEdgeEffect.isHidden = true
+            bottomEdgeEffect.isHidden = true
+            leftEdgeEffect.isHidden = true
+            rightEdgeEffect.isHidden = true
+        }
+    }
+}

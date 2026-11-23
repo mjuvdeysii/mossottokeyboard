@@ -170,7 +170,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         strip.delaysContentTouches = false
         strip.canCancelContentTouches = false; strip.panGestureRecognizer.cancelsTouchesInView = false; strip.panGestureRecognizer.delaysTouchesBegan = false; strip.panGestureRecognizer.delaysTouchesEnded = false
         strip.scrollsToTop = false
-        strip.contentInsetAdjustmentBehavior = .never; if #available(iOS 26.0, *) { strip.topEdgeEffect.isHidden = true; strip.bottomEdgeEffect.isHidden = true; strip.leftEdgeEffect.isHidden = true; strip.rightEdgeEffect.isHidden = true }
+        strip.disableAllEdgeEffects()
         strip.backgroundColor = .clear
         strip.panGestureRecognizer.addTarget(self, action: #selector(stripPanned(_:)))
         correctionBar.cornerRadius = 1
@@ -1074,7 +1074,7 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         backgroundColor = Theme.touchable   // on the system glass, like the keys (never fully clear: see Theme.touchable)
         collection.backgroundColor = .clear
         collection.clipsToBounds = true
-        collection.contentInsetAdjustmentBehavior = .never; if #available(iOS 26.0, *) { collection.topEdgeEffect.isHidden = true; collection.bottomEdgeEffect.isHidden = true }
+        collection.disableAllEdgeEffects()
         collection.alwaysBounceHorizontal = false
         collection.showsHorizontalScrollIndicator = false
         collection.dataSource = self
@@ -1474,8 +1474,7 @@ final class SettingsPanelView: UIView {
         moreScroll.isHidden = true
         moreScroll.alwaysBounceHorizontal = false
         moreScroll.showsHorizontalScrollIndicator = false
-        moreScroll.contentInsetAdjustmentBehavior = .never
-        if #available(iOS 26.0, *) { moreScroll.topEdgeEffect.isHidden = true; moreScroll.bottomEdgeEffect.isHidden = true }
+        moreScroll.disableAllEdgeEffects()
         addSubview(moreScroll)
 
         stack.axis = .vertical
@@ -2096,7 +2095,7 @@ final class SyllablePickerView: UIView {
         clipsToBounds = true
         scroll.showsHorizontalScrollIndicator = false
         scroll.alwaysBounceHorizontal = false
-        scroll.contentInsetAdjustmentBehavior = .never; if #available(iOS 26.0, *) { scroll.topEdgeEffect.isHidden = true; scroll.bottomEdgeEffect.isHidden = true }
+        scroll.disableAllEdgeEffects()
         addSubview(scroll)
         isAccessibilityElement = false
     }

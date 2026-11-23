@@ -14,6 +14,8 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     private let collection: UICollectionView
     private let moodHeader = UIView()
     private let moodMosto = UIImageView()
+    private let moodScrollBox = UIView()
+    private let moodFade = CAGradientLayer()
     private let moodScroll = UIScrollView()
     private let moodHairline = CALayer()
     private var moodButtons: [UIButton] = []
@@ -23,6 +25,8 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
 
     private let dockBar = UIView()
     private let dockHairline = CALayer()
+    private let tabScrollBox = UIView()
+    private let tabFade = CAGradientLayer()
     private let tabScroll = UIScrollView()
     private var tabButtons: [UIButton] = []
     private let backButton = UIButton(type: .custom)
@@ -183,7 +187,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         layout.scrollDirection = .vertical
         layout.minimumInteritemSpacing = 0
         layout.minimumLineSpacing = 0
-        layout.sectionInset = UIEdgeInsets(top: 2, left: 4, bottom: 6, right: 4)
+        layout.sectionInset = UIEdgeInsets(top: 4, left: 4, bottom: 6, right: 4)
         layout.sectionHeadersPinToVisibleBounds = true
         collection = UICollectionView(frame: .zero, collectionViewLayout: layout)
         super.init(frame: frame)
@@ -191,8 +195,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
 
         collection.backgroundColor = .clear
         collection.clipsToBounds = true
-        collection.contentInsetAdjustmentBehavior = .never
-        if #available(iOS 26.0, *) { collection.topEdgeEffect.isHidden = true; collection.bottomEdgeEffect.isHidden = true }
+        collection.disableAllEdgeEffects()
         collection.alwaysBounceHorizontal = false
         collection.showsHorizontalScrollIndicator = false
         collection.delaysContentTouches = false
@@ -207,12 +210,17 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         moodMosto.contentMode = .scaleAspectFit
         moodMosto.image = UIImage(named: "mosto_day", in: Bundle(for: EmojiPanelView.self), with: nil)
         moodHeader.addSubview(moodMosto)
+        moodFade.startPoint = CGPoint(x: 0, y: 0.5)
+        moodFade.endPoint = CGPoint(x: 1, y: 0.5)
+        moodFade.colors = [UIColor.clear.cgColor, UIColor.black.cgColor, UIColor.black.cgColor, UIColor.clear.cgColor]
+        moodScrollBox.backgroundColor = .clear
         moodScroll.showsHorizontalScrollIndicator = false
         moodScroll.alwaysBounceHorizontal = true
         moodScroll.delaysContentTouches = false
-        moodScroll.contentInsetAdjustmentBehavior = .never
-        if #available(iOS 26.0, *) { moodScroll.leftEdgeEffect.isHidden = true; moodScroll.rightEdgeEffect.isHidden = true }
-        moodHeader.addSubview(moodScroll)
+        moodScroll.disableAllEdgeEffects()
+        moodScroll.delegate = self
+        moodScrollBox.addSubview(moodScroll)
+        moodHeader.addSubview(moodScrollBox)
         moodHairline.backgroundColor = Theme.separator.resolvedColor(with: traitCollection).cgColor
         moodHeader.layer.addSublayer(moodHairline)
         addSubview(moodHeader)
@@ -223,12 +231,17 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         dockBar.layer.addSublayer(dockHairline)
         addSubview(dockBar)
 
+        tabFade.startPoint = CGPoint(x: 0, y: 0.5)
+        tabFade.endPoint = CGPoint(x: 1, y: 0.5)
+        tabFade.colors = [UIColor.clear.cgColor, UIColor.black.cgColor, UIColor.black.cgColor, UIColor.clear.cgColor]
+        tabScrollBox.backgroundColor = .clear
         tabScroll.showsHorizontalScrollIndicator = false
         tabScroll.alwaysBounceHorizontal = true
         tabScroll.delaysContentTouches = false
-        tabScroll.contentInsetAdjustmentBehavior = .never
-        if #available(iOS 26.0, *) { tabScroll.leftEdgeEffect.isHidden = true; tabScroll.rightEdgeEffect.isHidden = true }
-        dockBar.addSubview(tabScroll)
+        tabScroll.disableAllEdgeEffects()
+        tabScroll.delegate = self
+        tabScrollBox.addSubview(tabScroll)
+        dockBar.addSubview(tabScrollBox)
 
         let cfg = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
         backButton.setTitle("ABC", for: .normal)
@@ -502,9 +515,27 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         return floor(w / CGFloat(across))
     }
 
+    private func updateEdgeFade(box: UIView, scroll: UIScrollView, fade: CAGradientLayer) {
+        let w = box.bounds.width
+        let x = scroll.contentOffset.x
+        let left = x > 0.5
+        let right = x + w < scroll.contentSize.width - 0.5
+        guard w > 28, left || right else {
+            if box.layer.mask != nil { box.layer.mask = nil }
+            return
+        }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        fade.frame = box.bounds
+        let e = Double(12 / w)
+        fade.locations = [0, NSNumber(value: left ? e : 0), NSNumber(value: right ? 1 - e : 1), 1]
+        if box.layer.mask !== fade { box.layer.mask = fade }
+        CATransaction.commit()
+    }
+
     private func layoutMoodPills() {
-        var x: CGFloat = 4
-        let h: CGFloat = 24
+        var x: CGFloat = 2
+        let h: CGFloat = 26
         let y: CGFloat = max(0, (moodScroll.bounds.height - h) / 2)
         for b in moodButtons {
             let title = b.title(for: .normal) ?? ""
@@ -521,17 +552,19 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         let b = bounds
         guard b.width > 100, b.height > 100 else { return }
         let barH: CGFloat = 48
-        let topH: CGFloat = kaomojiMode ? 36 : 2
+        let topH: CGFloat = kaomojiMode ? 40 : 2
 
         if kaomojiMode {
             moodHeader.isHidden = false
             moodHeader.frame = CGRect(x: 0, y: 0, width: b.width, height: topH)
             let showMosto = !Theme.plain
             moodMosto.isHidden = !showMosto
-            let lead: CGFloat = showMosto ? 38 : 8
-            moodMosto.frame = CGRect(x: 10, y: (topH - 24) / 2, width: 24, height: 24)
-            moodScroll.frame = CGRect(x: lead, y: 0, width: max(0, b.width - lead - 8), height: topH)
+            let lead: CGFloat = showMosto ? 40 : 12
+            moodMosto.frame = CGRect(x: 12, y: (topH - 24) / 2, width: 24, height: 24)
+            moodScrollBox.frame = CGRect(x: lead, y: 0, width: max(0, b.width - lead - 12), height: topH)
+            moodScroll.frame = moodScrollBox.bounds
             layoutMoodPills()
+            updateEdgeFade(box: moodScrollBox, scroll: moodScroll, fade: moodFade)
             CATransaction.begin()
             CATransaction.setDisableActions(true)
             moodHairline.frame = CGRect(x: 8, y: topH - 0.5, width: max(0, b.width - 16), height: 1 / UIScreen.main.scale)
@@ -561,7 +594,8 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         // Scrollable horizontal category pills between backButton and deleteButton (36x34pt touch targets, zero squish)
         let tabLeft = backButton.frame.maxX + 6
         let tabRight = deleteButton.frame.minX - 6
-        tabScroll.frame = CGRect(x: tabLeft, y: 0, width: max(0, tabRight - tabLeft), height: barH)
+        tabScrollBox.frame = CGRect(x: tabLeft, y: 0, width: max(0, tabRight - tabLeft), height: barH)
+        tabScroll.frame = tabScrollBox.bounds
         let dockItems = tabButtons + [gear]
         let itemW: CGFloat = 36
         let itemH: CGFloat = 34
@@ -582,6 +616,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             ensureSelectedTabVisible(animated: false)
             pendingScrollToSelectedTab = false
         }
+        updateEdgeFade(box: tabScrollBox, scroll: tabScroll, fade: tabFade)
 
         collection.collectionViewLayout.invalidateLayout()
         if !kaomojiMode { updateSelection() }
@@ -672,6 +707,14 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        if scrollView === moodScroll {
+            updateEdgeFade(box: moodScrollBox, scroll: moodScroll, fade: moodFade)
+            return
+        }
+        if scrollView === tabScroll {
+            updateEdgeFade(box: tabScrollBox, scroll: tabScroll, fade: tabFade)
+            return
+        }
         guard scrollView === collection, !kaomojiMode else { return }
         updateSelection()
     }
@@ -719,6 +762,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         if abs(offsetX - tabScroll.contentOffset.x) > 0.5 {
             tabScroll.setContentOffset(CGPoint(x: offsetX, y: 0), animated: animated)
         }
+        updateEdgeFade(box: tabScrollBox, scroll: tabScroll, fade: tabFade)
     }
 
     private func setSelected(_ s: Int, animated: Bool = true) {

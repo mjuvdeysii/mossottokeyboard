@@ -143,6 +143,13 @@ for dirpath, _dirs, files in os.walk(KEYBOARD):
             if "layer.mask" in code or "CABasicAnimation" in code:
                 problems.append(f"{path}: AmbientLightView must have zero layer.mask or CABasicAnimation over iOS Liquid Glass")
 
+        if name != "KeyboardLayout.swift":
+            # Rule 15: Every UIScrollView / UICollectionView in Keyboard/ must hide all 4 iOS 26 EdgeEffects via disableAllEdgeEffects()
+            if re.search(r'\b(top|bottom|left|right)EdgeEffect\b', code):
+                problems.append(f"{path}: partial EdgeEffect override — use disableAllEdgeEffects() to hide all 4 Liquid Glass blur curtains")
+            if re.search(r'(:\s*UIScrollView\b|\bUIScrollView\s*\(|\bUICollectionView\s*\()', code) and "disableAllEdgeEffects()" not in code:
+                problems.append(f"{path}: UIScrollView/UICollectionView missing disableAllEdgeEffects() call")
+
 for p in problems:
     print(f"FAIL ios-keyboard-rules: {p}")
 
