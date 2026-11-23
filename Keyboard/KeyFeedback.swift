@@ -52,6 +52,8 @@ enum FeedbackEvent: Equatable {
     case altShown, altMoved
     /// The space bar becomes a trackpad; the cursor moves one character.
     case cursorMode, cursorStep
+    /// Cursor drag hits the start/end of text, or steps across a newline boundary.
+    case cursorBoundary
     /// Held delete, once it takes a word at a time: every word.
     case deleteWord
     /// A swipe left off delete arms the clearing of the composition, or is drawn back (rounds/R3.md).
@@ -105,6 +107,8 @@ enum FeedbackModel {
             return FeedbackResponse(kind: .selection, intensity: 1, sound: nil)
         case .cursorMode:
             return FeedbackResponse(kind: .impact, intensity: function, sound: nil)
+        case .cursorBoundary:
+            return FeedbackResponse(kind: .soft, intensity: 0.72, sound: nil)
         case .mosto:
             return FeedbackResponse(kind: .soft, intensity: mostoIntensity, sound: 1156)
         }

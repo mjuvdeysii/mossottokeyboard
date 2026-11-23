@@ -263,22 +263,22 @@ final class KeyboardViewController: UIInputViewController {
             self.cursorDragAfterReversed = Array((after ?? "").reversed())
         }
         keyboard.onCursorMove = { [weak self] d in
-            guard let self, self.taps.isEmpty, d != 0 else { return false }
+            guard let self, self.taps.isEmpty, d != 0 else { return .unavailable }
             let proxy = self.host
             guard self.cursorDragHasContext else {
                 proxy.adjustTextPosition(byCharacterOffset: d)
-                return false
+                return .unavailable
             }
             if d < 0 {
-                guard let ch = self.cursorDragBefore.popLast() else { return false }
+                guard let ch = self.cursorDragBefore.popLast() else { return .hitStart }
                 self.cursorDragAfterReversed.append(ch)
                 proxy.adjustTextPosition(byCharacterOffset: -ch.utf16.count)
-                return true
+                return .moved(crossedNewline: ch == "\n")
             } else {
-                guard let ch = self.cursorDragAfterReversed.popLast() else { return false }
+                guard let ch = self.cursorDragAfterReversed.popLast() else { return .hitEnd }
                 self.cursorDragBefore.append(ch)
                 proxy.adjustTextPosition(byCharacterOffset: ch.utf16.count)
-                return true
+                return .moved(crossedNewline: ch == "\n")
             }
         }
         keyboard.onCursorEnd = { [weak self] in

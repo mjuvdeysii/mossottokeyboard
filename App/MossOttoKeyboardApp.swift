@@ -765,7 +765,7 @@ private struct GestureAtlasView: View {
                     atlasRow(
                         cap: "← ␣ →",
                         title: "空格横向拖移光标",
-                        detail: "在空格键上左右滑动即可细腻移动输入光标，按键字面自动隐去减少干扰，按距离触发分段震动。",
+                        detail: "在空格键上左右滑动即可细腻移动输入光标，游标实时显示移动字数；跨过换行或抵达文首、文末时亮起琥珀止点与阻尼微震。",
                         demoTitle: nil
                     )
                     Divider()

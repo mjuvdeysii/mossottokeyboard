@@ -134,6 +134,7 @@ enum KeyboardTests {
         r56DualSchemeLessonsAndMostoState(window)
         r57PullCordAndOptical2D(window)
         r58CorrectionPinpointAndDetent(window)
+        r59TrackpadEndStopAndNewlineDetent(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -389,6 +390,7 @@ enum KeyboardTests {
             ("other character chosen", .altMoved, FeedbackResponse(kind: .selection, intensity: 1, sound: nil)),
             ("cursor mode", .cursorMode, FeedbackResponse(kind: .impact, intensity: 1, sound: nil)),
             ("cursor step", .cursorStep, FeedbackResponse(kind: .selection, intensity: 1, sound: nil)),
+            ("cursor boundary", .cursorBoundary, FeedbackResponse(kind: .soft, intensity: 0.72, sound: nil)),
             ("word delete", .deleteWord, FeedbackResponse(kind: .selection, intensity: 1, sound: nil)),
             ("clear armed", .clearArmed, FeedbackResponse(kind: .selection, intensity: 1, sound: nil)),
             ("clear", .key(.clearInput), FeedbackResponse(kind: .impact, intensity: 1, sound: 1156)),
@@ -1827,6 +1829,96 @@ enum KeyboardTests {
         } else {
             log(false, "r58.PlaygroundModel activeFixes setup", "engine did not load")
         }
+    }
+
+    static func r59TrackpadEndStopAndNewlineDetent(_ window: UIWindow) {
+        guard let made = makeKeyboard(scheme: 1, in: window) else {
+            log(false, "r59.setup", "engine did not load")
+            return
+        }
+        let (vc, h) = made
+        vc.feedbackPlayer = RecordingFeedbackPlayer()
+        guard let space = vc.keyboardViewForTests.keyRectsForTests(.space)?.cap else {
+            log(false, "r59.setup", "no space key")
+            return
+        }
+        let kb = vc.keyboardViewForTests
+        let sp = center(space)
+
+        // 1. Live step badge tracks moved characters and resets cleanly on end
+        placeCursor(vc, h, before: 8, after: 8)
+        let sMove = path(from: sp, legs: [(CGVector(dx: 54, dy: 0), 0.35)])
+        kb.feedForTests(Array(sMove.dropLast()))
+        let midBadge = kb.trackpadBadgeTextForTests
+        let midFree = kb.trackpadEndStopForTests == 0
+        kb.feedForTests([sMove.last!])
+        let endHidden = kb.trackpadBadgeTextForTests == nil && !kb.trackpadRulerVisibleForTests
+        log(midBadge?.hasPrefix("→ ") == true && midFree && endHidden,
+            "r59.Trackpad shows live relative step pill during cursor drag and hides cleanly on release",
+            "midBadge=\(midBadge ?? "nil") midFree=\(midFree) endHidden=\(endHidden)")
+
+        // 2. End-stop rubber-band clamp + single .cursorBoundary detent + smooth unlock on reversal
+        placeCursor(vc, h, before: 4, after: 1)
+        var boundaryCount = 0
+        var stepCountAtEnd = 0
+        let origFeedback = kb.onFeedback
+        kb.onFeedback = { ev, p in
+            if ev == .cursorBoundary { boundaryCount += 1 }
+            if ev == .cursorStep && kb.trackpadEndStopForTests != 0 { stepCountAtEnd += 1 }
+            origFeedback?(ev, p)
+        }
+        let sClamp = path(from: sp, legs: [(CGVector(dx: 90, dy: 0), 0.45), (CGVector(dx: 45, dy: 0), 0.25)])
+        let turnTime = sClamp[0].time + 0.45 + 1e-9
+        let leg1 = sClamp.filter { $0.time <= turnTime }
+        let leg2 = sClamp.filter { $0.time > turnTime }
+        kb.feedForTests(leg1)
+        let endStop = kb.trackpadEndStopForTests
+        let overdrag = kb.trackpadOverdragForTests
+        let clampBadge = kb.trackpadBadgeTextForTests
+        kb.feedForTests(Array(leg2.dropLast()))
+        let unlocked = kb.trackpadEndStopForTests == 0 && kb.trackpadOverdragForTests == 0
+        let backBadge = kb.trackpadBadgeTextForTests
+        kb.feedForTests([leg2.last!])
+        kb.onFeedback = origFeedback
+        log(endStop == 1 && overdrag > 0 && overdrag <= 10.01 && clampBadge == "文末"
+            && boundaryCount == 1 && stepCountAtEnd == 0 && unlocked && backBadge?.hasPrefix("← ") == true,
+            "r59.Trackpad clamps at end with rubber-band, single boundary detent, and unlocks on reversal",
+            "endStop=\(endStop) overdrag=\(overdrag) badge=\(clampBadge ?? "nil") boundaryCount=\(boundaryCount) stepAtEnd=\(stepCountAtEnd) unlocked=\(unlocked) back=\(backBadge ?? "nil")")
+
+        // 3. Stepping across a newline emits .cursorBoundary and marks ↵ in the pill
+        reset(vc, h)
+        h.insertText("第一行\n第二行")
+        h.adjustTextPosition(byCharacterOffset: -4)
+        vc.textDidChange(nil)
+        drain(0.01)
+        var nlBoundaries = 0
+        kb.onFeedback = { ev, p in
+            if ev == .cursorBoundary { nlBoundaries += 1 }
+            origFeedback?(ev, p)
+        }
+        let sNL = path(from: sp, legs: [(CGVector(dx: 36, dy: 0), 0.25)])
+        kb.feedForTests(Array(sNL.dropLast()))
+        let nlBadge = kb.trackpadBadgeTextForTests
+        kb.feedForTests([sNL.last!])
+        kb.onFeedback = origFeedback
+        log(nlBoundaries >= 1 && (nlBadge?.contains("↵") == true),
+            "r59.Trackpad pulses .cursorBoundary and marks newline symbol when stepping over line break",
+            "nlBoundaries=\(nlBoundaries) nlBadge=\(nlBadge ?? "nil")")
+
+        // 4. Unavailable context (password/restricted proxy returning nil) never falsely clamps 文首/文末
+        let kbNoCtx = KeyboardView(spatial: SpatialModel.standard())
+        kbNoCtx.frame = kb.frame
+        kbNoCtx.configure(LayoutContext(page: .letters, chinese: true, showGlobe: false, returnLabel: nil, returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true))
+        kbNoCtx.layoutIfNeeded()
+        kbNoCtx.onCursorMove = { _ in .unavailable }
+        let sUnavail = path(from: sp, legs: [(CGVector(dx: 60, dy: 0), 0.3)])
+        kbNoCtx.feedForTests(Array(sUnavail.dropLast()))
+        let unavailNoClamp = kbNoCtx.trackpadEndStopForTests == 0 && kbNoCtx.trackpadBadgeTextForTests != "文末"
+        kbNoCtx.feedForTests([sUnavail.last!])
+        log(unavailNoClamp,
+            "r59.Trackpad treats unavailable host context as free scroll without false boundary clamp",
+            "endStop=\(kbNoCtx.trackpadEndStopForTests) badge=\(kbNoCtx.trackpadBadgeTextForTests ?? "nil")")
+        reset(vc, h)
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

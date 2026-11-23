@@ -553,15 +553,22 @@ final class AltPopup: UIView {
     }
 }
 
+/// Result of moving the host cursor by one step during spacebar trackpad drag.
+enum CursorMoveOutcome: Equatable {
+    case moved(crossedNewline: Bool)
+    case hitStart, hitEnd
+    case unavailable
+}
+
 /// Draws the keys and handles every touch itself (no UIButton per key), so a key
 /// reacts on the first touch event, gaps between keys still hit the nearest key,
 /// and fast two-thumb typing rolls over instead of dropping letters.
 final class KeyboardView: UIView {
     var onAction: ((KeyAction, Tap?) -> Void)?
     /// The space bar drags the cursor one character (+1 right, −1 left). Returns whether it passed a visible
-    /// character (false at the start or end of the text): the ticks follow only what the cursor really passes.
+    /// character (and whether it crossed a newline or hit a confirmed start/end boundary).
     var onCursorBegin: (() -> Void)?
-    var onCursorMove: ((Int) -> Bool)?
+    var onCursorMove: ((Int) -> CursorMoveOutcome)?
     var onCursorEnd: (() -> Void)?
     /// Whether a drag on the space bar may move the cursor now (not while a pinyin is being composed).
     var canMoveCursor: (() -> Bool)?
@@ -601,10 +608,20 @@ final class KeyboardView: UIView {
     private let trackpadTicks = CAShapeLayer()
     private let trackpadReticle = CALayer()
     private let trackpadPip = CALayer()
+    private let trackpadBadge = UILabel()
     private var trackpadRulerOffset: CGFloat = 0
+    private var trackpadEndStop = 0
+    private var trackpadRawOverdrag: CGFloat = 0
+    private var trackpadStepsDelta = 0
+    private var trackpadJustCrossedNewline = false
+    private var trackpadBadgeLastText = ""
+    private var trackpadBadgeLastStop = 0
     private var lastTrackpadSize: CGSize = .zero
     var trackpadRulerVisibleForTests: Bool { !trackpadRuler.isHidden }
     var trackpadRulerOffsetForTests: CGFloat { trackpadRulerOffset }
+    var trackpadEndStopForTests: Int { trackpadEndStop }
+    var trackpadOverdragForTests: CGFloat { trackpadRubberBandOffset }
+    var trackpadBadgeTextForTests: String? { trackpadBadge.isHidden ? nil : trackpadBadge.text }
     private var lastCharDownTime: CFTimeInterval = -1
     static let rapidPreviewThreshold: CFTimeInterval = 0.13
     var adaptivePreviewEnabled = true
@@ -664,6 +681,18 @@ final class KeyboardView: UIView {
         trackpadRuler.addSublayer(trackpadReticle)
         trackpadRuler.addSublayer(trackpadPip)
         layer.addSublayer(trackpadRuler)
+
+        trackpadBadge.font = Theme.font(10.5, .semibold)
+        trackpadBadge.textAlignment = .center
+        trackpadBadge.layer.cornerRadius = 8.5
+        trackpadBadge.layer.cornerCurve = .continuous
+        trackpadBadge.layer.borderWidth = 0.5
+        trackpadBadge.layer.zPosition = 31
+        trackpadBadge.clipsToBounds = true
+        trackpadBadge.isUserInteractionEnabled = false
+        trackpadBadge.isAccessibilityElement = false
+        trackpadBadge.isHidden = true
+        addSubview(trackpadBadge)
         updateTrackpadRulerColors()
     }
 
@@ -674,14 +703,27 @@ final class KeyboardView: UIView {
         updateTrackpadRulerColors()
     }
 
+    private var trackpadRubberBandOffset: CGFloat {
+        guard trackpadEndStop != 0 else { return 0 }
+        let limit: CGFloat = 10
+        let mag = abs(trackpadRawOverdrag)
+        let damped = limit * (1 - exp(-mag / 22))
+        return trackpadRawOverdrag >= 0 ? damped : -damped
+    }
+
     private func updateTrackpadRulerColors() {
         let t = traitCollection
+        let clamped = trackpadEndStop != 0
+        let stopColor = Theme.plain ? Theme.selection : Theme.dyn(Theme.gold, Theme.goldGlow)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         trackpadAxis.backgroundColor = Theme.separator.resolvedColor(with: t).withAlphaComponent(0.55).cgColor
         trackpadTicks.strokeColor = Theme.secondaryText.resolvedColor(with: t).withAlphaComponent(0.38).cgColor
-        trackpadReticle.backgroundColor = Theme.correctedMark.resolvedColor(with: t).cgColor
-        trackpadPip.backgroundColor = Theme.statusLedActive.resolvedColor(with: t).cgColor
+        trackpadReticle.backgroundColor = (clamped ? stopColor : Theme.correctedMark).resolvedColor(with: t).cgColor
+        trackpadPip.backgroundColor = (clamped ? stopColor : Theme.statusLedActive).resolvedColor(with: t).cgColor
+        trackpadBadge.backgroundColor = (clamped ? Theme.correctedTint : Theme.key.withAlphaComponent(0.92)).resolvedColor(with: t)
+        trackpadBadge.textColor = (clamped ? stopColor : Theme.keyText).resolvedColor(with: t)
+        trackpadBadge.layer.borderColor = (clamped ? stopColor.withAlphaComponent(0.45) : Theme.keyBorder).resolvedColor(with: t).cgColor
         CATransaction.commit()
     }
 
@@ -694,8 +736,10 @@ final class KeyboardView: UIView {
         CATransaction.setDisableActions(true)
         trackpadRuler.frame = rFrame
         trackpadAxis.frame = CGRect(x: 0, y: baseY, width: rFrame.width, height: 0.5)
-        trackpadReticle.frame = CGRect(x: floor(rFrame.width / 2 - 1), y: baseY - 13, width: 2, height: 24)
-        trackpadPip.frame = CGRect(x: floor(rFrame.width / 2 - 2.5), y: baseY - 20, width: 5, height: 5)
+        let reticleW: CGFloat = trackpadEndStop != 0 ? 2.5 : 2
+        trackpadReticle.frame = CGRect(x: floor(rFrame.width / 2 - reticleW / 2), y: baseY - 13, width: reticleW, height: 24)
+        let pipShift = CGFloat(trackpadEndStop) * 3.5
+        trackpadPip.frame = CGRect(x: floor(rFrame.width / 2 - 2.5 + pipShift), y: baseY - 20, width: 5, height: 5)
         if rFrame.size != lastTrackpadSize && rFrame.width > 20 {
             lastTrackpadSize = rFrame.size
             let path = UIBezierPath()
@@ -712,14 +756,60 @@ final class KeyboardView: UIView {
             trackpadTicks.frame = trackpadRuler.bounds
         }
         CATransaction.commit()
+        layoutTrackpadBadge()
+    }
+
+    private func layoutTrackpadBadge() {
+        guard !trackpadRuler.isHidden else {
+            trackpadBadge.isHidden = true
+            return
+        }
+        let text: String
+        if trackpadEndStop < 0 {
+            text = "文首"
+        } else if trackpadEndStop > 0 {
+            text = "文末"
+        } else if trackpadStepsDelta < 0 {
+            text = trackpadJustCrossedNewline ? "↵ ← \(-trackpadStepsDelta)" : "← \(-trackpadStepsDelta)"
+        } else if trackpadStepsDelta > 0 {
+            text = trackpadJustCrossedNewline ? "→ \(trackpadStepsDelta) ↵" : "→ \(trackpadStepsDelta)"
+        } else {
+            trackpadBadge.isHidden = true
+            return
+        }
+        trackpadBadge.isHidden = false
+        if text != trackpadBadgeLastText || trackpadBadge.bounds.height == 0 {
+            trackpadBadgeLastText = text
+            trackpadBadge.text = text
+            let size = (text as NSString).size(withAttributes: [.font: trackpadBadge.font ?? Theme.font(10.5, .semibold)])
+            let w = max(36, ceil(size.width) + 14)
+            let h: CGFloat = 17
+            let y = max(topReach + 4, trackpadRuler.frame.minY - h - 4)
+            trackpadBadge.frame = CGRect(x: floor((bounds.width - w) / 2), y: y, width: w, height: h)
+        }
+        if trackpadEndStop != trackpadBadgeLastStop {
+            trackpadBadgeLastStop = trackpadEndStop
+            updateTrackpadRulerColors()
+        }
     }
 
     private func advanceTrackpadRuler(dx: CGFloat) {
-        trackpadRulerOffset = (trackpadRulerOffset + dx).truncatingRemainder(dividingBy: 45)
+        if trackpadEndStop == 0 {
+            trackpadRulerOffset = (trackpadRulerOffset + dx).truncatingRemainder(dividingBy: 45)
+        }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        trackpadTicks.transform = CATransform3DMakeTranslation(trackpadRulerOffset, 0, 0)
+        trackpadTicks.transform = CATransform3DMakeTranslation(trackpadRulerOffset + trackpadRubberBandOffset, 0, 0)
+        if trackpadEndStop != trackpadBadgeLastStop {
+            let reticleW: CGFloat = trackpadEndStop != 0 ? 2.5 : 2
+            let baseY = floor(trackpadRuler.bounds.height * 0.56)
+            let midX = trackpadRuler.bounds.width / 2
+            trackpadReticle.frame = CGRect(x: floor(midX - reticleW / 2), y: baseY - 13, width: reticleW, height: 24)
+            let pipShift = CGFloat(trackpadEndStop) * 3.5
+            trackpadPip.frame = CGRect(x: floor(midX - 2.5 + pipShift), y: baseY - 20, width: 5, height: 5)
+        }
         CATransaction.commit()
+        layoutTrackpadBadge()
     }
 
     /// Extra height at the top (overlapping the bottom of the candidate strip) that still belongs to the top
@@ -998,16 +1088,59 @@ final class KeyboardView: UIView {
                 onFeedback?(.cursorMode, p)
             }
             if tr.dragging {
-                advanceTrackpadRuler(dx: dx)
                 tr.dragAccum += dx
                 let step: CGFloat = speed > 900 ? 3.5 : speed > 450 ? 5.5 : 9
                 var steps = 0, passed = 0
+                var hitBoundary = 0
+                var crossedNewline = false
                 while abs(tr.dragAccum) >= step {
                     let dir = tr.dragAccum > 0 ? 1 : -1
-                    if onCursorMove?(dir) == true { passed += 1 }
+                    switch onCursorMove?(dir) ?? .unavailable {
+                    case .moved(let nl):
+                        passed += 1
+                        trackpadStepsDelta += dir
+                        if nl { crossedNewline = true }
+                        hitBoundary = 0
+                        trackpadEndStop = 0
+                        trackpadRawOverdrag = 0
+                    case .hitStart:
+                        hitBoundary = -1
+                    case .hitEnd:
+                        hitBoundary = 1
+                    case .unavailable:
+                        trackpadStepsDelta += dir
+                        hitBoundary = 0
+                        trackpadEndStop = 0
+                        trackpadRawOverdrag = 0
+                    }
                     steps += dir
                     tr.dragAccum -= CGFloat(dir) * step
                 }
+                if passed > 0 {
+                    trackpadJustCrossedNewline = crossedNewline
+                }
+                if hitBoundary != 0 {
+                    let newlyClamped = trackpadEndStop != hitBoundary
+                    trackpadEndStop = hitBoundary
+                    trackpadJustCrossedNewline = false
+                    if (hitBoundary < 0 && dx < 0) || (hitBoundary > 0 && dx > 0) {
+                        trackpadRawOverdrag += dx
+                    } else if hitBoundary > 0 && dx < 0 {
+                        trackpadRawOverdrag = max(0, trackpadRawOverdrag + dx)
+                    } else if hitBoundary < 0 && dx > 0 {
+                        trackpadRawOverdrag = min(0, trackpadRawOverdrag + dx)
+                    }
+                    if newlyClamped { onFeedback?(.cursorBoundary, p) }
+                } else if trackpadEndStop != 0 {
+                    if trackpadEndStop > 0 {
+                        trackpadRawOverdrag = max(0, trackpadRawOverdrag + dx)
+                    } else {
+                        trackpadRawOverdrag = min(0, trackpadRawOverdrag + dx)
+                    }
+                } else if crossedNewline {
+                    onFeedback?(.cursorBoundary, p)
+                }
+                advanceTrackpadRuler(dx: dx)
                 // felt by the finger's distance (every 27 pt, ≥ 100 ms apart), not once per character
                 if tr.rhythm.feed(dx: dx, steps: steps, passed: passed, at: now) { onFeedback?(.cursorStep, p) }
             }
@@ -1212,9 +1345,19 @@ final class KeyboardView: UIView {
         CATransaction.setDisableActions(true)
         trackpadRuler.isHidden = !on
         trackpadRulerOffset = 0
+        trackpadEndStop = 0
+        trackpadRawOverdrag = 0
+        trackpadStepsDelta = 0
+        trackpadJustCrossedNewline = false
+        trackpadBadgeLastText = ""
+        trackpadBadgeLastStop = 0
+        trackpadBadge.isHidden = true
         trackpadTicks.transform = CATransform3DIdentity
         CATransaction.commit()
-        if on { updateTrackpadRulerColors() }
+        if on {
+            bringSubviewToFront(trackpadBadge)
+            updateTrackpadRulerColors()
+        }
     }
 
     private func finish(_ tr: Tracked, emit: Bool) {
@@ -1293,6 +1436,7 @@ final class KeyboardView: UIView {
         UIView.performWithoutAnimation {
             keyViews[idx].pressed = true
             setCursorMode(true, except: idx)
+            trackpadStepsDelta = 6
             advanceTrackpadRuler(dx: 14)
         }
     }
