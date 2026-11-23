@@ -37,9 +37,9 @@ extension KeyAction {
     }
 }
 
-enum KeyStyle { case normal, function, accent }
+enum KeyStyle: Equatable { case normal, function, accent }
 
-struct KeySpec {
+struct KeySpec: Equatable {
     var action: KeyAction
     var label: String
     var symbol: String? = nil        // SF Symbol name

@@ -103,6 +103,7 @@ final class KeyboardViewController: UIInputViewController {
     private var lastHostWriteTime: CFTimeInterval = 0
     private var lastReconcileTime: CFTimeInterval = 0
     private var lastCommittedContext = ""
+    private var cachedFieldContext = ""
     /// In the real iOS .appex extension, show pinyin in CandidateBarView's leading single-row pill (0 setMarkedText XPC,
     /// < 1ms keystroke latency, 0ms haptic delay, 100% reliable candidate taps). In-app test bench keeps inline marked text.
     private var useInlineMarkedText: Bool { !Self.inExtension || hostOverride != nil }
@@ -359,7 +360,13 @@ final class KeyboardViewController: UIInputViewController {
         super.viewDidAppear(animated)
         LaunchGuard.succeeded()
         releaseOwnGestureDelays(in: view)
-        DispatchQueue.main.async { [weak self] in self?.feedbackPlayer.prepare() }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.feedbackPlayer.prepare()
+            if !self.useInlineMarkedText, self.taps.isEmpty, self.cachedFieldContext.isEmpty {
+                self.cachedFieldContext = self.host.documentContextBeforeInput ?? ""
+            }
+        }
     }
 
     /// Only adjust gesture recognizers owned by the keyboard's own view subtree — never mutate host/window recognizers.
@@ -390,6 +397,7 @@ final class KeyboardViewController: UIInputViewController {
         hostEchoesMarked = 0
         lastEchoed = ""
         lastCommittedContext = ""
+        cachedFieldContext = ""
         inInsertedPair = false
         candidateBar.showsPreedit = !useInlineMarkedText
         userToggledModeInField = false
@@ -496,6 +504,7 @@ final class KeyboardViewController: UIInputViewController {
             hostEchoesMarked = 0
             lastEchoed = ""
             lastCommittedContext = ""
+            cachedFieldContext = ""
             let traitsChanged = fieldTraits() != lastFieldTraits
             if !taps.isEmpty, traitsChanged {
                 clearComposition(touchHost: false)
@@ -510,6 +519,12 @@ final class KeyboardViewController: UIInputViewController {
                 // a field of another kind gets its page and language; any field gets its shift and light
                 if traitsChanged { adaptToField() } else if !chinese { updateAutoShift(); reconfigure() }
                 applyAppearance()
+                if !useInlineMarkedText {
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self, self.taps.isEmpty, self.lastCommittedContext.isEmpty else { return }
+                        self.cachedFieldContext = self.host.documentContextBeforeInput ?? ""
+                    }
+                }
             }
             return
         }
@@ -520,6 +535,7 @@ final class KeyboardViewController: UIInputViewController {
         super.selectionDidChange(textInput)
         if !useInlineMarkedText, !taps.isEmpty, CACurrentMediaTime() - lastHostWriteTime > 0.35 {
             lastCommittedContext = ""
+            cachedFieldContext = ""
             clearComposition(touchHost: false)
             return
         }
@@ -548,6 +564,7 @@ final class KeyboardViewController: UIInputViewController {
         }
         guard contextSnapshot() != afterLastKey else { return }
         lastCommittedContext = ""
+        cachedFieldContext = ""
         forgetLastWord()
     }
 
@@ -964,10 +981,7 @@ final class KeyboardViewController: UIInputViewController {
         case .t9(let d):
             // 九宫格: each key stands for its letters; 分词 only splits syllables inside a composition
             guard d != "'" || !taps.isEmpty else { return }
-            if taps.isEmpty {
-                let ctx = lastCommittedContext.isEmpty ? (host.documentContextBeforeInput ?? "") : lastCommittedContext
-                engine.setContext(ctx)
-            }
+            if taps.isEmpty { engine.setContext(initialEngineContext()) }
             lastInsertedSpace = false
             taps.append(Tap.t9(d))
             refresh()
@@ -990,6 +1004,12 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
+    private func initialEngineContext() -> String {
+        if !lastCommittedContext.isEmpty { return lastCommittedContext }
+        if !useInlineMarkedText { return cachedFieldContext }
+        return host.documentContextBeforeInput ?? ""
+    }
+
     private func letter(_ s: String, tap: Tap) {
         lastInsertedSpace = false
         if let p = pendingSelect {
@@ -1000,11 +1020,8 @@ final class KeyboardViewController: UIInputViewController {
             }
         }
         if chinese && !(shifted || capsLock) {
-            // a new composition: reuse locally known committed context (0 XPC) when available
-            if taps.isEmpty {
-                let ctx = lastCommittedContext.isEmpty ? (host.documentContextBeforeInput ?? "") : lastCommittedContext
-                engine.setContext(ctx)
-            }
+            // a new composition: reuse locally known committed/prefetched context (0 XPC) in .appex
+            if taps.isEmpty { engine.setContext(initialEngineContext()) }
             taps.append(tap)
             refresh()
             return

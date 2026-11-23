@@ -126,6 +126,7 @@ enum KeyboardTests {
         r48Features(window)
         r49Features(window)
         r50CraftAndReadiness(window)
+        r51CompanionAndFluency(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -315,7 +316,7 @@ enum KeyboardTests {
         log(missing.isEmpty, "app.every 试一试 has its lesson", "missing=\(missing)")
         let nav = AppNavigation()
         let p = nav.playground
-        nav.tab = .features
+        nav.tab = .handbook
         guard let kb = makeKeyboard(scheme: 1, in: window) else { log(false, "app.setup", "engine did not load"); return }
         let vc = kb.0
         vc.hostOverride = p.host
@@ -327,7 +328,7 @@ enum KeyboardTests {
         nav.tryDemo("长句多按、漏按一个键")
         drain(0.05)
         let title = p.step < lessons.count ? lessons[p.step].title : "(done)"
-        log(nav.tab == .guide, "app.试一试 opens 上手", "tab=\(nav.tab)")
+        log(nav.tab == .studio && p.benchMode == .demos, "app.试一试 opens 上手", "tab=\(nav.tab) mode=\(p.benchMode)")
         log(title == "长句漏按一个键", "app.试一试 on 长句多按、漏按一个键 opens 长句漏按一个键", "lesson=\(title)")
         log(p.host.string.isEmpty && p.before.isEmpty && p.marked.isEmpty && !vc.testState.composing && !p.justPassed,
             "app.试一试 starts with an empty field", "text=\(p.host.string) before=\(p.before) marked=\(p.marked) keys=\(vc.testState.keys)")
@@ -1377,6 +1378,60 @@ enum KeyboardTests {
             }
         } else {
             log(false, "r50.craft setup", "engine did not load")
+        }
+    }
+
+    static func r51CompanionAndFluency(_ window: UIWindow) {
+        // 1. Hardware volume zone thresholds & non-nagging first-time gate
+        log(VolumeMonitor.zone(for: 0.0) == .muted
+            && VolumeMonitor.zone(for: 0.42) == .comfortable
+            && VolumeMonitor.zone(for: 0.78) == .loud,
+            "r51.VolumeMonitor classifies muted/comfortable/loud thresholds cleanly")
+
+        let suite = "mosto.r51.voltest.\(UUID().uuidString)"
+        if let ud = UserDefaults(suiteName: suite) {
+            defer { UserDefaults.standard.removePersistentDomain(forName: suite) }
+            let mon = VolumeMonitor(defaults: ud, observeSystem: false, initialVolume: 0.42)
+            var ran = 0
+            mon.gateSoundInteraction(soundEnabled: true) { ran += 1 }
+            let openedOnFirst = mon.showSheet && ran == 0 && !mon.hasConfirmedOnce
+            mon.confirmAndProceed()
+            let ranOnConfirm = !mon.showSheet && mon.hasConfirmedOnce && ran == 1
+            mon.gateSoundInteraction(soundEnabled: true) { ran += 1 }
+            let silentPassOnSecond = !mon.showSheet && ran == 2
+            let loudMon = VolumeMonitor(defaults: ud, observeSystem: false, initialVolume: 0.78)
+            loudMon.gateSoundInteraction(soundEnabled: true) { ran += 1 }
+            let highBannerShown = loudMon.hasConfirmedOnce && loudMon.showHighBanner && ran == 3
+            loudMon.dismissHighBanner()
+            log(openedOnFirst && ranOnConfirm && silentPassOnSecond && highBannerShown && !loudMon.showHighBanner,
+                "r51.VolumeMonitor shows interactive gate once, persists confirmation, and whispers only when >70%",
+                "opened=\(openedOnFirst) confirmed=\(ranOnConfirm) second=\(silentPassOnSecond) high=\(highBannerShown)")
+        }
+
+        // 2. KeySpec Equatable diff-skipping inside KeyView.apply
+        let specA = KeySpec(action: .char("a"), label: "a", isLetter: true)
+        let kv = KeyView(spec: specA, borders: true)
+        let runsInitial = kv.applyRunsForTests
+        kv.apply(specA, borders: true)
+        let runsSkipped = kv.applyRunsForTests
+        let specB = KeySpec(action: .char("a"), label: "A", isLetter: true)
+        kv.apply(specB, borders: true)
+        let runsChanged = kv.applyRunsForTests
+        log(runsInitial == 1 && runsSkipped == 1 && runsChanged == 2,
+            "r51.KeyView skips redundant apply work when KeySpec and borders are unchanged",
+            "initial=\(runsInitial) skipped=\(runsSkipped) changed=\(runsChanged)")
+
+        // 3. CandidateBarView retains measured width cache across word commits
+        if let kb = makeKeyboard(scheme: 0, in: window) {
+            let (vc, _) = kb
+            type(vc, "nihao"); settle(vc)
+            vc.handle(.space, tap: nil)
+            drain(0.05)
+            log(vc.candidateBarForTests.widthCacheCountForTests > 0,
+                "r51.CandidateBarView preserves word width cache across commits",
+                "widthCacheCount=\(vc.candidateBarForTests.widthCacheCountForTests)")
+        } else {
+            log(false, "r51.widthCache setup", "engine did not load")
         }
     }
 

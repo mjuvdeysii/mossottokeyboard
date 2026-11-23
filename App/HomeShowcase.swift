@@ -1,452 +1,743 @@
 import SwiftUI
+import UIKit
+import AVFoundation
+import AudioToolbox
 
-// The home page shows what the keyboard does with the keyboard's own pieces — its candidate strip, its vinyl keys,
-// Mosto — drawn small, the way they look while typing; the words stay short. Every note in full is one tap away
-// (全部用法).
+/// Full-resolution Mosto sprites from the app asset catalog.
+func mostoImage(_ name: String) -> UIImage { UIImage(named: name) ?? UIImage() }
 
-// MARK: - The keyboard's look, in miniature
+/// Desk-lamp lighting mode shared across the Companion App stage and the embedded R50 keyboard.
+enum StudioLampMode: Int, CaseIterable, Identifiable {
+    case day = 0
+    case night = 1
+    case plain = 2
 
-/// Colours from the keyboard (Theme), so a demo looks like the keyboard in either light.
-private extension Color {
-    static let kbText = Color(uiColor: Theme.keyText)
-    static let kbSecondary = Color(uiColor: Theme.secondaryText)
-    static let kbMark = Color(uiColor: Theme.correctedMark)
-    static let kbTint = Color(uiColor: Theme.correctedTint)
-    static let kbKey = Color(uiColor: Theme.key)
-    static let kbKeyTop = Color(uiColor: Theme.keyTop)
-    static let kbLip = Color(uiColor: Theme.keyLip)
-    static let kbFunction = Color(uiColor: Theme.functionKey)
-    static let kbFunctionLip = Color(uiColor: Theme.functionLip)
-}
+    var id: Int { rawValue }
 
-/// The board the demos sit on: the system keyboard's grey glass, rounded like a phone's lower edge.
-private struct Board<Content: View>: View {
-    @ViewBuilder var content: Content
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) { content }
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 0.13, alpha: 1) : UIColor(red: 0.90, green: 0.91, blue: 0.93, alpha: 1) }))
-            )
-    }
-}
-
-/// What the text field shows: committed text, then the keys being typed as marked text (underlined, as iOS draws it).
-/// How far a demo has played: the keys type in up to 0.8, the strip answers after (1 = the still picture).
-private struct DemoRevealKey: EnvironmentKey { static let defaultValue: Double = 1 }
-extension EnvironmentValues {
-    var demoReveal: Double {
-        get { self[DemoRevealKey.self] }
-        set { self[DemoRevealKey.self] = newValue }
-    }
-}
-
-private struct FieldLine: View {
-    var committed = ""
-    var marked = ""
-    @Environment(\.demoReveal) private var reveal
-    var body: some View {
-        let shown = String(marked.prefix(Int((Double(marked.count) * min(reveal / 0.8, 1)).rounded(.down))))
-        HStack(spacing: 0) {
-            Text(committed).foregroundStyle(.primary)
-            Text(shown).underline(true, color: .secondary).foregroundStyle(.primary)
-            Rectangle().fill(Color.accentColor).frame(width: 2, height: 18).padding(.leading, 1)
-            Spacer(minLength: 0)
+    var label: String {
+        switch self {
+        case .day: return "日光"
+        case .night: return "夜灯"
+        case .plain: return "简洁"
         }
-        .font(.system(size: 15, design: .rounded))
-        .lineLimit(1)
-        .padding(.horizontal, 10).padding(.vertical, 7)
-        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color(UIColor.systemBackground)))
     }
-}
 
-/// One candidate as the strip draws it; the corrected first choice on its tint with "hap→hao" under it.
-struct DemoCandidate: Identifiable {
-    let id = UUID()
-    var text: String
-    var typed: String? = nil
-    var meant: String? = nil
-    var note: String? = nil
-    var fixed = false
-}
-
-private struct Strip: View {
-    var undo: String? = nil
-    var rawKeys: String? = nil
-    let items: [DemoCandidate]
-    @Environment(\.demoReveal) private var reveal
-    var body: some View {
-        let answered = reveal >= 0.85
-        HStack(spacing: 2) {
-            if let undo {
-                HStack(spacing: 3) {
-                    Image(systemName: "arrow.uturn.backward").font(.system(size: 14, weight: .semibold))
-                    Text(undo).font(.system(size: 14, weight: .semibold, design: .rounded)).lineLimit(1)
-                }
-                .foregroundStyle(Color.kbMark)
-                .padding(.horizontal, 7).padding(.vertical, 4)
-                .background(Capsule().fill(Color.kbTint))
-                .padding(.trailing, 4)
-            } else if let rawKeys {
-                HStack(spacing: 2) {
-                    Text(rawKeys).font(.system(size: 11.5, weight: .medium, design: .rounded))
-                        .foregroundStyle(Color.kbSecondary).lineLimit(1)
-                    RoundedRectangle(cornerRadius: 0.75).fill(Color.kbMark.opacity(0.78))
-                        .frame(width: 1.5, height: 11)
-                }
-                .padding(.horizontal, 8).padding(.vertical, 4)
-                .background(Capsule().fill(Color(uiColor: Theme.preeditPillBg)))
-                .padding(.trailing, 4)
-            }
-            ForEach(items) { c in
-                VStack(spacing: 1) {
-                    Text(c.text).font(.system(size: 19, weight: c.fixed ? .medium : .regular, design: .rounded)).foregroundStyle(Color.kbText).lineLimit(1)
-                    if let n = c.note {
-                        Text(n).font(.system(size: 10.5, weight: .semibold, design: .rounded)).foregroundStyle(Color.kbSecondary)
-                    } else if c.fixed {
-                        RoundedRectangle(cornerRadius: 1).fill(Color.kbMark).frame(width: 14, height: 2)
-                    }
-                }
-                .padding(.horizontal, 7).padding(.vertical, 4)
-                .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(c.fixed ? Color.kbTint : .clear))
-            }
-            Spacer(minLength: 0)
+    var caption: String {
+        switch self {
+        case .day: return "暖瓷桌台 · R50 哑光零重影"
+        case .night: return "深曜石夜桌 · 暖灯珠微光"
+        case .plain: return "中性陶瓷 · 系统比例"
         }
-        .frame(height: 42)
-        .opacity(answered ? 1 : 0)
-        .offset(y: answered ? 0 : 5)
-        .animation(.easeOut(duration: 0.22), value: answered)
+    }
+
+    static func from(appearance: Int, style: Int) -> StudioLampMode {
+        if style == 1 { return .plain }
+        return appearance == 2 ? .night : .day
     }
 }
 
-/// A vinyl cap as on the keyboard: a top-lit face on a darker lip; `hit` marks where the finger landed.
-private struct MiniKey: View {
-    let label: String
-    var sub: String? = nil
-    var function = false
-    var hit = false
+/// OTTOSSOM (摸索台灯) studio design tokens aligned with `Tools/ip/ip3d.py` and R50 keycap materials.
+enum MossOttoStyle {
+    static func dynamic(_ day: UIColor, _ night: UIColor) -> Color {
+        Color(UIColor { $0.userInterfaceStyle == .dark ? night : day })
+    }
+
+    static func hex(_ v: UInt32, _ a: CGFloat = 1) -> UIColor {
+        UIColor(
+            red: CGFloat((v >> 16) & 0xFF) / 255,
+            green: CGFloat((v >> 8) & 0xFF) / 255,
+            blue: CGFloat(v & 0xFF) / 255,
+            alpha: a
+        )
+    }
+
+    /// Warm ceramic desk paper in Day; deep desk-lamp obsidian in Night.
+    static let canvas = dynamic(hex(0xF7F4EE), hex(0x14121D))
+    /// Elevated matte vinyl card surface.
+    static let surface = dynamic(hex(0xFFFFFF), hex(0x1F1B2E))
+    /// Recessed tray / instrument socket surface.
+    static let surfaceMuted = dynamic(hex(0xEFEAE0), hex(0x28233B))
+    /// Delicate physical 0.5pt contour line.
+    static let hairline = dynamic(hex(0xE4DDD0), UIColor.white.withAlphaComponent(0.11))
+
+    /// Shared IP studio family accents: Mosto violet, lamp-bead amber, Moss sprout green, Otto indigo.
+    static let violet = dynamic(hex(0x633EBF), hex(0xA78BFA))
+    static let lampAmber = dynamic(hex(0xD69A34), hex(0xFFC45A))
+    static let moss = dynamic(hex(0x55704A), hex(0x7EA86E))
+    static let ottoIndigo = dynamic(hex(0x203872), hex(0x7FA6E8))
+
+    static let inkPrimary = dynamic(hex(0x1E192B), hex(0xF4F1FA))
+    static let inkSecondary = dynamic(hex(0x6A6478), hex(0xA7A1B8))
+
+    /// R50 single-layer ceramic/obsidian keycap colors mirrored from `KeyboardLayout.swift`.
+    static func keyFace(plain: Bool, night: Bool) -> Color {
+        if plain { return night ? Color(uiColor: hex(0x2B2B30)) : Color.white }
+        return night ? Color(uiColor: hex(0x262138)) : Color(uiColor: hex(0xFAF8F4))
+    }
+
+    static func keyBorder(plain: Bool, night: Bool) -> Color {
+        if plain { return Color.white.opacity(night ? 0.14 : 0.70) }
+        return night ? Color.white.opacity(0.10) : Color(uiColor: hex(0xD8D0C4))
+    }
+
+    static func keyShadow(night: Bool) -> Color {
+        night ? Color.black.opacity(0.55) : Color(uiColor: hex(0xCFC7B8)).opacity(0.60)
+    }
+}
+
+/// Primary tint used across Navigation, Controls, and CI SnapshotRenderer.
+let mostoTint = MossOttoStyle.violet
+
+/// The desk lamp's overhead beam cone in the OTTOSSOM stage.
+struct LampCone: Shape {
+    func path(in r: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: r.midX - 42, y: 0))
+        p.addLine(to: CGPoint(x: r.midX + 42, y: 0))
+        p.addLine(to: CGPoint(x: r.maxX + 24, y: r.maxY))
+        p.addLine(to: CGPoint(x: r.minX - 24, y: r.maxY))
+        p.closeSubpath()
+        return p
+    }
+}
+
+/// Studio desk-lamp overhead cone + subtle ambient wash matching OTTOSSOM photography.
+struct LampConeBackdrop: View {
+    let mode: StudioLampMode
+    @Environment(\.colorScheme) private var scheme
+
+    private var darkLook: Bool {
+        mode == .night || (mode == .plain && scheme == .dark)
+    }
+
     var body: some View {
         ZStack(alignment: .top) {
-            RoundedRectangle(cornerRadius: 6, style: .continuous).fill(function ? Color.kbFunctionLip : Color.kbLip)
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(function ? AnyShapeStyle(Color.kbFunction) : AnyShapeStyle(LinearGradient(colors: [.kbKeyTop, .kbKey], startPoint: .top, endPoint: .bottom)))
-                .padding(.bottom, 2)
-            VStack(spacing: 0) {
-                Text(label).font(.system(size: sub == nil ? 14 : 12, design: .rounded)).foregroundStyle(Color.kbText)
-                if let sub { Text(sub).font(.system(size: 7.5, weight: .semibold, design: .rounded)).foregroundStyle(Color.kbSecondary).lineLimit(2).multilineTextAlignment(.center) }
-            }
-            .padding(.top, sub == nil ? 5 : 3)
-            if hit {
-                Circle().fill(Color.kbMark.opacity(0.35)).frame(width: 16, height: 16)
-                    .overlay(Circle().strokeBorder(Color.kbMark, lineWidth: 1.2))
-                    .offset(x: 9, y: 9)
-            }
+            Rectangle().fill(stageBg)
+            LampCone()
+                .fill(
+                    LinearGradient(
+                        colors: coneColors,
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+            Ellipse()
+                .fill(
+                    RadialGradient(
+                        colors: haloColors,
+                        center: .center,
+                        startRadius: 2,
+                        endRadius: 110
+                    )
+                )
+                .frame(width: 210, height: 64)
+                .offset(y: -26)
         }
-        .frame(height: sub == nil ? 30 : 40)
+    }
+
+    private var stageBg: Color {
+        switch mode {
+        case .day:
+            return scheme == .dark ? Color(uiColor: MossOttoStyle.hex(0x231E33)) : Color(uiColor: MossOttoStyle.hex(0xFFFDF9))
+        case .night:
+            return Color(uiColor: MossOttoStyle.hex(0x191529))
+        case .plain:
+            return darkLook ? Color(uiColor: MossOttoStyle.hex(0x1E1E24)) : Color(uiColor: MossOttoStyle.hex(0xF5F4F0))
+        }
+    }
+
+    private var coneColors: [Color] {
+        switch mode {
+        case .day:
+            let c = Color(uiColor: MossOttoStyle.hex(0xF7CD7A))
+            return [c.opacity(scheme == .dark ? 0.22 : 0.24), c.opacity(0.03), .clear]
+        case .night:
+            let c = Color(uiColor: MossOttoStyle.hex(0xFFC45A))
+            return [c.opacity(0.28), c.opacity(0.08), .clear]
+        case .plain:
+            let c = Color.white
+            return [c.opacity(darkLook ? 0.08 : 0.45), .clear]
+        }
+    }
+
+    private var haloColors: [Color] {
+        switch mode {
+        case .day:
+            return [Color(uiColor: MossOttoStyle.hex(0xFFD678)).opacity(0.55), .clear]
+        case .night:
+            return [Color(uiColor: MossOttoStyle.hex(0xFFC45A)).opacity(0.65), .clear]
+        case .plain:
+            return [Color.white.opacity(darkLook ? 0.14 : 0.40), .clear]
+        }
     }
 }
 
-/// The top letter row (qwertyuiop), with the key the finger actually touched marked.
-private struct LetterRow: View {
-    var hit: Character? = nil
-    @Environment(\.demoReveal) private var reveal
-    var body: some View {
-        HStack(spacing: 4) {
-            ForEach(Array("qwertyuiop"), id: \.self) { c in MiniKey(label: String(c), hit: c == hit && reveal >= 0.7) }
-        }
-    }
-}
+/// R50 Single-Layer Matte Monolith Keycap for Companion App specimens, Switch Tester & Xiaohe charts.
+struct MonolithKeycapView: View {
+    let label: String
+    var secondary: String? = nil
+    var initialMark: String? = nil
+    var finals: [String] = []
+    var pressed: Bool = false
+    var plain: Bool = false
+    var forceNight: Bool? = nil
+    var homingNotch: Bool = false
+    var ledColor: Color? = nil
+    var cornerRadius: CGFloat = 11
 
-// MARK: - Showcase
+    @Environment(\.colorScheme) private var scheme
 
-/// A demo with its title and one short line under it.
-/// A demo that plays: the keys type into the field one by one, then the strip answers. It plays once when it first
-/// appears and again on every tap (still, with Reduce Motion). A demo with a lesson on 上手 (demoLessons) also has
-/// 「试一试」 next to the play mark: it opens that lesson with an empty field.
-private struct Demo<Visual: View>: View {
-    let title: String
-    let line: String
-    @ViewBuilder var visual: Visual
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.appNavigation) private var nav
-    @State private var reveal = 1.0
-    @State private var run = 0
-    @State private var played = false
-    private var tryable: Bool { demoLessons[title] != nil }
+    private var isNight: Bool { forceNight ?? (scheme == .dark) }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            visual.environment(\.demoReveal, reveal)
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(title).font(.headline).fixedSize(horizontal: false, vertical: true)
-                    Text(line).font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 8)
-                HStack(spacing: 8) {
-                    if tryable {
-                        // its own width, always whole: the title beside it wraps instead
-                        Button { tryIt() } label: {
-                            Text("试一试").font(.subheadline.weight(.semibold)).foregroundStyle(mostoTint)
-                                .lineLimit(1).fixedSize()
-                                .padding(.horizontal, 12).padding(.vertical, 5)
-                                .background(Capsule().fill(mostoTint.opacity(0.14)))
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityHidden(true)   // VoiceOver: one of the card's actions (the card reads as one)
+        ZStack {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(MossOttoStyle.keyFace(plain: plain, night: isNight))
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .strokeBorder(MossOttoStyle.keyBorder(plain: plain, night: isNight), lineWidth: 0.6)
+                )
+                .shadow(color: pressed ? .clear : MossOttoStyle.keyShadow(night: isNight), radius: 0, x: 0, y: 1.5)
+
+            if let ledColor {
+                VStack {
+                    HStack {
+                        Spacer()
+                        Circle()
+                            .fill(ledColor)
+                            .frame(width: 4.5, height: 4.5)
                     }
-                    if !reduceMotion {
-                        Image(systemName: "play.circle.fill").font(.system(size: 26)).foregroundStyle(mostoTint.opacity(reveal < 1 ? 0.35 : 1))
-                            .accessibilityHidden(true)
-                    }
+                    Spacer()
                 }
+                .padding(6)
             }
-            .padding(.horizontal, 4)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
-        .contentShape(Rectangle())
-        .onTapGesture { play() }
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityHint("再演示一次")
-        .accessibilityActions {
-            if tryable { Button("试一试") { tryIt() } }
-        }
-        .onAppear { if !played { played = true; play() } }
-        .task(id: run) {
-            guard run > 0, !reduceMotion else { reveal = 1; return }
-            reveal = 0
-            for i in 1...32 {
-                try? await Task.sleep(nanoseconds: 42_000_000)
-                if Task.isCancelled { return }
-                reveal = Double(i) / 32
-            }
-        }
-    }
-    private func play() { run += 1 }
-    private func tryIt() { nav?.tryDemo(title) }
-}
 
-struct FeatureShowcase: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            SectionHeader(title: "打字时你会看到", subtitle: "以下画面就是键盘上的样子")
-            Demo(title: "按错了什么，改成了什么", line: "手指落在 w 靠 e 的一边：左侧胶囊保留原字母（轻点直接上屏），首选底部亮起 2pt 纠错微光提示已修正。") {
-                Board {
-                    FieldLine(marked: "jintianhenrw")
-                    Strip(rawKeys: "jintianhenrw", items: [
-                        DemoCandidate(text: "今天很热", fixed: true),
-                        DemoCandidate(text: "今天很入味"),
-                        DemoCandidate(text: "今天"),
-                    ])
-                    LetterRow(hit: "w")
+            if !finals.isEmpty || initialMark != nil {
+                VStack(spacing: 1) {
+                    Text(label)
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(isNight ? Color.white : MossOttoStyle.inkPrimary)
+                    if let initialMark {
+                        Text(initialMark)
+                            .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                            .foregroundStyle(MossOttoStyle.violet)
+                    }
+                    ForEach(finals, id: \.self) { f in
+                        Text(f)
+                            .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                            .foregroundStyle(MossOttoStyle.inkSecondary)
+                    }
+                    Spacer(minLength: 0)
                 }
-            }
-            Demo(title: "长句多按、漏按一个键", line: "中间少按了 n，整句照样读对；多按一个键也一样，候选条全程保持高密度清爽单行。") {
-                Board {
-                    FieldLine(marked: "jintiantiaqihenhao")
-                    Strip(rawKeys: "tiaqihenhao", items: [
-                        DemoCandidate(text: "今天天气很好", fixed: true),
-                        DemoCandidate(text: "今天提啊起很好"),
-                    ])
-                }
-            }
-            Demo(title: "一键撤回", line: "纠错上屏后，左边出现刚才按的字母，点一下或按删除就恢复。") {
-                Board {
-                    FieldLine(committed: "今天天气很好")
-                    Strip(undo: "jintiantiaqi", items: [
-                        DemoCandidate(text: "的"), DemoCandidate(text: "很好"), DemoCandidate(text: "哦"),
-                    ])
-                }
-            }
-            Demo(title: "中英混输", line: "句子里夹英文词照打；拼音拼得出的词（women）仍先给中文。") {
-                Board {
-                    FieldLine(marked: "woyongiphonedazi")
-                    Strip(items: [
-                        DemoCandidate(text: "我用iPhone打字"), DemoCandidate(text: "我用"), DemoCandidate(text: "我"),
-                    ])
-                }
-            }
-            Demo(title: "联想", line: "上屏后接着给常用的下一个词，点一下直接上屏。") {
-                Board {
-                    FieldLine(committed: "你好")
-                    Strip(items: ["好的", "我", "想你", "有"].map { DemoCandidate(text: $0) })
-                }
-            }
-            Demo(title: "记住你的词", line: "词库里没有的名字、说法，选出一次就记住，只打声母也排第一。") {
-                Board {
-                    FieldLine(marked: "mstd")
-                    Strip(items: [
-                        DemoCandidate(text: "摸索台灯"), DemoCandidate(text: "美食天地"), DemoCandidate(text: "模式特点"),
-                    ])
-                }
-            }
-            HStack(alignment: .top, spacing: 12) {
-                SmallDemo(title: "九宫格", line: "左列选拼音，两种方案都能用") {
-                    VStack(spacing: 4) {
-                        ForEach([["，", "ABC", "DEF"], ["GHI", "JKL", "MNO"], ["PQRS", "TUV", "WXYZ"]], id: \.self) { row in
-                            HStack(spacing: 4) { ForEach(row, id: \.self) { MiniKey(label: $0, function: $0 == "，") } }
-                        }
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .padding(.top, 5)
+            } else {
+                VStack(spacing: 2) {
+                    Text(label)
+                        .font(.system(size: 17, weight: .medium, design: plain ? .default : .rounded))
+                        .foregroundStyle(isNight ? Color.white : MossOttoStyle.inkPrimary)
+                    if let secondary {
+                        Text(secondary)
+                            .font(.system(size: 10.5, weight: .medium))
+                            .foregroundStyle(MossOttoStyle.inkSecondary)
                     }
                 }
-                SmallDemo(title: "小鹤键位提示", line: "键上写声母韵母，记熟可关") {
-                    VStack(spacing: 4) {
-                        HStack(spacing: 4) {
-                            MiniKey(label: "u", sub: "sh\nu")
-                            MiniKey(label: "i", sub: "ch\ni")
-                            MiniKey(label: "o", sub: "uo\no")
-                        }
-                        HStack(spacing: 4) {
-                            MiniKey(label: "s", sub: "ong\niong")
-                            MiniKey(label: "h", sub: "ang")
-                            MiniKey(label: "v", sub: "zh\nui ü")
-                        }
-                    }
+                .padding(.horizontal, 6)
+            }
+
+            if homingNotch {
+                VStack {
+                    Spacer()
+                    Capsule()
+                        .fill(MossOttoStyle.inkSecondary.opacity(0.32))
+                        .frame(width: 22, height: 2.5)
+                        .padding(.bottom, 6)
                 }
             }
-            HStack(alignment: .top, spacing: 12) {
-                LightCard(image: "Mosto", title: "日光", text: "奶瓷白哑光键帽配灰薰衣草功能键，不打字时在顶栏左侧 28pt 胶囊里陪伴，偶尔眨眼。", night: false)
-                LightCard(image: "MostoNight", title: "夜灯", text: "深曜石炭紫哑光键帽配暖月白字符，眯眼坏笑待在顶栏左胶囊；闲下来偶尔打个哈欠。", night: true)
-            }
+        }
+        .scaleEffect(pressed ? 0.96 : 1.0)
+        .offset(y: pressed ? 1.0 : 0)
+        .animation(.easeOut(duration: 0.08), value: pressed)
+    }
+}
+
+// MARK: - Live Hardware Volume Monitor & Smart Non-Nagging Gate
+
+enum VolumeZone: Equatable {
+    case muted
+    case comfortable
+    case loud
+
+    var label: String {
+        switch self {
+        case .muted: return "当前静音 · 将仅保留触感"
+        case .comfortable: return "音量舒适 · 适合轻敲试听"
+        case .loud: return "音量偏高 · 建议用侧键调低一点"
+        }
+    }
+
+    var accent: Color {
+        switch self {
+        case .muted: return MossOttoStyle.inkSecondary
+        case .comfortable: return MossOttoStyle.moss
+        case .loud: return MossOttoStyle.lampAmber
         }
     }
 }
 
-private struct SmallDemo<Visual: View>: View {
-    let title: String
-    let line: String
-    @ViewBuilder var visual: Visual
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Board { visual }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.subheadline.weight(.semibold))
-                Text(line).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+/// Observes `AVAudioSession.outputVolume` locally (zero network) and guards the first audible toy interaction
+/// with a tactile volume check sheet, plus a non-blocking banner when a fresh session starts above 70%.
+@MainActor
+final class VolumeMonitor: NSObject, ObservableObject {
+    @Published var volume: Float
+    @Published var hasConfirmedOnce: Bool {
+        didSet { defaults.set(hasConfirmedOnce, forKey: Self.confirmedKey) }
+    }
+    @Published var showSheet = false
+    @Published var showHighBanner = false
+
+    private let defaults: UserDefaults
+    private let observeSystem: Bool
+    private static let confirmedKey = "mosto.volume.checked.v1"
+    private var sessionBannerDismissed = false
+    private var started = false
+    private var pendingAction: (() -> Void)?
+    private var observation: NSKeyValueObservation?
+
+    init(defaults: UserDefaults = .standard, observeSystem: Bool = true, initialVolume: Float? = nil) {
+        self.defaults = defaults
+        self.observeSystem = observeSystem
+        let confirmed = defaults.bool(forKey: Self.confirmedKey)
+        self.hasConfirmedOnce = confirmed
+        self.volume = initialVolume ?? (observeSystem ? AVAudioSession.sharedInstance().outputVolume : 0.45)
+        super.init()
+    }
+
+    deinit {
+        observation?.invalidate()
+    }
+
+    nonisolated static func zone(for volume: Float) -> VolumeZone {
+        if volume <= 0.01 { return .muted }
+        if volume <= 0.65 { return .comfortable }
+        return .loud
+    }
+
+    var zone: VolumeZone { Self.zone(for: volume) }
+
+    var percentage: Int {
+        max(0, min(100, Int((volume * 100).rounded())))
+    }
+
+    var symbolName: String {
+        if volume <= 0.01 { return "speaker.slash.fill" }
+        if volume < 0.35 { return "speaker.wave.1.fill" }
+        if volume <= 0.65 { return "speaker.wave.2.fill" }
+        return "speaker.wave.3.fill"
+    }
+
+    func startObserving() {
+        guard observeSystem, !started else { return }
+        started = true
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.ambient, options: [.mixWithOthers])
+        try? session.setActive(true)
+        volume = session.outputVolume
+        evaluateHighBannerOnSessionStart()
+        observation = session.observe(\.outputVolume, options: [.new]) { [weak self] session, _ in
+            let next = session.outputVolume
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.volume = next
+                if self.showHighBanner && next <= 0.65 {
+                    self.showHighBanner = false
+                }
             }
-            .padding(.horizontal, 4)
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
+    }
+
+    private func evaluateHighBannerOnSessionStart() {
+        if hasConfirmedOnce && volume > 0.70 && !sessionBannerDismissed && KeyboardSettings.shared.keySound {
+            showHighBanner = true
+        }
+    }
+
+    /// Gates audible interactive toys: silent interactions run immediately; first audible use presents the
+    /// live dimmer check sheet once, then persists confirmation and only whispers a non-blocking banner if >70%.
+    func gateSoundInteraction(soundEnabled: Bool, action: @escaping () -> Void) {
+        if !soundEnabled {
+            action()
+            return
+        }
+        if !hasConfirmedOnce {
+            pendingAction = action
+            showSheet = true
+            return
+        }
+        if volume > 0.70 && !sessionBannerDismissed {
+            showHighBanner = true
+        }
+        action()
+    }
+
+    func confirmAndProceed() {
+        hasConfirmedOnce = true
+        showSheet = false
+        if volume > 0.70 {
+            sessionBannerDismissed = true
+            showHighBanner = false
+        } else {
+            showHighBanner = false
+        }
+        let act = pendingAction
+        pendingAction = nil
+        act?()
+    }
+
+    func dismissHighBanner() {
+        sessionBannerDismissed = true
+        showHighBanner = false
+    }
+
+    func playSound(_ id: SystemSoundID) {
+        AudioServicesPlaySystemSound(id)
+    }
+
+    func playTestClick() {
+        playSound(1104)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred(intensity: 0.66)
     }
 }
 
-/// Mosto in one of his two lights, on that light's own ground.
-private struct LightCard: View {
-    let image: String, title: String, text: String
-    let night: Bool
+/// Compact header capsule showing live volume state; tap at any time to re-open the dimmer check card.
+struct VolumeBadgePill: View {
+    @ObservedObject var monitor: VolumeMonitor
+    var soundEnabled: Bool
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Image(uiImage: mostoImage(image)).resizable().scaledToFit().frame(height: 96)
-                .frame(maxWidth: .infinity)
-                .accessibilityHidden(true)
-            Text(title).font(.headline).foregroundStyle(night ? Color(red: 1.0, green: 0.86, blue: 0.55) : Color(red: 0.33, green: 0.21, blue: 0.69))
-            Text(text).font(.caption).foregroundStyle(night ? Color.white.opacity(0.78) : Color(red: 0.36, green: 0.31, blue: 0.24))
-                .fixedSize(horizontal: false, vertical: true)
+        Button {
+            UISelectionFeedbackGenerator().selectionChanged()
+            monitor.showSheet = true
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: soundEnabled ? monitor.symbolName : "speaker.slash")
+                    .font(.system(size: 11, weight: .semibold))
+                Text(soundEnabled ? (monitor.zone == .muted ? "静音" : "\(monitor.percentage)%") : "声效关")
+                    .font(.caption.weight(.semibold))
+                    .monospacedDigit()
+            }
+            .foregroundStyle(soundEnabled ? monitor.zone.accent : MossOttoStyle.inkSecondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5.5)
+            .background(Capsule().fill(MossOttoStyle.surface))
+            .overlay(Capsule().strokeBorder(MossOttoStyle.hairline, lineWidth: 0.8))
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .buttonStyle(.plain)
+        .accessibilityLabel("检查当前手机音量")
+    }
+}
+
+/// Non-blocking banner shown on a fresh session only if confirmed before AND system volume exceeds 70%.
+struct VolumeHighBanner: View {
+    @ObservedObject var monitor: VolumeMonitor
+    var onMuteSound: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "speaker.wave.3.fill")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(MossOttoStyle.lampAmber)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("当前音量 \(monitor.percentage)% 偏高")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(MossOttoStyle.inkPrimary)
+                Text("互动声效可能偏响，建议按侧边键调低或暂关闭")
+                    .font(.caption2)
+                    .foregroundStyle(MossOttoStyle.inkSecondary)
+            }
+            Spacer(minLength: 4)
+            Button("静音", action: onMuteSound)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(MossOttoStyle.violet)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Capsule().fill(MossOttoStyle.violet.opacity(0.12)))
+                .buttonStyle(.plain)
+            Button {
+                monitor.dismissHighBanner()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(MossOttoStyle.inkSecondary)
+                    .padding(6)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
         .background(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(night ? LinearGradient(colors: [Color(red: 0.20, green: 0.14, blue: 0.42), Color(red: 0.09, green: 0.07, blue: 0.22)], startPoint: .top, endPoint: .bottom)
-                            : LinearGradient(colors: [Color(red: 1.0, green: 0.97, blue: 0.89), Color(red: 0.98, green: 0.88, blue: 0.68)], startPoint: .top, endPoint: .bottom))
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(MossOttoStyle.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(MossOttoStyle.lampAmber.opacity(0.45), lineWidth: 0.9)
         )
     }
 }
 
-struct SectionHeader: View {
-    let title: String
-    var subtitle: String? = nil
+/// Desk-lamp dimmer inspired volume confirmation card (live hardware volume KVO + tactile try-click keycap).
+struct VolumeCheckSheet: View {
+    @ObservedObject var monitor: VolumeMonitor
+    var onSoundChanged: () -> Void = {}
+    @State private var soundEnabled = KeyboardSettings.shared.keySound
+    @State private var samplePressed = false
+    @Environment(\.dismiss) private var dismiss
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title).font(.title3.weight(.bold))
-            if let subtitle { Text(subtitle).font(.subheadline).foregroundStyle(.secondary) }
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 12) {
+                Image(uiImage: mostoImage("Mosto"))
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 44, height: 44)
+                    .padding(4)
+                    .background(Circle().fill(MossOttoStyle.lampAmber.opacity(0.16)))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("先看一眼手机音量")
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(MossOttoStyle.inkPrimary)
+                    Text("按机身侧边音量键，下方光条会实时跟随")
+                        .font(.caption)
+                        .foregroundStyle(MossOttoStyle.inkSecondary)
+                }
+                Spacer(minLength: 0)
+            }
+
+            // Live 12-segment OTTOSSOM desk-lamp volume gauge
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline) {
+                    Image(systemName: monitor.symbolName)
+                        .foregroundStyle(monitor.zone.accent)
+                    Text(monitor.zone.label)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(MossOttoStyle.inkPrimary)
+                    Spacer()
+                    Text("\(monitor.percentage)%")
+                        .font(.headline.weight(.bold).monospacedDigit())
+                        .foregroundStyle(monitor.zone.accent)
+                }
+
+                GeometryReader { _ in
+                    HStack(spacing: 6) {
+                        ForEach(0..<12, id: \.self) { i in
+                            let threshold = Float(i + 1) / 12.0
+                            let lit = monitor.volume >= threshold - 0.04 && monitor.volume > 0.01
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                .fill(lit ? barColor(index: i) : MossOttoStyle.surfaceMuted)
+                                .frame(height: lit ? 24 : 18)
+                                .animation(.spring(response: 0.22, dampingFraction: 0.8), value: monitor.volume)
+                        }
+                    }
+                    .frame(maxHeight: .infinity, alignment: .center)
+                }
+                .frame(height: 28)
+            }
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(MossOttoStyle.surface)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(MossOttoStyle.hairline, lineWidth: 0.7)
+            )
+
+            // Sample tap + inline sound switch
+            HStack(spacing: 12) {
+                Button {
+                    samplePressed = true
+                    monitor.playTestClick()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.11) { samplePressed = false }
+                } label: {
+                    MonolithKeycapView(
+                        label: "轻敲试听",
+                        secondary: "1104 清脆声",
+                        pressed: samplePressed,
+                        ledColor: soundEnabled ? MossOttoStyle.moss : MossOttoStyle.inkSecondary
+                    )
+                    .frame(height: 60)
+                }
+                .buttonStyle(.plain)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle("互动与按键音", isOn: $soundEnabled)
+                        .font(.subheadline.weight(.semibold))
+                        .tint(MossOttoStyle.violet)
+                        .onChange(of: soundEnabled) { enabled in
+                            KeyboardSettings.shared.keySound = enabled
+                            onSoundChanged()
+                        }
+                    Text(soundEnabled ? "已开启 · 如在安静环境可先关掉" : "已静音 · 仅保留轻触震动反馈")
+                        .font(.caption2)
+                        .foregroundStyle(MossOttoStyle.inkSecondary)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(MossOttoStyle.surface)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(MossOttoStyle.hairline, lineWidth: 0.7)
+                )
+            }
+
+            Button {
+                UISelectionFeedbackGenerator().selectionChanged()
+                monitor.confirmAndProceed()
+                dismiss()
+            } label: {
+                Text("音量合适，开始体验")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(MossOttoStyle.violet))
+            }
+            .buttonStyle(.plain)
         }
-        .padding(.horizontal, 4)
-        .accessibilityAddTraits(.isHeader)
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(MossOttoStyle.canvas.ignoresSafeArea())
+        .onAppear {
+            soundEnabled = KeyboardSettings.shared.keySound
+            monitor.startObserving()
+        }
+    }
+
+    private func barColor(index: Int) -> Color {
+        if index >= 8 { return MossOttoStyle.lampAmber }
+        return MossOttoStyle.moss
     }
 }
 
-// MARK: - Setup
+// MARK: - 3-Key Physical Switch Tester Toy
 
-/// 启用键盘: the three steps as the Settings path they are (tappable crumbs, not prose), and one clear button.
-struct SetupCard: View {
+struct SwitchTesterToy: View {
+    @ObservedObject var volume: VolumeMonitor
+    var mode: StudioLampMode
+    var soundEnabled: Bool
+    var onMostoBlink: () -> Void
+
+    @State private var pressedKey: Int? = nil
+    @State private var readout = "轻触 3 枚实体试轴，感受 R50 分级触感与原声"
+
+    private var forceNight: Bool? {
+        switch mode {
+        case .night: return true
+        case .day: return false
+        case .plain: return nil
+        }
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            SectionHeader(title: "启用键盘")
-            VStack(alignment: .leading, spacing: 14) {
-                SetupStep(n: 1, title: "添加键盘") {
-                    Crumbs(items: ["设置", "通用", "键盘", "键盘", "添加新键盘", "Mosto键盘"])
-                }
-                SetupStep(n: 2, title: "切换过来") {
-                    HStack(spacing: 6) {
-                        Text("打字时长按或轻点").font(.subheadline).foregroundStyle(.secondary)
-                        Image(systemName: "globe").font(.system(size: 13, weight: .semibold))
-                            .frame(width: 30, height: 24)
-                            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color(uiColor: Theme.functionKey)))
-                    }
-                }
-                SetupStep(n: 3, title: "震动与按键音（可选）") {
-                    Text("在键盘列表中点 Mosto键盘，开启“允许完全访问”。键盘始终只在手机上运行。仍然感觉不到震动时，打开 设置 › 声音与触感 › 系统触感反馈。")
-                        .font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                }
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("台灯下 · 3 枚试轴器")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(MossOttoStyle.inkSecondary)
+                Spacer()
+                Text(readout)
+                    .font(.caption2)
+                    .foregroundStyle(MossOttoStyle.inkSecondary)
+                    .lineLimit(1)
+            }
+
+            HStack(spacing: 10) {
                 Button {
-                    if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                    trigger(id: 0, sound: 1104, style: .light, intensity: 0.66, desc: "轻脆字母 · Light 0.66")
                 } label: {
-                    Text("打开系统设置").font(.body.weight(.semibold)).frame(maxWidth: .infinity).padding(.vertical, 12)
-                        .foregroundStyle(.white)
-                        .background(Capsule().fill(mostoTint))
+                    MonolithKeycapView(
+                        label: "A",
+                        secondary: "轻脆字母",
+                        pressed: pressedKey == 0,
+                        plain: mode == .plain,
+                        forceNight: forceNight
+                    )
+                    .frame(height: 60)
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    trigger(id: 1, sound: 1104, style: .rigid, intensity: 0.78, desc: "沉稳定位 · Rigid 0.78")
+                } label: {
+                    MonolithKeycapView(
+                        label: "空格",
+                        secondary: "盲打凹痕",
+                        pressed: pressedKey == 1,
+                        plain: mode == .plain,
+                        forceNight: forceNight,
+                        homingNotch: mode != .plain
+                    )
+                    .frame(height: 60)
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    trigger(id: 2, sound: 1156, style: .soft, intensity: 0.85, desc: "软弹彩蛋 · Soft 0.85")
+                } label: {
+                    MonolithKeycapView(
+                        label: "Mosto",
+                        secondary: "彩蛋轻捏",
+                        pressed: pressedKey == 2,
+                        plain: mode == .plain,
+                        forceNight: forceNight,
+                        ledColor: MossOttoStyle.lampAmber
+                    )
+                    .frame(height: 60)
                 }
                 .buttonStyle(.plain)
             }
-            .padding(16)
-            .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
+            .padding(10)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(MossOttoStyle.surfaceMuted)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(MossOttoStyle.hairline, lineWidth: 0.7)
+            )
+        }
+    }
+
+    private func trigger(id: Int, sound: SystemSoundID, style: UIImpactFeedbackGenerator.FeedbackStyle, intensity: CGFloat, desc: String) {
+        pressedKey = id
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.11) {
+            if pressedKey == id { pressedKey = nil }
+        }
+        volume.gateSoundInteraction(soundEnabled: soundEnabled) {
+            UIImpactFeedbackGenerator(style: style).impactOccurred(intensity: intensity)
+            if soundEnabled {
+                AudioServicesPlaySystemSound(sound)
+            }
+            if id == 2 {
+                onMostoBlink()
+            }
+            readout = desc
         }
     }
 }
 
-private struct SetupStep<Detail: View>: View {
-    let n: Int
-    let title: String
-    @ViewBuilder var detail: Detail
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Text("\(n)").font(.subheadline.weight(.bold)).foregroundStyle(.white)
-                .frame(width: 24, height: 24).background(Circle().fill(mostoTint))
-            VStack(alignment: .leading, spacing: 6) {
-                Text(title).font(.subheadline.weight(.semibold))
-                detail
-            }
-        }
-        .accessibilityElement(children: .combine)
-    }
-}
-
-/// A Settings path as small chips that wrap onto the next line (never scroll sideways).
-private struct Crumbs: View {
-    let items: [String]
-    var body: some View {
-        WrapLayout(spacing: 4, lineSpacing: 6) {
-            ForEach(Array(items.enumerated()), id: \.offset) { i, t in
-                HStack(spacing: 4) {
-                    Text(t).font(.caption.weight(.semibold))
-                        .foregroundStyle(i == items.count - 1 ? Color.white : Color.primary)
-                        .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(Capsule().fill(i == items.count - 1 ? mostoTint : Color(UIColor.tertiarySystemFill)))
-                    if i < items.count - 1 { Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold)).foregroundStyle(.tertiary) }
-                }
-            }
-        }
-    }
-}
+// MARK: - Shared OTTOSSOM Layout Primitives
 
 /// Lays its children out left to right, starting a new line when the next one does not fit.
 struct WrapLayout: Layout {
     var spacing: CGFloat = 4
     var lineSpacing: CGFloat = 6
+
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let maxW = proposal.width ?? .infinity
         var x: CGFloat = 0, y: CGFloat = 0, lineH: CGFloat = 0, widest: CGFloat = 0
@@ -457,6 +748,7 @@ struct WrapLayout: Layout {
         }
         return CGSize(width: min(widest, maxW), height: y + lineH)
     }
+
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         var x = bounds.minX, y = bounds.minY, lineH: CGFloat = 0
         for v in subviews {
@@ -468,88 +760,79 @@ struct WrapLayout: Layout {
     }
 }
 
-// MARK: - Try, more, footer
-
-struct TryField: View {
-    @Binding var text: String
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionHeader(title: "试打")
-            TextField("全拼 nihao 或小鹤 nihc → 你好", text: $text, axis: .vertical)
-                .lineLimit(3...8)
-                .padding(14)
-                .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
-        }
-    }
-}
-
-/// The rest as a Settings-style list: every usage note, the 小鹤双拼 guide, the legal pages, feedback.
-struct MoreList: View {
-    let snapshot: Bool
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionHeader(title: "更多")
-            VStack(spacing: 0) {
-                row("全部用法", detail: "每个键、每个手势的完整说明", icon: "book.pages", color: .indigo) { UsageDetailView() }
-                Divider().padding(.leading, 56)
-                row("小鹤双拼", detail: "每个字固定两键的双拼方案。两种方案在这个键盘上功能相同，全拼用户继续用全拼就好；想换之前，先看清学习成本。", icon: "keyboard", color: .purple) { XiaoheGuideView() }
-                ForEach(Array(LegalText.docs.enumerated()), id: \.offset) { _, doc in
-                    Divider().padding(.leading, 56)
-                    row(doc.title, detail: nil, icon: aboutIcon(doc.id), color: .gray) { LegalView(doc: doc) }
-                }
-                Divider().padding(.leading, 56)
-                if let u = URL(string: "https://github.com/mjuvdeysii/mossottokeyboard/issues") {
-                    Link(destination: u) { RowLabel(title: "问题与建议", detail: nil, icon: "bubble.left.and.text.bubble.right", color: .teal, external: true) }
-                        .buttonStyle(.plain)
-                }
-            }
-            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
-        }
-    }
-
-    @ViewBuilder
-    private func row<D: View>(_ title: String, detail: String?, icon: String, color: Color, @ViewBuilder destination: () -> D) -> some View {
-        if snapshot {
-            RowLabel(title: title, detail: detail, icon: icon, color: color)
-        } else {
-            NavigationLink { destination() } label: { RowLabel(title: title, detail: detail, icon: icon, color: color) }
-                .buttonStyle(.plain)
-        }
-    }
-}
-
-/// A Settings row: a white glyph on a coloured rounded square, the title, an optional line under it, a chevron.
-private struct RowLabel: View {
+struct Card<Content: View>: View {
     let title: String
-    let detail: String?
-    let icon: String
-    let color: Color
-    var external = false
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon).font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
-                .frame(width: 30, height: 30).background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(color.gradient))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.body).foregroundStyle(.primary)
-                if let detail { Text(detail).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
-            }
-            Spacer(minLength: 4)
-            Image(systemName: external ? "arrow.up.right" : "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(.tertiary)
-        }
-        .padding(.horizontal, 14).padding(.vertical, 11)
-        .contentShape(Rectangle())
-    }
-}
+    @ViewBuilder var content: Content
 
-struct HomeFooter: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("测试版：功能可能变动，发送重要内容前请核对上屏文字。在 TestFlight 中截图即可提交反馈。", systemImage: "testtube.2")
-            Text("纯粹的输入法：候选全部来自装在 App 里的开源词库与统计数据（按词语在公开语料里出现的次数排序），在手机上算出来，全程离线。整个键盘只靠词库和统计工作。")
-            Text("词库、你学过的词和触点习惯都只存在这台设备上。")
+            Text(title)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(MossOttoStyle.inkSecondary)
+                .padding(.leading, 4)
+                .accessibilityAddTraits(.isHeader)
+            VStack(alignment: .leading, spacing: 12) { content }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(MossOttoStyle.surface)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(MossOttoStyle.hairline, lineWidth: 0.7)
+                )
         }
-        .font(.caption).foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-        .padding(.horizontal, 6)
+    }
+}
+
+struct IconTile: View {
+    let symbol: String
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(MossOttoStyle.violet)
+            .frame(width: 30, height: 30)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(MossOttoStyle.violet.opacity(0.12))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(MossOttoStyle.violet.opacity(0.20), lineWidth: 0.6)
+            )
+            .accessibilityHidden(true)
+    }
+}
+
+struct Usage: View {
+    let icon: String
+    var title: String? = nil
+    let text: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            IconTile(symbol: icon)
+            VStack(alignment: .leading, spacing: 3) {
+                if let title {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(MossOttoStyle.inkPrimary)
+                }
+                Text(text)
+                    .font(.subheadline)
+                    .foregroundStyle(title == nil ? MossOttoStyle.inkPrimary : MossOttoStyle.inkSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+func aboutIcon(_ id: String) -> String {
+    switch id {
+    case "privacy": return "hand.raised"
+    case "terms": return "doc.text"
+    default: return "shippingbox"
     }
 }

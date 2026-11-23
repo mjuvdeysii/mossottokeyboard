@@ -301,6 +301,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     var preeditAttributedForTests: NSAttributedString? { preedit.attributedText }
     var preeditDockFrameForTests: CGRect { preeditDock.frame }
     var preeditOverflowFadeForTests: Bool { preeditClip.layer.mask === preeditFade }
+    var widthCacheCountForTests: Int { widthCache.count }
 
     /// Offer (or withdraw, with nil) putting back keys: the ones a correction replaced, or the ones a swipe cleared.
     /// `spoken`: what VoiceOver says for it (by default, that it takes back a correction).
@@ -425,7 +426,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         isPrediction = prediction
         // widths are measured again from the cache (captions can change with the same words)
         widths = []
-        if candidates.isEmpty || widthCache.count > 1500 { widthCache = [:] }
+        if widthCache.count > 1500 { widthCache.removeAll(keepingCapacity: true) }
         if changed, strip.contentOffset != .zero {
             inUpdate = true
             strip.setContentOffset(.zero, animated: false)

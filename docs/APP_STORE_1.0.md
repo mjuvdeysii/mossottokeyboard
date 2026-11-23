@@ -14,7 +14,7 @@
 - **隐私政策页面**：仓库 GitHub Pages 的 `privacy.html`（对应 `docs/privacy.html`）
 - **技术支持页面**：仓库 GitHub Pages 的 `index.html`（对应 `docs/index.html`）
 - **使用条款页面**：仓库 GitHub Pages 的 `terms.html`（对应 `docs/terms.html`）
-- **参考验证版本**：TestFlight Build 375+（R50 零重影单层雕塑键帽、高定哑光视觉与极速就绪重构版，基线 Commit `905b865`）
+- **参考验证版本**：TestFlight Build 377+（R51 摸索台灯 OTTOSSOM 伴侣 App 重塑与全链路流畅度精炼版）
 
 ## 2. 关键词（Keywords，100 字符以内）
 
@@ -96,8 +96,8 @@ Thank you for reviewing Mosto Keyboard (Mosto键盘).
 
 - [x] **CI 与 SDK 链路核查**：`build` 任务运行于 `macos-15`（`Xcode 26.3 / 17C529`，iOS 26 SDK）负责全量编译、模拟器快照、Keyboard Test Bench 与引擎质量门禁；`testflight` 任务运行于 `xcode-27`（iOS 27 SDK）负责 Release 归档、自动云端签名与上传 TestFlight。
 - [x] **签名与容器边界**：`.xcodeproj` 零签名改动、零新增 `.entitlements`，`App/PrivacyInfo.xcprivacy` 与 `Keyboard/Resources/PrivacyInfo.xcprivacy` 声明完整，`ITSAppUsesNonExemptEncryption = NO`。
-- [x] **13 条静态门禁全绿**：`Tools/check_offline.py`、`Tools/check_no_sync_tap.py` 与 `Tools/check_ios_keyboard_rules.py` 全量通过。
-- [x] **核心体验与性能架构打磨（R35–R50）**：零重影单层雕塑键帽 + 高速自适应无闪浮标池、懒加载设置与候选宫格、弹出 0 XPC + 两阶段毫秒级引擎秒启 + 可抢占联想 + 后台 CoreText 校验、收起键盘保留热缓存、`AmbientLightView` 零全屏遮罩与零空转动画、`.appex` 零 `setMarkedText` XPC + 顶部实时原字母槽、全键盘标点轻上滑手势、228 条颜文字与相对日期/时间补全、行内心算（`286/4=`）、0-XPC 空格断句与成熟三 Tab 伴侣 App。
+- [x] **14 条静态门禁全绿**：`Tools/check_offline.py`、`Tools/check_no_sync_tap.py` 与 `Tools/check_ios_keyboard_rules.py` 全量通过。
+- [x] **核心体验与性能架构打磨（R35–R51）**：OTTOSSOM 摸索台灯极简双空间伴侣 App（台灯工作台 + 手册与关于）、实时硬件音量检查与 3 枚 R50 实体试轴器、零重影单层雕塑键帽 + 高速自适应无闪浮标池、懒加载设置与候选宫格、弹出及首键 0 同步 XPC + 两阶段毫秒级引擎秒启 + 可抢占联想 + 后台 CoreText 校验、`KeySpec` 差分跳过与 `CandidateBarView` 跨词宽度缓存、收起键盘保留热缓存、`AmbientLightView` 零全屏遮罩与零空转动画、`.appex` 零 `setMarkedText` XPC + 顶部实时原字母槽、全键盘标点轻上滑手势、228 条颜文字与相对日期/时间补全、行内心算（`286/4=`）与 0-XPC 空格断句。
 - [ ] 核对 App Store Connect 中隐私政策 URL、技术支持 URL 与 `docs/privacy.html`、`docs/index.html` 线上可访问性。
 - [ ] 核对 App Store Connect 隐私标签已勾选“不收集数据（Data Not Collected）”。
 - [ ] 使用真机（未开启“允许完全访问”）完整复测小鹤双拼、全拼、九宫格、成对标点联动删除与中英混输。

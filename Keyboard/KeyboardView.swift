@@ -15,6 +15,7 @@ final class KeyView: UIView {
 
     var pressed = false { didSet { if pressed != oldValue { applyPressState() } } }
     private var hasApplied = false
+    private(set) var applyRunsForTests = 0
     /// While the space bar drives the cursor the other caps go blank, as in the iOS trackpad mode.
     var blanked = false {
         didSet {
@@ -60,17 +61,14 @@ final class KeyView: UIView {
         icon.contentMode = .center
         addSubview(label)
         addSubview(icon)
-        apply(spec, borders: borders)
+        apply(spec, borders: borders, force: true)
     }
 
     /// Update label / icon / style without recreating the view (keeps touches alive).
-    func apply(_ spec: KeySpec, borders: Bool) {
-        // nothing to redraw when the key is unchanged (this runs for every key on every keystroke)
-        if hasApplied, borders == self.borders, spec.label == self.spec.label, spec.symbol == self.spec.symbol,
-           spec.style == self.spec.style, spec.action == self.spec.action, spec.alt == self.spec.alt,
-           spec.width == self.spec.width, spec.guideFinals == self.spec.guideFinals,
-           spec.guideInitial == self.spec.guideInitial, spec.hint == self.spec.hint { return }
+    func apply(_ spec: KeySpec, borders: Bool, force: Bool = false) {
+        if !force && hasApplied && borders == self.borders && spec == self.spec { return }
         hasApplied = true
+        applyRunsForTests += 1
         self.spec = spec
         self.borders = borders
         label.text = spec.label
@@ -213,7 +211,7 @@ final class KeyView: UIView {
     func themeChanged() {
         hasApplied = false
         lastCapSize = .zero
-        apply(spec, borders: borders)
+        apply(spec, borders: borders, force: true)
     }
 
     private var lastCapSize: CGSize = .zero

@@ -1,11 +1,7 @@
 import SwiftUI
 import UIKit
 
-// 上手: the real keyboard, running inside the app (the same controller and engine as the keyboard extension, typing
-// into a text area of the app's own), with a short guided run through what it does — each step checks what was
-// typed and moves on by itself. Nothing typed here leaves the app, and nothing is learned from it.
-
-/// The keyboard extension's bundle: its lexicon and language model are what the playground decodes with.
+/// The keyboard extension's bundle: its lexicon and language model are what the studio bench decodes with.
 private let keyboardExtensionBundle: Bundle? = {
     guard let plugins = Bundle.main.builtInPlugInsURL else { return nil }
     if let b = Bundle(url: plugins.appendingPathComponent("MossOttoKeyboardExt.appex")) { return b }
@@ -13,64 +9,139 @@ private let keyboardExtensionBundle: Bundle? = {
         .lazy.compactMap(Bundle.init(url:)).first
 }()
 
-/// One step of the guided run: what to type, which key is the deliberate slip, and how to tell it worked.
+/// Interactive showcase scenario shown in the Studio's 手感体验 bar (and verified by `KeyboardTests`).
 struct Lesson {
     let title: String
     let line: String
     let keys: String
-    var slip: Int? = nil          // index in `keys` of the key pressed on purpose wrong / the place a key is left out
-    var missing: Character? = nil // the letter left out at `slip`
+    var slip: Int? = nil
+    var missing: Character? = nil
     let check: (String, KeyboardViewController.TestState) -> Bool
-    /// A second step after `check` passes: it gets what `check` left the keyboard holding to put back (the keys a
-    /// clear took away), and passes the lesson.
     var then: ((KeyboardViewController.TestState, String?) -> Bool)? = nil
 }
 
 let lessons: [Lesson] = [
-    Lesson(title: "打出“你好”", line: "依次按下面的键，再按空格。", keys: "nihao␣",
+    Lesson(title: "打出“你好”", line: "轻敲下面字母，按空格上屏。", keys: "nihao␣",
            check: { t, _ in t.contains("你好") }),
-    Lesson(title: "按错一个键", line: "最后的 e 故意按成旁边的 w：留意首选底部的纠错微光提示，再按空格。", keys: "jintianhenrw␣", slip: 11,
+    Lesson(title: "按错一个键", line: "故意把 e 按成旁边的 w：留意首选微光提示，空格依然读对。", keys: "jintianhenrw␣", slip: 11,
            check: { t, _ in t.contains("今天很热") }),
-    Lesson(title: "长句漏按一个键", line: "tian 少按一个 n，整句照样读对。", keys: "jintiantiaqihenhao␣", slip: 10, missing: "n",
+    Lesson(title: "长句漏按一个键", line: "tian 少按一个 n，整句自动补全并连读。", keys: "jintiantiaqihenhao␣", slip: 10, missing: "n",
            check: { t, _ in t.contains("今天天气很好") }),
-    Lesson(title: "撤回纠错", line: "点候选栏最左边的 ↩：刚才按的字母原样回来。", keys: "↩",
+    Lesson(title: "撤回纠错", line: "点候选栏左侧 ↩，刚才输入的原始字母原样回来。", keys: "↩",
            check: { _, s in s.composing && s.keys.contains("tiaqi") }),
-    Lesson(title: "清空正在打的拼音", line: "从删除键往左一划，正在打的拼音一次清空；点 ↩ 找回。", keys: "⌫↩",
+    Lesson(title: "清空正在打的拼音", line: "从删除键向左轻划清空拼音，再点 ↩ 恢复。", keys: "⌫↩",
            check: { _, s in !s.composing && s.restorable != nil },
            then: { s, keys in s.composing && keys != nil && s.keys == keys }),
-    Lesson(title: "中英混输", line: "英文词夹在句子里照打，不用切换。先按删除清掉刚才的字母，再打：", keys: "woyongiphonedazi␣",
+    Lesson(title: "中英混输", line: "中英文夹杂直接打，无需手动切换语言。", keys: "woyongiphonedazi␣",
            check: { t, _ in t.contains("iPhone打字") }),
-    Lesson(title: "只打声母", line: "常用词只打每个字的声母。", keys: "bzd␣",
+    Lesson(title: "只打声母", line: "常用词只敲声母一样准。", keys: "bzd␣",
            check: { t, _ in t.contains("不知道") }),
 ]
 
-/// 「了解」页演示卡（标题）→ 「上手」里可以直接去试的那一课（标题）。不在表里的卡（联想）没有「试一试」。
+/// Atlas card / showcase jump map -> matching interactive demo title.
 let demoLessons: [String: String] = [
     "按错了什么，改成了什么": "按错一个键",
     "长句多按、漏按一个键": "长句漏按一个键",
-    "一键撤回": "长句漏按一个键",   // the undo lesson needs the sentence this one commits: start there
+    "一键撤回": "长句漏按一个键",
     "中英混输": "中英混输",
     "记住你的词": "只打声母",
 ]
 
-/// The text area's state, and the guided run's progress.
+enum BenchMode: String, CaseIterable, Identifiable {
+    case free = "自由试打"
+    case demos = "手感体验"
+    case speed = "节奏测速"
+
+    var id: String { rawValue }
+}
+
+/// Unified Studio bench state: single text slip, single embedded keyboard, interactive demos, and 3-sentence speed test.
 @MainActor
 final class PlaygroundModel: ObservableObject {
-    @Published var before = ""      // committed text before the marked keys
-    @Published var marked = ""      // the keys being composed (underlined, as the field shows them)
-    @Published var step = 0         // index into `lessons`; lessons.count = free typing
+    @Published var before = ""
+    @Published var marked = ""
+    @Published var step = lessons.count
     @Published var justPassed = false
-    /// A lesson with two steps (清空, then 找回): the first is done; what it left to put back.
     @Published var firstDone = false
-    private var firstKeys: String?
-    /// Which pass the pending move-on belongs to (a later pass, jump or skip supersedes it).
-    private var passCount = 0
+    @Published var benchMode: BenchMode = .free
+    @Published var passedTitles: Set<String> = []
     @Published var ready = false
+
+    // Unified 3-sentence speed test state (zero duplicate PlaygroundModel or keyboard instances).
+    static let speedTargets = [
+        "今天天气真不错",
+        "按偏了也能打对",
+        "下周一准时开会",
+    ]
+    @Published var speedIndex = 0
+    @Published var speedStart: Date? = nil
+    @Published var speedFinishedSeconds: Double? = nil
+    @Published var speedTotalChars = 0
+    @AppStorage("mostoBestCPM") var bestCPM = 0
+
+    private var firstKeys: String?
+    private var passCount = 0
     let host = ObservedTextHost()
     var keyboard: KeyboardViewController?
 
     init() {
-        let s = KeyboardSettings.shared; layout = s.pinyinGrid ? 2 : (s.scheme == 0 ? 1 : 0); guide = s.xiaoheGuide; numberPad = s.numberPad; style = s.style; appearance = s.appearance; autocorrect = s.autocorrect; english = s.english; feedback = s.feedback; keySound = s.keySound; if UserDefaults.standard.bool(forKey: "onboardingDone") || KeyboardStatus.isAdded() { step = lessons.count; UserDefaults.standard.set(true, forKey: "onboardingDone") }; host.onChange = { [weak self] in self?.refresh() }
+        let s = KeyboardSettings.shared
+        layout = s.pinyinGrid ? 2 : (s.scheme == 0 ? 1 : 0)
+        guide = s.xiaoheGuide
+        numberPad = s.numberPad
+        style = s.style
+        appearance = s.appearance
+        autocorrect = s.autocorrect
+        english = s.english
+        feedback = s.feedback
+        keySound = s.keySound
+        host.onChange = { [weak self] in self?.refresh() }
+    }
+
+    var lampMode: StudioLampMode {
+        StudioLampMode.from(appearance: appearance, style: style)
+    }
+
+    func applyLampMode(_ mode: StudioLampMode) {
+        switch mode {
+        case .day:
+            if style != 0 { style = 0 }
+            if appearance != 1 { appearance = 1 }
+        case .night:
+            if style != 0 { style = 0 }
+            if appearance != 2 { appearance = 2 }
+        case .plain:
+            if style != 1 { style = 1 }
+            if appearance != 0 { appearance = 0 }
+        }
+    }
+
+    var currentSpeedTarget: String {
+        Self.speedTargets[min(speedIndex, Self.speedTargets.count - 1)]
+    }
+
+    var matchedSpeedPrefixCount: Int {
+        let typed = Array(before)
+        let target = Array(currentSpeedTarget)
+        var n = 0
+        while n < typed.count && n < target.count && typed[n] == target[n] { n += 1 }
+        return n
+    }
+
+    var currentCPM: Int {
+        guard let elapsed = speedFinishedSeconds ?? speedStart.map({ Date().timeIntervalSince($0) }),
+              elapsed > 0.4 else { return 0 }
+        let chars = speedFinishedSeconds != nil ? speedTotalChars : (speedTotalChars + matchedSpeedPrefixCount)
+        return Int((Double(chars) / elapsed * 60.0).rounded())
+    }
+
+    func resetSpeedTest() {
+        speedIndex = 0
+        speedStart = nil
+        speedFinishedSeconds = nil
+        speedTotalChars = 0
+        clear()
+        keyboardVisible = true
     }
 
     func refresh() {
@@ -80,6 +151,7 @@ final class PlaygroundModel: ObservableObject {
         } else {
             before = all; marked = ""
         }
+        evaluateSpeedProgress()
         guard step < lessons.count, !justPassed, let kb = keyboard else { return }
         let lesson = lessons[step], state = kb.testState
         if let then = lesson.then {
@@ -87,34 +159,54 @@ final class PlaygroundModel: ObservableObject {
                 if lesson.check(all, state) { firstDone = true; firstKeys = state.restorable }
                 return
             }
-            // the keys to put back are gone (another key was pressed): the first step again
             if !then(state, firstKeys) {
-                if state.restorable == nil && !lesson.check(all, state) && state.keys != firstKeys { firstDone = false; firstKeys = nil }
+                if state.restorable == nil && !lesson.check(all, state) && state.keys != firstKeys {
+                    firstDone = false; firstKeys = nil
+                }
                 return
             }
         } else if !lesson.check(all, state) {
             return
         }
-        do {
-            justPassed = true
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
-            let passed = step
-            passCount += 1
-            let pass = passCount
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) { [weak self] in
-                // a jump, a skip or another pass in the meantime already moved on: then only the tick goes
-                guard let self, self.justPassed, self.passCount == pass else { return }
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    if self.step == passed { self.step = min(passed + 1, lessons.count); if self.step >= lessons.count { UserDefaults.standard.set(true, forKey: "onboardingDone") } }
-                    self.justPassed = false
-                    self.firstDone = false
-                    self.firstKeys = nil
-                }
+        passedTitles.insert(lesson.title)
+        justPassed = true
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        let passed = step
+        passCount += 1
+        let pass = passCount
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) { [weak self] in
+            guard let self, self.justPassed, self.passCount == pass else { return }
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                if self.step == passed { self.step = min(passed + 1, lessons.count) }
+                self.justPassed = false
+                self.firstDone = false
+                self.firstKeys = nil
             }
         }
     }
 
-    /// 0 全拼, 1 小鹤双拼, 2 九宫格 (one three-way control: the three ways someone may want to type Chinese here).
+    private func evaluateSpeedProgress() {
+        guard benchMode == .speed, speedFinishedSeconds == nil else { return }
+        if speedStart == nil && (!before.isEmpty || !marked.isEmpty) {
+            speedStart = Date()
+        }
+        let target = currentSpeedTarget
+        if before.contains(target) {
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            speedTotalChars += target.count
+            if speedIndex + 1 < Self.speedTargets.count {
+                speedIndex += 1
+                clear()
+            } else {
+                let sec = max(0.5, Date().timeIntervalSince(speedStart ?? Date()))
+                speedFinishedSeconds = sec
+                let finalCPM = Int((Double(speedTotalChars) / sec * 60.0).rounded())
+                if finalCPM > bestCPM { bestCPM = finalCPM }
+            }
+        }
+    }
+
+    /// 0 全拼, 1 小鹤双拼, 2 九宫格
     @Published var layout = 0 { didSet { applyLayout() } }
     @Published var style = 0 { didSet { applyLayout() } }
     @Published var appearance = 0 { didSet { applyLayout() } }
@@ -124,7 +216,6 @@ final class PlaygroundModel: ObservableObject {
     @Published var keySound = true { didSet { applyLayout() } }
     @Published var numberPad = false { didSet { applyLayout() } }
     @Published var keyboardVisible = true
-    /// 小鹤双拼's rhyme hints on the keys (off by default: a clean board for people who know the layout).
     @Published var guide = false { didSet { applyLayout() } }
 
     func applyLayout() {
@@ -143,43 +234,38 @@ final class PlaygroundModel: ObservableObject {
         keyboard?.applySettings()
     }
 
-    func skip() {
-        firstDone = false; firstKeys = nil
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { step = min(step + 1, lessons.count); if step >= lessons.count { UserDefaults.standard.set(true, forKey: "onboardingDone") } }
+    /// Refreshes settings from `KeyboardSettings.shared` after an external toggle (such as VolumeCheckSheet).
+    func syncKeyboardSettings() {
+        let s = KeyboardSettings.shared
+        if keySound != s.keySound { keySound = s.keySound }
+        if feedback != s.feedback { feedback = s.feedback }
+        keyboard?.applySettings()
     }
-        func skipAll() { firstDone = false; firstKeys = nil; UserDefaults.standard.set(true, forKey: "onboardingDone"); withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { step = lessons.count } }; func restart() { clear(); firstDone = false; firstKeys = nil; withAnimation { step = 0 } }
-    func clear() { host.clear(); refresh() }
-    func resetDefaults() {
-        layout = 0
-        guide = false
-        numberPad = false
-        style = 0
-        appearance = 0
-        autocorrect = true
-        english = true
-        feedback = true
-        keySound = true
+
+    func clear() {
+        host.clear()
+        refresh()
     }
-        
-    /// Straight to one lesson (「了解」页的「试一试」): the keys being composed dropped, the field empty, the practice
-    /// keyboard back on 全拼 (the lessons are written for it).
+
+    /// Selects a specific interactive showcase demo on the unified typing bench.
     func jump(to lesson: Int) {
         guard lessons.indices.contains(lesson) else { return }
-        // dropped, not cleared: no ↩ offers the keys back in the new lesson
         keyboard?.discardComposition()
         host.clear()
-        keyboard?.textDidChange(nil)   // the word before is gone with the text: no ↩, no suggestions for it
+        keyboard?.textDidChange(nil)
         if layout != 0 { layout = 0 }
+        benchMode = .demos
         justPassed = false
         firstDone = false
         firstKeys = nil
         passCount += 1
         step = lesson
+        keyboardVisible = true
         refresh()
     }
 }
 
-/// The app's text area for the playground: FakeTextHost (the bench's model of a text field) that says when it changes.
+/// The app's text area host for the studio bench.
 final class ObservedTextHost: FakeTextHost {
     var onChange: (() -> Void)?
     override func insertText(_ s: String) { super.insertText(s); changed() }
@@ -190,7 +276,7 @@ final class ObservedTextHost: FakeTextHost {
     private func changed() { DispatchQueue.main.async { [weak self] in self?.onChange?() } }
 }
 
-/// The keyboard controller, hosted in a SwiftUI view.
+/// The real R50 `KeyboardViewController`, hosted directly inside SwiftUI.
 struct KeyboardHostView: UIViewControllerRepresentable {
     @ObservedObject var model: PlaygroundModel
 
@@ -212,7 +298,6 @@ struct KeyboardHostView: UIViewControllerRepresentable {
         ])
         vc.didMove(toParent: box)
         model.keyboard = vc
-        // the guided steps are written for 全拼 on the full keyboard
         DispatchQueue.main.async { model.ready = true; model.applyLayout() }
         return box
     }
@@ -220,271 +305,194 @@ struct KeyboardHostView: UIViewControllerRepresentable {
     func updateUIViewController(_ vc: UIViewController, context: Context) {}
 }
 
-// MARK: - Screen
-
-struct PlaygroundScreen: View {
+/// Warm ceramic desk-paper text slip replacing old grey sandboxes.
+struct StudioTextPaper: View {
     @ObservedObject var model: PlaygroundModel
-
-    var body: some View {
-        VStack(spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    if model.step < lessons.count {
-                        LessonCard(model: model, index: model.step)
-                        TextArea(model: model)
-                    } else {
-                        TextArea(model: model)
-                        PracticeQuickDeck(model: model)
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 10)
-                .padding(.bottom, 20)
-            }
-            .scrollDismissesKeyboard(.never)
-
-            if model.keyboardVisible {
-                Divider()
-                Group {
-                    if SnapshotRenderer.requested {
-                        Color.clear
-                    } else {
-                        KeyboardHostView(model: model)
-                    }
-                }
-                .frame(height: 264)
-                .background(Color(UIColor {
-                    $0.userInterfaceStyle == .dark
-                        ? UIColor(white: 0.10, alpha: 1)
-                        : UIColor(red: 0.82, green: 0.83, blue: 0.86, alpha: 1)
-                }))
-            }
-        }
-        .background(Color(UIColor.systemGroupedBackground))
-    }
-}
-
-/// The current step: progress, what to do, the keys to press (the slip in colour), and a tick when it worked.
-struct LessonCard: View {
-    @ObservedObject var model: PlaygroundModel
-    /// The step this card shows, fixed when it is made: while it animates out the model has already moved on
-    /// (past the last step, too), so the card never reads the model's current step for its content.
-    let index: Int
-    var body: some View {
-        let l = lessons[min(max(index, 0), lessons.count - 1)]
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
-                ForEach(0..<lessons.count, id: \.self) { i in
-                    Capsule().fill(i < index ? mostoTint : (i == index ? mostoTint.opacity(0.55) : Color(UIColor.tertiarySystemFill)))
-                        .frame(width: i == index ? 22 : 8, height: 8)
-                }
-                Spacer()
-                Button("下一步") { model.skip() }.font(.subheadline); Text("·").foregroundStyle(.tertiary); Button("跳过引导") { model.skipAll() }.font(.subheadline.weight(.semibold))
-            }
-            HStack(alignment: .firstTextBaseline) {
-                Text(l.title).font(.title3.weight(.bold))
-                Spacer()
-                if model.justPassed {
-                    // Mosto pops up to cheer the step done
-                    HStack(spacing: 4) {
-                        Image(uiImage: mostoImage("Mosto")).resizable().scaledToFit().frame(width: 34, height: 34)
-                        Text("好！").font(.subheadline.weight(.bold)).foregroundStyle(mostoTint)
-                    }
-                    .transition(.scale(scale: 0.4, anchor: .bottom).combined(with: .opacity))
-                    .accessibilityLabel("成功")
-                }
-            }
-            Text(l.line).font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            // the keys typed so far fill in, so the step shows where one is
-            KeyChips(keys: l.keys, slip: l.slip, missing: l.missing, done: model.marked.count)
-        }
-        .padding(16)
-        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: model.justPassed)
-        .id(index)
-        .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity), removal: .opacity))
-    }
-}
-
-/// The keys of a step as small caps that wrap: the slip in the correction colour, a left-out key as a dashed gap.
-private struct KeyChips: View {
-    let keys: String
-    let slip: Int?
-    let missing: Character?
-    var done = 0
-    var body: some View {
-        WrapLayout(spacing: 3, lineSpacing: 5) {
-            ForEach(Array(keys.enumerated()), id: \.offset) { i, c in
-                if i == slip, let m = missing {
-                    // the key not pressed, then the one at this place
-                    chip(String(m), style: .gap)
-                    chip(String(c), style: .plain, typed: i < done)
-                } else {
-                    let function = c == "␣" || c == "↩" || c == "⌫"
-                    chip(c == "␣" ? "空格" : (c == "⌫" ? "⌫ 往左划" : String(c)), style: i == slip ? .slip : (function ? .function : .plain),
-                         typed: !function && i < done)
-                }
-            }
-        }
-        .animation(.easeOut(duration: 0.12), value: done)
-    }
-    enum Style { case plain, slip, gap, function }
-    @ViewBuilder private func chip(_ t: String, style: Style, typed: Bool = false) -> some View {
-        Text(t)
-            .font(.system(size: 15, weight: style == .slip || typed ? .bold : .regular, design: .rounded))
-            .strikethrough(style == .gap, color: .secondary)
-            .foregroundStyle(style == .slip ? Color.white : (style == .gap ? Color.secondary : (typed ? mostoTint : Color.primary)))
-            .scaleEffect(typed ? 1.06 : 1)
-            .frame(minWidth: 24, minHeight: 30)
-            .padding(.horizontal, t.count > 1 ? 8 : 2)
-            .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(style == .slip ? AnyShapeStyle(mostoTint) : (style == .function ? AnyShapeStyle(Color(uiColor: Theme.functionKey)) : AnyShapeStyle(Color(UIColor.tertiarySystemFill))))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .strokeBorder(style == .gap ? Color.secondary : .clear, style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
-            )
-    }
-}
-
-
-private struct PracticeQuickDeck: View {
-    @ObservedObject var model: PlaygroundModel
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 10) {
-                    Image(uiImage: mostoImage(model.appearance == 2 ? "MostoNight" : "Mosto"))
-                        .resizable().scaledToFit().frame(width: 40, height: 40)
-                        .padding(3)
-                        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(mostoTint.opacity(0.12)))
-                        .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("自由试打模式").font(.subheadline.weight(.bold))
-                        Text("随时切换方案体验纠错与长句；更多偏好在底部「设置」页调整。")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: 4)
-                    Button("7 步闯关") {
-                        UISelectionFeedbackGenerator().selectionChanged()
-                        model.restart()
-                    }
-                    .font(.caption.weight(.semibold))
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                }
-
-                Picker("输入方案", selection: $model.layout) {
-                    Text("全拼").tag(0)
-                    Text("小鹤双拼").tag(1)
-                    Text("九宫格").tag(2)
-                }
-                .pickerStyle(.segmented)
-            }
-            .padding(14)
-            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
-
-            HStack(spacing: 10) {
-                NavigationLink {
-                    XiaoheGuideView()
-                } label: {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Image(systemName: "square.grid.3x3")
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(mostoTint)
-                        Text("小鹤键位图")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.primary)
-                        Text("声韵母口诀与查表")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
-                }
-                .buttonStyle(.plain)
-
-                NavigationLink {
-                    TouchDriftHeatmapView()
-                } label: {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Image(systemName: "scope")
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(mostoTint)
-                        Text("落点热力图")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.primary)
-                        Text("拇指偏移学习模型")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
-}
-/// Interactive sandbox text area with quick test hints and a one-tap fold/unfold toggle for the bottom keyboard.
-struct TextArea: View {
-    @ObservedObject var model: PlaygroundModel
+    var onInsertPhrase: ((String) -> Void)? = nil
     @State private var blink = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Label(model.step >= lessons.count ? "实时试打沙盒" : "练习输入区", systemImage: "text.cursor")
-                    .font(.caption.weight(.bold)).foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                Label("桌面试打纸", systemImage: "text.cursor")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(MossOttoStyle.inkSecondary)
                 Spacer()
                 if !model.before.isEmpty || !model.marked.isEmpty {
                     Button("清空") { model.clear() }
-                        .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(MossOttoStyle.inkSecondary)
                 }
                 Button {
                     UISelectionFeedbackGenerator().selectionChanged()
                     withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) { model.keyboardVisible.toggle() }
                 } label: {
-                    HStack(spacing: 3) {
+                    HStack(spacing: 4) {
                         Image(systemName: model.keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard")
                         Text(model.keyboardVisible ? "收起键盘" : "唤出键盘")
                     }
-                    .font(.caption.weight(.semibold)).foregroundStyle(mostoTint)
-                    .padding(.horizontal, 8).padding(.vertical, 3)
-                    .background(Capsule().fill(mostoTint.opacity(0.12)))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(MossOttoStyle.violet)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(MossOttoStyle.violet.opacity(0.11)))
                 }
                 .buttonStyle(.plain)
             }
-            (Text(model.before) + Text(model.marked).underline() + Text(blink ? "|" : " ").foregroundColor(mostoTint))
-                .font(.system(size: 20, design: .rounded))
-                .frame(maxWidth: .infinity, minHeight: 56, alignment: .topLeading)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    if !model.keyboardVisible {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) { model.keyboardVisible = true }
-                    }
+
+            (
+                Text(model.before)
+                    .foregroundColor(MossOttoStyle.inkPrimary)
+                + Text(model.marked)
+                    .underline()
+                    .foregroundColor(MossOttoStyle.inkPrimary)
+                + Text(blink ? "|" : " ")
+                    .foregroundColor(MossOttoStyle.violet)
+            )
+            .font(.system(size: 19, design: .rounded))
+            .frame(maxWidth: .infinity, minHeight: 54, alignment: .topLeading)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if !model.keyboardVisible {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) { model.keyboardVisible = true }
                 }
-                .overlay(alignment: .topLeading) {
-                    if model.before.isEmpty && model.marked.isEmpty {
-                        Text(model.ready ? (model.layout == 1 ? "试试小鹤：nihc 你好 · wanan 晚安 · riqi 日期 · 长按 ，出《》" : "在这里直接试打：nihao 你好 · wanan 晚安 · riqi 日期 · 长按 ，出《》") : "正在准备键盘…")
-                            .font(.system(size: 15, design: .rounded))
-                            .foregroundStyle(.tertiary)
-                            .padding(.top, 2)
-                            .allowsHitTesting(false)
-                    }
+            }
+            .overlay(alignment: .topLeading) {
+                if model.before.isEmpty && model.marked.isEmpty {
+                    Text(placeholderText)
+                        .font(.system(size: 14, design: .rounded))
+                        .foregroundStyle(MossOttoStyle.inkSecondary.opacity(0.65))
+                        .padding(.top, 2)
+                        .allowsHitTesting(false)
                 }
+            }
         }
         .padding(14)
-        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(UIColor.secondarySystemGroupedBackground)))
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(MossOttoStyle.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(MossOttoStyle.hairline, lineWidth: 0.7)
+        )
         .task {
+            if SnapshotRenderer.requested { return }
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 530_000_000)
                 blink.toggle()
             }
         }
+    }
+
+    private var placeholderText: String {
+        if !model.ready { return "正在准备桌面键盘…" }
+        if model.layout == 1 { return "试试小鹤：nihc 你好 · wanan 晚安 · 上滑逗号直出。" }
+        return "直接试打：nihao 你好 · 365+18= 心算 · 上滑逗号直出。"
+    }
+}
+
+/// Compact calm inspiration / demo prompt card used inside `UnifiedTypingBench` when `benchMode == .demos`.
+struct LessonCard: View {
+    @ObservedObject var model: PlaygroundModel
+    let index: Int
+
+    var body: some View {
+        let clamped = min(max(index, 0), lessons.count - 1)
+        let l = lessons[clamped]
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(l.title)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(MossOttoStyle.inkPrimary)
+                Spacer()
+                if model.justPassed {
+                    HStack(spacing: 4) {
+                        Image(uiImage: mostoImage("Mosto"))
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 24, height: 24)
+                        Text("已触发")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(MossOttoStyle.moss)
+                    }
+                    .transition(.scale(scale: 0.7).combined(with: .opacity))
+                }
+            }
+            Text(l.line)
+                .font(.caption)
+                .foregroundStyle(MossOttoStyle.inkSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            KeyChips(keys: l.keys, slip: l.slip, missing: l.missing, done: model.marked.count)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(MossOttoStyle.surfaceMuted)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(MossOttoStyle.hairline, lineWidth: 0.7)
+        )
+    }
+}
+
+/// Monochrome/amber R50 keystroke recipe chips (replaces old loud purple badges).
+struct KeyChips: View {
+    let keys: String
+    let slip: Int?
+    let missing: Character?
+    var done = 0
+
+    var body: some View {
+        WrapLayout(spacing: 4, lineSpacing: 5) {
+            ForEach(Array(keys.enumerated()), id: \.offset) { i, c in
+                if i == slip, let m = missing {
+                    chip(String(m), style: .gap)
+                    chip(String(c), style: .plain, typed: i < done)
+                } else {
+                    let function = c == "␣" || c == "↩" || c == "⌫"
+                    chip(
+                        c == "␣" ? "空格" : (c == "⌫" ? "⌫ 左划" : String(c)),
+                        style: i == slip ? .slip : (function ? .function : .plain),
+                        typed: !function && i < done
+                    )
+                }
+            }
+        }
+        .animation(.easeOut(duration: 0.12), value: done)
+    }
+
+    enum Style { case plain, slip, gap, function }
+
+    @ViewBuilder
+    private func chip(_ t: String, style: Style, typed: Bool = false) -> some View {
+        Text(t)
+            .font(.system(size: 13.5, weight: style == .slip || typed ? .bold : .medium, design: .rounded))
+            .strikethrough(style == .gap, color: MossOttoStyle.inkSecondary)
+            .foregroundStyle(
+                style == .slip
+                    ? Color.white
+                    : (style == .gap ? MossOttoStyle.inkSecondary : (typed ? MossOttoStyle.violet : MossOttoStyle.inkPrimary))
+            )
+            .frame(minWidth: 22, minHeight: 26)
+            .padding(.horizontal, t.count > 1 ? 8 : 3)
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(
+                        style == .slip
+                            ? MossOttoStyle.lampAmber
+                            : (style == .function ? MossOttoStyle.surfaceMuted : MossOttoStyle.surface)
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .strokeBorder(
+                        style == .gap ? MossOttoStyle.inkSecondary.opacity(0.6) : MossOttoStyle.hairline,
+                        style: style == .gap ? StrokeStyle(lineWidth: 1, dash: [3, 2]) : StrokeStyle(lineWidth: 0.7)
+                    )
+            )
     }
 }

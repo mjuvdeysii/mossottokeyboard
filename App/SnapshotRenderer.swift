@@ -226,35 +226,34 @@ enum SnapshotRenderer {
                 root.removeFromSuperview()
             }
         }
-        // the companion app's home screen (the same SwiftUI view, rendered off-screen)
+        // the companion app's live OTTOSSOM screens (rendered off-screen for CI verification)
         for night in [false, true] {
-            // the home page in three parts (one tall bitmap of all of it comes out black)
             func page<V: View>(_ v: V) -> some View {
                 v.padding(.horizontal, 16)
                     .frame(width: width)
                     .padding(.vertical, 12)
-                    .background(Color(UIColor.systemGroupedBackground))
+                    .background(MossOttoStyle.canvas)
                     .tint(mostoTint)
                     .environment(\.colorScheme, night ? .dark : .light)
             }
-            let lesson = PlaygroundModel()
-            lesson.step = 2
-            lesson.before = "你好今天很热"
-            lesson.marked = "jintiantiaqi"
+            let studio = PlaygroundModel()
+            studio.benchMode = .demos
+            studio.step = 2
+            studio.before = "你好今天很热"
+            studio.marked = "jintiantiaqi"
+            studio.applyLampMode(night ? .night : .day)
+            let vol = VolumeMonitor(defaults: .standard, observeSystem: false, initialVolume: 0.42)
             let parts: [(String, AnyView)] = [
-                ("0", AnyView(page(VStack(spacing: 14) {
-                    LessonCard(model: lesson, index: 2)
-                    TextArea(model: lesson)
+                ("0", AnyView(page(VStack(spacing: 16) {
+                    DeskLampStageCard(model: studio, volume: vol)
+                    SwitchTesterToy(volume: vol, mode: studio.lampMode, soundEnabled: true) {}
                 }))),
-                ("1", AnyView(page(VStack(spacing: 30) {
-                    MostoHero()
-                    SetupCard()
-                }))),
-                ("2", AnyView(page(FeatureShowcase()))),
-                ("3", AnyView(page(VStack(spacing: 30) {
-                    MoreList(snapshot: true)
-                    HomeFooter()
-                }))),
+                ("1", AnyView(page(UnifiedTypingBench(model: studio, volume: vol)))),
+                ("2", AnyView(VolumeCheckSheet(monitor: vol)
+                    .frame(width: width)
+                    .tint(mostoTint)
+                    .environment(\.colorScheme, night ? .dark : .light))),
+                ("3", AnyView(page(HandbookContent(added: true)))),
             ]
             for (k, v) in parts {
                 let r = ImageRenderer(content: v)
@@ -263,12 +262,12 @@ enum SnapshotRenderer {
                     try? data.write(to: dir.appendingPathComponent("\(night ? "night" : "day")_app_home\(k).png"))
                 } else { print("SNAPSHOT app_home\(k): no image") }
             }
-            // the 小鹤双拼 page (explanation, learning cost, key chart)
+            // the 小鹤双拼 page (explanation, learning cost, R50 monolith key chart)
             let guide = XiaoheGuideContent()
                 .padding(.horizontal, 16)
                 .frame(width: width)
                 .padding(.vertical, 12)
-                .background(Color(UIColor.systemGroupedBackground))
+                .background(MossOttoStyle.canvas)
                 .tint(mostoTint)
                 .environment(\.colorScheme, night ? .dark : .light)
             let g = ImageRenderer(content: guide)

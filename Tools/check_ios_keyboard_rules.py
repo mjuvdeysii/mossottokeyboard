@@ -105,6 +105,13 @@ for dirpath, _dirs, files in os.walk(KEYBOARD):
             if sm and ("useInlineMarkedText" not in sm or "candidateBar.setPreedit" not in sm):
                 problems.append(f"{path}: setMarked(_:) must gate host.setMarkedText behind useInlineMarkedText and use candidateBar.setPreedit in .appex")
 
+            # Rule 14: initialEngineContext() / letter(_:tap:) must never read synchronous documentContextBeforeInput in .appex
+            for fn_rx, fn_name in ((r'private\s+func\s+letter\b', 'letter(_:tap:)'),
+                                   (r'private\s+func\s+initialEngineContext\b', 'initialEngineContext()')):
+                fn_body = extract_func(code, fn_rx)
+                if fn_body and "documentContextBeforeInput" in fn_body and "useInlineMarkedText" not in fn_body:
+                    problems.append(f"{path}: {fn_name} reads documentContextBeforeInput synchronously without gating on useInlineMarkedText")
+
         if name in ("EmojiPanelView.swift", "CandidateViews.swift"):
             # Rule 10: Any layer with shadowOpacity > 0 in EmojiPanelView/CandidateViews must configure shadowPath (no offscreen rasterization)
             if re.search(r'\.shadowOpacity\s*=\s*(?!0(?:\.0+)?\b)\S', code) and "shadowPath" not in code:
