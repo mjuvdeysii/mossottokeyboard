@@ -794,13 +794,17 @@ final class KeyboardViewController: UIInputViewController {
     @objc private func mostoHeld(_ g: UILongPressGestureRecognizer) {
         guard g.state == .began else { return }
         feel(.mosto)
+        yawnGeneration &+= 1
+        let gen = yawnGeneration
         candidateBar.mosto.demoYawn()
         candidateBar.mosto.hop()
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) { [weak self] in
-            guard let self else { return }
+            guard let self, self.view.window != nil, self.yawnGeneration == gen, !self.candidateBar.mosto.isHidden else { return }
             self.candidateBar.mosto.setNight(self.isNight)
         }
     }
+
+    private var yawnGeneration: Int = 0
 
     private func buildDiagnosticsText() -> String {
         let d = keyboard.stats
@@ -1494,13 +1498,15 @@ final class KeyboardViewController: UIInputViewController {
             let happy = c.text.count >= 4 || committedParts.count >= 2 || ["哈哈", "嘿嘿", "开心", "太好", "爱你", "恭喜", "谢谢", "棒", "可爱", "女儿", "宝宝"].contains { full.contains($0) || c.text.contains($0) }
             engine.learn(parts: committedParts)
             if !Theme.plain {
+                yawnGeneration &+= 1
+                let gen = yawnGeneration
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) { [weak self] in
-                    guard let self, self.view.window != nil else { return }
+                    guard let self, self.view.window != nil, self.yawnGeneration == gen, self.taps.isEmpty else { return }
                     if sleepy {
                         self.candidateBar.mosto.demoYawn()
                         self.candidateBar.mosto.hop()
                         DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
-                            guard let self, self.view.window != nil else { return }
+                            guard let self, self.view.window != nil, self.yawnGeneration == gen, !self.candidateBar.mosto.isHidden else { return }
                             self.candidateBar.mosto.setNight(self.isNight)
                         }
                     } else if happy {

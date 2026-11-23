@@ -1785,8 +1785,10 @@ final class SettingsPanelView: UIView {
     private let resetButton = UIButton(type: .system)
     private var resetConfirming = false
 
+    private var canProvideHaptic: Bool { feedbackAvailable && KeyboardSettings.shared.feedback }
+
     private func notifyTileChange() {
-        if KeyboardSettings.shared.feedback { UISelectionFeedbackGenerator().selectionChanged() }
+        if canProvideHaptic { UISelectionFeedbackGenerator().selectionChanged() }
         load()
         onChange?()
     }
@@ -1855,7 +1857,7 @@ final class SettingsPanelView: UIView {
     }
 
     @objc private func openMore() {
-        if KeyboardSettings.shared.feedback { UISelectionFeedbackGenerator().selectionChanged() }
+        if canProvideHaptic { UISelectionFeedbackGenerator().selectionChanged() }
         deckContainer.isHidden = true
         moreScroll.isHidden = false
         moreScroll.setContentOffset(.zero, animated: false)
@@ -1863,14 +1865,14 @@ final class SettingsPanelView: UIView {
     }
 
     @objc private func closeMore() {
-        if KeyboardSettings.shared.feedback { UISelectionFeedbackGenerator().selectionChanged() }
+        if canProvideHaptic { UISelectionFeedbackGenerator().selectionChanged() }
         moreScroll.isHidden = true
         deckContainer.isHidden = false
         setNeedsLayout()
     }
 
     @objc private func drawerChanged() {
-        if KeyboardSettings.shared.feedback { UISelectionFeedbackGenerator().selectionChanged() }
+        if canProvideHaptic { UISelectionFeedbackGenerator().selectionChanged() }
         let s = KeyboardSettings.shared
         s.english = englishSwitch.isOn
         s.appearance = appearance.selectedSegmentIndex
@@ -1880,13 +1882,13 @@ final class SettingsPanelView: UIView {
     }
 
     @objc private func numberChanged() {
-        if KeyboardSettings.shared.feedback { UISelectionFeedbackGenerator().selectionChanged() }
+        if canProvideHaptic { UISelectionFeedbackGenerator().selectionChanged() }
         KeyboardSettings.shared.numberPad = numberControl.selectedSegmentIndex == 1
         onChange?()
     }
 
     @objc private func closeTapped() {
-        if KeyboardSettings.shared.feedback { UISelectionFeedbackGenerator().selectionChanged() }
+        if canProvideHaptic { UISelectionFeedbackGenerator().selectionChanged() }
         resetConfirming = false
         resetButton.setTitle("清空已学习的词语与触点习惯", for: .normal)
         moreScroll.isHidden = true
@@ -1897,7 +1899,7 @@ final class SettingsPanelView: UIView {
     @objc private func resetTapped() {
         if !resetConfirming {
             resetConfirming = true
-            if KeyboardSettings.shared.feedback { UINotificationFeedbackGenerator().notificationOccurred(.warning) }
+            if canProvideHaptic { UINotificationFeedbackGenerator().notificationOccurred(.warning) }
             resetButton.setTitle("确认清空？再点一次立即清空", for: .normal)
             DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
                 guard let self, self.resetConfirming else { return }
@@ -1906,7 +1908,7 @@ final class SettingsPanelView: UIView {
             }
         } else {
             resetConfirming = false
-            if KeyboardSettings.shared.feedback { UINotificationFeedbackGenerator().notificationOccurred(.success) }
+            if canProvideHaptic { UINotificationFeedbackGenerator().notificationOccurred(.success) }
             resetButton.setTitle("清空已学习的词语与触点习惯", for: .normal)
             onResetLearning?()
         }

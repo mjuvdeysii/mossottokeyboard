@@ -30,6 +30,14 @@ enum StudioLampMode: Int, CaseIterable, Identifiable {
         }
     }
 
+    var next: StudioLampMode {
+        switch self {
+        case .day: return .night
+        case .night: return .plain
+        case .plain: return .day
+        }
+    }
+
     static func from(appearance: Int, style: Int) -> StudioLampMode {
         if style == 1 { return .plain }
         return appearance == 2 ? .night : .day
@@ -104,10 +112,15 @@ struct LampCone: Shape {
 /// Studio desk-lamp overhead cone + subtle ambient wash matching OTTOSSOM photography.
 struct LampConeBackdrop: View {
     let mode: StudioLampMode
+    var dimFactor: CGFloat = 0
     @Environment(\.colorScheme) private var scheme
 
     private var darkLook: Bool {
         mode == .night || (mode == .plain && scheme == .dark)
+    }
+
+    private var dimmerOpacity: Double {
+        Double(max(0.45, 1.0 - dimFactor * 0.30))
     }
 
     var body: some View {
@@ -121,6 +134,7 @@ struct LampConeBackdrop: View {
                         endPoint: .bottom
                     )
                 )
+                .opacity(dimmerOpacity)
             Ellipse()
                 .fill(
                     RadialGradient(
@@ -132,6 +146,7 @@ struct LampConeBackdrop: View {
                 )
                 .frame(width: 210, height: 64)
                 .offset(y: -26)
+                .opacity(dimmerOpacity)
         }
     }
 
@@ -169,6 +184,119 @@ struct LampConeBackdrop: View {
         case .plain:
             return [Color.white.opacity(darkLook ? 0.14 : 0.40), .clear]
         }
+    }
+}
+
+/// Physical spring-loaded OTTOSSOM desk-lamp pull-cord switch mounted at the top-right stage edge.
+struct LampPullCordSwitch: View {
+    static let pullThreshold: CGFloat = 22
+
+    let mode: StudioLampMode
+    let darkStage: Bool
+    @Binding var pullFraction: CGFloat
+    var onTrigger: () -> Void
+
+    @State private var pullOffset: CGFloat = 0
+    @State private var armed = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var cordColor: Color {
+        switch mode {
+        case .night: return Color(uiColor: MossOttoStyle.hex(0xFFC45A)).opacity(0.55)
+        case .day: return MossOttoStyle.inkSecondary.opacity(0.42)
+        case .plain: return darkStage ? Color.white.opacity(0.36) : Color.black.opacity(0.28)
+        }
+    }
+
+    private var beadColor: Color {
+        switch mode {
+        case .night: return MossOttoStyle.lampAmber
+        case .day: return MossOttoStyle.violet
+        case .plain: return darkStage ? Color(white: 0.78) : Color(white: 0.35)
+        }
+    }
+
+    private var collarColor: Color {
+        mode == .night ? Color(uiColor: MossOttoStyle.hex(0xFFE4A8)) : MossOttoStyle.inkSecondary.opacity(0.65)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Capsule()
+                .fill(cordColor.opacity(0.65))
+                .frame(width: 10, height: 3.5)
+
+            Rectangle()
+                .fill(cordColor)
+                .frame(width: 1.5, height: 42 + pullOffset)
+
+            Capsule()
+                .fill(collarColor)
+                .frame(width: 7, height: 3)
+
+            ZStack {
+                Capsule(style: .continuous)
+                    .fill(beadColor)
+                    .frame(width: 13, height: 19)
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .strokeBorder(Color.black.opacity(darkStage ? 0.28 : 0.12), lineWidth: 0.6)
+                    )
+                    .shadow(color: (mode == .night ? MossOttoStyle.lampAmber : Color.black).opacity(mode == .night ? 0.38 : 0.16), radius: armed ? 5 : 2, y: 1.5)
+
+                Circle()
+                    .fill(Color.white.opacity(0.42))
+                    .frame(width: 3.5, height: 3.5)
+                    .offset(x: -2.2, y: -4.2)
+            }
+            .scaleEffect(armed ? 1.08 : 1.0)
+        }
+        .frame(width: 44, height: 96, alignment: .top)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if !reduceMotion {
+                withAnimation(.easeOut(duration: 0.08)) {
+                    pullOffset = 10
+                    pullFraction = 0.45
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.09) {
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.56)) {
+                        pullOffset = 0
+                        pullFraction = 0
+                    }
+                }
+            }
+            onTrigger()
+        }
+        .highPriorityGesture(
+            DragGesture(minimumDistance: 6)
+                .onChanged { value in
+                    guard value.translation.height > 0,
+                          abs(value.translation.height) >= abs(value.translation.width) * 0.8 else { return }
+                    let travel = min(32, value.translation.height * 0.68)
+                    pullOffset = travel
+                    pullFraction = min(1, travel / Self.pullThreshold)
+                    if !armed && travel >= Self.pullThreshold {
+                        armed = true
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred(intensity: 0.55)
+                    } else if armed && travel < Self.pullThreshold - 4 {
+                        armed = false
+                    }
+                }
+                .onEnded { _ in
+                    let shouldFire = armed
+                    armed = false
+                    withAnimation(reduceMotion ? .easeOut(duration: 0.12) : .spring(response: 0.34, dampingFraction: 0.56)) {
+                        pullOffset = 0
+                        pullFraction = 0
+                    }
+                    if shouldFire { onTrigger() }
+                }
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("台灯拉绳开关")
+        .accessibilityHint("下拉或轻点切换日光、夜灯与简洁光效")
+        .accessibilityAddTraits(.isButton)
     }
 }
 

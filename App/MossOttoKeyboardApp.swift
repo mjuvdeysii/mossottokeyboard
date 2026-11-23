@@ -201,6 +201,7 @@ struct DeskLampStageCard: View {
     var externalBlinkNonce: Int = 0
 
     @State private var blinking = false
+    @State private var pullFraction: CGFloat = 0
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -265,13 +266,29 @@ struct DeskLampStageCard: View {
             .padding(.horizontal, 14)
             .padding(.bottom, 14)
         }
-        .background(LampConeBackdrop(mode: mode))
+        .background(LampConeBackdrop(mode: mode, dimFactor: pullFraction))
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .strokeBorder(darkStage ? Color.white.opacity(0.12) : MossOttoStyle.hairline, lineWidth: 0.8)
         )
+        .overlay(alignment: .topTrailing) {
+            LampPullCordSwitch(mode: mode, darkStage: darkStage, pullFraction: $pullFraction) {
+                triggerPullCordCycle()
+            }
+            .padding(.trailing, 10)
+        }
         .onChange(of: externalBlinkNonce) { _ in performVisualBlink() }
+    }
+
+    private func triggerPullCordCycle() {
+        performVisualBlink()
+        let nextMode = mode.next
+        withAnimation(.easeInOut(duration: 0.24)) { model.applyLampMode(nextMode) }
+        volume.gateSoundInteraction(soundEnabled: model.keySound) {
+            UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 0.85)
+            if model.keySound { volume.playSound(1156) }
+        }
     }
 
     private var spriteName: String {
@@ -352,7 +369,7 @@ struct UnifiedTypingBench: View {
             switch model.benchMode {
             case .free:
                 WrapLayout(spacing: 6, lineSpacing: 6) {
-                    inspirationChip("按错纠错：打 jintianhenrw")
+                    inspirationChip(model.layout == 1 ? "按错纠错：打 jbtmtmqohfhc" : "按错纠错：打 jintianhenrw")
                     inspirationChip("心算：打 365+18=")
                     inspirationChip("上滑，出。 / 轻点 Mosto")
                 }
@@ -645,7 +662,7 @@ struct HandbookContent: View {
                     handbookRow(
                         icon: "lock.shield",
                         iconColor: MossOttoStyle.moss,
-                        title: "纯离线架构与 14 条工程红线",
+                        title: "纯离线架构与 15 条工程红线",
                         subtitle: "0 联网 · 0 剪贴板 · 0 跨进程共享 · 45 MB 只读词库"
                     )
                 }
@@ -843,7 +860,7 @@ private struct PrivacyArchitectureView: View {
             Section("iOS 键盘扩展工程红线") {
                 row("45 MB Jetsam 只读映射", "词库与语言模型以只读 mmap 加载，零脏内存常驻，保留热缓存的同时严控内存上限。")
                 row("全链路 0 阻塞 XPC 守则", "扩展内零行内 setMarkedText XPC、空格 0-XPC，首键复用异步预取上下文，候选条宽度跨词保留缓存。")
-                row("14 条 CI 自动化铁律门禁", "每次构建静态与真机校验网络 API、同步等待解码、离屏阴影光栅化、空 setMarkedText 与首键热路径 XPC。")
+                row("15 条 CI 自动化铁律门禁", "每次构建静态与真机校验网络 API、同步等待解码、离屏阴影光栅化、空 setMarkedText、首键热路径 XPC 与 iOS 26 四边滚动防模糊。")
             }
         }
         .listStyle(.insetGrouped)

@@ -16,25 +16,39 @@ struct Lesson {
     let keys: String
     var slip: Int? = nil
     var missing: Character? = nil
+    var xiaoheLine: String? = nil
+    var xiaoheKeys: String? = nil
+    var xiaoheSlip: Int? = nil
+    var xiaoheMissing: Character? = nil
+    var requiresQuanpin: Bool = false
     let check: (String, KeyboardViewController.TestState) -> Bool
     var then: ((KeyboardViewController.TestState, String?) -> Bool)? = nil
+
+    func activeLine(xiaohe: Bool) -> String { (xiaohe ? xiaoheLine : nil) ?? line }
+    func activeKeys(xiaohe: Bool) -> String { (xiaohe ? xiaoheKeys : nil) ?? keys }
+    func activeSlip(xiaohe: Bool) -> Int? { xiaohe && xiaoheKeys != nil ? xiaoheSlip : slip }
+    func activeMissing(xiaohe: Bool) -> Character? { xiaohe && xiaoheKeys != nil ? xiaoheMissing : missing }
 }
 
 let lessons: [Lesson] = [
     Lesson(title: "打出“你好”", line: "轻敲下面字母，按空格上屏。", keys: "nihao␣",
+           xiaoheLine: "小鹤双拼每个字两键（ni + hc），按空格上屏。", xiaoheKeys: "nihc␣",
            check: { t, _ in t.contains("你好") }),
     Lesson(title: "按错一个键", line: "故意把 e 按成旁边的 w：留意首选微光提示，空格依然读对。", keys: "jintianhenrw␣", slip: 11,
-           check: { t, _ in t.contains("今天很热") }),
+           xiaoheLine: "故意把 qi 按成旁边的 qo：留意首选微光提示，空格依然读对。", xiaoheKeys: "jbtmtmqohfhc␣", xiaoheSlip: 7,
+           check: { t, _ in t.contains("今天很热") || t.contains("今天天气很好") }),
     Lesson(title: "长句漏按一个键", line: "tian 少按一个 n，整句自动补全并连读。", keys: "jintiantiaqihenhao␣", slip: 10, missing: "n",
+           xiaoheLine: "hc 少按一个 c，整句自动补全并连读。", xiaoheKeys: "jbtmtmqihfh␣", xiaoheSlip: 11, xiaoheMissing: "c",
            check: { t, _ in t.contains("今天天气很好") }),
     Lesson(title: "撤回纠错", line: "点候选栏左侧 ↩，刚才输入的原始字母原样回来。", keys: "↩",
-           check: { _, s in s.composing && s.keys.contains("tiaqi") }),
+           check: { _, s in s.composing && (s.keys.contains("tiaqi") || s.keys.contains("qohf") || s.keys.contains("tmqi")) }),
     Lesson(title: "清空正在打的拼音", line: "从删除键向左轻划清空拼音，再点 ↩ 恢复。", keys: "⌫↩",
            check: { _, s in !s.composing && s.restorable != nil },
            then: { s, keys in s.composing && keys != nil && s.keys == keys }),
     Lesson(title: "中英混输", line: "中英文夹杂直接打，无需手动切换语言。", keys: "woyongiphonedazi␣",
+           xiaoheKeys: "woysiphonedazi␣",
            check: { t, _ in t.contains("iPhone打字") }),
-    Lesson(title: "只打声母", line: "常用词只敲声母一样准。", keys: "bzd␣",
+    Lesson(title: "只打声母", line: "常用词只敲声母一样准（全拼）。", keys: "bzd␣", requiresQuanpin: true,
            check: { t, _ in t.contains("不知道") }),
 ]
 
@@ -251,13 +265,15 @@ final class PlaygroundModel: ObservableObject {
         refresh()
     }
 
-    /// Selects a specific interactive showcase demo on the unified typing bench.
+    /// Selects a specific interactive showcase demo on the unified typing bench (preserving Xiaohe Shuangpin when compatible).
     func jump(to lesson: Int) {
         guard lessons.indices.contains(lesson) else { return }
         keyboard?.discardComposition()
         host.clear()
         keyboard?.textDidChange(nil)
-        if layout != 0 { layout = 0 }
+        if layout == 2 || (lessons[lesson].requiresQuanpin && layout != 0) {
+            layout = 0
+        }
         benchMode = .demos
         justPassed = false
         firstDone = false
@@ -404,6 +420,7 @@ struct LessonCard: View {
     var body: some View {
         let clamped = min(max(index, 0), lessons.count - 1)
         let l = lessons[clamped]
+        let xiaohe = model.layout == 1
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
                 Text(l.title)
@@ -423,12 +440,12 @@ struct LessonCard: View {
                     .transition(.scale(scale: 0.7).combined(with: .opacity))
                 }
             }
-            Text(l.line)
+            Text(l.activeLine(xiaohe: xiaohe))
                 .font(.caption)
                 .foregroundStyle(MossOttoStyle.inkSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            KeyChips(keys: l.keys, slip: l.slip, missing: l.missing, done: model.marked.count)
+            KeyChips(keys: l.activeKeys(xiaohe: xiaohe), slip: l.activeSlip(xiaohe: xiaohe), missing: l.activeMissing(xiaohe: xiaohe), done: model.marked.count)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)

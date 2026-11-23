@@ -131,6 +131,8 @@ enum KeyboardTests {
         r53GridParityAndIdleSeparation(window)
         r54OpticalTrackpadAndTactileProfiles(window)
         r55DualLegendFlickAndMathBadge(window)
+        r56DualSchemeLessonsAndMostoState(window)
+        r57PullCordAndOptical2D(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -1679,6 +1681,78 @@ enum KeyboardTests {
         } else {
             log(false, "r55.math badge setup", "engine did not load")
         }
+    }
+
+    static func r56DualSchemeLessonsAndMostoState(_ window: UIWindow) {
+        // 1. Mosto day-mode yawn clears immediately when hidden mid-yawn (no lingering yawn sprite on reappear).
+        let mosto = MostoView(frame: CGRect(x: 0, y: 0, width: 24, height: 24))
+        mosto.setNight(false)
+        mosto.demoYawn()
+        log(!mosto.isShowingDayPoseForTests, "r56.mosto demoYawn leaves day pose", "")
+        mosto.isHidden = true
+        mosto.isHidden = false
+        log(mosto.isShowingDayPoseForTests, "r56.mosto hiding mid-yawn in day mode restores day pose", "")
+
+        // 2. Dual-scheme Studio lessons preserve Xiaohe Shuangpin (layout == 1) and pass real Xiaohe decoding.
+        let p = PlaygroundModel()
+        p.layout = 1
+        if let kb = makeKeyboard(scheme: 0, in: window) {
+            let vc = kb.0
+            vc.hostOverride = p.host
+            p.keyboard = vc
+            p.jump(to: 1)
+            log(p.layout == 1 && lessons[1].activeKeys(xiaohe: true) == "jbtmtmqohfhc␣",
+                "r56.jump keeps Xiaohe layout and serves Xiaohe slip lesson",
+                "layout=\(p.layout) keys=\(lessons[1].activeKeys(xiaohe: true))")
+            type(vc, "jbtmtmqohfhc"); settle(vc); vc.handle(.space, tap: nil); drain(0.05)
+            log(lessons[1].check(p.host.string, vc.testState),
+                "r56.xiaohe slip lesson jbtmtmqohfhc → 今天天气很好",
+                "text=\(p.host.string)")
+
+            p.jump(to: 2)
+            log(p.layout == 1 && lessons[2].activeKeys(xiaohe: true) == "jbtmtmqihfh␣",
+                "r56.jump serves Xiaohe missing-key lesson",
+                "layout=\(p.layout) keys=\(lessons[2].activeKeys(xiaohe: true))")
+            type(vc, "jbtmtmqihfh"); settle(vc); vc.handle(.space, tap: nil); drain(0.05)
+            log(lessons[2].check(p.host.string, vc.testState),
+                "r56.xiaohe missing-key lesson jbtmtmqihfh → 今天天气很好",
+                "text=\(p.host.string)")
+
+            // Lesson 6 (只打声母) is Quanpin-only and transitions cleanly when chosen.
+            p.jump(to: 6)
+            log(p.layout == 0, "r56.quanpin-only lesson transitions from Xiaohe to Quanpin", "layout=\(p.layout)")
+        } else {
+            log(false, "r56.xiaohe lessons setup", "engine did not load")
+        }
+    }
+
+    static func r57PullCordAndOptical2D(_ window: UIWindow) {
+        _ = window
+        // 1. StudioLampMode 3-state cycle and physical pull threshold
+        let m0 = StudioLampMode.day
+        let m1 = m0.next
+        let m2 = m1.next
+        let m3 = m2.next
+        log(m1 == .night && m2 == .plain && m3 == .day && LampPullCordSwitch.pullThreshold > 15,
+            "r57.StudioLampMode cycles cleanly across day -> night -> plain -> day and LampPullCordSwitch exposes valid threshold",
+            "cycle=\(m0)->\(m1)->\(m2)->\(m3) threshold=\(LampPullCordSwitch.pullThreshold)")
+
+        // 2. 2D CoreText opticalOffset centers fullwidth 。 horizontally and lifts it vertically
+        let o = KeyView.opticalOffset(for: "。", font: Theme.font(24, .medium))
+        log(o.x.isFinite && o.y.isFinite && o.x > 0.5 && o.y < -1.0,
+            "r57.KeyView 2D CoreText opticalOffset centers fullwidth 。 horizontally and lifts it vertically",
+            "dx=\(o.x) dy=\(o.y)")
+
+        // 3. Multi-char symbol key ^_^ separates cleanly below its top-right ψ corner legend
+        let kb = KeyboardView(spatial: SpatialModel.standard())
+        kb.frame = CGRect(x: 0, y: 0, width: 402, height: 214)
+        kb.configure(LayoutContext(page: .symbols, chinese: true, showGlobe: false, returnLabel: nil, returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true))
+        kb.layoutIfNeeded()
+        let symHint = kb.keyHintTextForTests(.char("^_^"))
+        let symFontSize = kb.keyLabelFontSizeForTests(.char("^_^")) ?? 99
+        log(symHint == "ψ" && symFontSize <= 19.5,
+            "r57.Multi-char symbol key ^_^ separates cleanly below its top-right ψ corner legend",
+            "hint=\(symHint ?? "nil") fontSize=\(symFontSize)")
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

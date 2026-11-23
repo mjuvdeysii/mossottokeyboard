@@ -43,24 +43,38 @@ final class KeyView: UIView {
     private var pressedFg: UIColor = Theme.keyText
     private static var symbolCache: [String: UIImage] = [:]
     private static let opticalPunctuation: Set<String> = ["，", "。", "？", "！", "、", "；", "：", "（", "）", "「", "」", "【", "】", "《", "》"]
-    private static var opticalOffsetCache: [String: CGFloat] = [:]
+    private static let lowBaselinePunctuation: Set<String> = ["。", "，", "、", "．"]
+    private static var opticalOffsetCache: [String: CGPoint] = [:]
 
-    /// Measures true glyph ink bounds vs typographic advance so asymmetric fullwidth CJK punctuation
-    /// optically centers inside keycaps and previews.
-    static func opticalHorizontalOffset(for text: String, font: UIFont) -> CGFloat {
-        guard text.count == 1, opticalPunctuation.contains(text) else { return 0 }
+    /// Measures true 2D glyph ink bounds vs typographic advance & ascent/descent so asymmetric fullwidth CJK
+    /// punctuation optically centers both horizontally and vertically inside keycaps and previews.
+    static func opticalOffset(for text: String, font: UIFont) -> CGPoint {
+        guard text.count == 1, opticalPunctuation.contains(text) else { return .zero }
         let key = "\(text)|\(Int((font.pointSize * 10).rounded()))"
         if let cached = opticalOffsetCache[key] { return cached }
         let attr = NSAttributedString(string: text, attributes: [.font: font])
         let line = CTLineCreateWithAttributedString(attr)
-        let adv = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
+        var ascent: CGFloat = 0, descent: CGFloat = 0
+        let adv = CGFloat(CTLineGetTypographicBounds(line, &ascent, &descent, nil))
         let img = CTLineGetImageBounds(line, nil)
         var dx: CGFloat = 0
+        var dy: CGFloat = 0
         if adv > 0, !img.isNull, img.width > 0 {
             dx = min(4.0, max(-4.0, adv * 0.5 - (img.minX + img.width * 0.5)))
         }
-        opticalOffsetCache[key] = dx
-        return dx
+        if lowBaselinePunctuation.contains(text), !img.isNull, img.height > 0, ascent + descent > 0 {
+            let typoMidY = (ascent - descent) * 0.5
+            let inkMidY = img.minY + img.height * 0.5
+            // CoreText is Y-up while UIKit is Y-down: moving a low mark upward needs a negative UIKit dy.
+            dy = min(2.0, max(-5.5, inkMidY - typoMidY))
+        }
+        let pt = CGPoint(x: dx, y: dy)
+        opticalOffsetCache[key] = pt
+        return pt
+    }
+
+    static func opticalHorizontalOffset(for text: String, font: UIFont) -> CGFloat {
+        opticalOffset(for: text, font: font).x
     }
 
     private static func cachedSymbol(_ name: String) -> UIImage? {
@@ -129,6 +143,8 @@ final class KeyView: UIView {
         case .char where spec.isLetter: label.font = Theme.font(Metrics.letterFont, .regular)
         case .char where ["“", "”", "‘", "’"].contains(spec.label):
             label.font = UIFont(name: "PingFangSC-Medium", size: Metrics.symbolFont) ?? Theme.font(Metrics.symbolFont, .medium)
+        case .char where spec.label.count >= 3:
+            label.font = Theme.font(18.5, .medium)
         case .char: label.font = Theme.font(Metrics.symbolFont, .medium)
         case .t9(let d): label.font = Theme.font(d == "'" ? Metrics.functionFont : 20, .semibold)
         case .space: label.font = Theme.font(15, .regular)
@@ -246,6 +262,7 @@ final class KeyView: UIView {
 
     var hintTextForTests: String? { (hintLabel?.isHidden == false) ? hintLabel?.text : nil }
     var hintLitForTests: Bool { hintLit }
+    var labelFontSizeForTests: CGFloat { label.font.pointSize }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
         super.traitCollectionDidChange(previous)
@@ -311,7 +328,8 @@ final class KeyView: UIView {
 
         let hasHint = !(hintLabel?.isHidden ?? true)
         let o = cjkPunctuationOffset(label.text, fontSize: label.font.pointSize, font: label.font)
-        label.frame = f.insetBy(dx: 2, dy: 0).offsetBy(dx: o.x, dy: o.y + (hasHint ? 1.5 : 0))
+        let hintDrop: CGFloat = hasHint ? (spec.label.count >= 3 ? 4.0 : 1.5) : 0
+        label.frame = f.insetBy(dx: 2, dy: 0).offsetBy(dx: o.x, dy: o.y + hintDrop)
         icon.frame = f
         // 键位提示: the letter moves up and smaller; the initial and finals sit under it (portrait only).
         let guided = !(spec.guideFinals.isEmpty && spec.guideInitial == nil) && f.height >= 34
@@ -336,10 +354,13 @@ final class KeyView: UIView {
         }
         if let h = hintLabel, !h.isHidden {
             let compact = f.height < 34
-            h.font = Theme.font(compact ? 8.5 : 9.5, .semibold)
+            let ht = h.text ?? ""
+            let tinyMark = ["。", "、", "·", ",", "'", "_"].contains(ht)
+            h.font = Theme.font((compact ? 8.5 : 9.5) + (tinyMark ? 1.0 : 0), .semibold)
             let hw = min(16, max(11, f.width * 0.36))
             let hh: CGFloat = compact ? 11 : 13
-            h.frame = CGRect(x: f.width - hw - 3, y: compact ? 1.5 : 2, width: hw, height: hh)
+            let hy: CGFloat = (compact ? 1.5 : 2.5) + (ht == "_" ? 1.5 : 0)
+            h.frame = CGRect(x: f.width - hw - 3.5, y: hy, width: hw, height: hh)
         }
     }
 
@@ -386,12 +407,13 @@ final class KeyView: UIView {
 func cjkPunctuationOffset(_ text: String?, fontSize: CGFloat, font: UIFont? = nil) -> CGPoint {
     guard let t = text else { return .zero }
     let resolved = font ?? Theme.font(fontSize, .medium)
-    let measuredX = KeyView.opticalHorizontalOffset(for: t, font: resolved)
+    let measured = KeyView.opticalOffset(for: t, font: resolved)
     if ["。", "，", "、", "．"].contains(t) {
-        let dx = abs(measuredX) > 0.1 ? measuredX : fontSize * 0.22
-        return CGPoint(x: dx, y: -fontSize * 0.2)
+        let dx = abs(measured.x) > 0.1 ? measured.x : fontSize * 0.22
+        let dy = abs(measured.y) > 0.1 ? measured.y : -fontSize * 0.2
+        return CGPoint(x: dx, y: dy)
     }
-    if abs(measuredX) > 0.1 { return CGPoint(x: measuredX, y: 0) }
+    if abs(measured.x) > 0.1 || abs(measured.y) > 0.1 { return measured }
     // Fallback for symmetric/bracket cases without non-zero CoreText bounds delta
     if ["（", "「", "『", "《", "〈", "【", "〔", "｛"].contains(t) { return CGPoint(x: -fontSize * 0.25, y: 0) }
     if ["）", "」", "』", "》", "〉", "】", "〕", "｝"].contains(t) { return CGPoint(x: fontSize * 0.25, y: 0) }
@@ -1336,6 +1358,11 @@ final class KeyboardView: UIView {
 
     func keyHintLitForTests(_ action: KeyAction) -> Bool {
         keyViews.first(where: { $0.spec.action == action })?.hintLitForTests ?? false
+    }
+
+    func keyLabelFontSizeForTests(_ action: KeyAction) -> CGFloat? {
+        layoutIfNeeded()
+        return keyViews.first(where: { $0.spec.action == action })?.labelFontSizeForTests
     }
 
     var activePreviewFlickedForTests: Bool {

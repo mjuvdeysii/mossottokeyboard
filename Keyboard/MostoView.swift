@@ -80,7 +80,7 @@ final class MostoView: UIView {
 
     override var isHidden: Bool {
         didSet {
-            if isHidden { pauseTimers(); yawned = false; if night { image.image = sleep } } else { schedule() }
+            if isHidden { pauseTimers(); yawned = false; image.image = night ? sleep : day } else { schedule() }
         }
     }
 
@@ -117,6 +117,7 @@ final class MostoView: UIView {
 
     /// Snapshot support: the yawn, at once.
     func demoYawn() { image.image = yawn }
+    var isShowingDayPoseForTests: Bool { image.image === day }
 
     /// Crisp yawn without cross-dissolve double-face ghosting.
     private func slowYawn() {

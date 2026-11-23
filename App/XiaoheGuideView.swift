@@ -319,20 +319,28 @@ struct XiaoheDrill: View {
 
     private func tap(_ c: Character) {
         guard verdict == nil, typed.count < 2 else { return }
-        let soundOn = KeyboardSettings.shared.keySound
+        let s = KeyboardSettings.shared
+        let soundOn = s.keySound
+        let feedbackOn = s.feedback
+        let profile = HapticProfile(rawValue: s.hapticProfile) ?? .crisp
         let proceed = {
             flashKey = c
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 if flashKey == c { flashKey = nil }
             }
             typed.append(c)
-            UIImpactFeedbackGenerator(style: .light).impactOccurred(intensity: 0.66)
+            if feedbackOn {
+                let t = SystemFeedbackPlayer.tunedImpact(for: profile, firm: false)
+                UIImpactFeedbackGenerator(style: t.style).impactOccurred(intensity: t.intensity)
+            }
             if soundOn { AudioServicesPlaySystemSound(1104) }
             guard typed.count == 2 else { return }
             let ok = typed == code
             verdict = ok
             streak = ok ? streak + 1 : 0
-            UINotificationFeedbackGenerator().notificationOccurred(ok ? .success : .warning)
+            if feedbackOn {
+                UINotificationFeedbackGenerator().notificationOccurred(ok ? .success : .warning)
+            }
             if ok { DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { next() } }
         }
         if let volume {
