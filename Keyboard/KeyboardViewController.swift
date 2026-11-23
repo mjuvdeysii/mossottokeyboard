@@ -155,6 +155,7 @@ final class KeyboardViewController: UIInputViewController {
     private func syncUndoChip() {
         if let c = cleared {
             candidateBar.setUndo(Self.abbreviated(c.text, to: 12), spoken: "撤回清空，恢复为 \(c.text)")
+            updatePlainLightButton()
             return
         }
         let typed = undoable.map { String($0.taps.map { $0.key }) } ?? enUndo?.typed
@@ -205,6 +206,9 @@ final class KeyboardViewController: UIInputViewController {
     var syllableChoiceCount: Int { syllableChoices.choices.count }
     /// The candidates shown are for the keys typed now (no decode still under way for them).
     var candidateBarForTests: CandidateBarView { candidateBar }
+    var gridIfLoadedForTests: CandidateGridView? { gridIfLoaded }
+    var plainLightHiddenForTests: Bool { plainLightButton.isHidden }
+    var mostoHintHiddenForTests: Bool { mostoHintButton.isHidden }
     var testSettled: Bool { taps.isEmpty || resultGeneration == generation }
 
     // MARK: - Lifecycle
@@ -283,6 +287,9 @@ final class KeyboardViewController: UIInputViewController {
         // swipe left off delete: clears the composition (rounds/R3.md)
         keyboard.isComposing = { [weak self] in !(self?.taps.isEmpty ?? true) }
         keyboard.onClearPreview = { [weak self] on in self?.candidateBar.setClearPreview(on) }
+        keyboard.onClearProgress = { [weak self] progress, armed in
+            self?.candidateBar.setClearProgress(progress, armed: armed)
+        }
         keyboard.onClearSwipe = { [weak self] in
             guard let self else { return }
             self.clearingBySwipe = true
@@ -817,6 +824,7 @@ final class KeyboardViewController: UIInputViewController {
         scheme = newScheme
         engine.configure(scheme: newScheme, correction: s.autocorrect, english: s.english)
         hapticsOn = s.feedback
+        (feedbackPlayer as? SystemFeedbackPlayer)?.profile = HapticProfile(rawValue: s.hapticProfile) ?? .crisp
         guideOn = s.xiaoheGuide
         soundOn = s.keySound
         numberPadOn = s.numberPad
@@ -1014,7 +1022,7 @@ final class KeyboardViewController: UIInputViewController {
         lastInsertedSpace = false
         if let p = pendingSelect {
             pendingSelect = nil
-            if let r = result, !r.candidates.isEmpty {
+            if resultGeneration == generation, let r = result, !r.candidates.isEmpty {
                 let idx = min(p.index, r.candidates.count - 1)
                 select(idx, shown: r.candidates[idx])
             }
@@ -1687,6 +1695,7 @@ final class KeyboardViewController: UIInputViewController {
             lastInsertedSpace = true
             endEnglishWord()
             updateAutoShift(); reconfigure()
+            afterLastKey = contextSnapshot()
             return
         }
         // the word the user saw: the strip shows `result`
@@ -1749,12 +1758,14 @@ final class KeyboardViewController: UIInputViewController {
         let g = CandidateGridView()
         g.isHidden = true
         g.onSelect = { [weak self] i in self?.feel(.candidate); self?.showGrid(false); self?.candidateTapped(i) }
+        g.onLongPress = { [weak self] i in self?.offerForget(i) }
         g.onClose = { [weak self] in self?.showGrid(false) }
         g.onFilterToggle = { [weak self] in self?.feel(.candidate) }
         g.onDelete = { [weak self] in
             guard let self else { return }
+            self.feel(.key(.delete))
             self.handle(.delete, tap: nil)
-            if self.taps.isEmpty { self.showGrid(false) } else { self.gridIfLoaded?.show(self.result?.candidates ?? [], preserveFilter: true) }
+            if self.taps.isEmpty { self.showGrid(false) }
         }
         root.addSubview(g)
         return g

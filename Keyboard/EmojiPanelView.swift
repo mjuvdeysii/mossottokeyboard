@@ -30,7 +30,9 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     private let returnButton = UIButton(type: .system)
     private let gear = UIButton(type: .system)
     private var selected = -1
+    private var pendingScrollToSelectedTab = false
     private var deleteTimer: Timer?
+    var tabScrollOffsetXForTests: CGFloat { tabScroll.contentOffset.x }
 
     static let categoryNames: [(String, String)] = [
         ("笑脸与人物", "face.smiling"), ("动物与自然", "pawprint"), ("食物与饮料", "fork.knife"), ("活动", "soccerball"),
@@ -464,6 +466,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         selectedMood = 0
         refreshMoodRibbonStyle()
         selected = -1
+        pendingScrollToSelectedTab = true
         returnButton.isHidden = true
         deleteButton.isHidden = false
         applyLips()
@@ -471,11 +474,14 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         moodMosto.isHidden = Theme.plain
         collection.reloadData()
         setNeedsLayout()
-        guard bounds.width > 100, bounds.height > 100 else { return }
+        guard bounds.width > 100, bounds.height > 100 else {
+            if kaomoji { setSelected(Self.categoryNames.count + 1, animated: false) }
+            return
+        }
         layoutIfNeeded()
         collection.layoutIfNeeded()
         if kaomoji {
-            setSelected(Self.categoryNames.count + 1)
+            setSelected(Self.categoryNames.count + 1, animated: false)
             collection.setContentOffset(.zero, animated: false)
             return
         }
@@ -572,6 +578,10 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             for item in dockItems { item.frame.origin.x += extra }
         }
         tabScroll.contentSize = CGSize(width: max(tabScroll.bounds.width, totalTabW), height: barH)
+        if pendingScrollToSelectedTab || (kaomojiMode && selected == tabButtons.count - 1) {
+            ensureSelectedTabVisible(animated: false)
+            pendingScrollToSelectedTab = false
+        }
 
         collection.collectionViewLayout.invalidateLayout()
         if !kaomojiMode { updateSelection() }
@@ -680,7 +690,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             let maxY = max(0, collection.contentSize.height - collection.bounds.height)
             collection.setContentOffset(CGPoint(x: 0, y: min(attr.frame.minY, maxY)), animated: animated)
         }
-        setSelected(section)
+        setSelected(section, animated: animated)
     }
 
     private func updateSelection() {
@@ -696,7 +706,22 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         setSelected(current)
     }
 
-    private func setSelected(_ s: Int) {
+    private func ensureSelectedTabVisible(animated: Bool) {
+        guard selected >= 0, selected < tabButtons.count, tabScroll.bounds.width > 0, tabScroll.contentSize.width > 0 else { return }
+        let target = tabButtons[selected].frame.insetBy(dx: -12, dy: 0)
+        let maxX = max(0, tabScroll.contentSize.width - tabScroll.bounds.width)
+        var offsetX = tabScroll.contentOffset.x
+        if target.maxX > offsetX + tabScroll.bounds.width {
+            offsetX = min(maxX, target.maxX - tabScroll.bounds.width)
+        } else if target.minX < offsetX {
+            offsetX = max(0, target.minX)
+        }
+        if abs(offsetX - tabScroll.contentOffset.x) > 0.5 {
+            tabScroll.setContentOffset(CGPoint(x: offsetX, y: 0), animated: animated)
+        }
+    }
+
+    private func setSelected(_ s: Int, animated: Bool = true) {
         guard s != selected, s < sections.count else { return }
         selected = s
         for (i, b) in tabButtons.enumerated() {
@@ -704,9 +729,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             b.backgroundColor = i == s ? Theme.functionKey : .clear
             b.isEnabled = !sections[i].items.isEmpty
         }
-        if s < tabButtons.count {
-            tabScroll.scrollRectToVisible(tabButtons[s].frame.insetBy(dx: -12, dy: 0), animated: true)
-        }
+        ensureSelectedTabVisible(animated: animated)
     }
 
     @objc private func tabTapped(_ b: UIButton) {

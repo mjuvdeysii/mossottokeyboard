@@ -128,6 +128,8 @@ enum KeyboardTests {
         r50CraftAndReadiness(window)
         r51CompanionAndFluency(window)
         r52HardwareDeckAndOpticalCraft(window)
+        r53GridParityAndIdleSeparation(window)
+        r54OpticalTrackpadAndTactileProfiles(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -1474,6 +1476,131 @@ enum KeyboardTests {
         log(dxComma.isFinite && dxComma > 0.5,
             "r52.KeyView optically nudges fullwidth CJK comma right toward key center",
             "dxComma=\(dxComma)")
+    }
+
+    static func r53GridParityAndIdleSeparation(_ window: UIWindow) {
+        // 1. CandidateGridView long-press maps displayed index -> real candidate index (preserving single-char filter)
+        let g = CandidateGridView(frame: CGRect(x: 0, y: 0, width: 402, height: 220))
+        g.show([
+            Candidate(text: "你好", tapCount: 4, syllables: [1, 2], corrected: false, score: 0),
+            Candidate(text: "你", tapCount: 2, syllables: [1], corrected: false, score: 0),
+            Candidate(text: "泥", tapCount: 2, syllables: [1], corrected: false, score: 0),
+        ])
+        g.toggleSingleCharForTests()
+        var heldIndex = -1
+        g.onLongPress = { heldIndex = $0 }
+        g.longPressDisplayedForTests(1)
+        log(heldIndex == 2,
+            "r53.CandidateGridView long-press emits real candidate index under single-char filter",
+            "heldIndex=\(heldIndex)")
+
+        // 2. Theme.plain clearInput hides plainLightButton and mostoHintButton while undoChip is visible
+        if let kb = makeKeyboard(scheme: 1, in: window) {
+            let (vc, h) = kb
+            let prevStyle = KeyboardSettings.shared.style
+            defer { KeyboardSettings.shared.style = prevStyle; vc.applySettings() }
+            KeyboardSettings.shared.style = 1
+            vc.applySettings()
+            type(vc, "nihao"); settle(vc)
+            vc.handle(.clearInput, tap: nil)
+            drain(0.03)
+            log(vc.candidateBarForTests.undoTextForTests == "nihao" && vc.plainLightHiddenForTests && vc.mostoHintHiddenForTests,
+                "r53.Theme.plain hides light and kaomoji pills when clearInput undo chip is shown",
+                "undo=\(vc.candidateBarForTests.undoTextForTests ?? "nil") plainLightHidden=\(vc.plainLightHiddenForTests) mostoHintHidden=\(vc.mostoHintHiddenForTests)")
+
+            // 3. Tapping an English suggestion keeps double-space period working across delayed selectionDidChange
+            KeyboardSettings.shared.style = 0
+            vc.applySettings()
+            reset(vc, h)
+            vc.handle(.toggleLanguage, tap: nil)
+            type(vc, "teh")
+            drain(0.02)
+            vc.candidateTapped(0)
+            vc.selectionDidChange(nil)
+            vc.handle(.space, tap: nil)
+            log(h.string.hasSuffix("the. "),
+                "r53.English suggestion tap preserves double-space period across selectionDidChange",
+                "text=\(h.string)")
+        } else {
+            log(false, "r53.setup", "engine did not load")
+        }
+    }
+
+    static func r54OpticalTrackpadAndTactileProfiles(_ window: UIWindow) {
+        _ = window
+        // 1. Leica Optical Trackpad Ruler: shows & translates during cursor drag and hides cleanly on release
+        let ctx = LayoutContext(page: .letters, chinese: true, showGlobe: false, returnLabel: nil, returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true)
+        let kbDemo = KeyboardView(spatial: SpatialModel.standard())
+        kbDemo.frame = CGRect(x: 0, y: 0, width: 402, height: 214)
+        kbDemo.configure(ctx)
+        kbDemo.layoutIfNeeded()
+        kbDemo.demoCursorMode()
+        let demoVisible = kbDemo.trackpadRulerVisibleForTests && kbDemo.trackpadRulerOffsetForTests != 0
+
+        let kb = KeyboardView(spatial: SpatialModel.standard())
+        kb.frame = CGRect(x: 0, y: 0, width: 402, height: 214)
+        kb.configure(ctx)
+        kb.layoutIfNeeded()
+        let spaceCap = kb.keyRectsForTests(.space)?.cap ?? CGRect(x: 100, y: 165, width: 160, height: 42)
+        let sp = CGPoint(x: spaceCap.midX, y: spaceCap.midY)
+        kb.feedForTests([
+            TouchSample(id: 1, phase: .began, point: sp, time: 0.0),
+            TouchSample(id: 1, phase: .moved, point: CGPoint(x: sp.x + 32, y: sp.y), time: 0.10),
+            TouchSample(id: 1, phase: .moved, point: CGPoint(x: sp.x + 48, y: sp.y), time: 0.18),
+        ])
+        let dragVisible = kb.trackpadRulerVisibleForTests && abs(kb.trackpadRulerOffsetForTests) > 1
+        kb.feedForTests([
+            TouchSample(id: 1, phase: .ended, point: CGPoint(x: sp.x + 48, y: sp.y), time: 0.22),
+        ])
+        let hiddenAfter = !kb.trackpadRulerVisibleForTests
+        log(demoVisible && dragVisible && hiddenAfter,
+            "r54.KeyboardView Leica optical trackpad ruler shows & translates on cursor drag and hides cleanly",
+            "demo=\(demoVisible) drag=\(dragVisible) hiddenAfter=\(hiddenAfter)")
+
+        // 2. Continuous delete-left-swipe progress drives CandidateBarView warm-amber filament
+        var cs = ClearSwipe(start: CGPoint(x: 370, y: 130), keyLeft: 346, time: 1.0)
+        let pStart = cs.progress(at: CGPoint(x: 368, y: 130), time: 1.05)
+        let pMid = cs.progress(at: CGPoint(x: 344, y: 130), time: 1.12)
+        _ = cs.move(to: CGPoint(x: 320, y: 130), at: 1.18)
+        let pArmed = cs.progress(at: CGPoint(x: 320, y: 130), time: 1.18)
+        let bar = CandidateBarView(frame: CGRect(x: 0, y: 0, width: 402, height: 42))
+        bar.layoutIfNeeded()
+        bar.setClearProgress(0.5, armed: false)
+        let midBarOk = abs(bar.clearFilamentProgressForTests - 0.5) < 0.001 && bar.clearPreviewForTests
+        bar.setClearProgress(0, armed: false)
+        let resetBarOk = bar.clearFilamentProgressForTests == 0 && !bar.clearPreviewForTests
+        log(pStart == 0 && pMid > 0 && pMid < 1 && pArmed == 1 && midBarOk && resetBarOk,
+            "r54.ClearSwipe continuous progress drives CandidateBarView amber filament cleanly",
+            "start=\(pStart) mid=\(pMid) armed=\(pArmed) midBar=\(midBarOk) reset=\(resetBarOk)")
+
+        // 3. HapticProfile distinct tuning & SettingsPanelView 4-state cycling
+        let tCrisp = SystemFeedbackPlayer.tunedImpact(for: .crisp, firm: false)
+        let tMech = SystemFeedbackPlayer.tunedImpact(for: .mechanical, firm: false)
+        let tQuiet = SystemFeedbackPlayer.tunedImpact(for: .quiet, firm: false)
+        let distinctProfiles = tCrisp.style != tMech.style && tMech.style != tQuiet.style
+            && tCrisp.intensity != tMech.intensity && tMech.intensity != tQuiet.intensity && tCrisp.intensity != tQuiet.intensity
+        let s = KeyboardSettings.shared
+        let prevFeedback = s.feedback, prevProfile = s.hapticProfile
+        defer { s.feedback = prevFeedback; s.hapticProfile = prevProfile }
+        s.feedback = true; s.hapticProfile = 0
+        let panel = SettingsPanelView(frame: CGRect(x: 0, y: 0, width: 402, height: 264))
+        panel.layoutIfNeeded()
+        panel.tapHapticTileForTests(); let st1 = (s.feedback, s.hapticProfile)
+        panel.tapHapticTileForTests(); let st2 = (s.feedback, s.hapticProfile)
+        panel.tapHapticTileForTests(); let st3 = (s.feedback, s.hapticProfile)
+        panel.tapHapticTileForTests(); let st4 = (s.feedback, s.hapticProfile)
+        log(distinctProfiles && st1 == (true, 1) && st2 == (true, 2) && st3 == (false, 0) && st4 == (true, 0),
+            "r54.HapticProfile distinct tuning & SettingsPanelView 4-state tactile cycling",
+            "distinct=\(distinctProfiles) states=[\(st1),\(st2),\(st3),\(st4)]")
+
+        // 4. EmojiPanelView auto-scrolls bottom dock to active Mosto tab on kaomoji open
+        let ep = EmojiPanelView(frame: CGRect(x: 0, y: 0, width: 402, height: 264))
+        ep.layoutIfNeeded()
+        ep.load(kaomoji: true)
+        ep.layoutIfNeeded()
+        log(ep.tabScrollOffsetXForTests > 20,
+            "r54.EmojiPanelView auto-scrolls bottom dock to active Mosto tab on kaomoji open",
+            "offsetX=\(ep.tabScrollOffsetXForTests)")
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

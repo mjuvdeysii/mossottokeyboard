@@ -94,6 +94,7 @@ final class PlaygroundModel: ObservableObject {
         autocorrect = s.autocorrect
         english = s.english
         feedback = s.feedback
+        hapticProfile = s.hapticProfile
         keySound = s.keySound
         host.onChange = { [weak self] in self?.refresh() }
     }
@@ -213,6 +214,7 @@ final class PlaygroundModel: ObservableObject {
     @Published var autocorrect = true { didSet { applyLayout() } }
     @Published var english = true { didSet { applyLayout() } }
     @Published var feedback = true { didSet { applyLayout() } }
+    @Published var hapticProfile = 0 { didSet { applyLayout() } }
     @Published var keySound = true { didSet { applyLayout() } }
     @Published var numberPad = false { didSet { applyLayout() } }
     @Published var keyboardVisible = true
@@ -230,6 +232,7 @@ final class PlaygroundModel: ObservableObject {
         s.autocorrect = autocorrect
         s.english = english
         s.feedback = feedback
+        s.hapticProfile = hapticProfile
         s.keySound = keySound
         keyboard?.applySettings()
     }
@@ -239,6 +242,7 @@ final class PlaygroundModel: ObservableObject {
         let s = KeyboardSettings.shared
         if keySound != s.keySound { keySound = s.keySound }
         if feedback != s.feedback { feedback = s.feedback }
+        if hapticProfile != s.hapticProfile { hapticProfile = s.hapticProfile }
         keyboard?.applySettings()
     }
 

@@ -73,6 +73,9 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     private var dividerPool: [CALayer] = []
     /// Zero-width 2pt focus glow bar beneath slot 0 when autocorrect engaged (replaces noisy jr->ke text).
     private let correctionBar = CALayer()
+    private let clearFilament = CALayer()
+    private var clearSwipeProgress: CGFloat = 0
+    private var clearSwipeArmed = false
     /// What each pooled label shows now (so a label is only redrawn when it changes).
     private var poolKeys: [String] = []
     private var isPrediction = false; var gridExpanded = false { didSet { if gridExpanded != oldValue { setNeedsLayout(); layoutIfNeeded() } } }
@@ -181,6 +184,10 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         fade.colors = [UIColor.clear.cgColor, UIColor.black.cgColor, UIColor.black.cgColor, UIColor.clear.cgColor]
         addSubview(stripBox)
         bringSubviewToFront(preeditDock)
+        clearFilament.cornerRadius = 1
+        clearFilament.zPosition = 20
+        clearFilament.isHidden = true
+        layer.addSublayer(clearFilament)
         let cfg = UIImage.SymbolConfiguration(pointSize: 16, weight: .regular)
         expandButton.setImage(UIImage(systemName: "chevron.down", withConfiguration: cfg), for: .normal)
         expandButton.tintColor = Theme.secondaryText
@@ -264,6 +271,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             let divColor = Theme.candidateDivider.resolvedColor(with: traitCollection).cgColor
             for d in dividerPool { d.backgroundColor = divColor }
             correctionBar.backgroundColor = Theme.correctedMark.resolvedColor(with: traitCollection).cgColor
+            layoutClearFilament()
             poolKeys = poolKeys.map { _ in "" }
             setNeedsLayout()
         }
@@ -279,6 +287,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         preeditCaret.backgroundColor = Theme.correctedMark.resolvedColor(with: traitCollection).withAlphaComponent(0.78).cgColor
         applyPreeditText(preeditRaw)
         correctionBar.backgroundColor = Theme.correctedMark.resolvedColor(with: traitCollection).cgColor
+        layoutClearFilament()
         var uc = undoChip.configuration
         uc?.baseBackgroundColor = Theme.correctedTint
         uc?.baseForegroundColor = Theme.correctedMark
@@ -322,15 +331,45 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         setNeedsLayout()
     }
 
-    /// A swipe left off delete is armed: the candidates fade to show they are about to go (no animation: it follows
-    /// the finger).
-    func setClearPreview(_ on: Bool) {
-        let a: CGFloat = on ? 0.35 : 1
+    /// Continuous delete-left swipe progress (`0...1`) drives the strip's bottom warm-amber filament synchronously.
+    func setClearProgress(_ progress: CGFloat, armed: Bool) {
+        let p = armed ? 1.0 : min(1, max(0, progress))
+        clearSwipeProgress = p
+        clearSwipeArmed = armed
+        let a: CGFloat = armed ? 0.35 : (p > 0.01 ? (1.0 - p * 0.40) : 1.0)
         stripBox.alpha = a
         expandButton.alpha = a
         preeditDock.alpha = a
+        layoutClearFilament()
     }
+
+    /// A swipe left off delete is armed: the candidates fade to show they are about to go (no animation: it follows
+    /// the finger).
+    func setClearPreview(_ on: Bool) {
+        setClearProgress(on ? 1 : 0, armed: on)
+    }
+
+    private func layoutClearFilament() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        if clearSwipeProgress <= 0.005 || bounds.width <= 20 {
+            clearFilament.isHidden = true
+            CATransaction.commit()
+            return
+        }
+        clearFilament.isHidden = false
+        let span = max(0, bounds.width - 20)
+        let w = span * clearSwipeProgress
+        let h: CGFloat = clearSwipeArmed ? 2.5 : 2.0
+        clearFilament.frame = CGRect(x: bounds.width - 10 - w, y: bounds.height - h, width: w, height: h)
+        let baseColor = Theme.plain ? Theme.correctedMark : Theme.dyn(Theme.gold, Theme.goldGlow)
+        clearFilament.backgroundColor = baseColor.resolvedColor(with: traitCollection)
+            .withAlphaComponent(clearSwipeArmed ? 1.0 : (0.55 + 0.45 * clearSwipeProgress)).cgColor
+        CATransaction.commit()
+    }
+
     var clearPreviewForTests: Bool { stripBox.alpha < 1 }
+    var clearFilamentProgressForTests: CGFloat { clearSwipeProgress }
 
     // MARK: VoiceOver: each laid-out candidate is a button (the strip draws plain labels and reads raw touches)
 
@@ -549,6 +588,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         let hideStripForGridDock = gridExpanded && showsPreedit && !preeditDock.isHidden && !preeditRaw.isEmpty
         stripBox.isHidden = (candidates.isEmpty && !typing) || hideStripForGridDock
         layoutCandidates()
+        layoutClearFilament()
     }
 
     /// Keep the candidate strip pure and high-density while composing (zero jr->ke / 原键 clutter).
@@ -943,6 +983,7 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
     var onClose: (() -> Void)?
     var onDelete: (() -> Void)?
     var onFilterToggle: (() -> Void)?
+    var onLongPress: ((Int) -> Void)?
 
     private var allCandidates: [Candidate] = []
     private var displayedIndices: [Int] = []
@@ -953,6 +994,7 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
     private let closeButton = UIButton(type: .system)
     private let deleteButton = UIButton(type: .system)
     private let singleCharButton = UIButton(type: .system)
+    private var deleteTimer: Timer?
 
     private func updateFilterButtonStyle() {
         let active = singleCharOnly
@@ -1065,8 +1107,20 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         deleteButton.accessibilityLabel = "删除"
         singleCharButton.accessibilityLabel = "只看单字"
         closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
-        deleteButton.addTarget(self, action: #selector(deleteTapped), for: .touchUpInside)
+        deleteButton.addTarget(self, action: #selector(deleteDown), for: .touchDown)
+        for ev: UIControl.Event in [.touchUpInside, .touchUpOutside, .touchCancel] {
+            deleteButton.addTarget(self, action: #selector(deleteUp), for: ev)
+        }
         singleCharButton.addTarget(self, action: #selector(toggleSingleChar), for: .touchUpInside)
+        let lp = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPress(_:)))
+        lp.minimumPressDuration = StripGesture.holdTime
+        collection.addGestureRecognizer(lp)
+    }
+
+    override var isHidden: Bool { didSet { if isHidden { deleteUp() } } }
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil { deleteUp() }
     }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
@@ -1079,7 +1133,27 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
     required init?(coder: NSCoder) { fatalError() }
 
     @objc private func closeTapped() { onClose?() }
-    @objc private func deleteTapped() { onDelete?() }
+    @objc private func deleteDown() {
+        onDelete?()
+        deleteTimer?.invalidate()
+        let t = Timer(timeInterval: 0.45, repeats: false) { [weak self] _ in
+            let r = Timer(timeInterval: 0.09, repeats: true) { [weak self] _ in self?.onDelete?() }
+            RunLoop.main.add(r, forMode: .common)
+            self?.deleteTimer = r
+        }
+        RunLoop.main.add(t, forMode: .common)
+        deleteTimer = t
+    }
+    @objc private func deleteUp() {
+        deleteTimer?.invalidate()
+        deleteTimer = nil
+    }
+    @objc private func handleLongPress(_ g: UILongPressGestureRecognizer) {
+        guard g.state == .began else { return }
+        let p = g.location(in: collection)
+        guard let ip = collection.indexPathForItem(at: p), ip.item < displayedIndices.count else { return }
+        onLongPress?(displayedIndices[ip.item])
+    }
     @objc private func toggleSingleChar() {
         singleCharOnly.toggle()
         rebuildDisplayed()
@@ -1153,6 +1227,8 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
     var singleCharButtonHiddenForTests: Bool { singleCharButton.isHidden }
     func toggleSingleCharForTests() { toggleSingleChar() }
     func selectDisplayedForTests(_ i: Int) { if i < displayedIndices.count { onSelect?(displayedIndices[i]) } }
+    func longPressDisplayedForTests(_ i: Int) { if i < displayedIndices.count { onLongPress?(displayedIndices[i]) } }
+    func deleteTapForTests() { onDelete?() }
 }
 
 /// R50/R52 single-layer OTTOSSOM physical toggle tile with a 4.5pt hardware micro-LED and grounded shadowPath.
@@ -1651,9 +1727,10 @@ final class SettingsPanelView: UIView {
         }
         lightTile.configure(eyebrow: "台灯光效", value: lightTitle, active: s.style == 0)
 
+        let prof = HapticProfile(rawValue: s.hapticProfile) ?? .crisp
         hapticTile.configure(
             eyebrow: "按键震动",
-            value: feedbackAvailable ? (s.feedback ? "轻触开启" : "已关闭") : "需完全访问",
+            value: feedbackAvailable ? (s.feedback ? prof.deckValue : "已关闭") : "需完全访问",
             active: feedbackAvailable && s.feedback,
             locked: !feedbackAvailable
         )
@@ -1734,8 +1811,23 @@ final class SettingsPanelView: UIView {
 
     @objc private func toggleHaptic() {
         guard feedbackAvailable else { return }
-        KeyboardSettings.shared.feedback.toggle()
-        notifyTileChange()
+        let s = KeyboardSettings.shared
+        if !s.feedback {
+            s.feedback = true
+            s.hapticProfile = 0
+        } else if s.hapticProfile < 2 {
+            s.hapticProfile += 1
+        } else {
+            s.feedback = false
+            s.hapticProfile = 0
+        }
+        if s.feedback {
+            let prof = HapticProfile(rawValue: s.hapticProfile) ?? .crisp
+            let t = SystemFeedbackPlayer.tunedImpact(for: prof, firm: false)
+            UIImpactFeedbackGenerator(style: t.style).impactOccurred(intensity: t.intensity)
+        }
+        load()
+        onChange?()
     }
 
     @objc private func toggleSound() {
@@ -1816,6 +1908,7 @@ final class SettingsPanelView: UIView {
     var showingMoreForTests: Bool { !moreScroll.isHidden }
     func toggleMoreForTests() { if moreScroll.isHidden { openMore() } else { closeMore() } }
     func tapSchemeTileForTests() { toggleScheme() }
+    func tapHapticTileForTests() { toggleHaptic() }
 
     override func layoutSubviews() {
         super.layoutSubviews()
@@ -1898,7 +1991,7 @@ final class KeyboardSettings {
         let standard = UserDefaults.standard
         if let group = UserDefaults(suiteName: Self.appGroupID) {
             if !group.bool(forKey: "migratedToAppGroup") {
-                let keys = ["scheme", "autocorrect", "xiaoheGuide", "english", "pinyinGrid", "numberPad", "style", "appearance", "feedback", "keySound", "keyOffsets", "offsetX", "offsetY"]
+                let keys = ["scheme", "autocorrect", "xiaoheGuide", "english", "pinyinGrid", "numberPad", "style", "appearance", "feedback", "hapticProfile", "keySound", "keyOffsets", "offsetX", "offsetY"]
                 for k in keys where group.object(forKey: k) == nil {
                     if let v = standard.object(forKey: k) { group.set(v, forKey: k) }
                 }
@@ -1963,6 +2056,11 @@ final class KeyboardSettings {
     var feedback: Bool {
         get { d.object(forKey: "feedback") as? Bool ?? true }
         set { d.set(newValue, forKey: "feedback"); notify() }
+    }
+    /// 0 轻脆 (default), 1 机械, 2 静谧.
+    var hapticProfile: Int {
+        get { max(0, min(2, d.object(forKey: "hapticProfile") as? Int ?? 0)) }
+        set { d.set(max(0, min(2, newValue)), forKey: "hapticProfile"); notify() }
     }
     /// The system keyboard's click sounds on key down (follow the ring / silent switch). Until set on its own it
     /// follows the old combined switch.

@@ -54,6 +54,17 @@ struct ClearSwipe {
         return armed != was
     }
 
+    /// Continuous normalized swipe progress in 0...1 while dragging left toward arming (1 when armed).
+    func progress(at p: CGPoint, time t: CFTimeInterval) -> CGFloat {
+        if armed { return 1 }
+        let dx = p.x - start.x, dy = p.y - start.y
+        guard t - began <= Self.window, dx < -6, abs(dy) <= Self.rise + 4, abs(dx) >= abs(dy) * 1.35 else { return 0 }
+        let reachFrac = min(1, max(0, (-dx - 6) / (Self.reach - 6)))
+        let edgeNeed = max(1, start.x - (keyLeft - Self.beyond))
+        let edgeFrac = min(1, max(0, (start.x - p.x) / edgeNeed))
+        return min(0.95, min(reachFrac, edgeFrac))
+    }
+
     /// What the swipe amounts to now (`lifted`: the finger has just come up).
     func outcome(lifted: Bool) -> Outcome { armed ? (lifted ? .clear : .armed) : .none }
 }

@@ -582,10 +582,10 @@ struct VolumeCheckSheet: View {
                             Text("按键声效")
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(MossOttoStyle.inkPrimary)
-                            Text(soundEnabled ? "已开启 · 轻脆原声" : "已静音 · 仅触感")
+                            Text(soundEnabled ? "轻脆原声" : "仅触感")
                                 .font(.caption2)
                                 .foregroundStyle(MossOttoStyle.inkSecondary)
-                                .fixedSize(horizontal: false, vertical: true)
+                                .lineLimit(1)
                         }
                         Spacer(minLength: 4)
                         ZStack(alignment: soundEnabled ? .trailing : .leading) {
@@ -651,10 +651,16 @@ struct SwitchTesterToy: View {
     @ObservedObject var volume: VolumeMonitor
     var mode: StudioLampMode
     var soundEnabled: Bool
+    var hapticProfile: Int = 0
+    var onSelectProfile: ((Int) -> Void)? = nil
     var onMostoBlink: () -> Void
 
     @State private var pressedKey: Int? = nil
-    @State private var readout = "轻触 3 枚实体试轴，感受 R50 分级触感与原声"
+    @State private var readout: String? = nil
+
+    private var activeProfile: HapticProfile {
+        HapticProfile(rawValue: hapticProfile) ?? .crisp
+    }
 
     private var forceNight: Bool? {
         switch mode {
@@ -665,25 +671,47 @@ struct SwitchTesterToy: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
                 Text("台灯下 · 3 枚试轴器")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(MossOttoStyle.inkSecondary)
-                Spacer()
-                Text(readout)
-                    .font(.caption2)
-                    .foregroundStyle(MossOttoStyle.inkSecondary)
-                    .lineLimit(1)
+                Spacer(minLength: 4)
+                HStack(spacing: 4) {
+                    ForEach(HapticProfile.allCases, id: \.rawValue) { prof in
+                        let selected = prof == activeProfile
+                        Button {
+                            onSelectProfile?(prof.rawValue)
+                            let t = SystemFeedbackPlayer.tunedImpact(for: prof, firm: false)
+                            UIImpactFeedbackGenerator(style: t.style).impactOccurred(intensity: t.intensity)
+                            readout = "\(prof.title)轴体 · \(styleLabel(t.style, t.intensity))"
+                        } label: {
+                            Text(prof.title)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(selected ? .white : MossOttoStyle.inkPrimary)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3.5)
+                                .background(
+                                    Capsule().fill(selected ? MossOttoStyle.violet : MossOttoStyle.surface)
+                                )
+                                .overlay(
+                                    Capsule().strokeBorder(selected ? Color.clear : MossOttoStyle.hairline, lineWidth: 0.7)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
             }
 
             HStack(spacing: 10) {
                 Button {
-                    trigger(id: 0, sound: 1104, style: .light, intensity: 0.66, desc: "轻脆字母 · Light 0.66")
+                    let t = SystemFeedbackPlayer.tunedImpact(for: activeProfile, firm: false)
+                    trigger(id: 0, sound: 1104, style: t.style, intensity: t.intensity,
+                            desc: "\(activeProfile.title)字母 · \(styleLabel(t.style, t.intensity))")
                 } label: {
                     MonolithKeycapView(
                         label: "A",
-                        secondary: "轻脆字母",
+                        secondary: "\(activeProfile.title)字母",
                         pressed: pressedKey == 0,
                         plain: mode == .plain,
                         forceNight: forceNight
@@ -693,7 +721,9 @@ struct SwitchTesterToy: View {
                 .buttonStyle(.plain)
 
                 Button {
-                    trigger(id: 1, sound: 1104, style: .rigid, intensity: 0.78, desc: "沉稳定位 · Rigid 0.78")
+                    let t = SystemFeedbackPlayer.tunedImpact(for: activeProfile, firm: true)
+                    trigger(id: 1, sound: 1104, style: t.style, intensity: t.intensity,
+                            desc: "\(activeProfile.title)空格 · \(styleLabel(t.style, t.intensity))")
                 } label: {
                     MonolithKeycapView(
                         label: "空格",
@@ -731,7 +761,23 @@ struct SwitchTesterToy: View {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .strokeBorder(MossOttoStyle.hairline, lineWidth: 0.7)
             )
+
+            Text(readout ?? "轻触 3 枚实体试轴，感受\(activeProfile.title)触感与原声")
+                .font(.caption2)
+                .foregroundStyle(MossOttoStyle.inkSecondary)
+                .lineLimit(1)
+                .padding(.leading, 4)
         }
+    }
+
+    private func styleLabel(_ style: UIImpactFeedbackGenerator.FeedbackStyle, _ intensity: CGFloat) -> String {
+        let name: String
+        switch style {
+        case .rigid: name = "Rigid"
+        case .soft: name = "Soft"
+        default: name = "Light"
+        }
+        return String(format: "%@ %.2f", name, intensity)
     }
 
     private func trigger(id: Int, sound: SystemSoundID, style: UIImpactFeedbackGenerator.FeedbackStyle, intensity: CGFloat, desc: String) {

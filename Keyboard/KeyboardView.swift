@@ -514,6 +514,8 @@ final class KeyboardView: UIView {
     var isComposing: (() -> Bool)?
     /// A swipe left off delete is armed (true) or no longer (false): the strip shows what lifting would do.
     var onClearPreview: ((Bool) -> Void)?
+    /// Continuous normalized delete-left swipe progress in 0...1 and armed state for the bar's warm filament.
+    var onClearProgress: ((CGFloat, Bool) -> Void)?
     /// A swipe left off delete was let go while armed: clear the composition.
     var onClearSwipe: (() -> Void)?
     /// The test bench's stand-in for the version before the swipe existed (the same touches, no swipe to clear).
@@ -529,11 +531,21 @@ final class KeyboardView: UIView {
         keyViews.forEach { $0.themeChanged() }
         previewPool.forEach { $0.refreshStyle() }
         for tr in tracked.values { tr.preview?.refreshStyle() }
+        updateTrackpadRulerColors()
         setNeedsLayout()
     }
     private var hitRects: [CGRect] = []
     private var globeButton: UIButton?
     private var previewPool: [KeyPreview] = []
+    private let trackpadRuler = CALayer()
+    private let trackpadAxis = CALayer()
+    private let trackpadTicks = CAShapeLayer()
+    private let trackpadReticle = CALayer()
+    private let trackpadPip = CALayer()
+    private var trackpadRulerOffset: CGFloat = 0
+    private var lastTrackpadSize: CGSize = .zero
+    var trackpadRulerVisibleForTests: Bool { !trackpadRuler.isHidden }
+    var trackpadRulerOffsetForTests: CGFloat { trackpadRulerOffset }
     private var lastCharDownTime: CFTimeInterval = -1
     static let rapidPreviewThreshold: CFTimeInterval = 0.13
     var adaptivePreviewEnabled = true
@@ -580,9 +592,76 @@ final class KeyboardView: UIView {
         isMultipleTouchEnabled = true
         clipsToBounds = false
         backgroundColor = .clear   // root provides single uniform hit-test backing (avoids stacked translucent band)
+
+        trackpadRuler.masksToBounds = true
+        trackpadRuler.isHidden = true
+        trackpadRuler.zPosition = 30
+        trackpadTicks.fillColor = nil
+        trackpadTicks.lineCap = .round
+        trackpadReticle.cornerRadius = 1.0
+        trackpadPip.cornerRadius = 2.5
+        trackpadRuler.addSublayer(trackpadAxis)
+        trackpadRuler.addSublayer(trackpadTicks)
+        trackpadRuler.addSublayer(trackpadReticle)
+        trackpadRuler.addSublayer(trackpadPip)
+        layer.addSublayer(trackpadRuler)
+        updateTrackpadRulerColors()
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+        super.traitCollectionDidChange(previous)
+        updateTrackpadRulerColors()
+    }
+
+    private func updateTrackpadRulerColors() {
+        let t = traitCollection
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        trackpadAxis.backgroundColor = Theme.separator.resolvedColor(with: t).withAlphaComponent(0.55).cgColor
+        trackpadTicks.strokeColor = Theme.secondaryText.resolvedColor(with: t).withAlphaComponent(0.38).cgColor
+        trackpadReticle.backgroundColor = Theme.correctedMark.resolvedColor(with: t).cgColor
+        trackpadPip.backgroundColor = Theme.statusLedActive.resolvedColor(with: t).cgColor
+        CATransaction.commit()
+    }
+
+    private func layoutTrackpadRuler(rowH: CGFloat) {
+        let trackH: CGFloat = 40
+        let topAreaH = max(0, bounds.height - topReach - rowH)
+        let rFrame = CGRect(x: 14, y: topReach + floor((topAreaH - trackH) / 2), width: max(0, bounds.width - 28), height: trackH)
+        let baseY = floor(trackH * 0.56)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        trackpadRuler.frame = rFrame
+        trackpadAxis.frame = CGRect(x: 0, y: baseY, width: rFrame.width, height: 0.5)
+        trackpadReticle.frame = CGRect(x: floor(rFrame.width / 2 - 1), y: baseY - 13, width: 2, height: 24)
+        trackpadPip.frame = CGRect(x: floor(rFrame.width / 2 - 2.5), y: baseY - 20, width: 5, height: 5)
+        if rFrame.size != lastTrackpadSize && rFrame.width > 20 {
+            lastTrackpadSize = rFrame.size
+            let path = UIBezierPath()
+            let halfCount = Int(ceil((rFrame.width * 0.5 + 90) / 9.0))
+            let midX = floor(rFrame.width * 0.5)
+            for idx in -halfCount...halfCount {
+                let x = midX + CGFloat(idx) * 9
+                let major = idx % 5 == 0
+                path.move(to: CGPoint(x: x, y: baseY - (major ? 9 : 4)))
+                path.addLine(to: CGPoint(x: x, y: baseY + (major ? 7 : 4)))
+            }
+            trackpadTicks.path = path.cgPath
+            trackpadTicks.lineWidth = 1.2
+            trackpadTicks.frame = trackpadRuler.bounds
+        }
+        CATransaction.commit()
+    }
+
+    private func advanceTrackpadRuler(dx: CGFloat) {
+        trackpadRulerOffset = (trackpadRulerOffset + dx).truncatingRemainder(dividingBy: 45)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        trackpadTicks.transform = CATransform3DMakeTranslation(trackpadRulerOffset, 0, 0)
+        CATransaction.commit()
+    }
 
     /// Extra height at the top (overlapping the bottom of the candidate strip) that still belongs to the top
     /// row: a fast finger landing a little high types the key instead of hitting the strip and getting lost.
@@ -671,6 +750,7 @@ final class KeyboardView: UIView {
         }
         // the 九宫格 syllable column follows the keys it covers (rotation lays them out anew)
         if let o = overlay, !o.isHidden, let f = keypadSideColumn() { o.frame = f }
+        layoutTrackpadRuler(rowH: rowH)
     }
 
     // MARK: - Hit testing
@@ -859,6 +939,7 @@ final class KeyboardView: UIView {
                 onFeedback?(.cursorMode, p)
             }
             if tr.dragging {
+                advanceTrackpadRuler(dx: dx)
                 tr.dragAccum += dx
                 let step: CGFloat = speed > 900 ? 3.5 : speed > 450 ? 5.5 : 9
                 var steps = 0, passed = 0
@@ -937,6 +1018,7 @@ final class KeyboardView: UIView {
         guard var swipe = tr.clearSwipe else { return }
         let changed = swipe.move(to: p, at: time)
         tr.clearSwipe = swipe
+        onClearProgress?(swipe.progress(at: p, time: time), swipe.armed)
         guard changed else { return }
         if swipe.armed { tr.repeatTimer?.invalidate(); tr.repeatTimer = nil }
         onFeedback?(.clearArmed, p)
@@ -1065,6 +1147,13 @@ final class KeyboardView: UIView {
 
     private func setCursorMode(_ on: Bool, except index: Int) {
         for (i, kv) in keyViews.enumerated() where i != index { kv.blanked = on }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        trackpadRuler.isHidden = !on
+        trackpadRulerOffset = 0
+        trackpadTicks.transform = CATransform3DIdentity
+        CATransaction.commit()
+        if on { updateTrackpadRulerColors() }
     }
 
     private func finish(_ tr: Tracked, emit: Bool) {
@@ -1077,6 +1166,7 @@ final class KeyboardView: UIView {
         tr.preview = nil
         // a swipe on delete: lifted while armed, it clears; cancelled or put away, it never does
         let clears = emit && tr.clearSwipe?.armed == true
+        if tr.clearSwipe != nil { onClearProgress?(0, false) }
         if tr.clearSwipe?.armed == true { onClearPreview?(false) }
         tr.clearSwipe = nil
         let chosen = tr.altPopup?.selected ?? 0
@@ -1122,6 +1212,7 @@ final class KeyboardView: UIView {
     private func startDeleteRepeat(_ tr: Tracked) {
         tr.repeatCount = 0
         // held delete has started: this press no longer swipes to clear
+        if tr.clearSwipe != nil { onClearProgress?(0, false) }
         tr.clearSwipe = nil
         tr.repeatTimer = schedule(after: 0.07, from: benchClock ?? CACurrentMediaTime(), repeating: 0.07, commonModes: true) { [weak self, weak tr] timer in
             guard let self, let tr else { timer.invalidate(); return }
@@ -1135,12 +1226,13 @@ final class KeyboardView: UIView {
         }
     }
 
-    /// Snapshot support: the space bar held and dragged — cursor mode, every other cap blank.
+    /// Snapshot support: the space bar held and dragged — cursor mode, every other cap blank + Leica vernier ruler.
     func demoCursorMode() {
         guard let idx = keyViews.firstIndex(where: { $0.spec.action == .space }) else { return }
         UIView.performWithoutAnimation {
             keyViews[idx].pressed = true
             setCursorMode(true, except: idx)
+            advanceTrackpadRuler(dx: 14)
         }
     }
 

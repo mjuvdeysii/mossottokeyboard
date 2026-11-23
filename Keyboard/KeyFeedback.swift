@@ -1,6 +1,45 @@
 import UIKit
 import AudioToolbox
 
+/// Three tactile switch profiles selectable in the Hardware Control Deck and Companion App Switch Tester.
+enum HapticProfile: Int, CaseIterable, Equatable {
+    case crisp = 0
+    case mechanical = 1
+    case quiet = 2
+
+    var title: String {
+        switch self {
+        case .crisp: return "轻脆"
+        case .mechanical: return "机械"
+        case .quiet: return "静谧"
+        }
+    }
+
+    var deckValue: String {
+        switch self {
+        case .crisp: return "轻脆开启"
+        case .mechanical: return "机械清脆"
+        case .quiet: return "静谧柔触"
+        }
+    }
+
+    var switchStyle: (letter: UIImpactFeedbackGenerator.FeedbackStyle, firm: UIImpactFeedbackGenerator.FeedbackStyle) {
+        switch self {
+        case .crisp: return (.light, .rigid)
+        case .mechanical: return (.rigid, .rigid)
+        case .quiet: return (.soft, .soft)
+        }
+    }
+
+    var intensities: (letter: CGFloat, firm: CGFloat) {
+        switch self {
+        case .crisp: return (0.66, 0.78)
+        case .mechanical: return (0.84, 1.00)
+        case .quiet: return (0.52, 0.68)
+        }
+    }
+}
+
 /// Everything the keyboard can be felt or heard for.
 enum FeedbackEvent: Equatable {
     /// A key the finger lands on.
@@ -95,11 +134,18 @@ final class SystemFeedbackPlayer: FeedbackPlayer {
     private let plainSoft = UIImpactFeedbackGenerator(style: .soft)
     private let plainTick = UISelectionFeedbackGenerator()
     private(set) var played = 0
+    var profile: HapticProfile = .crisp
     private var lastImpactTime: CFTimeInterval = 0
     private var lastPrepareTime: CFTimeInterval = 0
     private static let minImpactInterval: CFTimeInterval = 0.032
     /// Serialized high-priority sound queue prevents rapid-typing AudioServices contention.
     private static let soundQueue = DispatchQueue(label: "mosto.keysound", qos: .userInteractive)
+
+    static func tunedImpact(for profile: HapticProfile, firm: Bool) -> (style: UIImpactFeedbackGenerator.FeedbackStyle, intensity: CGFloat) {
+        let style = firm ? profile.switchStyle.firm : profile.switchStyle.letter
+        let intensity = firm ? profile.intensities.firm : profile.intensities.letter
+        return (style, intensity)
+    }
 
     init(view: UIView) {
         self.view = view
@@ -121,7 +167,8 @@ final class SystemFeedbackPlayer: FeedbackPlayer {
     private var centre: CGPoint? { view.map { CGPoint(x: $0.bounds.midX, y: $0.bounds.midY) } }
 
     func prepare() {
-        if attached { light.prepare(); rigid.prepare(); tick.prepare() } else { plainLight.prepare(); plainRigid.prepare(); plainTick.prepare() }
+        if attached { light.prepare(); rigid.prepare(); soft.prepare(); tick.prepare() }
+        else { plainLight.prepare(); plainRigid.prepare(); plainSoft.prepare(); plainTick.prepare() }
     }
 
     func play(_ kind: FeedbackKind, intensity: CGFloat, at point: CGPoint?) {
@@ -132,12 +179,15 @@ final class SystemFeedbackPlayer: FeedbackPlayer {
             if now - lastImpactTime < Self.minImpactInterval { return }
             lastImpactTime = now
             played += 1
-            // Tactile key weighting: crisp feather-light letters (0.66 .light) vs solid anchored action/space keys (0.78 .rigid).
-            let firm = intensity >= 0.95
-            let g = firm ? (onView ? rigid : plainRigid) : (onView ? light : plainLight)
-            let tuned: CGFloat = firm ? 0.78 : 0.66
-            if #available(iOS 17.5, *), onView, let point = point ?? centre { g.impactOccurred(intensity: tuned, at: point) }
-            else { g.impactOccurred(intensity: tuned) }
+            let tuning = Self.tunedImpact(for: profile, firm: intensity >= 0.95)
+            let g: UIImpactFeedbackGenerator
+            switch tuning.style {
+            case .rigid: g = onView ? rigid : plainRigid
+            case .soft: g = onView ? soft : plainSoft
+            default: g = onView ? light : plainLight
+            }
+            if #available(iOS 17.5, *), onView, let point = point ?? centre { g.impactOccurred(intensity: tuning.intensity, at: point) }
+            else { g.impactOccurred(intensity: tuning.intensity) }
             if onView && now - lastPrepareTime > 0.40 { lastPrepareTime = now; g.prepare() }
         case .soft:
             played += 1

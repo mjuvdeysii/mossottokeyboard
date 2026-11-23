@@ -116,7 +116,13 @@ private struct StudioScreen: View {
 
                     DeskLampStageCard(model: model, volume: volume, externalBlinkNonce: blinkNonce)
 
-                    SwitchTesterToy(volume: volume, mode: model.lampMode, soundEnabled: model.keySound) {
+                    SwitchTesterToy(
+                        volume: volume,
+                        mode: model.lampMode,
+                        soundEnabled: model.keySound,
+                        hapticProfile: model.hapticProfile,
+                        onSelectProfile: { model.hapticProfile = $0 }
+                    ) {
                         blinkNonce += 1
                     }
 
@@ -787,8 +793,8 @@ private struct GestureAtlasView: View {
                 Card(title: "候选栏左侧 Mosto") {
                     Usage(
                         icon: "sparkles",
-                        title: "一点颜文字 · 两点切换日光/夜灯",
-                        text: "轻点一次打开 Mosto 收藏的表情与颜文字；连续轻点两下在日光与夜灯间切换，长按可复制诊断信息。"
+                        title: "一点颜文字 · 随手切换日光/夜灯",
+                        text: "轻点「颜文字」打开 Mosto 收藏的表情与颜文字；点旁边「日光 / 夜灯」切换主题，长按 Mosto 可看它打哈欠。"
                     )
                 }
             }
