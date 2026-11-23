@@ -284,6 +284,12 @@ final class KeyboardViewController: UIInputViewController {
         }
 
         candidateBar.onSelect = { [weak self] i in guard let self else { return }; self.feel(.candidate); if !self.grid.isHidden { self.showGrid(false) }; self.candidateTapped(i) }
+        candidateBar.onPreeditTap = { [weak self] in
+            guard let self, !self.taps.isEmpty else { return }
+            self.feel(.candidate)
+            if !self.grid.isHidden { self.showGrid(false) }
+            self.commitRaw()
+        }
         // the undo chip: after a clear, the keys it cleared; else the same as pressing delete right after the
         // corrected word went in
         candidateBar.onUndo = { [weak self] in
@@ -625,12 +631,10 @@ final class KeyboardViewController: UIInputViewController {
 
     // MARK: - 日光 / 夜灯
 
-    /// The system's own light: dark mode, or a host that asks for a dark keyboard (Spotlight, some search bars).
-    /// Read from the controller's view, which is never overridden (only `root` is).
+    /// The system's own light: dark mode, or a host that asks for a dark keyboard (Spotlight, dark search bars).
+    /// Read from the controller's view (never overridden) and the proxy's keyboardAppearance.
     private var systemIsDark: Bool {
-        // the glass iOS draws follows the keyboard's own traits; a host's keyboardAppearance does not change it on
-        // iOS 26 (a field asking for a dark keyboard still shows pale glass), so it is not read here
-        view.traitCollection.userInterfaceStyle == .dark
+        view.traitCollection.userInterfaceStyle == .dark || host.keyboardAppearance == .dark
     }
 
     /// The glass under the keyboard is always the system's (light or dark, as the system or the host asks), and it
@@ -650,9 +654,9 @@ final class KeyboardViewController: UIInputViewController {
         let sysDark = systemIsDark
         let mode = KeyboardSettings.shared.appearance
         let night = mode == 1 ? false : mode == 2 ? true : sysDark
-        // a host that asks for a dark keyboard while the system is light gets dark glass: follow it
+        // a host that asks for a dark keyboard while the system is light (e.g. Spotlight) gets dark glass: follow it
         let glass: UIUserInterfaceStyle = sysDark ? .dark : .light   // strip, capsules, emoji and settings always match the host glass
-        let keys: UIUserInterfaceStyle = mode == 0 ? .unspecified : (night ? .dark : .light)
+        let keys: UIUserInterfaceStyle = mode == 0 ? glass : (night ? .dark : .light)
         let changed = night != isNight || root.overrideUserInterfaceStyle != glass || keyboard.overrideUserInterfaceStyle != keys
         if animated, changed, root.window != nil {
             // a short crossfade instead of a flash when the light changes under the keyboard
@@ -671,7 +675,7 @@ final class KeyboardViewController: UIInputViewController {
         candidateBar.showsMosto = !Theme.plain    // by day and at night (only his light follows); none in 简洁
         tintView.isHidden = Theme.plain; root.backgroundColor = Theme.touchable
         settingsPanel.setNight(night); updatePlainLightButton()
-    }; private func updatePlainLightButton() { let idle = taps.isEmpty && predictions.isEmpty && enSuggestions.isEmpty && candidateBar.undoTextForTests == nil && !emojiShown && settingsPanel.isHidden && grid.isHidden && (Theme.plain || !candidateBar.mosto.isHidden); let isNight = self.isNight ;let cfg = UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold); mostoHintButton.isHidden = !idle; mostoHintButton.isUserInteractionEnabled = idle; mostoHintButton.backgroundColor = Theme.functionKey.withAlphaComponent(Theme.plain ? 0.55 : 0.45); mostoHintButton.setTitleColor(Theme.secondaryText, for: .normal); mostoHintButton.tintColor = Theme.secondaryText; if Theme.plain { mostoHintButton.frame = CGRect(x: 86, y: 4, width: 78, height: 36); mostoHintButton.setImage(UIImage(systemName: "face.smiling", withConfiguration: cfg), for: .normal); mostoHintButton.setTitle(" 颜文字", for: .normal) } else { mostoHintButton.frame = CGRect(x: 6, y: 4, width: 92, height: 36); mostoHintButton.setImage(nil, for: .normal); mostoHintButton.setTitle("             颜文字", for: .normal) }; if idle { candidateBar.bringSubviewToFront(mostoHintButton); if !Theme.plain { candidateBar.bringSubviewToFront(candidateBar.mosto) } }; plainLightButton.frame = CGRect(x: Theme.plain ? 6 : 102, y: 4, width: 76, height: 36); plainLightButton.isHidden = !idle; plainLightButton.isUserInteractionEnabled = idle; guard idle else { return }; candidateBar.bringSubviewToFront(plainLightButton); plainLightButton.setImage(UIImage(systemName: isNight ? "moon.stars.fill" : "sun.max.fill", withConfiguration: cfg), for: .normal); plainLightButton.setTitle(isNight ? (Theme.plain ? " 夜光" : " 夜灯") : " 日光", for: .normal); plainLightButton.tintColor = isNight ? UIColor(red: 0.96, green: 0.78, blue: 0.32, alpha: 1) : Theme.secondaryText; plainLightButton.setTitleColor(Theme.secondaryText, for: .normal); plainLightButton.backgroundColor = Theme.functionKey.withAlphaComponent(Theme.plain ? 0.55 : 0.45) }; @objc private func mostoHeld(_ g: UILongPressGestureRecognizer) { guard g.state == .began else { return }; feel(.mosto); candidateBar.mosto.demoYawn(); candidateBar.mosto.hop(); DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) { [weak self] in guard let self else { return }; self.candidateBar.mosto.setNight(self.isNight) } }
+    }; private func updatePlainLightButton() { let idle = taps.isEmpty && predictions.isEmpty && enSuggestions.isEmpty && candidateBar.undoTextForTests == nil && !emojiShown && settingsPanel.isHidden && grid.isHidden && (Theme.plain || !candidateBar.mosto.isHidden); let isNight = self.isNight ;let cfg = UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold); mostoHintButton.isHidden = !idle; mostoHintButton.isUserInteractionEnabled = idle; mostoHintButton.backgroundColor = Theme.preeditPillBg; mostoHintButton.setTitleColor(Theme.secondaryText, for: .normal); mostoHintButton.tintColor = Theme.secondaryText; if Theme.plain { mostoHintButton.frame = CGRect(x: 92, y: 5, width: 76, height: 32); mostoHintButton.layer.cornerRadius = 16; mostoHintButton.setImage(UIImage(systemName: "face.smiling", withConfiguration: cfg), for: .normal); mostoHintButton.setTitle(" 颜文字", for: .normal) } else { mostoHintButton.frame = CGRect(x: 10, y: 5, width: 90, height: 32); mostoHintButton.layer.cornerRadius = 16; mostoHintButton.setImage(nil, for: .normal); mostoHintButton.setTitle("             颜文字", for: .normal) }; if idle { candidateBar.bringSubviewToFront(mostoHintButton); if !Theme.plain { candidateBar.bringSubviewToFront(candidateBar.mosto) } }; plainLightButton.frame = CGRect(x: Theme.plain ? 10 : 106, y: 5, width: 74, height: 32); plainLightButton.layer.cornerRadius = 16; plainLightButton.isHidden = !idle; plainLightButton.isUserInteractionEnabled = idle; guard idle else { return }; candidateBar.bringSubviewToFront(plainLightButton); plainLightButton.setImage(UIImage(systemName: isNight ? "moon.stars.fill" : "sun.max.fill", withConfiguration: cfg), for: .normal); plainLightButton.setTitle(isNight ? (Theme.plain ? " 夜光" : " 夜灯") : " 日光", for: .normal); plainLightButton.tintColor = isNight ? UIColor(red: 0.96, green: 0.78, blue: 0.32, alpha: 1) : Theme.secondaryText; plainLightButton.setTitleColor(Theme.secondaryText, for: .normal); plainLightButton.backgroundColor = Theme.preeditPillBg }; @objc private func mostoHeld(_ g: UILongPressGestureRecognizer) { guard g.state == .began else { return }; feel(.mosto); candidateBar.mosto.demoYawn(); candidateBar.mosto.hop(); DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) { [weak self] in guard let self else { return }; self.candidateBar.mosto.setNight(self.isNight) } }
 
     func applySettings() {
         let s = KeyboardSettings.shared
@@ -1291,12 +1295,17 @@ final class KeyboardViewController: UIInputViewController {
         if !renderable.isEmpty { r.candidates = renderable }
         result = r
         resultGeneration = gen
-        // 九宫格 keys have no single letter: the field shows the pinyin read from them
-        if taps.contains(where: { $0.group }) {
+        // 九宫格 keys have no single letter: show compact pinyin; QWERTY always shows the exact raw keys typed.
+        let isT9 = taps.contains(where: { $0.group })
+        let displayPreedit: String
+        if isT9 {
             let py = r.preedit.replacingOccurrences(of: " ", with: "")
             if !hasMarkedText || py != markedString { setMarked(py) }
+            displayPreedit = py
+        } else {
+            displayPreedit = String(taps.map { $0.key })
         }
-        candidateBar.update(preedit: r.preedit, candidates: r.candidates)
+        candidateBar.update(preedit: displayPreedit, candidates: r.candidates)
         if !grid.isHidden { grid.show(r.candidates) }
         updateSyllablePicker(out.choices)
         if let p = pendingSelect, gen == generation {

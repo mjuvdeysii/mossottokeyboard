@@ -37,7 +37,9 @@ final class KeyView: UIView {
         super.init(frame: .zero)
         isUserInteractionEnabled = false
         lip.cornerRadius = Metrics.cornerRadius
+        lip.cornerCurve = .continuous
         face.cornerRadius = Metrics.cornerRadius
+        face.cornerCurve = .continuous
         face.startPoint = CGPoint(x: 0.5, y: 0)
         face.endPoint = CGPoint(x: 0.5, y: 1)
         layer.addSublayer(lip)
@@ -47,7 +49,7 @@ final class KeyView: UIView {
         rim.lineWidth = 0.75
         rim.lineCap = .round
         layer.addSublayer(rim)
-        // Zero offscreen shadow rasterization on iOS 27: the 1.7 pt lip itself provides crisp contact depth.
+        // Zero offscreen shadow rasterization on iOS 27: the milled lip itself provides crisp contact depth.
         lip.shadowOpacity = 0
         layer.addSublayer(wings)
         crown.path = Self.crownPath()
@@ -92,7 +94,8 @@ final class KeyView: UIView {
             label.font = UIFont(name: "PingFangSC-Medium", size: Metrics.symbolFont) ?? Theme.font(Metrics.symbolFont, .medium)
         case .char: label.font = Theme.font(Metrics.symbolFont, .medium)
         case .t9(let d): label.font = Theme.font(d == "'" ? Metrics.functionFont : 20, .semibold)
-        default: label.font = Theme.font(Metrics.functionFont, Theme.plain ? .regular : .semibold)
+        case .space: label.font = Theme.font(15, .regular)
+        default: label.font = Theme.font(Metrics.functionFont, Theme.plain ? .medium : .semibold)
         }
         if let name = spec.symbol {
             icon.image = UIImage(systemName: name, withConfiguration: UIImage.SymbolConfiguration(pointSize: Metrics.iconSize, weight: Theme.plain ? .regular : .semibold))
@@ -155,23 +158,28 @@ final class KeyView: UIView {
             under = Theme.accentLip; fg = Theme.accentText
         }
         CATransaction.begin(); CATransaction.setDisableActions(true)
-        // a little fall-off towards the lip gives the cap its volume
-        let b = bottom.resolvedColor(with: t), u = under.resolvedColor(with: t)
-        face.colors = Theme.plain ? [b.cgColor, b.cgColor, b.cgColor] : [top.resolvedColor(with: t).cgColor, b.cgColor, Theme.mix(b, u, pressed ? 0.04 : 0.10).cgColor]
+        // Subtle vertical luminance fall-off gives porcelain / Liquid Glass / soft-vinyl caps crisp tactile volume.
+        let topR = top.resolvedColor(with: t), b = bottom.resolvedColor(with: t), u = under.resolvedColor(with: t)
+        if Theme.plain {
+            face.colors = [topR.cgColor, b.cgColor, b.cgColor]
+        } else {
+            face.colors = [topR.cgColor, b.cgColor, Theme.mix(b, u, pressed ? 0.04 : 0.10).cgColor]
+        }
         lip.backgroundColor = u.cgColor
         lip.shadowOpacity = 0
-        rim.strokeColor = Theme.keyHighlight.resolvedColor(with: t).withAlphaComponent(
-            Theme.keyHighlight.resolvedColor(with: t).cgColor.alpha * (pressed ? 0.35 : style == .accent ? 0.8 : 1)).cgColor
+        let hi = Theme.keyHighlight.resolvedColor(with: t)
+        let rimScale: CGFloat = pressed ? 0.25 : (style == .accent ? (Theme.plain ? 0.42 : 0.80) : (style == .function && Theme.plain ? 0.55 : 1.0))
+        rim.strokeColor = hi.withAlphaComponent(hi.cgColor.alpha * rimScale).cgColor
         wings.fillColor = Theme.wing.resolvedColor(with: t).cgColor
         crown.fillColor = Theme.accentKey.resolvedColor(with: t).cgColor
         crown.strokeColor = Theme.accentLip.resolvedColor(with: t).cgColor
         CATransaction.commit()
         backgroundColor = .clear
-        label.textColor = fg
+        label.textColor = spec.action == .space ? fg.withAlphaComponent(0.76) : fg
         hintLabel.textColor = Theme.secondaryText
         if !guideLabel.isHidden { guideLabel.attributedText = guideText() }
         icon.tintColor = fg
-        if bounds.width > 0, !Theme.plain { layoutCap() }
+        if bounds.width > 0 { layoutCap() }
     }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
@@ -179,10 +187,11 @@ final class KeyView: UIView {
         updateColors()
     }
 
-    /// The face rests on the lip; pressed, it sinks onto it (the lip all but disappears), as a soft toy key would.
+    /// The face rests on the milled lip; pressed, it sinks smoothly onto it for crisp tactile feedback.
     private var faceRect: CGRect {
-        let l: CGFloat = Theme.plain ? 0 : min(Metrics.lip, bounds.height * 0.1)
-        return pressed ? CGRect(x: 0, y: Theme.plain ? 0 : max(0, l - 0.4), width: bounds.width, height: bounds.height - l)
+        let l: CGFloat = min(Metrics.lip, bounds.height * 0.1)
+        let sink: CGFloat = Theme.plain ? min(0.55, l) : max(0, l - 0.4)
+        return pressed ? CGRect(x: 0, y: sink, width: bounds.width, height: bounds.height - l)
                        : CGRect(x: 0, y: 0, width: bounds.width, height: bounds.height - l)
     }
 
@@ -194,15 +203,17 @@ final class KeyView: UIView {
     }
 
     private var lastCapSize: CGSize = .zero
+    private var lastPlainMode: Bool = false
 
     private func layoutCap() {
-        let l: CGFloat = Theme.plain ? 0 : min(Metrics.lip, bounds.height * 0.1)
-        let cr: CGFloat = Theme.plain ? 9.0 : Metrics.cornerRadius
+        let l: CGFloat = min(Metrics.lip, bounds.height * 0.1)
+        let cr: CGFloat = Metrics.cornerRadius
         let f = faceRect
-        let sizeChanged = f.size != lastCapSize
+        let sizeChanged = f.size != lastCapSize || lastPlainMode != Theme.plain
         CATransaction.begin(); CATransaction.setDisableActions(true)
         if sizeChanged {
             lastCapSize = f.size
+            lastPlainMode = Theme.plain
             lip.cornerRadius = cr
             face.cornerRadius = cr
             lip.frame = CGRect(x: 0, y: l, width: bounds.width, height: bounds.height - l)

@@ -46,6 +46,8 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     var onMostoDoubleTap: (() -> Void)?
     /// Long press on a candidate (to offer removing a learned word).
     var onLongPress: ((Int) -> Void)?
+    /// Tap on the leading raw-key preview pill: commits the literal typed letters immediately.
+    var onPreeditTap: (() -> Void)?
 
     private let preedit = UILabel()
     /// After a corrected word went in: "↩ nihap" at the start of the strip puts the keys back as typed (the same
@@ -62,6 +64,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     let mosto = MostoView()
     private var labels: [UILabel] = []
     private var pool: [UILabel] = []
+    private var dividerPool: [CALayer] = []
     /// What each pooled label shows now (so a label is only redrawn when it changes).
     private var poolKeys: [String] = []
     private var isPrediction = false; var gridExpanded = false { didSet { if gridExpanded != oldValue { setNeedsLayout(); layoutIfNeeded() } } }
@@ -78,17 +81,17 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     var showsMosto = false { didSet { update(preedit: preedit.text ?? "", candidates: candidates, prediction: isPrediction) } }
     private var mostoWanted = false
     private var mostoTimer: Timer?
-    /// Pinyin above the candidates (when it is not written into the text field).
+    /// Raw typed-key pill at the start of the candidate row (when not writing inline marked text).
     var showsPreedit = false { didSet { setNeedsLayout() } }
 
-    static var font: UIFont { Theme.font(20, .regular) }
+    static var font: UIFont { Theme.font(19, .regular) }
+    static var firstFont: UIFont { Theme.font(19, .medium) }
     static var fixFont: UIFont { Theme.font(10.5, .semibold) }
     /// Below this height (landscape) a caption sits beside its candidate, not under it.
     static let twoLineHeight: CGFloat = 44
 
     /// Under an auto-corrected first choice, what was corrected: the keys as typed → the spelling read (hap → hao),
-    /// at most two syllables, else how many; English: the word as typed, struck through. Under the literal reading
-    /// that follows it, "原键" (the keys exactly as pressed).
+    /// at most two syllables, else how many; English: the word as typed, struck through.
     static func caption(for c: Candidate) -> NSAttributedString? {
         guard c.corrected else { return nil }
         let out = NSMutableAttributedString()
@@ -109,13 +112,21 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     override init(frame: CGRect) {
         super.init(frame: frame)
         backgroundColor = Theme.touchable   // never fully clear: see Theme.touchable
-        preedit.font = Theme.font(12, .semibold)
+        preedit.font = Theme.font(11.5, .medium)
         preedit.textColor = Theme.secondaryText
         preedit.textAlignment = .center
         preedit.lineBreakMode = .byTruncatingHead
-        preedit.backgroundColor = Theme.functionKey.withAlphaComponent(0.55)
+        preedit.backgroundColor = Theme.preeditPillBg
+        preedit.layer.borderWidth = 0.5
+        preedit.layer.borderColor = Theme.preeditPillBorder.resolvedColor(with: traitCollection).cgColor
         preedit.clipsToBounds = true
-        preedit.isUserInteractionEnabled = false
+        preedit.isUserInteractionEnabled = true
+        preedit.accessibilityTraits = .button
+        preedit.accessibilityHint = "轻点直接上屏原字母"
+        let preeditTap = UITapGestureRecognizer(target: self, action: #selector(preeditTapped))
+        preeditTap.delaysTouchesBegan = false
+        preeditTap.delaysTouchesEnded = false
+        preedit.addGestureRecognizer(preeditTap)
         addSubview(preedit)
         // the row scrolls with the system's own inertia and bounce; no scroll bar; a finger that lands highlights
         // at once, and the scrolling takes the touch over (no selection) once it starts
@@ -139,7 +150,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         fade.colors = [UIColor.clear.cgColor, UIColor.black.cgColor, UIColor.black.cgColor, UIColor.clear.cgColor]
         addSubview(stripBox)
         bringSubviewToFront(preedit)
-        let cfg = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
+        let cfg = UIImage.SymbolConfiguration(pointSize: 16, weight: .regular)
         expandButton.setImage(UIImage(systemName: "chevron.down", withConfiguration: cfg), for: .normal)
         expandButton.tintColor = Theme.secondaryText
         addSubview(expandButton)
@@ -170,14 +181,29 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    @objc private func preeditTapped() { onPreeditTap?() }
+
     @objc private func expandTapped() { if gridExpanded || !candidates.isEmpty { onExpand?() } else { onSettings?() } }
+
+    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+        super.traitCollectionDidChange(previous)
+        if previous?.userInterfaceStyle != traitCollection.userInterfaceStyle {
+            preedit.backgroundColor = Theme.preeditPillBg
+            preedit.layer.borderColor = Theme.preeditPillBorder.resolvedColor(with: traitCollection).cgColor
+            let divColor = Theme.candidateDivider.resolvedColor(with: traitCollection).cgColor
+            for d in dividerPool { d.backgroundColor = divColor }
+            poolKeys = poolKeys.map { _ in "" }
+            setNeedsLayout()
+        }
+    }
 
     /// The style changed (Mosto / 简洁): the colours set once at creation follow.
     func themeChanged() {
         expandButton.tintColor = Theme.secondaryText
         preedit.textColor = Theme.secondaryText
-        preedit.font = Theme.font(12, .semibold)
-        preedit.backgroundColor = Theme.functionKey.withAlphaComponent(0.55)
+        preedit.font = Theme.font(11.5, .medium)
+        preedit.backgroundColor = Theme.preeditPillBg
+        preedit.layer.borderColor = Theme.preeditPillBorder.resolvedColor(with: traitCollection).cgColor
         var uc = undoChip.configuration
         uc?.baseBackgroundColor = Theme.correctedTint
         uc?.baseForegroundColor = Theme.correctedMark
@@ -364,26 +390,27 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         // high in the strip, clear of the q key below (the keys' reach band gives way to him: see reservedTop)
         let ms = min(h - 8, 44)
         mosto.frame = CGRect(x: 8, y: 1, width: ms, height: ms)
-        expandButton.frame = CGRect(x: bounds.width - 44, y: 0, width: 44, height: h)
-        // Start at 12pt so the first candidate cleanly clears iOS 26/27 Liquid Glass top-left corner radius.
-        var lead: CGFloat = 12
+        let expandW: CGFloat = 36
+        expandButton.frame = CGRect(x: bounds.width - expandW, y: 0, width: expandW, height: h)
+        // Start at 10pt so the first element cleanly clears iOS 26/27 Liquid Glass top-left corner radius.
+        var lead: CGFloat = 10
         if !undoChip.isHidden {
             let sz = undoChip.sizeThatFits(CGSize(width: 200, height: h))
-            undoChip.frame = CGRect(x: 12, y: (h - sz.height) / 2, width: sz.width, height: sz.height)
+            undoChip.frame = CGRect(x: 10, y: (h - sz.height) / 2, width: sz.width, height: sz.height)
             lead = undoChip.frame.maxX + 6
             preedit.frame = .zero
         } else if showsPreedit && !preedit.isHidden, let txt = preedit.text, !txt.isEmpty {
-            let rawW = ceil((txt as NSString).size(withAttributes: [.font: preedit.font ?? Theme.font(12, .semibold)]).width) + 14
-            let pillW = min(max(30, rawW), 92)
-            let pillH = min(24, max(20, h - 16))
+            let rawW = ceil((txt as NSString).size(withAttributes: [.font: preedit.font ?? Theme.font(11.5, .medium)]).width) + 12
+            let pillW = min(max(26, rawW), 64)
+            let pillH = min(22, max(19, h - 18))
             preedit.layer.cornerRadius = pillH / 2
-            preedit.frame = CGRect(x: 12, y: (h - pillH) / 2, width: pillW, height: pillH)
-            lead = preedit.frame.maxX + 6
+            preedit.frame = CGRect(x: 10, y: (h - pillH) / 2, width: pillW, height: pillH)
+            lead = preedit.frame.maxX + 4
         } else {
             preedit.frame = .zero
         }
         // Keep stripBox and CandidateStrip spanning the FULL bar height (0..h) so taps on the upper third never miss.
-        let box = CGRect(x: lead, y: 0, width: max(0, bounds.width - 44 - lead), height: h)
+        let box = CGRect(x: lead, y: 0, width: max(0, bounds.width - expandW - lead), height: h)
         if stripBox.frame != box { stripBox.frame = box }
         let inner = CGRect(origin: .zero, size: box.size)
         if strip.frame != inner { strip.frame = inner }
@@ -392,20 +419,13 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         layoutCandidates()
     }
 
-    /// The caption a candidate carries: what the first choice corrected, or "原键" on the literal reading after it.
+    /// Keep the candidate strip pure and high-density while composing (zero jr->ke / 原键 clutter).
+    /// Only prediction mode keeps the subtle "联想" marker on slot 0.
     private func captionFor(_ i: Int) -> NSAttributedString? {
-        // 联想态复用已有的 caption 行给一个「这是猜的」意符（Norman）：不加视图、
-        // 不加颜色、不碰遮罩；只占第 0 个候选下方那一行，格子宽度不变。
         if isPrediction {
             return i == 0 ? NSAttributedString(string: "联想", attributes: [.font: Self.fixFont, .foregroundColor: Theme.secondaryText]) : nil
         }
-        guard i < candidates.count, i <= 1 else { return nil }
-        let c = candidates[i]
-        if i == 0 { return Self.caption(for: c) }
-        // the keys as typed first, a correction second: the second says what it changes (kw→ke)
-        if !candidates[0].corrected, c.corrected, !c.isEnglish { return Self.caption(for: c) }
-        guard candidates[0].corrected, !c.corrected, !c.isEnglish, c.tapCount == candidates[0].tapCount else { return nil }
-        return NSAttributedString(string: "原键", attributes: [.font: Self.fixFont, .foregroundColor: Theme.secondaryText])
+        return nil
     }
 
     /// The candidate's text as the label draws it: with its caption under it (portrait), or beside it on the same
@@ -428,35 +448,41 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         return t
     }
 
-    /// Width of candidate `i` (cached by text and caption): at least a 44 pt target, as Apple's guidelines ask.
+    /// Width of candidate `i` (cached by text, slot-0 weight, and caption): compact 14pt padding for 4-6 visible candidates.
     private func measure(_ i: Int, inline: Bool) -> CGFloat {
         let c = candidates[i]
         let cap = captionFor(i)
-        let key = (inline ? "1" : "0") + "\u{1}" + c.text + "\u{1}" + (cap?.string ?? "")
+        let isFirst = i == 0 && !isPrediction
+        let key = (isFirst ? "F" : "R") + (inline ? "1" : "0") + "\u{1}" + c.text + "\u{1}" + (cap?.string ?? "")
         if let w = widthCache[key] { return w }
-        let textW = (c.text as NSString).size(withAttributes: [.font: Self.font]).width
+        let f = isFirst ? Self.firstFont : Self.font
+        let textW = (c.text as NSString).size(withAttributes: [.font: f]).width
         let w: CGFloat
         if let cap {
-            w = inline ? max(44, ceil(textW + 4 + cap.size().width) + 22) : max(44, ceil(max(textW, cap.size().width)) + 22)
+            w = inline ? max(38, ceil(textW + 4 + cap.size().width) + 16) : max(38, ceil(max(textW, cap.size().width)) + 16)
         } else {
-            w = max(44, ceil(textW) + 22)
+            w = max(38, ceil(textW) + (isFirst ? 16 : 14))
         }
         widthCache[key] = w
         return w
     }
 
     /// Lay the row out from its start to two screens past what is shown (the rest only as the finger gets there:
-    /// a single syllable can have hundreds of candidates). Labels are pooled and reused: only text and frames change.
+    /// a single syllable can have hundreds of candidates). Labels & dividers are pooled and reused.
     private func layoutCandidates() {
         let viewW = strip.bounds.width
         let rowH = strip.bounds.height
-        let topY: CGFloat = 3
-        let labelH: CGFloat = max(18, rowH - 6)
+        let topY: CGFloat = 4
+        let labelH: CGFloat = max(18, rowH - 8)
         let inline = bounds.height < Self.twoLineHeight
         let need = strip.contentOffset.x + max(viewW, 1) * 2
         let pressed = gesture.highlighted
+        let divColor = Theme.candidateDivider.resolvedColor(with: traitCollection).cgColor
+        let divH: CGFloat = min(15, max(10, labelH * 0.45))
+        let divY: CGFloat = (rowH - divH) / 2
         var x: CGFloat = 0
         var n = 0
+        CATransaction.begin(); CATransaction.setDisableActions(true)
         while n < candidates.count && (x < need || n == 0) {
             let w: CGFloat
             if n < widths.count { w = widths[n] } else { w = measure(n, inline: inline); widths.append(w) }
@@ -465,7 +491,8 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
                 l.font = Self.font
                 l.textAlignment = .center
                 l.lineBreakMode = .byTruncatingTail
-                l.layer.cornerRadius = 8
+                l.layer.cornerRadius = 9
+                l.layer.cornerCurve = .continuous
                 l.clipsToBounds = true
                 strip.addSubview(l)
                 pool.append(l)
@@ -477,12 +504,13 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             if l.frame != frame { l.frame = frame }
             let c = candidates[n]
             let cap = captionFor(n)
-            let key = (inline ? "1" : "0") + "\u{1}" + c.text + "\u{1}" + (cap?.string ?? "")
+            let isFirst = n == 0 && !isPrediction
+            let key = (isFirst ? "F" : "R") + (inline ? "1" : "0") + "\u{1}" + c.text + "\u{1}" + (cap?.string ?? "")
             if poolKeys[n] != key {
                 poolKeys[n] = key
                 l.textColor = Theme.candidateText
+                l.font = isFirst ? Self.firstFont : Self.font
                 if let cap {
-                    // the word, and with it what the correction changed (or that this one is the keys as typed)
                     l.numberOfLines = inline ? 1 : 2
                     l.attributedText = labelText(c, caption: cap, inline: inline)
                 } else {
@@ -491,12 +519,33 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
                     l.text = c.text
                 }
             }
-            // the corrected first choice sits on a soft tint of the correction colour (what space will type)
-            let fixed = n == 0 && !isPrediction && c.corrected
-            l.backgroundColor = n == pressed ? Theme.functionKey : (fixed ? Theme.correctedTint : .clear)
+            // Clean, restrained focus highlight on slot 0 (spacebar target); zero text noise.
+            let firstBg = c.corrected ? Theme.correctedTint : Theme.firstCandidateTint
+            l.backgroundColor = n == pressed ? Theme.functionKey : (isFirst ? firstBg : .clear)
+            if n > 0 {
+                let di = n - 1
+                if dividerPool.count <= di {
+                    let d = CALayer()
+                    d.backgroundColor = divColor
+                    strip.layer.addSublayer(d)
+                    dividerPool.append(d)
+                }
+                let d = dividerPool[di]
+                let hideDiv = (n == 1 && !isPrediction) || n == pressed || (n - 1) == pressed
+                d.isHidden = hideDiv
+                if !hideDiv {
+                    d.backgroundColor = divColor
+                    d.frame = CGRect(x: x - 0.25, y: divY, width: 0.5, height: divH)
+                }
+            }
             x += w
             n += 1
         }
+        let usedDivs = max(0, n - 1)
+        if dividerPool.count > usedDivs {
+            for d in dividerPool.dropFirst(usedDivs) where !d.isHidden { d.isHidden = true }
+        }
+        CATransaction.commit()
         if visibleCount != n || labels.count != n {
             for l in pool.dropFirst(n) where !l.isHidden { l.isHidden = true }
             labels = Array(pool.prefix(n))
@@ -507,7 +556,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         let size = CGSize(width: total, height: rowH)
         if strip.contentSize != size { strip.contentSize = size }
         // ⌄: there are candidates past the edge (the full grid shows them all)
-        let idleGear = candidates.isEmpty && !typing && undoText == nil && !gridExpanded && window != nil; let sym = idleGear ? "slider.horizontal.3" : (gridExpanded ? "chevron.up" : "chevron.down"); expandButton.setImage(UIImage(systemName: sym, withConfiguration: UIImage.SymbolConfiguration(pointSize: idleGear ? 15 : 17, weight: gridExpanded ? .semibold : .regular)), for: .normal); expandButton.tintColor = gridExpanded ? Theme.candidateText : Theme.secondaryText; expandButton.backgroundColor = gridExpanded ? Theme.functionKey.withAlphaComponent(0.45) : .clear; expandButton.layer.cornerRadius = 14; expandButton.isHidden = !((total > viewW + 0.5 && !isPrediction) || gridExpanded || idleGear)
+        let idleGear = candidates.isEmpty && !typing && undoText == nil && !gridExpanded && window != nil; let sym = idleGear ? "slider.horizontal.3" : (gridExpanded ? "chevron.up" : "chevron.down"); expandButton.setImage(UIImage(systemName: sym, withConfiguration: UIImage.SymbolConfiguration(pointSize: idleGear ? 15 : 16, weight: gridExpanded ? .semibold : .regular)), for: .normal); expandButton.tintColor = gridExpanded ? Theme.candidateText : Theme.secondaryText; expandButton.backgroundColor = gridExpanded ? Theme.functionKey.withAlphaComponent(0.45) : .clear; expandButton.layer.cornerRadius = 14; expandButton.isHidden = !((total > viewW + 0.5 && !isPrediction) || gridExpanded || idleGear)
         updateFade()
     }
 
@@ -944,7 +993,7 @@ final class SettingsPanelView: UIView {
         ], footer: "小鹤双拼方案下在键帽显示声韵母对应关系（zh/ch/sh 在 V/I/U），熟练后可随时关闭。")
         section("自动纠错", rows: [
             row("按触点位置纠错", correctionSwitch),
-        ], footer: "首选浅底色代表已按落点纠错，点左侧 ↩️ 或立即按删除可撤回原键；英文模式同样支持触点纠错与撤回。")
+        ], footer: "自动按触点落点纠错，上屏后点左侧 ↩ 或立即按删除可撤回原键；轻点最左侧字母胶囊可直接上屏原字母。")
         section("键盘", rows: [
             row("按键震动", feedbackSwitch),
             row("按键音", soundSwitch),
