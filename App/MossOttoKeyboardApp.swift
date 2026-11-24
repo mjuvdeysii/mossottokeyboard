@@ -363,33 +363,37 @@ struct UnifiedTypingBench: View {
                     HStack(spacing: 6) {
                         benchToggle(title: "触感", isOn: $model.feedback)
                         benchToggle(title: "声效", isOn: $model.keySound)
-                        Button {
-                            let next = model.heightPreset.next
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
-                                model.keyboardHeight = next.rawValue
-                            }
-                        } label: {
-                            HStack(spacing: 5) {
-                                HStack(alignment: .bottom, spacing: 1.8) {
-                                    ForEach(0..<KeyboardHeightPreset.allCases.count, id: \.self) { idx in
-                                        RoundedRectangle(cornerRadius: 0.8, style: .continuous)
-                                            .fill(Color(uiColor: idx <= model.heightPreset.rawValue ? Theme.statusLedActive : Theme.statusLedMuted))
-                                            .frame(width: 2.2, height: CGFloat(5 + idx * 2))
+                        Spacer(minLength: 4)
+                        HStack(spacing: 2) {
+                            ForEach(KeyboardHeightPreset.allCases, id: \.rawValue) { tier in
+                                let active = model.heightPreset == tier
+                                let lit = tier.rawValue <= model.heightPreset.rawValue
+                                Button {
+                                    UISelectionFeedbackGenerator().selectionChanged()
+                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                                        model.keyboardHeight = tier.rawValue
                                     }
+                                } label: {
+                                    HStack(spacing: 2.5) {
+                                        RoundedRectangle(cornerRadius: 0.9, style: .continuous)
+                                            .fill(active ? Color.white : Color(uiColor: lit ? Theme.statusLedActive : Theme.statusLedMuted))
+                                            .frame(width: 2.5, height: CGFloat(5 + tier.rawValue * 2))
+                                        Text(tier.shortMark)
+                                            .font(.system(size: 11, weight: active ? .bold : .semibold, design: .rounded))
+                                            .foregroundStyle(active ? Color.white : MossOttoStyle.inkPrimary)
+                                    }
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 4.5)
+                                    .background(Capsule().fill(active ? MossOttoStyle.violet : Color.clear))
                                 }
-                                Text("高度 · \(model.heightPreset.title)")
-                                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                                    .foregroundStyle(.primary)
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("键盘高度：\(tier.title)")
+                                .accessibilityValue(active ? "已选" : "")
                             }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(Capsule().fill(Color.primary.opacity(0.06)))
-                            .overlay(Capsule().strokeBorder(Color(uiColor: Theme.keyBorder), lineWidth: 0.5))
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("键盘高度")
-                        .accessibilityValue(model.heightPreset.title)
-                        Spacer(minLength: 0)
+                        .padding(2.5)
+                        .background(Capsule().fill(MossOttoStyle.surfaceMuted))
+                        .overlay(Capsule().strokeBorder(MossOttoStyle.hairline, lineWidth: 0.6))
                     }
                 }
             }
@@ -424,7 +428,7 @@ struct UnifiedTypingBench: View {
                                 if done {
                                     Circle().fill(MossOttoStyle.moss).frame(width: 6, height: 6)
                                 }
-                                Text(l.title)
+                                Text(l.shortTitle)
                                     .font(.caption.weight(.semibold))
                             }
                             .foregroundStyle(current ? Color.white : MossOttoStyle.inkPrimary)
@@ -434,6 +438,7 @@ struct UnifiedTypingBench: View {
                             .overlay(Capsule().strokeBorder(current ? Color.clear : MossOttoStyle.hairline, lineWidth: 0.7))
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel(l.title)
                     }
                 }
                 LessonCard(model: model, index: model.step)
@@ -665,18 +670,32 @@ struct HandbookContent: View {
                     handbookRow(
                         icon: added ? "checkmark.seal.fill" : "keyboard.badge.ellipsis",
                         iconColor: added ? MossOttoStyle.moss : MossOttoStyle.lampAmber,
-                        title: added ? "Mosto键盘已启用" : "三步在系统设置里启用 Mosto键盘",
-                        subtitle: "包含一键前往系统设置与真机切换验证框"
+                        title: added ? "Mosto键盘已启用" : "三步启用 Mosto键盘",
+                        subtitle: "系统设置引导 · 真机输入框验证"
                     )
                 }
 
                 Divider()
 
-                Usage(
-                    icon: "slider.horizontal.3",
-                    title: "系统键盘偏好在哪里调整",
-                    text: "出于离线隐私隔离，伴侣 App 不写入系统键盘配置文件；实际输入时的双拼、九宫格、四档高度、外观与声效，请直接在键盘内按住表情键打开「Mosto 控制台」调整。"
-                )
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("系统键盘偏好在键盘内调校")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(MossOttoStyle.inkPrimary)
+                    HStack(spacing: 6) {
+                        flowPill(icon: "face.smiling", text: "按住表情键")
+                        Image(systemName: "arrow.right")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(MossOttoStyle.inkSecondary)
+                        flowPill(icon: "slider.horizontal.3", text: "Mosto 控制台", highlight: true)
+                        Spacer(minLength: 0)
+                    }
+                    HStack(spacing: 6) {
+                        metaChip(icon: "lock.fill", text: "进程隔离 · 不写共享容器")
+                        metaChip(icon: "rectangle.expand.vertical", text: "四档高度即时生效")
+                    }
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("系统键盘偏好在键盘内按住表情键打开 Mosto 控制台调整，伴侣 App 与键盘扩展进程隔离、完全离线。")
             }
 
             Card(title: "双拼与手势图鉴") {
@@ -686,8 +705,8 @@ struct HandbookContent: View {
                     handbookRow(
                         icon: "square.grid.3x3",
                         iconColor: MossOttoStyle.violet,
-                        title: "小鹤双拼图谱与声感指法",
-                        subtitle: "声母韵母分布、零声母打法、交互指法练习与版权声明"
+                        title: "小鹤双拼图谱与指法",
+                        subtitle: "声感琴盘跟练 · 零声母速查"
                     )
                 }
 
@@ -699,8 +718,8 @@ struct HandbookContent: View {
                     handbookRow(
                         icon: "hand.draw",
                         iconColor: MossOttoStyle.ottoIndigo,
-                        title: "高效手势与隐藏能力一页图鉴",
-                        subtitle: "标点上滑副符号、空格滑移光标、删键左划清空、心算与日期"
+                        title: "高效手势与隐藏能力",
+                        subtitle: "上滑标点 · 滑键借层 · 心算连算"
                     )
                 }
             }
@@ -712,8 +731,8 @@ struct HandbookContent: View {
                     handbookRow(
                         icon: "lock.shield",
                         iconColor: MossOttoStyle.moss,
-                        title: "纯离线架构与 15 条工程红线",
-                        subtitle: "0 联网 · 0 剪贴板 · 0 跨进程共享 · 45 MB 只读词库"
+                        title: "纯离线架构与 15 条红线",
+                        subtitle: "0 联网 · 0 剪贴板 · 0 App Group · 45 MB"
                     )
                 }
 
@@ -726,7 +745,7 @@ struct HandbookContent: View {
                             icon: aboutIcon(doc.id),
                             iconColor: MossOttoStyle.inkSecondary,
                             title: doc.title,
-                            subtitle: "离线完整文本"
+                            subtitle: nil
                         )
                     }
                 }
@@ -734,6 +753,34 @@ struct HandbookContent: View {
 
             StudioVersionFooter()
         }
+    }
+
+    private func flowPill(icon: String, text: String, highlight: Bool = false) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.caption.weight(.semibold))
+            Text(text)
+                .font(.caption.weight(.semibold))
+        }
+        .foregroundStyle(highlight ? MossOttoStyle.violet : MossOttoStyle.inkPrimary)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Capsule().fill(highlight ? MossOttoStyle.violet.opacity(0.13) : MossOttoStyle.surfaceMuted))
+        .overlay(Capsule().strokeBorder(highlight ? MossOttoStyle.violet.opacity(0.32) : .clear, lineWidth: 0.7))
+    }
+
+    private func metaChip(icon: String, text: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 9.5, weight: .semibold))
+                .foregroundStyle(MossOttoStyle.moss)
+            Text(text)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(MossOttoStyle.inkSecondary)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Capsule().fill(MossOttoStyle.surfaceMuted))
     }
 
     @ViewBuilder
@@ -749,7 +796,7 @@ struct HandbookContent: View {
         }
     }
 
-    private func handbookRow(icon: String, iconColor: Color, title: String, subtitle: String) -> some View {
+    private func handbookRow(icon: String, iconColor: Color, title: String, subtitle: String?) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 14, weight: .semibold))
@@ -760,10 +807,12 @@ struct HandbookContent: View {
                 Text(title)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(MossOttoStyle.inkPrimary)
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(MossOttoStyle.inkSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(MossOttoStyle.inkSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             Spacer(minLength: 4)
             Image(systemName: "chevron.right")
@@ -803,40 +852,40 @@ private struct GestureAtlasView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 18) {
                 Card(title: "高频核心手势") {
                     atlasRow(
                         cap: "，↑。",
-                        title: "任意标点轻上滑直出副符号",
-                        detail: "从 ，轻向上滑立刻输出 。；数符页 /→、 、¥→$、（→【 等均支持无延迟直出，无需长按等待。",
+                        title: "标点上滑副符号",
+                        formula: "，↑ 。  ·  / ↑ 、  ·  ¥ ↑ $  ·  （ ↑ 【",
                         demoTitle: nil
                     )
                     Divider()
                     atlasRow(
                         cap: "123↗",
-                        title: "123 / Shift 按住滑键直出回弹",
-                        detail: "按住 123 滑向数字或符号松手，输入后自动弹回拼音；按住 Shift 滑向字母直出单个大写字母，也支持左手按住、右手连打后松手自动复位。",
+                        title: "滑键借层与双手和弦",
+                        formula: "按住 123 / Shift 滑向目标键直出回弹 · 双指连打",
                         demoTitle: nil
                     )
                     Divider()
                     atlasRow(
-                        cap: "← ␣ →",
+                        cap: "←␣→",
                         title: "空格横向拖移光标",
-                        detail: "在空格键上左右滑动即可细腻移动输入光标，游标实时显示移动字数；跨过换行或抵达文首、文末时亮起琥珀止点与阻尼微震。",
+                        formula: "左右滑移光标 · 跨行 / 首尾亮起琥珀止点",
                         demoTitle: nil
                     )
                     Divider()
                     atlasRow(
-                        cap: "←⌫ ↩",
-                        title: "删键左划清空 + 长按删词离合安全网",
-                        detail: "打拼音或英文单词时从删除键向左一划直接清空整词，候选栏左侧留下 ↩ 可一键恢复；长按删除超过 1 秒时底栏亮起琥珀蓄力丝并切入逐词快删，松手同样留 ↩ 防止删过头。",
+                        cap: "←⌫↩",
+                        title: "左划清空 + 长按删词离合",
+                        formula: "左划整词清空留 ↩ · 长按 >1s 逐词快删",
                         demoTitle: nil
                     )
                     Divider()
                     atlasRow(
-                        cap: "☺︎ ⚙",
-                        title: "按住表情键直达系统键盘设置",
-                        detail: "轻点进入 Emoji / 200+ 颜文字分类；按住 0.45 秒打开键盘面板，调节全拼/小鹤/九宫格、四档键盘高度、外观与音震。",
+                        cap: "☺︎⚙",
+                        title: "长按表情键开控制台",
+                        formula: "轻点选表情 · 长按 0.45s 调高度 / 方案 / 光效",
                         demoTitle: nil
                     )
                 }
@@ -844,32 +893,42 @@ private struct GestureAtlasView: View {
                 Card(title: "纠错、心算与日期") {
                     atlasRow(
                         cap: "eh↔w",
-                        title: "整句触点纠错与长句容错",
-                        detail: "按偏邻键（如 jintianhenrw）、漏键（jintiantiaqi）、相邻倒序都能整句读准；点首选左 ↩ 可一键恢复原键。",
+                        title: "整句触点纠错",
+                        formula: "偏键 jintianhenrw / 漏键自动整句读准 · ↩ 还原",
                         demoTitle: "按错了什么，改成了什么"
                     )
                     Divider()
                     atlasRow(
                         cap: "365+=",
-                        title: "四则心算与相对日期直出",
-                        detail: "直接敲 286/4= 或带括号算式在候选栏直出结果，按空格或轻点即可上屏并支持继续连算；打 明天 / 下周一 / 今年 / 本月 自动联想对应日期。",
+                        title: "四则心算与相对日期",
+                        formula: "286/4= 空格上屏连算 · 明天 / 下周一 联想日期",
                         demoTitle: "中英混输"
                     )
                     Divider()
                     atlasRow(
-                        cap: "mstd",
-                        title: "首字母缩写与自造词记忆",
-                        detail: "常见短语只敲声母（bzd → 不知道），选过一次的新词次次记住；在展开网格中长按任意学习词可删去。",
+                        cap: "bzd",
+                        title: "首字母简拼与自造词",
+                        formula: "bzd → 不知道 · 展开网格长按词条可忘词",
                         demoTitle: "记住你的词"
                     )
                 }
 
                 Card(title: "候选栏左侧 Mosto") {
-                    Usage(
-                        icon: "sparkles",
-                        title: "一点颜文字 · 随手切换日光/夜灯",
-                        text: "轻点「颜文字」打开 Mosto 收藏的表情与颜文字；点旁边「日光 / 夜灯」切换主题，长按 Mosto 可看它打哈欠。"
-                    )
+                    HStack(spacing: 12) {
+                        Image(uiImage: mostoImage("Mosto"))
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 36, height: 36)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("轻点颜文字 · 双击切光效")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(MossOttoStyle.inkPrimary)
+                            Text("200+ 颜文字分类 · 日光 / 夜灯随手切换 · 长按打哈欠")
+                                .font(.caption)
+                                .foregroundStyle(MossOttoStyle.inkSecondary)
+                        }
+                        Spacer(minLength: 0)
+                    }
                 }
             }
             .padding(16)
@@ -879,26 +938,30 @@ private struct GestureAtlasView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    private func atlasRow(cap: String, title: String, detail: String, demoTitle: String?) -> some View {
-        HStack(alignment: .top, spacing: 12) {
+    private func atlasRow(cap: String, title: String, formula: String, demoTitle: String?) -> some View {
+        HStack(alignment: .center, spacing: 12) {
             MonolithKeycapView(label: cap, cornerRadius: 9)
-                .frame(width: 58, height: 42)
-            VStack(alignment: .leading, spacing: 4) {
+                .frame(width: 58, height: 40)
+            VStack(alignment: .leading, spacing: 2.5) {
                 Text(title)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(MossOttoStyle.inkPrimary)
-                Text(detail)
+                Text(formula)
                     .font(.caption)
                     .foregroundStyle(MossOttoStyle.inkSecondary)
                     .fixedSize(horizontal: false, vertical: true)
-                if let demoTitle, let nav {
-                    Button("去台灯工作台试试") {
-                        nav.tryDemo(demoTitle)
-                    }
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(MossOttoStyle.violet)
-                    .padding(.top, 2)
+            }
+            Spacer(minLength: 4)
+            if let demoTitle, let nav {
+                Button("试试") {
+                    nav.tryDemo(demoTitle)
                 }
+                .font(.caption.weight(.bold))
+                .foregroundStyle(MossOttoStyle.violet)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Capsule().fill(MossOttoStyle.violet.opacity(0.12)))
+                .buttonStyle(.plain)
             }
         }
     }

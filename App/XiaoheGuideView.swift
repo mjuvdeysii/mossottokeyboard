@@ -20,93 +20,228 @@ struct XiaoheGuideView: View {
 /// The page's content (shared with the CI snapshot).
 struct XiaoheGuideContent: View {
     var volume: VolumeMonitor? = nil
+    @State private var showCostNotice = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Card(title: "是什么") {
-                Text("双拼把每个音节固定成两个键：第一个键打声母，第二个键打韵母。小鹤双拼是其中一种键位安排。")
-                    .foregroundStyle(MossOttoStyle.inkPrimary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text("例：你好 → ni hc　中国 → vs go　双拼 → ul pb")
-                    .font(.subheadline)
-                    .foregroundStyle(MossOttoStyle.inkSecondary)
-                Text("Mosto键盘的全拼与小鹤双拼核心能力完全相同（纠错、联想、九宫格、学习）。在台灯工作台试打可随时体验，实际系统键盘请在键盘内「Mosto 控制台」切换。")
-                    .font(.subheadline)
-                    .foregroundStyle(MossOttoStyle.inkSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 18) {
+            Card(title: "声感指法与键位图谱") {
+                XiaoheDrill(volume: volume)
+                Divider()
+                HStack(spacing: 12) {
+                    Legend(color: MossOttoStyle.violet, text: "zh / ch / sh")
+                    Legend(color: MossOttoStyle.inkSecondary, text: "韵母")
+                    Spacer(minLength: 0)
+                    Text("其余声母即键帽本字")
+                        .font(.caption)
+                        .foregroundStyle(MossOttoStyle.inkSecondary)
+                }
+                .font(.caption)
             }
 
-            Card(title: "和全拼比") {
-                CompareRow(label: "每个字按几下", quanpin: "平均约 3 下（本应用测试语料 5,287 个音节，平均 2.98）", xiaohe: "固定 2 下")
-                Divider()
-                CompareRow(label: "要记什么", quanpin: "不用额外记", xiaohe: "30 多个韵母和 zh / ch / sh 在 26 个键上的位置，以及零声母的打法")
-                Divider()
-                CompareRow(label: "换个输入法", quanpin: "任何输入法都能打", xiaohe: "要那个输入法也提供小鹤方案，并手动选上")
-            }
+            Card(title: "两键成音 · 对比全拼") {
+                VStack(alignment: .leading, spacing: 12) {
+                    WrapLayout(spacing: 8, lineSpacing: 8) {
+                        SyllableEquation(k1: "N", k2: "I", result: "你")
+                        SyllableEquation(k1: "V", sub1: "zh", k2: "S", sub2: "ong", result: "中")
+                        SyllableEquation(k1: "H", k2: "C", sub2: "ao", result: "好")
+                        SyllableEquation(k1: "U", sub1: "sh", k2: "L", sub2: "uang", result: "双")
+                    }
 
-            Card(title: "学习成本（建议先读完再决定）") {
-                ForEach(costs, id: \.self) { c in
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text("·").foregroundStyle(MossOttoStyle.inkSecondary)
-                        Text(c)
-                            .font(.subheadline)
-                            .foregroundStyle(MossOttoStyle.inkPrimary)
-                            .fixedSize(horizontal: false, vertical: true)
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        KeystrokeMeterRow(label: "全拼", ratio: 1.0, metric: "~3.0 键/字", highlight: false)
+                        KeystrokeMeterRow(label: "小鹤", ratio: 2.0 / 3.0, metric: "固定 2 键 · 省 33%", highlight: true)
+                    }
+
+                    WrapLayout(spacing: 6, lineSpacing: 6) {
+                        MiniBadgeChip(icon: "brain.head.profile", text: "需记 26 键韵母")
+                        MiniBadgeChip(icon: "lightbulb.min.fill", text: "控制台可开键位提示")
+                        MiniBadgeChip(icon: "arrow.triangle.branch", text: "与全拼共用纠错联想")
                     }
                 }
             }
 
-            Card(title: "声感指法与键位图谱") {
-                XiaoheDrill(volume: volume)
+            Card(title: "零声母速查") {
+                ZeroFormulaRow(tag: "1 字母 ×2", pairs: [("A+A", "啊"), ("O+O", "哦"), ("E+E", "饿")])
                 Divider()
-                HStack(spacing: 14) {
-                    Legend(color: MossOttoStyle.violet, text: "声母 zh ch sh")
-                    Legend(color: MossOttoStyle.inkSecondary, text: "韵母")
+                ZeroFormulaRow(tag: "2 字母照打", pairs: [("A+I", "爱"), ("A+N", "安"), ("O+U", "欧"), ("E+R", "二")])
+                Divider()
+                ZeroFormulaRow(tag: "3 字母首+韵", pairs: [("A+H", "昂"), ("E+G", "鞥")])
+                Text("y / w 开头按普通声母：yi · wo")
+                    .font(.caption)
+                    .foregroundStyle(MossOttoStyle.inkSecondary)
+            }
+
+            DisclosureGroup(isExpanded: SnapshotRenderer.requested ? .constant(true) : $showCostNotice) {
+                VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        ForEach(costs, id: \.self) { c in
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text("·").foregroundStyle(MossOttoStyle.inkSecondary)
+                                Text(c)
+                                    .font(.caption)
+                                    .foregroundStyle(MossOttoStyle.inkPrimary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                    Divider()
+                    Text("“小鹤双拼”“小鹤音形”是小鹤（flypy.cc）发布的输入方案名称，相关名称、标识及商标等权利归其权利人所有。Mosto键盘与小鹤及其权利人没有隶属、合作、授权或背书关系。")
+                        .font(.caption2)
+                        .foregroundStyle(MossOttoStyle.inkSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("本应用里的“小鹤双拼”只指与该方案兼容的键位规则，由开发者依据公开的汉语拼音规则独立实现；不包含、不分发小鹤音形码表、小鹤官方软件或其词库，也不使用小鹤的标识。词库来自开源项目雾凇拼音。")
+                        .font(.caption2)
+                        .foregroundStyle(MossOttoStyle.inkSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .font(.caption)
-                Text("其余声母（b p m f d t n l g k h j q x r z c s y w）就是它本身的字母。")
-                    .font(.footnote)
-                    .foregroundStyle(MossOttoStyle.inkSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 10)
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "info.circle")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(MossOttoStyle.violet)
+                    Text("学习成本与名称权利声明（flypy.cc · 雾凇拼音）")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(MossOttoStyle.inkPrimary)
+                    Spacer()
+                }
             }
-
-            Card(title: "没有声母的字（零声母）") {
-                ZeroRow(rule: "单字母韵母：按两次", examples: "啊 a → aa　哦 o → oo　饿 e → ee")
-                Divider()
-                ZeroRow(rule: "两个字母的韵母：照原样打", examples: "爱 ai → ai　安 an → an　欧 ou → ou　二 er → er")
-                Divider()
-                ZeroRow(rule: "三个字母的韵母：首字母 + 韵母所在的键", examples: "昂 ang → ah　鞥 eng → eg")
-                Text("y、w 开头的音节（一 yi、我 wo）按普通声母打：yi、wo。")
-                    .font(.footnote)
-                    .foregroundStyle(MossOttoStyle.inkSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Card(title: "学习模式") {
-                Text("按住表情键打开「Mosto 控制台」，将输入方案设为「小鹤双拼」后轻点左下角「小鹤键位提示」亮灯胶囊：开启后每个字母键上会显示声母与韵母，不必对照外图，记熟后随时关闭。")
-                    .font(.subheadline)
-                    .foregroundStyle(MossOttoStyle.inkPrimary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Card(title: "名称与权利说明") {
-                Text("“小鹤双拼”“小鹤音形”是小鹤（flypy.cc）发布的输入方案名称，相关名称、标识及商标等权利归其权利人所有。Mosto键盘与小鹤及其权利人没有隶属、合作、授权或背书关系。")
-                    .font(.footnote)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text("本应用里的“小鹤双拼”只指与该方案兼容的键位规则，由开发者依据公开的汉语拼音规则独立实现；不包含、不分发小鹤音形码表、小鹤官方软件或其词库，也不使用小鹤的标识。词库来自开源项目雾凇拼音。")
-                    .font(.footnote)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .foregroundStyle(MossOttoStyle.inkSecondary)
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(MossOttoStyle.surface)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(MossOttoStyle.hairline, lineWidth: 0.7)
+            )
         }
     }
 
     private let costs = [
-        "要背键位。韵母分散在 26 个键上，有的键放两个韵母（如 S 是 ong 和 iong），zh、ch、sh 借用 V、I、U。",
-        "刚换过来的一段时间，打字会明显比全拼慢、也更容易打错；要每天坚持用，才能从“想键位”变成手指记住。",
-        "全拼和双拼来回换着用，两套记忆会互相干扰。换别的设备或输入法时，也要记得把方案选成小鹤。",
-        "省下的是按键次数，不是思考时间。全拼的速度已经够用，就继续用全拼。",
+        "需记忆 26 键韵母及 zh=V、ch=I、sh=U 借位。",
+        "切换初期会暂时变慢，连续使用几天可形成指法肌肉记忆。",
+        "与全拼频繁混切会互相干扰；全拼够用时无需强换。",
     ]
+}
+
+private struct SyllableEquation: View {
+    let k1: String
+    var sub1: String? = nil
+    let k2: String
+    var sub2: String? = nil
+    let result: String
+
+    var body: some View {
+        HStack(spacing: 4) {
+            cap(k1, sub: sub1, accent: sub1 != nil)
+            Text("+").font(.caption2.weight(.bold)).foregroundStyle(MossOttoStyle.inkSecondary)
+            cap(k2, sub: sub2, accent: false)
+            Text("=").font(.caption2.weight(.bold)).foregroundStyle(MossOttoStyle.inkSecondary)
+            Text(result)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(MossOttoStyle.inkPrimary)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(MossOttoStyle.surfaceMuted))
+    }
+
+    private func cap(_ key: String, sub: String?, accent: Bool) -> some View {
+        VStack(spacing: 0) {
+            Text(key)
+                .font(.system(size: 12.5, weight: .bold, design: .rounded))
+                .foregroundStyle(MossOttoStyle.inkPrimary)
+            if let sub {
+                Text(sub)
+                    .font(.system(size: 8.5, weight: .semibold, design: .rounded))
+                    .foregroundStyle(accent ? MossOttoStyle.violet : MossOttoStyle.inkSecondary)
+            }
+        }
+        .frame(minWidth: 24, minHeight: 28)
+        .padding(.horizontal, 4)
+        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(MossOttoStyle.surface))
+        .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(MossOttoStyle.hairline, lineWidth: 0.7))
+    }
+}
+
+private struct KeystrokeMeterRow: View {
+    let label: String
+    let ratio: CGFloat
+    let metric: String
+    let highlight: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(label)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(highlight ? MossOttoStyle.violet : MossOttoStyle.inkSecondary)
+                .frame(width: 34, alignment: .leading)
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(MossOttoStyle.surfaceMuted)
+                    Capsule()
+                        .fill(highlight ? MossOttoStyle.violet : MossOttoStyle.inkSecondary.opacity(0.35))
+                        .frame(width: max(16, geo.size.width * ratio))
+                }
+            }
+            .frame(height: 8)
+            Text(metric)
+                .font(.caption2.weight(.semibold).monospacedDigit())
+                .foregroundStyle(highlight ? MossOttoStyle.violet : MossOttoStyle.inkSecondary)
+                .frame(width: 108, alignment: .trailing)
+        }
+    }
+}
+
+private struct MiniBadgeChip: View {
+    let icon: String
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(MossOttoStyle.violet)
+            Text(text)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(MossOttoStyle.inkSecondary)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Capsule().fill(MossOttoStyle.surfaceMuted))
+    }
+}
+
+private struct ZeroFormulaRow: View {
+    let tag: String
+    let pairs: [(String, String)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(tag)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(MossOttoStyle.violet)
+            HStack(spacing: 6) {
+                ForEach(pairs, id: \.0) { code, ch in
+                    HStack(spacing: 3.5) {
+                        Text(code)
+                            .font(.caption2.weight(.bold).monospaced())
+                            .foregroundStyle(MossOttoStyle.inkPrimary)
+                        Text(ch)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(MossOttoStyle.inkSecondary)
+                    }
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3.5)
+                    .background(Capsule().fill(MossOttoStyle.surfaceMuted))
+                }
+                Spacer(minLength: 0)
+            }
+        }
+    }
 }
 
 /// The 26 letter keys in keyboard rows rendered as matte monolith caps.
@@ -152,51 +287,6 @@ struct ChartKey: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .strokeBorder(mark ?? .clear, lineWidth: 2)
         )
-    }
-}
-
-private struct CompareRow: View {
-    let label: String, quanpin: String, xiaohe: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(MossOttoStyle.inkPrimary)
-            HStack(alignment: .top, spacing: 10) {
-                Column(title: "全拼", text: quanpin)
-                Column(title: "小鹤双拼", text: xiaohe)
-            }
-        }
-    }
-
-    private struct Column: View {
-        let title: String, text: String
-        var body: some View {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.caption).foregroundStyle(MossOttoStyle.inkSecondary)
-                Text(text)
-                    .font(.subheadline)
-                    .foregroundStyle(MossOttoStyle.inkPrimary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-}
-
-private struct ZeroRow: View {
-    let rule: String, examples: String
-    var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(rule)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(MossOttoStyle.inkPrimary)
-            Text(examples)
-                .font(.subheadline)
-                .foregroundStyle(MossOttoStyle.inkSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
     }
 }
 

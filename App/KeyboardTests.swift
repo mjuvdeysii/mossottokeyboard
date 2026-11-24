@@ -145,6 +145,7 @@ enum KeyboardTests {
         r66VisualStructureAndThumbErgonomics(window)
         r67T9AltPopupAndFreeBenchInspirations(window)
         r68StageOverlaysMathSpaceAndEmojiCraft(window)
+        r69HeightPersistenceAndVisualConsole(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -2791,6 +2792,94 @@ enum KeyboardTests {
         log(fadeOn && shortcutShown && bulbUnclipped && switchedToKaomoji,
             "r68.EmojiPanelView applies soft bottom fade, keeps portrait dock lightbulb unclipped, and opens Kaomoji in 1 tap",
             "fade=\(fadeOn) shortcut=\(shortcutShown) bulb=\(bulbUnclipped) kao=\(switchedToKaomoji) offsetX=\(ep.tabScrollOffsetXForTests)")
+    }
+
+    // MARK: - R69: Height persistence root-cause fix & visual-first hardware console
+
+    static func r69HeightPersistenceAndVisualConsole(_ window: UIWindow) {
+        let s = KeyboardSettings.shared
+        let prevHeight = s.keyboardHeight
+        let prevScheme = s.scheme
+        defer {
+            s.keyboardHeight = prevHeight
+            s.scheme = prevScheme
+        }
+
+        // 1. Without an App Group entitlement, KeyboardSettings must persist directly via UserDefaults.standard
+        let usesStd = s.usesStandardDefaultsForTests
+        s.keyboardHeight = KeyboardHeightPreset.comfortable.rawValue
+        let persistedInStandard = (UserDefaults.standard.object(forKey: "keyboardHeight") as? NSNumber)?.intValue == 2
+        s.keyboardHeight = KeyboardHeightPreset.tall.rawValue
+        let roundTripTall = s.keyboardHeight == 3
+            && (UserDefaults.standard.object(forKey: "keyboardHeight") as? NSNumber)?.intValue == 3
+        log(usesStd && persistedInStandard && roundTripTall,
+            "r69.KeyboardSettings persists height tiers reliably in UserDefaults.standard without App Group drops",
+            "usesStd=\(usesStd) persisted=\(persistedInStandard) tall=\(roundTripTall)")
+
+        // 2. Portrait Pro Max / detached bounds must not misclassify 393x242 or 430x284 as landscape or reset to compact
+        if let pair = makeKeyboard(scheme: 1, in: window) {
+            let (vc, _) = pair
+            vc.view.frame = CGRect(x: 0, y: 0, width: 430, height: 284)
+            vc.showSettingsForTests(true)
+            s.keyboardHeight = KeyboardHeightPreset.tall.rawValue
+            vc.applySettings()
+            vc.showSettingsForTests(false)
+            vc.updateViewConstraints()
+            vc.view.layoutIfNeeded()
+            let portraitTallOk = s.keyboardHeight == 3
+                && vc.preferredHeightForTests == 284
+                && vc.heightConstraintConstantForTests == 284
+
+            s.keyboardHeight = KeyboardHeightPreset.comfortable.rawValue
+            vc.applySettings()
+            vc.beginAppearanceTransition(false, animated: false)
+            vc.endAppearanceTransition()
+            vc.beginAppearanceTransition(true, animated: false)
+            vc.endAppearanceTransition()
+            vc.view.layoutIfNeeded()
+            let afterAppearOk = s.keyboardHeight == 2
+                && vc.preferredHeightForTests == 262
+                && vc.heightConstraintConstantForTests == 262
+                && vc.heightForTests(landscape: true) == 210
+            log(portraitTallOk && afterAppearOk,
+                "r69.KeyboardViewController keeps chosen portrait height across settings close, updateViewConstraints, and viewWillAppear",
+                "tallOk=\(portraitTallOk) appearOk=\(afterAppearOk) h=\(vc.preferredHeightForTests) c=\(vc.heightConstraintConstantForTests ?? -1)")
+        } else {
+            log(false, "r69.KeyboardViewController height persistence setup", "engine did not load")
+        }
+
+        // 3. Visual Hardware Deck icons + direct 1-tap 4-step elevation rail across compact/narrow/landscape bounds
+        s.keyboardHeight = KeyboardHeightPreset.compact.rawValue
+        let sp = SettingsPanelView(frame: CGRect(x: 0, y: 0, width: 375, height: 226))
+        sp.load()
+        sp.layoutIfNeeded()
+        let iconsOk = sp.tileIconsLoadedForTests
+        sp.selectHeightForTests(.tall)
+        let directJumpTall = sp.heightPresetForTests == .tall && s.keyboardHeight == 3
+        s.scheme = 0
+        sp.load(); sp.layoutIfNeeded()
+        let narrowXiaoheOk = sp.utilityRowNonOverlappingForTests
+        s.scheme = 1
+        sp.load(); sp.layoutIfNeeded()
+        let narrowQuanpinOk = sp.utilityRowNonOverlappingForTests
+        let landPanel = SettingsPanelView(frame: CGRect(x: 0, y: 0, width: 480, height: 186))
+        landPanel.setFeedbackAvailable(false)
+        landPanel.load(); landPanel.layoutIfNeeded()
+        let landOk = landPanel.utilityRowNonOverlappingForTests && landPanel.bannerNonOverlappingForTests
+        log(iconsOk && directJumpTall && narrowXiaoheOk && narrowQuanpinOk && landOk,
+            "r69.Visual Hardware Console renders tile icons, jumps tiers in 1 tap on ElevationRail, and avoids overlap on compact screens",
+            "icons=\(iconsOk) tall=\(directJumpTall) narrow0=\(narrowXiaoheOk) narrow1=\(narrowQuanpinOk) land=\(landOk)")
+
+        // 4. PlaygroundModel syncKeyboardSettings(reapplyKeyboard: false) syncs persisted settings without overwriting them
+        s.keyboardHeight = KeyboardHeightPreset.tall.rawValue
+        s.scheme = 0
+        let model = PlaygroundModel()
+        model.keyboardHeight = KeyboardHeightPreset.compact.rawValue
+        s.keyboardHeight = KeyboardHeightPreset.comfortable.rawValue
+        model.syncKeyboardSettings(reapplyKeyboard: false)
+        log(model.keyboardHeight == 2 && model.layout == 1 && s.keyboardHeight == 2,
+            "r69.PlaygroundModel syncs from KeyboardSettings without clobbering persisted height",
+            "modelH=\(model.keyboardHeight) layout=\(model.layout) settingsH=\(s.keyboardHeight)")
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

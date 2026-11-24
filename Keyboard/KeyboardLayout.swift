@@ -95,6 +95,16 @@ enum KeyboardHeightPreset: Int, CaseIterable {
         }
     }
 
+    /// Concise 1-character mark used inside direct 4-step elevation rails.
+    var shortMark: String {
+        switch self {
+        case .compact: return "紧"
+        case .standard: return "标"
+        case .comfortable: return "舒"
+        case .tall: return "宽"
+        }
+    }
+
     var next: KeyboardHeightPreset {
         KeyboardHeightPreset(rawValue: (rawValue + 1) % Self.allCases.count) ?? .standard
     }

@@ -891,11 +891,18 @@ struct SwitchTesterToy: View {
                     .strokeBorder(MossOttoStyle.hairline, lineWidth: 0.7)
             )
 
-            Text(readout ?? "轻触 3 枚实体试轴，感受\(activeProfile.title)触感与原声")
-                .font(.caption2)
-                .foregroundStyle(MossOttoStyle.inkSecondary)
-                .lineLimit(1)
-                .padding(.leading, 4)
+            HStack(spacing: 8) {
+                ImpulseWaveformView(profile: activeProfile)
+                    .frame(width: 68, height: 16)
+                Text(readout ?? activeProfile.deckValue)
+                    .font(.caption2.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(MossOttoStyle.inkSecondary)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Capsule().fill(MossOttoStyle.surface))
+            .overlay(Capsule().strokeBorder(MossOttoStyle.hairline, lineWidth: 0.6))
         }
     }
 
@@ -924,6 +931,47 @@ struct SwitchTesterToy: View {
             }
             readout = desc
         }
+    }
+}
+
+/// Visualizes each switch profile's physical snap impulse curve without paragraphs of explanation.
+private struct ImpulseWaveformView: View {
+    let profile: HapticProfile
+
+    var body: some View {
+        Canvas { ctx, size in
+            let midY = size.height * 0.65
+            var path = Path()
+            let w = size.width
+            let amp = size.height * 0.55
+            switch profile {
+            case .crisp:
+                path.move(to: CGPoint(x: 0, y: midY))
+                path.addLine(to: CGPoint(x: w * 0.16, y: midY))
+                path.addLine(to: CGPoint(x: w * 0.24, y: midY - amp))
+                path.addLine(to: CGPoint(x: w * 0.34, y: midY + amp * 0.28))
+                path.addLine(to: CGPoint(x: w * 0.44, y: midY))
+                path.addLine(to: CGPoint(x: w, y: midY))
+            case .mechanical:
+                path.move(to: CGPoint(x: 0, y: midY))
+                path.addLine(to: CGPoint(x: w * 0.12, y: midY))
+                path.addLine(to: CGPoint(x: w * 0.19, y: midY - amp))
+                path.addLine(to: CGPoint(x: w * 0.27, y: midY + amp * 0.22))
+                path.addLine(to: CGPoint(x: w * 0.35, y: midY - amp * 0.72))
+                path.addLine(to: CGPoint(x: w * 0.44, y: midY))
+                path.addLine(to: CGPoint(x: w, y: midY))
+            case .quiet:
+                path.move(to: CGPoint(x: 0, y: midY))
+                path.addCurve(
+                    to: CGPoint(x: w * 0.62, y: midY),
+                    control1: CGPoint(x: w * 0.20, y: midY - amp * 0.75),
+                    control2: CGPoint(x: w * 0.42, y: midY - amp * 0.75)
+                )
+                path.addLine(to: CGPoint(x: w, y: midY))
+            }
+            ctx.stroke(path, with: .color(MossOttoStyle.violet), style: StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
+        }
+        .accessibilityHidden(true)
     }
 }
 

@@ -221,9 +221,23 @@ final class KeyboardViewController: UIInputViewController {
     }
     static let inExtension = Bundle.main.bundleURL.pathExtension == "appex"
 
-    private var isLandscape: Bool { view.bounds.width > view.bounds.height && view.bounds.height > 0 }
+    private func resolvedIsLandscape(forWidth width: CGFloat? = nil) -> Bool {
+        let screen = view.window?.windowScene?.screen.bounds ?? UIScreen.main.bounds
+        let shortSide = min(screen.width, screen.height)
+        let w = width ?? view.bounds.width
+        if w > 0 {
+            return w > max(shortSide, 460) + 1
+        }
+        if let orientation = view.window?.windowScene?.interfaceOrientation, orientation != .unknown {
+            return orientation.isLandscape
+        }
+        return screen.width > screen.height
+    }
+
+    private var isLandscape: Bool { resolvedIsLandscape() }
     private var barHeight: CGFloat { heightPreset.toolbarHeight(landscape: isLandscape) }
     var onHeightChanged: ((CGFloat) -> Void)?
+    var onSettingsApplied: (() -> Void)?
 
     // MARK: - Test bench
 
@@ -256,6 +270,8 @@ final class KeyboardViewController: UIInputViewController {
     var emojiPanelIfLoadedForTests: EmojiPanelView? { emojiPanelIfLoaded }
     var preferredHeightForTests: CGFloat { preferredHeight() }
     func heightForTests(landscape: Bool) -> CGFloat { preferredHeight(landscape: landscape) }
+    var heightConstraintConstantForTests: CGFloat? { heightConstraint?.constant }
+    func showSettingsForTests(_ on: Bool) { showSettings(on) }
     var plainLightHiddenForTests: Bool { plainLightButton.isHidden }
     var mostoHintHiddenForTests: Bool { mostoHintButton.isHidden }
     var testSettled: Bool { taps.isEmpty || resultGeneration == generation }
@@ -455,24 +471,25 @@ final class KeyboardViewController: UIInputViewController {
 
     override func updateViewConstraints() {
         super.updateViewConstraints()
+        heightPreset = KeyboardHeightPreset.clamped(KeyboardSettings.shared.keyboardHeight)
         inputView?.allowsSelfSizing = true
-        if heightConstraint == nil {
-            let c = view.heightAnchor.constraint(equalToConstant: preferredHeight())
+        let targetH = preferredHeight()
+        if let c = heightConstraint {
+            if abs(c.constant - targetH) > 0.5 {
+                c.constant = targetH
+            }
+        } else {
+            let c = view.heightAnchor.constraint(equalToConstant: targetH)
             c.priority = UILayoutPriority(999)
             c.isActive = true
             heightConstraint = c
         }
-        heightConstraint?.constant = preferredHeight()
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         heightPreset = KeyboardHeightPreset.clamped(KeyboardSettings.shared.keyboardHeight)
-        inputView?.allowsSelfSizing = true
-        let targetH = preferredHeight()
-        heightConstraint?.constant = targetH
-        onHeightChanged?(targetH)
-        view.setNeedsUpdateConstraints()
+        syncHeightConstraint(forceLayout: true, notifyIfPresetChanged: true, immediateLayout: false)
         lastDocumentID = host.documentIdentifier
         cachedShowGlobe = needsInputModeSwitchKey
         hostEchoesMarked = 0
@@ -532,22 +549,40 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
         super.viewWillTransition(to: size, with: coordinator)
-        let screen = view.window?.windowScene?.screen.bounds ?? UIScreen.main.bounds
-        heightConstraint?.constant = preferredHeight(landscape: size.width > min(screen.width, screen.height) + 1)
+        syncHeightConstraint(landscape: resolvedIsLandscape(forWidth: size.width), forceLayout: false, notifyIfPresetChanged: false)
     }
 
     private func preferredHeight(landscape: Bool? = nil) -> CGFloat {
-        let isLandscape: Bool
-        if let landscape {
-            isLandscape = landscape
-        } else if let orientation = view.window?.windowScene?.interfaceOrientation, orientation != .unknown {
-            isLandscape = orientation.isLandscape
-        } else if view.bounds.height > 0 {
-            isLandscape = view.bounds.width > view.bounds.height * 1.4
+        return heightPreset.totalHeight(landscape: landscape ?? resolvedIsLandscape())
+    }
+
+    @discardableResult
+    private func syncHeightConstraint(landscape: Bool? = nil, forceLayout: Bool = false, notifyIfPresetChanged: Bool = false, immediateLayout: Bool = true) -> CGFloat {
+        inputView?.allowsSelfSizing = true
+        let targetH = preferredHeight(landscape: landscape)
+        let changed: Bool
+        if let c = heightConstraint {
+            changed = abs(c.constant - targetH) > 0.5
+            if changed { c.constant = targetH }
         } else {
-            isLandscape = UIScreen.main.bounds.width > UIScreen.main.bounds.height
+            let c = view.heightAnchor.constraint(equalToConstant: targetH)
+            c.priority = UILayoutPriority(999)
+            c.isActive = true
+            heightConstraint = c
+            changed = true
         }
-        return heightPreset.totalHeight(landscape: isLandscape)
+        if changed || forceLayout {
+            view.setNeedsUpdateConstraints()
+            view.setNeedsLayout()
+            if immediateLayout {
+                view.updateConstraintsIfNeeded()
+                view.layoutIfNeeded()
+            }
+        }
+        if changed || notifyIfPresetChanged {
+            onHeightChanged?(targetH)
+        }
+        return targetH
     }
 
     override func viewDidLayoutSubviews() {
@@ -572,6 +607,13 @@ final class KeyboardViewController: UIInputViewController {
         let safe = CGRect(x: insetL, y: 0, width: w, height: b.height)
         settingsPanelIfLoaded?.frame = safe
         if emojiShown { emojiPanel.frame = safe }
+        if let c = heightConstraint {
+            let targetH = preferredHeight()
+            if abs(c.constant - targetH) > 0.5 {
+                c.constant = targetH
+                view.setNeedsUpdateConstraints()
+            }
+        }
     }
 
     override func textDidChange(_ textInput: UITextInput?) {
@@ -912,9 +954,7 @@ final class KeyboardViewController: UIInputViewController {
         pinyinGridOn = s.pinyinGrid
         let prevHeightPreset = heightPreset
         heightPreset = KeyboardHeightPreset.clamped(s.keyboardHeight)
-        let targetH = preferredHeight()
-        let heightChanged = prevHeightPreset != heightPreset || abs((heightConstraint?.constant ?? targetH) - targetH) > 0.5
-        heightConstraint?.constant = targetH
+        let presetChanged = prevHeightPreset != heightPreset
         if let sp = settingsPanelIfLoaded, !sp.isHidden {
             let n = engine.counts()
             sp.setLearned("词库 \(n.lexicon) 条 · 已学习 \(n.learned) 个词")
@@ -925,11 +965,8 @@ final class KeyboardViewController: UIInputViewController {
         }
         reconfigure()
         applyAppearance()
-        if heightChanged {
-            view.setNeedsLayout()
-            view.layoutIfNeeded()
-            onHeightChanged?(targetH)
-        }
+        syncHeightConstraint(forceLayout: presetChanged, notifyIfPresetChanged: presetChanged)
+        onSettingsApplied?()
         if !taps.isEmpty { refresh() }
     }
 
@@ -2032,10 +2069,18 @@ final class KeyboardViewController: UIInputViewController {
             root.bringSubviewToFront(sp)
         } else {
             settingsPanelIfLoaded?.isHidden = true
+            heightPreset = KeyboardHeightPreset.clamped(KeyboardSettings.shared.keyboardHeight)
+            syncHeightConstraint(forceLayout: true, notifyIfPresetChanged: false)
         }
         candidateBar.isHidden = on
         keyboard.isHidden = on || !(gridIfLoaded?.isHidden ?? true)
         updatePlainLightButton()
+        if !on {
+            candidateBar.setNeedsLayout()
+            candidateBar.layoutIfNeeded()
+            keyboard.setNeedsLayout()
+            keyboard.layoutIfNeeded()
+        }
     }
 
     // MARK: - 表情

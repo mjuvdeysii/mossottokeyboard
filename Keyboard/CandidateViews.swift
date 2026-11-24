@@ -1520,14 +1520,24 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
     func deleteTapForTests() { onDelete?() }
 }
 
-/// R50/R52 single-layer OTTOSSOM physical toggle tile with a 4.5pt hardware micro-LED and grounded shadowPath.
+/// R50/R69 single-layer OTTOSSOM physical toggle tile with micro-pictograph icon, 4.5pt hardware LED & grounded shadowPath.
 private final class HardwareTileButton: UIControl {
+    private let iconView = UIImageView()
     private let eyebrowLabel = UILabel()
     private let valueLabel = UILabel()
     private let ledDot = CALayer()
     private var activeTint: Bool = false
     private var locked: Bool = false
     private var lastShadowSize: CGSize = .zero
+    private static var symbolCache: [String: UIImage] = [:]
+
+    private static func cachedSymbol(_ name: String) -> UIImage? {
+        if let img = symbolCache[name] { return img }
+        let cfg = UIImage.SymbolConfiguration(pointSize: 12.5, weight: .semibold)
+        let img = UIImage(systemName: name, withConfiguration: cfg)?.withRenderingMode(.alwaysTemplate)
+        if let img { symbolCache[name] = img }
+        return img
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -1537,6 +1547,10 @@ private final class HardwareTileButton: UIControl {
         layer.shadowRadius = 0
         layer.shadowOffset = CGSize(width: 0, height: Metrics.lip)
         layer.shadowOpacity = 1
+
+        iconView.contentMode = .scaleAspectFit
+        iconView.isUserInteractionEnabled = false
+        addSubview(iconView)
 
         eyebrowLabel.font = Theme.font(10.5, .medium)
         eyebrowLabel.isUserInteractionEnabled = false
@@ -1558,12 +1572,15 @@ private final class HardwareTileButton: UIControl {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func configure(eyebrow: String, value: String, active: Bool, locked: Bool = false) {
+    var hasSymbolForTests: Bool { iconView.image != nil }
+
+    func configure(icon: String, eyebrow: String, value: String, active: Bool, locked: Bool = false, spoken: String? = nil) {
+        iconView.image = Self.cachedSymbol(icon)
         eyebrowLabel.text = eyebrow
         valueLabel.text = value
         self.activeTint = active
         self.locked = locked
-        accessibilityLabel = "\(eyebrow)：\(value)"
+        accessibilityLabel = spoken ?? "\(eyebrow)：\(value)"
         refreshAppearance()
     }
 
@@ -1581,6 +1598,8 @@ private final class HardwareTileButton: UIControl {
             : (activeTint ? Theme.statusLedActive : Theme.statusLedMuted)
         ledDot.backgroundColor = ledColor.resolvedColor(with: t).cgColor
         CATransaction.commit()
+        let tint: UIColor = locked ? Theme.secondaryText.withAlphaComponent(0.6) : (activeTint ? Theme.selection : Theme.secondaryText)
+        iconView.tintColor = tint.resolvedColor(with: t)
         eyebrowLabel.textColor = Theme.secondaryText
         eyebrowLabel.font = Theme.font(10.5, .medium)
         valueLabel.textColor = locked ? Theme.secondaryText : Theme.keyText
@@ -1606,13 +1625,126 @@ private final class HardwareTileButton: UIControl {
         }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        ledDot.frame = CGRect(x: b.width - 13, y: 8.5, width: 4.5, height: 4.5)
+        ledDot.frame = CGRect(x: b.width - 12, y: 8.5, width: 4.5, height: 4.5)
         CATransaction.commit()
         let compact = b.height < 52
-        let padX: CGFloat = 10
-        let topPad: CGFloat = compact ? 6 : 9
-        eyebrowLabel.frame = CGRect(x: padX, y: topPad, width: max(0, b.width - padX - 18), height: 14)
-        valueLabel.frame = CGRect(x: padX, y: eyebrowLabel.frame.maxY + (compact ? 1 : 3), width: max(0, b.width - padX * 2), height: max(18, b.height - eyebrowLabel.frame.maxY - 8))
+        let padX: CGFloat = 9.5
+        let topPad: CGFloat = compact ? 5.5 : 8.5
+        let iconSide: CGFloat = compact ? 13 : 14
+        iconView.frame = CGRect(x: padX, y: topPad, width: iconSide, height: iconSide)
+        let eyeX = padX + iconSide + 4
+        eyebrowLabel.frame = CGRect(x: eyeX, y: topPad, width: max(0, b.width - eyeX - 18), height: iconSide)
+        valueLabel.frame = CGRect(x: padX, y: eyebrowLabel.frame.maxY + (compact ? 1 : 3), width: max(0, b.width - padX * 2), height: max(18, b.height - eyebrowLabel.frame.maxY - (compact ? 5 : 8)))
+    }
+}
+
+/// R69 Visual-First 1-tap 4-step elevation rail (`紧 / 标 / 舒 / 宽`) with ascending hardware height silhouettes.
+private final class ElevationRailView: UIView {
+    var selectedTier: KeyboardHeightPreset = .standard {
+        didSet { if selectedTier != oldValue { refreshAppearance() } }
+    }
+    var onSelect: ((KeyboardHeightPreset) -> Void)?
+
+    private var buttons: [UIButton] = []
+    private var barLayers: [CALayer] = []
+    private var markLabels: [UILabel] = []
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        layer.cornerRadius = 15
+        layer.cornerCurve = .continuous
+        layer.borderWidth = 0.5
+        clipsToBounds = true
+
+        for preset in KeyboardHeightPreset.allCases {
+            let btn = UIButton(type: .custom)
+            btn.tag = preset.rawValue
+            btn.layer.cornerRadius = 12
+            btn.layer.cornerCurve = .continuous
+            btn.accessibilityLabel = "键盘高度：\(preset.title)"
+            btn.accessibilityTraits = .button
+            btn.addTarget(self, action: #selector(tierTapped(_:)), for: .touchUpInside)
+
+            let bar = CALayer()
+            bar.cornerRadius = 1.1
+            btn.layer.addSublayer(bar)
+
+            let lbl = UILabel()
+            lbl.text = preset.shortMark
+            lbl.font = Theme.font(11.5, .semibold)
+            lbl.textAlignment = .left
+            lbl.isUserInteractionEnabled = false
+            btn.addSubview(lbl)
+
+            addSubview(btn)
+            buttons.append(btn)
+            barLayers.append(bar)
+            markLabels.append(lbl)
+        }
+        refreshAppearance()
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    @objc private func tierTapped(_ sender: UIButton) {
+        let tier = KeyboardHeightPreset.clamped(sender.tag)
+        selectedTier = tier
+        onSelect?(tier)
+    }
+
+    func selectForTests(_ tier: KeyboardHeightPreset) {
+        guard tier.rawValue < buttons.count else { return }
+        tierTapped(buttons[tier.rawValue])
+    }
+
+    func refreshAppearance() {
+        let t = traitCollection
+        backgroundColor = Theme.settingsGroup.resolvedColor(with: t)
+        layer.borderColor = Theme.keyBorder.resolvedColor(with: t).cgColor
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for (i, btn) in buttons.enumerated() {
+            let active = i == selectedTier.rawValue
+            let fill: UIColor = active ? Theme.selection : .clear
+            btn.backgroundColor = fill.resolvedColor(with: t)
+            btn.isSelected = active
+            btn.accessibilityValue = active ? "已选" : nil
+            let fg: UIColor = active ? Theme.selectionText : (i <= selectedTier.rawValue ? Theme.keyText : Theme.secondaryText)
+            markLabels[i].textColor = fg.resolvedColor(with: t)
+            markLabels[i].font = Theme.font(11.5, active ? .bold : .semibold)
+            let barColor: UIColor = active ? Theme.selectionText : (i <= selectedTier.rawValue ? Theme.statusLedActive : Theme.statusLedMuted)
+            barLayers[i].backgroundColor = barColor.resolvedColor(with: t).cgColor
+        }
+        CATransaction.commit()
+    }
+
+    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+        super.traitCollectionDidChange(previous)
+        refreshAppearance()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let w = bounds.width, h = bounds.height
+        guard w > 40, h > 16 else { return }
+        let pad: CGFloat = 2.5
+        let gap: CGFloat = 2
+        let count = CGFloat(buttons.count)
+        let segW = max(12, (w - pad * 2 - gap * (count - 1)) / count)
+        let segH = max(12, h - pad * 2)
+        let heights: [CGFloat] = [5, 7.5, 10, 12.5]
+        let barW: CGFloat = 2.5
+        let bottomY = (segH + 12.5) / 2
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for (i, btn) in buttons.enumerated() {
+            btn.frame = CGRect(x: pad + CGFloat(i) * (segW + gap), y: pad, width: segW, height: segH)
+            let bh = heights[min(i, heights.count - 1)]
+            let barX = max(3.5, floor((segW - 18) * 0.5))
+            barLayers[i].frame = CGRect(x: barX, y: bottomY - bh, width: barW, height: bh)
+            markLabels[i].frame = CGRect(x: barX + barW + 2.5, y: 0, width: max(12, segW - barX - barW - 3.5), height: segH)
+        }
+        CATransaction.commit()
     }
 }
 
@@ -1644,9 +1776,7 @@ final class SettingsPanelView: UIView {
     private let utilityRow = UIView()
     private let guidePill = UIButton(type: .custom)
     private let guideLed = CALayer()
-    private let heightPill = UIButton(type: .custom)
-    private let heightLabel = UILabel()
-    private var heightBars: [CALayer] = []
+    private let heightRail = ElevationRailView()
     private let offlineStatusLabel = UILabel()
     private let moreButton = UIButton(type: .system)
 
@@ -1730,7 +1860,7 @@ final class SettingsPanelView: UIView {
         correctTile.addTarget(self, action: #selector(toggleAutocorrect), for: .touchUpInside)
         for t in hardwareTiles { deckContainer.addSubview(t) }
 
-        accessBanner.text = "震动与声效需在 系统设置 › 通用 › 键盘 开启「允许完全访问」"
+        accessBanner.text = "震动与声效需在系统设置开启「允许完全访问」"
         accessBanner.font = Theme.font(11.5, .medium)
         accessBanner.textColor = Theme.correctedMark
         accessBanner.textAlignment = .center
@@ -1741,8 +1871,10 @@ final class SettingsPanelView: UIView {
         deckContainer.addSubview(accessBanner)
 
         deckContainer.addSubview(utilityRow)
-        guidePill.setTitle("   小鹤键位提示", for: .normal)
-        guidePill.titleLabel?.font = Theme.font(12, .semibold)
+        guidePill.setTitle("   键位提示", for: .normal)
+        guidePill.titleLabel?.font = Theme.font(11.5, .semibold)
+        guidePill.titleLabel?.adjustsFontSizeToFitWidth = true
+        guidePill.titleLabel?.minimumScaleFactor = 0.85
         guidePill.layer.cornerRadius = 15
         guidePill.layer.cornerCurve = .continuous
         guidePill.layer.borderWidth = 0.5
@@ -1751,29 +1883,23 @@ final class SettingsPanelView: UIView {
         guidePill.addTarget(self, action: #selector(toggleGuide), for: .touchUpInside)
         utilityRow.addSubview(guidePill)
 
-        offlineStatusLabel.text = "纯离线 · 零联网"
+        offlineStatusLabel.text = "纯离线"
         offlineStatusLabel.font = Theme.font(11.5, .medium)
         offlineStatusLabel.textColor = Theme.secondaryText
         utilityRow.addSubview(offlineStatusLabel)
 
-        heightPill.layer.cornerRadius = 15
-        heightPill.layer.cornerCurve = .continuous
-        heightPill.addTarget(self, action: #selector(cycleHeight), for: .touchUpInside)
-        for _ in 0..<KeyboardHeightPreset.allCases.count {
-            let bar = CALayer()
-            bar.cornerRadius = 1.0
-            heightPill.layer.addSublayer(bar)
-            heightBars.append(bar)
+        heightRail.onSelect = { [weak self] tier in
+            guard let self else { return }
+            KeyboardSettings.shared.keyboardHeight = tier.rawValue
+            if self.canProvideHaptic {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred(intensity: tier.hapticIntensity)
+            }
+            self.load()
+            self.onChange?()
         }
-        heightLabel.font = Theme.font(11.5, .semibold)
-        heightLabel.textAlignment = .left
-        heightLabel.adjustsFontSizeToFitWidth = true
-        heightLabel.minimumScaleFactor = 0.82
-        heightLabel.isUserInteractionEnabled = false
-        heightPill.addSubview(heightLabel)
-        utilityRow.addSubview(heightPill)
+        utilityRow.addSubview(heightRail)
 
-        moreButton.setTitle("更多 · 清空 ›", for: .normal)
+        moreButton.setTitle("更多 ›", for: .normal)
         moreButton.titleLabel?.font = Theme.font(12, .semibold)
         moreButton.titleLabel?.adjustsFontSizeToFitWidth = true
         moreButton.titleLabel?.minimumScaleFactor = 0.85
@@ -1865,28 +1991,18 @@ final class SettingsPanelView: UIView {
         englishSwitch.onTintColor = Theme.selection
         for tile in hardwareTiles { tile.refreshAppearance() }
         refreshGuidePill()
-        refreshHeightPill()
+        refreshHeightRail()
     }
 
     var heightPresetForTests: KeyboardHeightPreset { KeyboardHeightPreset.clamped(KeyboardSettings.shared.keyboardHeight) }
-    var heightPillTitleForTests: String { heightLabel.text ?? "" }
+    var heightPillTitleForTests: String { "高度·\(heightPresetForTests.title)" }
     func tapHeightPillForTests() { cycleHeight() }
+    func selectHeightForTests(_ preset: KeyboardHeightPreset) { heightRail.selectForTests(preset) }
+    var tileIconsLoadedForTests: Bool { hardwareTiles.allSatisfy(\.hasSymbolForTests) }
 
-    private func refreshHeightPill() {
-        let preset = KeyboardHeightPreset.clamped(KeyboardSettings.shared.keyboardHeight)
-        heightPill.backgroundColor = Theme.settingsGroup
-        heightPill.layer.borderColor = Theme.keyBorder.cgColor
-        heightPill.layer.borderWidth = 0.5
-        heightLabel.textColor = Theme.guideText
-        heightLabel.text = "高度·\(preset.title)"
-        heightPill.accessibilityLabel = "键盘高度"
-        heightPill.accessibilityValue = preset.title
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        for (i, bar) in heightBars.enumerated() {
-            bar.backgroundColor = (i <= preset.rawValue ? Theme.statusLedActive : Theme.statusLedMuted).cgColor
-        }
-        CATransaction.commit()
+    private func refreshHeightRail() {
+        heightRail.selectedTier = KeyboardHeightPreset.clamped(KeyboardSettings.shared.keyboardHeight)
+        heightRail.refreshAppearance()
     }
 
     @objc private func cycleHeight() {
@@ -2056,37 +2172,68 @@ final class SettingsPanelView: UIView {
         let nightName = s.style == 1 ? "夜光" : "夜灯"
         let light = night.map { $0 ? nightName : "日光" } ?? (["自动", "日光", nightName][s.appearance])
         let heightName = KeyboardHeightPreset.clamped(s.keyboardHeight).title
-        statusLabel.text = "\(s.style == 1 ? "简洁" : "Mosto") · \(light) · \(s.scheme == 0 ? "小鹤双拼" : "全拼") · \(s.pinyinGrid ? "九宫格" : "全键盘") · \(heightName)"
+        statusLabel.text = "\(s.style == 1 ? "简洁" : light) · \(s.scheme == 0 ? "双拼" : "全拼") · \(s.pinyinGrid ? "九宫格" : "全键盘") · \(heightName)"
     }
 
     func load() {
         let s = KeyboardSettings.shared
         updateStatus()
 
-        schemeTile.configure(eyebrow: "输入方案", value: s.scheme == 0 ? "小鹤双拼" : "全拼", active: s.scheme == 0)
-        layoutTile.configure(eyebrow: "键盘布局", value: s.pinyinGrid ? "九宫格" : "全键盘", active: s.pinyinGrid)
+        schemeTile.configure(
+            icon: "character.textbox",
+            eyebrow: "方案",
+            value: s.scheme == 0 ? "双拼" : "全拼",
+            active: s.scheme == 0,
+            spoken: "输入方案：\(s.scheme == 0 ? "小鹤双拼" : "全拼")"
+        )
+        layoutTile.configure(
+            icon: s.pinyinGrid ? "square.grid.3x3" : "keyboard",
+            eyebrow: "布局",
+            value: s.pinyinGrid ? "九宫格" : "全键盘",
+            active: s.pinyinGrid,
+            spoken: "键盘布局：\(s.pinyinGrid ? "九宫格" : "全键盘")"
+        )
+        let lightIcon: String
         let lightTitle: String
         if s.style == 1 {
-            lightTitle = "简洁模式"
+            lightIcon = "sparkles"
+            lightTitle = "简洁"
         } else {
-            lightTitle = ["跟随系统", "暖瓷日光", "深曜夜灯"][s.appearance]
+            lightIcon = ["circle.lefthalf.filled", "sun.max.fill", "moon.stars.fill"][s.appearance]
+            lightTitle = ["自动", "日光", "夜灯"][s.appearance]
         }
-        lightTile.configure(eyebrow: "台灯光效", value: lightTitle, active: s.style == 0)
+        lightTile.configure(
+            icon: lightIcon,
+            eyebrow: "光效",
+            value: lightTitle,
+            active: s.style == 0,
+            spoken: "台灯光效：\(lightTitle)"
+        )
 
         let prof = HapticProfile(rawValue: s.hapticProfile) ?? .crisp
         hapticTile.configure(
-            eyebrow: "按键震动",
-            value: feedbackAvailable ? (s.feedback ? prof.deckValue : "已关闭") : "需完全访问",
+            icon: "iphone.radiowaves.left.and.right",
+            eyebrow: "震动",
+            value: feedbackAvailable ? (s.feedback ? prof.title : "关闭") : "需访问",
             active: feedbackAvailable && s.feedback,
-            locked: !feedbackAvailable
+            locked: !feedbackAvailable,
+            spoken: "按键震动：\(feedbackAvailable ? (s.feedback ? prof.deckValue : "已关闭") : "需允许完全访问")"
         )
         soundTile.configure(
-            eyebrow: "按键声效",
-            value: feedbackAvailable ? (s.keySound ? "原声开启" : "已静音") : "需完全访问",
+            icon: (feedbackAvailable && s.keySound) ? "speaker.wave.2.fill" : "speaker.slash",
+            eyebrow: "声效",
+            value: feedbackAvailable ? (s.keySound ? "原声" : "静音") : "需访问",
             active: feedbackAvailable && s.keySound,
-            locked: !feedbackAvailable
+            locked: !feedbackAvailable,
+            spoken: "按键声效：\(feedbackAvailable ? (s.keySound ? "原声开启" : "已静音") : "需允许完全访问")"
         )
-        correctTile.configure(eyebrow: "触点纠错", value: s.autocorrect ? "智能开启" : "已关闭", active: s.autocorrect)
+        correctTile.configure(
+            icon: "wand.and.stars",
+            eyebrow: "纠错",
+            value: s.autocorrect ? "开启" : "关闭",
+            active: s.autocorrect,
+            spoken: "触点纠错：\(s.autocorrect ? "智能开启" : "已关闭")"
+        )
 
         numberControl.selectedSegmentIndex = s.numberPad ? 1 : 0
         englishSwitch.isOn = s.english
@@ -2094,7 +2241,7 @@ final class SettingsPanelView: UIView {
         styleControl.selectedSegmentIndex = s.style
         heightControl.selectedSegmentIndex = KeyboardHeightPreset.clamped(s.keyboardHeight).rawValue
         refreshGuidePill()
-        refreshHeightPill()
+        refreshHeightRail()
         setNeedsLayout()
     }
 
@@ -2215,9 +2362,15 @@ final class SettingsPanelView: UIView {
         if canProvideHaptic { UISelectionFeedbackGenerator().selectionChanged() }
         let s = KeyboardSettings.shared
         s.english = englishSwitch.isOn
-        s.appearance = appearance.selectedSegmentIndex
-        s.style = styleControl.selectedSegmentIndex
-        s.keyboardHeight = KeyboardHeightPreset.clamped(heightControl.selectedSegmentIndex).rawValue
+        if appearance.selectedSegmentIndex >= 0 {
+            s.appearance = appearance.selectedSegmentIndex
+        }
+        if styleControl.selectedSegmentIndex >= 0 {
+            s.style = styleControl.selectedSegmentIndex
+        }
+        if heightControl.selectedSegmentIndex >= 0 {
+            s.keyboardHeight = KeyboardHeightPreset.clamped(heightControl.selectedSegmentIndex).rawValue
+        }
         load()
         onChange?()
     }
@@ -2262,9 +2415,12 @@ final class SettingsPanelView: UIView {
     func tapHapticTileForTests() { toggleHaptic() }
     var maxTileHeightForTests: CGFloat { hardwareTiles.map(\.frame.height).max() ?? 0 }
     var utilityRowNonOverlappingForTests: Bool {
-        !guidePill.frame.intersects(heightPill.frame)
-            && !heightPill.frame.intersects(moreButton.frame)
-            && !offlineStatusLabel.frame.intersects(heightPill.frame)
+        let guideOk = guidePill.isHidden || (!guidePill.frame.intersects(heightRail.frame) && guidePill.frame.maxX <= utilityRow.bounds.width + 0.5)
+        let offlineOk = offlineStatusLabel.isHidden || (!offlineStatusLabel.frame.intersects(heightRail.frame) && offlineStatusLabel.frame.maxX <= utilityRow.bounds.width + 0.5)
+        return guideOk && offlineOk
+            && !heightRail.frame.intersects(moreButton.frame)
+            && heightRail.frame.minX >= 0
+            && moreButton.frame.maxX <= utilityRow.bounds.width + 0.5
     }
     var bannerNonOverlappingForTests: Bool {
         accessBanner.isHidden || (!accessBanner.frame.intersects(utilityRow.frame) && !accessBanner.frame.intersects(hapticTile.frame))
@@ -2313,29 +2469,22 @@ final class SettingsPanelView: UIView {
         }
         utilityRow.frame = CGRect(x: padX, y: min(nextY, max(nextY, bodyFrame.height - utilH - padBot)), width: w - padX * 2, height: utilH)
         let uw = utilityRow.bounds.width
-        let moreW = min(106, max(84, (uw * 0.28).rounded()))
-        let heightW = min(104, max(84, (uw * 0.28).rounded()))
+        let gapUtil: CGFloat = 6
+        let moreW = min(74, max(62, (uw * 0.18).rounded()))
         moreButton.frame = CGRect(x: uw - moreW, y: 0, width: moreW, height: utilH)
-        heightPill.frame = CGRect(x: uw - moreW - 6 - heightW, y: 0, width: heightW, height: utilH)
-        let leftSpace = max(68, uw - moreW - heightW - 12)
-        let guideW = min(142, max(84, leftSpace))
-        guidePill.frame = CGRect(x: 0, y: 0, width: guideW, height: utilH)
-        let barW: CGFloat = 2.2
-        let barGap: CGFloat = 2.0
-        let startX: CGFloat = 8
-        let barHeights: [CGFloat] = [5, 7.5, 10, 12.5]
-        let bottomY = (utilH + 12.5) / 2
-        let labelX = startX + CGFloat(barHeights.count) * barW + CGFloat(max(0, barHeights.count - 1)) * barGap + 4
-        heightLabel.frame = CGRect(x: labelX, y: 0, width: max(20, heightW - labelX - 6), height: utilH)
+        let showGuide = !guidePill.isHidden
+        let leftW: CGFloat = showGuide ? min(98, max(82, (uw * 0.24).rounded())) : min(56, max(44, (uw * 0.14).rounded()))
+        let railMax = max(120, uw - leftW - moreW - gapUtil * 2)
+        let railW = min(204, max(min(railMax, 148), floor((uw * 0.48).rounded())))
+        let railX = uw - moreW - gapUtil - railW
+        heightRail.frame = CGRect(x: railX, y: 0, width: railW, height: utilH)
+        let actualLeftW = max(40, railX - gapUtil)
+        guidePill.frame = CGRect(x: 0, y: 0, width: min(leftW, actualLeftW), height: utilH)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        guideLed.frame = CGRect(x: 10, y: (utilH - 4.5) / 2, width: 4.5, height: 4.5)
-        for (i, bar) in heightBars.enumerated() where i < barHeights.count {
-            let bh = barHeights[i]
-            bar.frame = CGRect(x: startX + CGFloat(i) * (barW + barGap), y: bottomY - bh, width: barW, height: bh)
-        }
+        guideLed.frame = CGRect(x: 9, y: (utilH - 4.5) / 2, width: 4.5, height: 4.5)
         CATransaction.commit()
-        offlineStatusLabel.frame = CGRect(x: 2, y: 0, width: max(64, heightPill.frame.minX - 8), height: utilH)
+        offlineStatusLabel.frame = CGRect(x: 2, y: 0, width: min(leftW, actualLeftW), height: utilH)
 
         // Layout secondary `moreScroll`
         let size = stack.systemLayoutSizeFitting(
@@ -2365,7 +2514,8 @@ final class KeyboardSettings {
     /// been used before (it stored touch habits or any setting) keeps 小鹤双拼, written down now so it stays.
     private init() {
         let standard = UserDefaults.standard
-        if let group = UserDefaults(suiteName: Self.appGroupID) {
+        if FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: Self.appGroupID) != nil,
+           let group = UserDefaults(suiteName: Self.appGroupID) {
             if !group.bool(forKey: "migratedToAppGroup") {
                 let keys = ["scheme", "autocorrect", "xiaoheGuide", "english", "pinyinGrid", "numberPad", "style", "appearance", "keyboardHeight", "feedback", "hapticProfile", "keySound", "keyOffsets", "offsetX", "offsetY"]
                 for k in keys where group.object(forKey: k) == nil {
@@ -2383,6 +2533,8 @@ final class KeyboardSettings {
             d.set(usedBefore ? 0 : 1, forKey: "scheme")
         }
     }
+
+    var usesStandardDefaultsForTests: Bool { d === UserDefaults.standard }
 
     private func notify() {
         NotificationCenter.default.post(name: .mostoSettingsDidChange, object: nil)
@@ -2432,7 +2584,7 @@ final class KeyboardSettings {
     /// Keyboard elevation tier: 0 紧凑 / 1 标准 (default) / 2 舒展 / 3 宽大.
     var keyboardHeight: Int {
         get {
-            guard let raw = d.object(forKey: "keyboardHeight") as? Int else {
+            guard let raw = (d.object(forKey: "keyboardHeight") as? NSNumber)?.intValue else {
                 return KeyboardHeightPreset.standard.rawValue
             }
             return KeyboardHeightPreset.clamped(raw).rawValue

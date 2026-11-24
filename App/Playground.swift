@@ -12,6 +12,7 @@ private let keyboardExtensionBundle: Bundle? = {
 /// Interactive showcase scenario shown in the Studio's 手感体验 bar (and verified by `KeyboardTests`).
 struct Lesson {
     let title: String
+    let shortTitle: String
     let line: String
     let keys: String
     var slip: Int? = nil
@@ -31,24 +32,24 @@ struct Lesson {
 }
 
 let lessons: [Lesson] = [
-    Lesson(title: "打出“你好”", line: "轻敲下面字母，按空格上屏。", keys: "nihao␣",
+    Lesson(title: "打出“你好”", shortTitle: "你好", line: "轻敲下面字母，按空格上屏。", keys: "nihao␣",
            xiaoheLine: "小鹤双拼每个字两键（ni + hc），按空格上屏。", xiaoheKeys: "nihc␣",
            check: { t, _ in t.contains("你好") }),
-    Lesson(title: "按错一个键", line: "故意把 e 按成旁边的 w：留意首选微光提示，空格依然读对。", keys: "jintianhenrw␣", slip: 11,
+    Lesson(title: "按错一个键", shortTitle: "错键纠错", line: "故意把 e 按成旁边的 w：留意首选微光提示，空格依然读对。", keys: "jintianhenrw␣", slip: 11,
            xiaoheLine: "故意把 qi 按成旁边的 qo：留意首选微光提示，空格依然读对。", xiaoheKeys: "jbtmtmqohfhc␣", xiaoheSlip: 7,
            check: { t, _ in t.contains("今天很热") || t.contains("今天天气很好") }),
-    Lesson(title: "长句漏按一个键", line: "tian 少按一个 n，整句自动补全并连读。", keys: "jintiantiaqihenhao␣", slip: 10, missing: "n",
+    Lesson(title: "长句漏按一个键", shortTitle: "漏键补全", line: "tian 少按一个 n，整句自动补全并连读。", keys: "jintiantiaqihenhao␣", slip: 10, missing: "n",
            xiaoheLine: "hc 少按一个 c，整句自动补全并连读。", xiaoheKeys: "jbtmtmqihfh␣", xiaoheSlip: 11, xiaoheMissing: "c",
            check: { t, _ in t.contains("今天天气很好") }),
-    Lesson(title: "撤回纠错", line: "点候选栏左侧 ↩，刚才输入的原始字母原样回来。", keys: "↩",
+    Lesson(title: "撤回纠错", shortTitle: "撤回纠错", line: "点候选栏左侧 ↩，刚才输入的原始字母原样回来。", keys: "↩",
            check: { _, s in s.composing && (s.keys.contains("tiaqi") || s.keys.contains("qohf") || s.keys.contains("tmqi")) }),
-    Lesson(title: "清空正在打的拼音", line: "从删除键向左轻划清空拼音，再点 ↩ 恢复。", keys: "⌫↩",
+    Lesson(title: "清空正在打的拼音", shortTitle: "左划清空", line: "从删除键向左轻划清空拼音，再点 ↩ 恢复。", keys: "⌫↩",
            check: { _, s in !s.composing && s.restorable != nil },
            then: { s, keys in s.composing && keys != nil && s.keys == keys }),
-    Lesson(title: "中英混输", line: "中英文夹杂直接打，无需手动切换语言。", keys: "woyongiphonedazi␣",
+    Lesson(title: "中英混输", shortTitle: "中英混输", line: "中英文夹杂直接打，无需手动切换语言。", keys: "woyongiphonedazi␣",
            xiaoheKeys: "woysiphonedazi␣",
            check: { t, _ in t.contains("iPhone打字") }),
-    Lesson(title: "只打声母", line: "常用词只敲声母一样准（全拼）。", keys: "bzd␣", requiresQuanpin: true,
+    Lesson(title: "只打声母", shortTitle: "只打声母", line: "常用词只敲声母一样准（全拼）。", keys: "bzd␣", requiresQuanpin: true,
            check: { t, _ in t.contains("不知道") }),
 ]
 
@@ -96,6 +97,7 @@ final class PlaygroundModel: ObservableObject {
 
     private var firstKeys: String?
     private var passCount = 0
+    private var isSyncingFromSettings = false
     let host = ObservedTextHost()
     var keyboard: KeyboardViewController?
 
@@ -243,6 +245,7 @@ final class PlaygroundModel: ObservableObject {
     var preferredKeyboardHeight: CGFloat { heightPreset.totalHeight(landscape: false) }
 
     func applyLayout() {
+        guard !isSyncingFromSettings else { return }
         let s = KeyboardSettings.shared
         let prevGrid = s.pinyinGrid
         s.scheme = layout == 1 ? 0 : 1
@@ -260,14 +263,27 @@ final class PlaygroundModel: ObservableObject {
         keyboard?.applySettings()
     }
 
-    /// Refreshes settings from `KeyboardSettings.shared` after an external toggle (such as VolumeCheckSheet).
-    func syncKeyboardSettings() {
+    /// Refreshes settings from `KeyboardSettings.shared` after an external or embedded-console toggle.
+    func syncKeyboardSettings(reapplyKeyboard: Bool = true) {
         let s = KeyboardSettings.shared
+        isSyncingFromSettings = true
+        defer { isSyncingFromSettings = false }
+        let targetLayout = s.pinyinGrid ? 2 : (s.scheme == 0 ? 1 : 0)
+        if layout != targetLayout { layout = targetLayout }
+        if guide != s.xiaoheGuide { guide = s.xiaoheGuide }
+        if numberPad != s.numberPad { numberPad = s.numberPad }
+        if style != s.style { style = s.style }
+        if appearance != s.appearance { appearance = s.appearance }
+        if autocorrect != s.autocorrect { autocorrect = s.autocorrect }
+        if english != s.english { english = s.english }
         if keySound != s.keySound { keySound = s.keySound }
         if feedback != s.feedback { feedback = s.feedback }
         if hapticProfile != s.hapticProfile { hapticProfile = s.hapticProfile }
-        if keyboardHeight != s.keyboardHeight { keyboardHeight = s.keyboardHeight }
-        keyboard?.applySettings()
+        let clampedH = KeyboardHeightPreset.clamped(s.keyboardHeight).rawValue
+        if keyboardHeight != clampedH { keyboardHeight = clampedH }
+        if reapplyKeyboard {
+            keyboard?.applySettings()
+        }
     }
 
     func syncActiveFixes() {
@@ -385,7 +401,12 @@ struct KeyboardHostView: UIViewControllerRepresentable {
         vc.onCandidatesUpdated = { [weak model] in model?.syncActiveFixes() }
         vc.onHeightChanged = { [weak model] _ in
             DispatchQueue.main.async {
-                model?.syncKeyboardSettings()
+                model?.syncKeyboardSettings(reapplyKeyboard: false)
+            }
+        }
+        vc.onSettingsApplied = { [weak model] in
+            DispatchQueue.main.async {
+                model?.syncKeyboardSettings(reapplyKeyboard: false)
             }
         }
         model.keyboard = vc

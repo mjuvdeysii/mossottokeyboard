@@ -236,6 +236,10 @@ enum SnapshotRenderer {
                         panel.demoScrollToFeedback()
                     } else {
                         panel.setNote("词库与学习记录只存在本机，键盘全程离线工作。")
+                        if shot.panel == "settings_full" {
+                            panel.setDiagnostics("本次按键 128 次 · 内存 18 MB · 引擎就绪 14 ms · 震动：开")
+                            panel.toggleMoreForTests()
+                        }
                     }
                 }
                 root.setNeedsLayout(); root.layoutIfNeeded()
