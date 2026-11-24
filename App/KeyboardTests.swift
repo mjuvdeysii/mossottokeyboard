@@ -152,6 +152,8 @@ enum KeyboardTests {
         r73GridPreeditClearCueAndAppCoverage(window)
         r74HeightAntiBounceStripSpeedAndTunerCraft(window)
         r75DeleteClutchHudAndIdleGuard(window)
+        r76CursorTelemetryHudAndBracketCraft(window)
+        r77KeycapBevelAndFeedbackParity(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -3258,6 +3260,121 @@ enum KeyboardTests {
         log(armedSingle && idleHiddenOnSwipe && restoredChip,
             "r75.Single-key ClearSwipe suppresses idle pills during armed preview and restores via ↩",
             "armed=\(armedSingle) idleHidden=\(idleHiddenOnSwipe) chip=\(vcBar.undoTextForTests ?? "nil")")
+    }
+
+    // MARK: - R76: Cursor trackpad telemetry HUD & CJK bracket optical balance
+
+    static func r76CursorTelemetryHudAndBracketCraft(_ window: UIWindow) {
+        // 1. Static CandidateBarView renders non-overlapping cursor HUD (mode + step readout), boundary clamp, and clean restore
+        let bar = CandidateBarView(frame: CGRect(x: 0, y: 0, width: 375, height: 42))
+        bar.showsMosto = true
+        bar.setCursorTelemetry(active: true, delta: 6, endStop: 0, crossedNewline: false)
+        bar.layoutIfNeeded()
+        let hudShown = bar.cursorTelemetryShownForTests
+            && !bar.cursorTelemetryBoundaryForTests
+            && bar.cursorTelemetryTextForTests == "右移 6 字"
+            && bar.cursorModePillTextForTests == "游标微调"
+        let noOverlap = !bar.deletePreviewPillFrameForTests.intersects(bar.clearArmedPillFrameForTests)
+            && bar.deletePreviewPillFrameForTests.maxX < bar.clearArmedPillFrameForTests.minX
+        let clearFlagSeparated = !bar.clearArmedCueShownForTests && !bar.deleteClutchCueShownForTests && bar.mosto.isHidden
+        bar.setCursorTelemetry(active: true, delta: -4, endStop: -1, crossedNewline: true)
+        bar.layoutIfNeeded()
+        let boundaryShown = bar.cursorTelemetryBoundaryForTests && bar.cursorTelemetryTextForTests == "已到文首"
+        bar.setCursorTelemetry(active: false, delta: 0, endStop: 0, crossedNewline: false)
+        bar.layoutIfNeeded()
+        let cleanRestore = !bar.cursorTelemetryShownForTests && !bar.deletePreviewShownForTests && !bar.mosto.isHidden
+        log(hudShown && noOverlap && clearFlagSeparated && boundaryShown && cleanRestore,
+            "r76.CandidateBarView renders non-overlapping cursor scrub HUD, boundary stop, and cleanly restores idle state",
+            "hudShown=\(hudShown) noOverlap=\(noOverlap) boundary=\(boundaryShown) restore=\(cleanRestore)")
+
+        // 2. Live KeyboardViewController spacebar trackpad drag triggers cursor HUD, hides idle pills & gear, and restores on release
+        guard let (vc, h) = makeKeyboard(scheme: 0, in: window) else {
+            log(false, "r76.setup", "engine did not load")
+            return
+        }
+        let kb = vc.keyboardViewForTests
+        let vcBar = vc.candidateBarForTests
+        guard let spaceCap = kb.keyRectsForTests(.space)?.cap else {
+            log(false, "r76.setup", "no space key")
+            return
+        }
+        reset(vc, h)
+        h.insertText("今天去摸索小鹤双拼吧")
+        vc.textDidChange(nil)
+        drain(0.01)
+        let sc = center(spaceCap)
+        let t0: CFTimeInterval = 400
+        kb.feedForTests([TouchSample(id: 2, phase: .began, point: sc, time: t0)])
+        kb.feedForTests([TouchSample(id: 2, phase: .moved, point: CGPoint(x: sc.x - 36, y: sc.y), time: t0 + 0.38)])
+        let liveActive = kb.trackpadRulerVisibleForTests
+            && vcBar.cursorTelemetryShownForTests
+            && !vcBar.expandShownForTests
+            && vc.plainLightHiddenForTests
+            && vc.mostoHintHiddenForTests
+        kb.feedForTests([TouchSample(id: 2, phase: .moved, point: CGPoint(x: sc.x - 160, y: sc.y), time: t0 + 0.55)])
+        let liveHitStart = vcBar.cursorTelemetryBoundaryForTests && vcBar.cursorTelemetryTextForTests == "已到文首"
+        kb.feedForTests([TouchSample(id: 2, phase: .ended, point: CGPoint(x: sc.x - 160, y: sc.y), time: t0 + 0.60)])
+        drain(0.01)
+        let liveRestored = !kb.trackpadRulerVisibleForTests
+            && !vcBar.cursorTelemetryShownForTests
+            && vcBar.expandShownForTests
+            && !vc.plainLightHiddenForTests
+            && !vc.mostoHintHiddenForTests
+        log(liveActive && liveHitStart && liveRestored,
+            "r76.Live spacebar trackpad scrubbing drives cursor telemetry HUD, suppresses idle chrome, and restores on finger up",
+            "active=\(liveActive) hitStart=\(liveHitStart) restored=\(liveRestored)")
+
+        // 3. CJK heavy brackets 【 】 step down optically while keeping PingFangSC-Regular and extra top-right hint clearance
+        let kv = KeyboardView(spatial: SpatialModel.standard(width: 402))
+        kv.frame = CGRect(x: 0, y: 0, width: 402, height: 212)
+        kv.configure(LayoutContext(page: .symbols, chinese: true, showGlobe: false, returnLabel: nil,
+                                   returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true))
+        kv.layoutIfNeeded()
+        let lb = kv.keyOpticalMetricsForTests(.char("【"))
+        let rb = kv.keyOpticalMetricsForTests(.char("】"))
+        let leftOk = (lb?.fontName.contains("PingFangSC-Regular") == true)
+            && (lb?.fontSize ?? 99) <= 21.0
+            && (lb?.labelMinY ?? -99) > 1.0
+            && (lb?.hintFrame.width ?? 0) >= 10
+        let rightOk = (rb?.fontName.contains("PingFangSC-Regular") == true)
+            && (rb?.fontSize ?? 99) <= 21.0
+            && (rb?.labelMinY ?? -99) > 1.0
+        log(leftOk && rightOk,
+            "r76.KeyView optically sizes 【】 brackets (<=21pt PingFangSC-Regular) with extra corner hint clearance",
+            "left=(\(lb?.fontSize ?? -1), minY=\(lb?.labelMinY ?? -1)) right=(\(rb?.fontSize ?? -1), minY=\(rb?.labelMinY ?? -1))")
+    }
+
+    // MARK: - R77: KeyView optical bevel catchlight & Emoji/Bench tactile parity
+
+    static func r77KeycapBevelAndFeedbackParity(_ window: UIWindow) {
+        let kv = KeyboardView(spatial: SpatialModel.standard(width: 402))
+        kv.frame = CGRect(x: 0, y: 0, width: 402, height: 212)
+        kv.configure(LayoutContext(page: .letters, chinese: true, showGlobe: false, returnLabel: nil,
+                                   returnIsAccent: true, shifted: false, capsLock: false, keyBorders: true))
+        kv.layoutIfNeeded()
+
+        let aKey = kv.keyViewForTests(.char("a"))
+        let restBevel = aKey?.hasTopHighlightForTests == true
+        aKey?.pressed = true
+        let pressedHidesBevel = aKey?.hasTopHighlightForTests == false
+        aKey?.pressed = false
+        let restoredBevel = aKey?.hasTopHighlightForTests == true
+        aKey?.blanked = true
+        let blankedHidesBevel = aKey?.hasTopHighlightForTests == false
+        aKey?.blanked = false
+
+        let emoji = EmojiPanelView(frame: CGRect(x: 0, y: 0, width: 390, height: 260))
+        emoji.setChinese(true)
+        emoji.load(kaomoji: false)
+        emoji.layoutIfNeeded()
+        var feedbackEvents: [FeedbackEvent] = []
+        emoji.onFeedback = { feedbackEvents.append($0) }
+        emoji.perform(#selector(EmojiPanelView.kaomojiShortcutTappedForTests))
+        let firedTabFeedback = feedbackEvents.contains(.candidate)
+
+        log(restBevel && pressedHidesBevel && restoredBevel && blankedHidesBevel && firedTabFeedback,
+            "r77.KeyView top-edge optical bevel responds to press/blanked and EmojiPanelView triggers tactile feedback",
+            "rest=\(restBevel) pressed=\(pressedHidesBevel) restored=\(restoredBevel) blanked=\(blankedHidesBevel) tabFeedback=\(firedTabFeedback)")
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

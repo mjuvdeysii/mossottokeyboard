@@ -81,6 +81,10 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     private var clearSwipeDimContent = true
     private var deleteClutchText: String = ""
     private var deleteClutchCount: Int = 0
+    private var cursorScrubActive = false
+    private var cursorScrubDelta = 0
+    private var cursorScrubEndStop = 0
+    private var cursorScrubCrossedNewline = false
     /// What each pooled label shows now (so a label is only redrawn when it changes).
     private struct PoolSlotKey: Equatable {
         let text: String
@@ -535,6 +539,8 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
 
     var isDeleteActionActive: Bool { clearSwipeProgress > 0.005 || clearSwipeArmed }
     var isDeleteClutchEngaged: Bool { clearSwipeArmed && !clearSwipeDimContent }
+    var isCursorScrubActive: Bool { cursorScrubActive }
+    var isTelemetryOverlayActive: Bool { isDeleteActionActive || cursorScrubActive }
 
     /// Continuous delete-left swipe or held-delete clutch progress (`0...1`) drives the strip's bottom warm-amber filament
     /// and right/left ceramic HUD pills synchronously.
@@ -548,7 +554,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         deleteClutchCount = (armed && !dimContent) ? deletedCount : 0
         let a: CGFloat = dimContent ? (armed ? 0.35 : (p > 0.01 ? (1.0 - p * 0.40) : 1.0)) : 1.0
         stripBox.alpha = a
-        expandButton.alpha = armed ? 0 : a
+        expandButton.alpha = (armed || cursorScrubActive) ? 0 : a
         preeditDock.alpha = a
         setNeedsLayout()
         layoutIfNeeded()
@@ -560,24 +566,69 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         setClearProgress(on ? 1 : 0, armed: on)
     }
 
+    /// Spacebar cursor trackpad telemetry drives the top bar ceramic HUD (left mode tag + right step/boundary readout
+    /// plus bottom tracking rail) while hiding idle pills and expand affordances without layout jumps.
+    func setCursorTelemetry(active: Bool, delta: Int, endStop: Int, crossedNewline: Bool) {
+        let nextDelta = active ? delta : 0
+        let nextStop = active ? endStop : 0
+        let nextNewline = active ? crossedNewline : false
+        if cursorScrubActive == active,
+           cursorScrubDelta == nextDelta,
+           cursorScrubEndStop == nextStop,
+           cursorScrubCrossedNewline == nextNewline {
+            return
+        }
+        cursorScrubActive = active
+        cursorScrubDelta = nextDelta
+        cursorScrubEndStop = nextStop
+        cursorScrubCrossedNewline = nextNewline
+        if !clearSwipeArmed && clearSwipeProgress <= 0.01 {
+            expandButton.alpha = active ? 0 : 1
+        }
+        setNeedsLayout()
+        layoutIfNeeded()
+    }
+
     private func layoutClearFilament() {
         let clutchEngaged = clearSwipeArmed && !clearSwipeDimContent
-        let showCue = clearSwipeArmed && forgetOverlay == nil && bounds.width > 120
+        let showClearOrClutch = clearSwipeArmed && forgetOverlay == nil && bounds.width > 120
+        let showCursorHud = !showClearOrClutch && cursorScrubActive && forgetOverlay == nil && bounds.width > 120
+        let showCue = showClearOrClutch || showCursorHud
         clearArmedPill.isHidden = !showCue
         if showCue {
             let cueText: String
             let pillFont: UIFont
-            if clutchEngaged {
-                cueText = deleteClutchCount > 0 ? "逐词删 · \(deleteClutchCount)字" : "逐词删"
-                pillFont = UIFont.monospacedDigitSystemFont(ofSize: 11.5, weight: .semibold)
+            let pillW: CGFloat
+            if showClearOrClutch {
+                if clutchEngaged {
+                    cueText = deleteClutchCount > 0 ? "逐词删 · \(deleteClutchCount)字" : "逐词删"
+                    pillFont = UIFont.monospacedDigitSystemFont(ofSize: 11.5, weight: .semibold)
+                } else {
+                    cueText = "松手清空"
+                    pillFont = Theme.font(11.5, .semibold)
+                }
+                clearArmedPill.text = cueText
+                clearArmedPill.font = pillFont
+                let textW = ceil((cueText as NSString).size(withAttributes: [.font: pillFont]).width)
+                pillW = clutchEngaged ? min(116, max(58, textW + 18)) : 66
             } else {
-                cueText = "松手清空"
-                pillFont = Theme.font(11.5, .semibold)
+                if cursorScrubEndStop < 0 {
+                    cueText = "已到文首"
+                } else if cursorScrubEndStop > 0 {
+                    cueText = "已到文末"
+                } else if cursorScrubDelta < 0 {
+                    cueText = "左移 \(-cursorScrubDelta) 字"
+                } else if cursorScrubDelta > 0 {
+                    cueText = "右移 \(cursorScrubDelta) 字"
+                } else {
+                    cueText = "滑移定位"
+                }
+                pillFont = UIFont.monospacedDigitSystemFont(ofSize: 11.5, weight: .semibold)
+                clearArmedPill.text = cueText
+                clearArmedPill.font = pillFont
+                let textW = ceil((cueText as NSString).size(withAttributes: [.font: pillFont]).width)
+                pillW = min(116, max(62, textW + 18))
             }
-            clearArmedPill.text = cueText
-            clearArmedPill.font = pillFont
-            let textW = ceil((cueText as NSString).size(withAttributes: [.font: pillFont]).width)
-            let pillW: CGFloat = clutchEngaged ? min(116, max(58, textW + 18)) : 66
             let pillH = min(22, max(18, bounds.height - 16))
             clearArmedPill.frame = CGRect(
                 x: bounds.width - 10 - pillW,
@@ -586,14 +637,19 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
                 height: pillH
             )
             clearArmedPill.layer.cornerRadius = pillH / 2
+            let useAmberHighlight = showClearOrClutch || cursorScrubEndStop != 0
             if Theme.plain {
-                clearArmedPill.backgroundColor = Theme.dyn(
-                    UIColor(red: 0.94, green: 0.90, blue: 0.97, alpha: 1),
-                    UIColor(red: 0.22, green: 0.18, blue: 0.28, alpha: 1)
-                )
-                clearArmedPill.textColor = Theme.correctedMark
-                clearArmedPill.layer.borderColor = Theme.correctedMark.withAlphaComponent(0.45).resolvedColor(with: traitCollection).cgColor
-            } else {
+                clearArmedPill.backgroundColor = useAmberHighlight
+                    ? Theme.dyn(
+                        UIColor(red: 0.94, green: 0.90, blue: 0.97, alpha: 1),
+                        UIColor(red: 0.22, green: 0.18, blue: 0.28, alpha: 1)
+                    )
+                    : Theme.preeditPillBg
+                clearArmedPill.textColor = useAmberHighlight ? Theme.correctedMark : Theme.keyText
+                clearArmedPill.layer.borderColor = (useAmberHighlight ? Theme.correctedMark : Theme.preeditPillBorder)
+                    .withAlphaComponent(useAmberHighlight ? 0.45 : 1.0)
+                    .resolvedColor(with: traitCollection).cgColor
+            } else if useAmberHighlight {
                 let goldAccent = Theme.dyn(Theme.gold, Theme.goldGlow)
                 clearArmedPill.backgroundColor = Theme.dyn(
                     UIColor(red: 0.96, green: 0.91, blue: 0.78, alpha: 1),
@@ -604,21 +660,36 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
                     Theme.goldGlow
                 )
                 clearArmedPill.layer.borderColor = goldAccent.withAlphaComponent(0.55).resolvedColor(with: traitCollection).cgColor
+            } else {
+                clearArmedPill.backgroundColor = Theme.dyn(
+                    UIColor(red: 0.92, green: 0.95, blue: 0.91, alpha: 1),
+                    UIColor(red: 0.16, green: 0.21, blue: 0.17, alpha: 1)
+                )
+                clearArmedPill.textColor = Theme.keyText
+                clearArmedPill.layer.borderColor = Theme.statusLedActive.withAlphaComponent(0.55).resolvedColor(with: traitCollection).cgColor
             }
             bringSubviewToFront(clearArmedPill)
         }
 
         let maxPreviewW = showCue ? (clearArmedPill.frame.minX - 18) : 0
-        let showPreview = showCue && clutchEngaged && maxPreviewW >= 68
+        let showPreview = showCue && (clutchEngaged || showCursorHud) && maxPreviewW >= 68
         deletePreviewPill.isHidden = !showPreview
         if showPreview {
             let previewFont = Theme.font(11.5, .medium)
             let previewString: String
-            if !deleteClutchText.isEmpty {
-                let snippet = Self.abbreviated(deleteClutchText, to: 10)
-                previewString = maxPreviewW >= 172 ? "已删「\(snippet)」· 松手撤回" : "已删「\(snippet)」"
+            if showClearOrClutch {
+                if !deleteClutchText.isEmpty {
+                    let snippet = Self.abbreviated(deleteClutchText, to: 10)
+                    previewString = maxPreviewW >= 172 ? "已删「\(snippet)」· 松手撤回" : "已删「\(snippet)」"
+                } else {
+                    previewString = "已进入逐词快删"
+                }
             } else {
-                previewString = "已进入逐词快删"
+                if cursorScrubCrossedNewline {
+                    previewString = maxPreviewW >= 120 ? "游标微调 · 换行" : "游标 · 换行"
+                } else {
+                    previewString = "游标微调"
+                }
             }
             deletePreviewPill.text = previewString
             deletePreviewPill.font = previewFont
@@ -633,26 +704,46 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             )
             deletePreviewPill.layer.cornerRadius = pillH / 2
             deletePreviewPill.backgroundColor = Theme.preeditPillBg
-            deletePreviewPill.textColor = Theme.keyText
+            deletePreviewPill.textColor = showCursorHud ? Theme.secondaryText : Theme.keyText
             deletePreviewPill.layer.borderColor = Theme.preeditPillBorder.resolvedColor(with: traitCollection).cgColor
             bringSubviewToFront(deletePreviewPill)
         }
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        if clearSwipeProgress <= 0.005 || bounds.width <= 20 {
+        if clearSwipeProgress > 0.005, bounds.width > 20 {
+            clearFilament.isHidden = false
+            let span = max(0, bounds.width - 20)
+            let w = span * clearSwipeProgress
+            let h: CGFloat = clearSwipeArmed ? 2.5 : 2.0
+            clearFilament.frame = CGRect(x: bounds.width - 10 - w, y: bounds.height - h, width: w, height: h)
+            let baseColor = Theme.plain ? Theme.correctedMark : Theme.dyn(Theme.gold, Theme.goldGlow)
+            clearFilament.backgroundColor = baseColor.resolvedColor(with: traitCollection)
+                .withAlphaComponent(clearSwipeArmed ? 1.0 : (0.55 + 0.45 * clearSwipeProgress)).cgColor
+        } else if showCursorHud, bounds.width > 40 {
+            clearFilament.isHidden = false
+            let span = max(0, bounds.width - 20)
+            let indW = min(44, max(24, span * 0.14))
+            let indX: CGFloat
+            if cursorScrubEndStop < 0 {
+                indX = 10
+            } else if cursorScrubEndStop > 0 {
+                indX = bounds.width - 10 - indW
+            } else {
+                let ratio = max(-1.0, min(1.0, CGFloat(cursorScrubDelta) / 14.0))
+                indX = bounds.width / 2 + ratio * ((span - indW) / 2) - indW / 2
+            }
+            let h: CGFloat = 2.0
+            clearFilament.frame = CGRect(x: indX, y: bounds.height - h, width: indW, height: h)
+            let clamped = cursorScrubEndStop != 0
+            let railColor: UIColor = clamped
+                ? (Theme.plain ? Theme.correctedMark : Theme.dyn(Theme.gold, Theme.goldGlow))
+                : Theme.statusLedActive
+            clearFilament.backgroundColor = railColor.resolvedColor(with: traitCollection)
+                .withAlphaComponent(clamped ? 0.95 : 0.85).cgColor
+        } else {
             clearFilament.isHidden = true
-            CATransaction.commit()
-            return
         }
-        clearFilament.isHidden = false
-        let span = max(0, bounds.width - 20)
-        let w = span * clearSwipeProgress
-        let h: CGFloat = clearSwipeArmed ? 2.5 : 2.0
-        clearFilament.frame = CGRect(x: bounds.width - 10 - w, y: bounds.height - h, width: w, height: h)
-        let baseColor = Theme.plain ? Theme.correctedMark : Theme.dyn(Theme.gold, Theme.goldGlow)
-        clearFilament.backgroundColor = baseColor.resolvedColor(with: traitCollection)
-            .withAlphaComponent(clearSwipeArmed ? 1.0 : (0.55 + 0.45 * clearSwipeProgress)).cgColor
         CATransaction.commit()
     }
 
@@ -663,13 +754,17 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
 
     var clearPreviewForTests: Bool { stripBox.alpha < 1 }
     var clearFilamentProgressForTests: CGFloat { clearSwipeProgress }
-    var clearArmedCueShownForTests: Bool { !clearArmedPill.isHidden && clearSwipeDimContent }
-    var deleteClutchCueShownForTests: Bool { !clearArmedPill.isHidden && !clearSwipeDimContent }
+    var clearArmedCueShownForTests: Bool { clearSwipeArmed && clearSwipeDimContent && !clearArmedPill.isHidden }
+    var deleteClutchCueShownForTests: Bool { clearSwipeArmed && !clearSwipeDimContent && !clearArmedPill.isHidden }
+    var cursorTelemetryShownForTests: Bool { cursorScrubActive && !clearArmedPill.isHidden }
+    var cursorTelemetryBoundaryForTests: Bool { cursorScrubActive && cursorScrubEndStop != 0 }
+    var cursorTelemetryTextForTests: String? { (cursorScrubActive && !clearArmedPill.isHidden) ? clearArmedPill.text : nil }
     var clearArmedCueTextForTests: String? { clearArmedPill.isHidden ? nil : clearArmedPill.text }
     var clearArmedPillFrameForTests: CGRect { clearArmedPill.frame }
     var deletePreviewShownForTests: Bool { !deletePreviewPill.isHidden }
     var deletePreviewTextForTests: String? { deletePreviewPill.isHidden ? nil : deletePreviewPill.text }
     var deletePreviewPillFrameForTests: CGRect { deletePreviewPill.frame }
+    var cursorModePillTextForTests: String? { (cursorScrubActive && !deletePreviewPill.isHidden) ? deletePreviewPill.text : nil }
     var stripVisibleForTests: Bool { !stripBox.isHidden }
     var clearArmedOpaqueForTests: Bool { (clearArmedPill.backgroundColor?.cgColor.alpha ?? 0) >= 0.99 }
 
@@ -694,7 +789,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             if forgetOverlay != nil {
                 return [forgetConfirmButton, forgetCancelButton].compactMap { $0 }
             }
-            if isDeleteClutchEngaged {
+            if isDeleteClutchEngaged || cursorScrubActive {
                 return [deletePreviewPill, clearArmedPill].filter { !$0.isHidden }
             }
             var out: [Any] = []
@@ -871,9 +966,10 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             layoutClearFilament()
             return
         }
-        undoChip.isHidden = undoText == nil || isDeleteClutchEngaged
-        preeditDock.isHidden = !preeditDockWanted || !undoChip.isHidden || isDeleteClutchEngaged
-        mosto.isHidden = !mostoWanted || isDeleteClutchEngaged
+        let hideChromeForHud = isDeleteClutchEngaged || cursorScrubActive
+        undoChip.isHidden = undoText == nil || hideChromeForHud
+        preeditDock.isHidden = !preeditDockWanted || !undoChip.isHidden || hideChromeForHud
+        mosto.isHidden = !mostoWanted || hideChromeForHud
         // Inset neatly inside the 28pt idle Mosto capsule (zero overflow or clipping mismatch).
         let pillH = min(28, max(24, h - 12))
         let mSize = min(24, pillH - 4)
@@ -937,7 +1033,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         if strip.frame != inner { strip.frame = inner }
         // nothing to show: the strip takes no touches (or when grid is open and live preedit dock replaces duplicate row-1 strip)
         let hideStripForGridDock = gridExpanded && !preeditDock.isHidden && !preeditRaw.isEmpty
-        stripBox.isHidden = (candidates.isEmpty && !typing) || hideStripForGridDock || isDeleteClutchEngaged
+        stripBox.isHidden = (candidates.isEmpty && !typing) || hideStripForGridDock || hideChromeForHud
         layoutCandidates()
     }
 
@@ -1182,7 +1278,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             expandButton.backgroundColor = gridExpanded ? Theme.functionKey.withAlphaComponent(0.45) : .clear
             expandButton.layer.cornerRadius = 14
         }
-        let hideExpand = !((total > viewW + 0.5 && !isPrediction) || gridExpanded || idleGear)
+        let hideExpand = isDeleteClutchEngaged || cursorScrubActive || !((total > viewW + 0.5 && !isPrediction) || gridExpanded || idleGear)
         if expandButton.isHidden != hideExpand { expandButton.isHidden = hideExpand }
         updateFade()
     }
@@ -1596,7 +1692,12 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
             CATransaction.commit()
         }
         override var isHighlighted: Bool {
-            didSet { contentView.backgroundColor = isHighlighted ? Theme.functionKey : baseBackground }
+            didSet {
+                contentView.backgroundColor = isHighlighted ? Theme.functionKey : baseBackground
+                if !UIAccessibility.isReduceMotionEnabled {
+                    contentView.transform = isHighlighted ? CGAffineTransform(scaleX: 0.96, y: 0.96) : .identity
+                }
+            }
         }
     }
 

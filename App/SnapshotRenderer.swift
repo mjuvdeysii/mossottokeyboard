@@ -206,6 +206,7 @@ enum SnapshotRenderer {
                 } else if shot.panel == "cursor" {
                     kb.layoutIfNeeded()
                     kb.demoCursorMode()
+                    bar.setCursorTelemetry(active: true, delta: 6, endStop: 0, crossedNewline: false)
                 } else if shot.panel == "grid" {
                     let grid = CandidateGridView(frame: kb.frame)
                     root.addSubview(grid)

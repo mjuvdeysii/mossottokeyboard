@@ -30,6 +30,18 @@ final class AppNavigation: ObservableObject {
     }
 
     func tryDemo(_ title: String) {
+        switch title {
+        case "四则心算与相对日期":
+            playground.playInspiration(.math)
+            tab = .studio
+            return
+        case "标点上滑副符号":
+            playground.playInspiration(.flickAndMosto)
+            tab = .studio
+            return
+        default:
+            break
+        }
         guard let lesson = demoLessons[title], let i = lessons.firstIndex(where: { $0.title == lesson }) else { return }
         playground.jump(to: i)
         tab = .studio
@@ -358,7 +370,7 @@ struct UnifiedTypingBench: View {
                     }
                 }
 
-                // Balanced 2-row hardware strip (Row 1: engine + guide, Row 2: feel + 4-tier height)
+                // Balanced 2-row hardware strip (Row 1: engine + guide/numberPad, Row 2: core engine toggles + feel + 4-tier height)
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 6) {
                         schemePill(title: "全拼", tag: 0)
@@ -366,10 +378,14 @@ struct UnifiedTypingBench: View {
                         schemePill(title: "九宫格", tag: 2)
                         if model.layout == 1 {
                             benchToggle(title: "键位提示", isOn: $model.guide)
+                        } else if model.layout == 2 {
+                            benchToggle(title: "数字", isOn: $model.numberPad)
                         }
                         Spacer(minLength: 0)
                     }
-                    HStack(spacing: 6) {
+                    HStack(spacing: 5) {
+                        benchToggle(title: "纠错", isOn: $model.autocorrect)
+                        benchToggle(title: "中英", isOn: $model.english)
                         benchToggle(title: "触感", isOn: $model.feedback)
                         benchToggle(title: "声效", isOn: $model.keySound)
                         Spacer(minLength: 4)
@@ -383,15 +399,15 @@ struct UnifiedTypingBench: View {
                                         model.keyboardHeight = tier.rawValue
                                     }
                                 } label: {
-                                    HStack(spacing: 2.5) {
+                                    HStack(spacing: 2) {
                                         RoundedRectangle(cornerRadius: 0.9, style: .continuous)
                                             .fill(active ? Color.white : Color(uiColor: lit ? Theme.statusLedActive : Theme.statusLedMuted))
-                                            .frame(width: 2.5, height: CGFloat(5 + tier.rawValue * 2))
+                                            .frame(width: 2.2, height: CGFloat(5 + tier.rawValue * 2))
                                         Text(tier.shortMark)
-                                            .font(.system(size: 11, weight: active ? .bold : .semibold, design: .rounded))
+                                            .font(.system(size: 10.5, weight: active ? .bold : .semibold, design: .rounded))
                                             .foregroundStyle(active ? Color.white : MossOttoStyle.inkPrimary)
                                     }
-                                    .padding(.horizontal, 7)
+                                    .padding(.horizontal, 5.5)
                                     .padding(.vertical, 4.5)
                                     .background(Capsule().fill(active ? MossOttoStyle.violet : Color.clear))
                                 }
@@ -494,15 +510,16 @@ struct UnifiedTypingBench: View {
             UISelectionFeedbackGenerator().selectionChanged()
             isOn.wrappedValue.toggle()
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: 3.5) {
                 Circle()
                     .fill(isOn.wrappedValue ? MossOttoStyle.moss : MossOttoStyle.inkSecondary.opacity(0.35))
-                    .frame(width: 5.5, height: 5.5)
+                    .frame(width: 5, height: 5)
                 Text(title)
                     .font(.caption2.weight(.semibold))
+                    .lineLimit(1)
                     .foregroundStyle(isOn.wrappedValue ? MossOttoStyle.inkPrimary : MossOttoStyle.inkSecondary)
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, 8)
             .padding(.vertical, 5.5)
             .background(Capsule().fill(MossOttoStyle.surfaceMuted))
         }
@@ -758,7 +775,7 @@ struct HandbookContent: View {
                     }
                     HStack(spacing: 6) {
                         metaChip(icon: "lock.fill", text: "进程隔离 · 不写共享容器")
-                        metaChip(icon: "rectangle.expand.vertical", text: "四档高度即时生效")
+                        elevationMetaChip()
                     }
                 }
                 .accessibilityElement(children: .combine)
@@ -798,7 +815,7 @@ struct HandbookContent: View {
                     handbookRow(
                         icon: "lock.shield",
                         iconColor: MossOttoStyle.moss,
-                        title: "纯离线架构与 15 条红线",
+                        title: "纯离线架构与 16 条红线",
                         subtitle: "0 联网 · 0 剪贴板 · 0 App Group · 45 MB"
                     )
                 }
@@ -842,6 +859,24 @@ struct HandbookContent: View {
                 .font(.system(size: 9.5, weight: .semibold))
                 .foregroundStyle(MossOttoStyle.moss)
             Text(text)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(MossOttoStyle.inkSecondary)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Capsule().fill(MossOttoStyle.surfaceMuted))
+    }
+
+    private func elevationMetaChip() -> some View {
+        HStack(spacing: 5) {
+            HStack(alignment: .bottom, spacing: 1.5) {
+                ForEach(0..<4, id: \.self) { step in
+                    RoundedRectangle(cornerRadius: 0.75, style: .continuous)
+                        .fill(MossOttoStyle.moss.opacity(0.45 + Double(step) * 0.18))
+                        .frame(width: 2.2, height: CGFloat(4.5 + Double(step) * 2.0))
+                }
+            }
+            Text("四档高度实时调")
                 .font(.caption2.weight(.medium))
                 .foregroundStyle(MossOttoStyle.inkSecondary)
         }
@@ -931,6 +966,31 @@ private struct GestureAtlasView: View {
 struct GestureAtlasContent: View {
     var nav: AppNavigation? = nil
 
+    enum MostoPreviewAction: String {
+        case tap = "轻点"
+        case doubleTap = "双击"
+        case longPress = "长按"
+
+        var sprite: String {
+            switch self {
+            case .tap: return "MostoBlink"
+            case .doubleTap: return "MostoNight"
+            case .longPress: return "MostoToyBlink"
+            }
+        }
+
+        var badge: String {
+            switch self {
+            case .tap: return "(=^･ω･^=)  颜文字弹出"
+            case .doubleTap: return "切换台灯暖光 / 暗夜模式"
+            case .longPress: return "慵懒打哈欠 · 软触反馈"
+            }
+        }
+    }
+
+    @State private var selectedMosto: MostoPreviewAction? = nil
+    @State private var mostoBounce = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             Card(title: "高频核心手势") {
@@ -938,7 +998,7 @@ struct GestureAtlasContent: View {
                     cap: "，↑。",
                     title: "标点上滑副符号",
                     chips: ["，↑。", "/↑、", "¥↑$", "（↑【"],
-                    demoTitle: nil
+                    demoTitle: "标点上滑副符号"
                 )
                 Divider()
                 atlasRow(
@@ -959,7 +1019,7 @@ struct GestureAtlasContent: View {
                     symbol: "delete.left",
                     title: "左划清空与逐词快删",
                     chips: ["左划一键清空", "长按 >1s 删词"],
-                    demoTitle: nil
+                    demoTitle: "左划清空与逐词快删"
                 )
                 Divider()
                 atlasRow(
@@ -982,7 +1042,7 @@ struct GestureAtlasContent: View {
                     symbol: "plus.forwardslash.minus",
                     title: "四则心算与相对日期",
                     chips: ["286/4= 空格连算", "下周一 联想日期"],
-                    demoTitle: "中英混输"
+                    demoTitle: "四则心算与相对日期"
                 )
                 Divider()
                 atlasRow(
@@ -996,13 +1056,19 @@ struct GestureAtlasContent: View {
             Card(title: "候选栏左侧 Mosto") {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 10) {
-                        Image(uiImage: mostoImage("Mosto"))
+                        Image(uiImage: mostoImage(selectedMosto?.sprite ?? "Mosto"))
                             .resizable()
                             .scaledToFit()
-                            .frame(width: 34, height: 34)
-                        Text("指尖声光彩蛋")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(MossOttoStyle.inkPrimary)
+                            .frame(width: 36, height: 36)
+                            .scaleEffect(mostoBounce ? 1.12 : 1.0)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("指尖声光彩蛋")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(MossOttoStyle.inkPrimary)
+                            Text(selectedMosto?.badge ?? "点按下方手势按钮试玩反馈")
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(selectedMosto == nil ? MossOttoStyle.inkSecondary : MossOttoStyle.violet)
+                        }
                         Spacer(minLength: 4)
                         Text("200+ 颜文字")
                             .font(.caption2.weight(.bold))
@@ -1012,27 +1078,44 @@ struct GestureAtlasContent: View {
                             .background(Capsule().fill(MossOttoStyle.violet.opacity(0.12)))
                     }
                     HStack(spacing: 6) {
-                        mostoActionTile(trigger: "轻点", effect: "颜文字")
-                        mostoActionTile(trigger: "双击", effect: "切换光效")
-                        mostoActionTile(trigger: "长按", effect: "打哈欠")
+                        mostoActionTile(action: .tap, effect: "颜文字")
+                        mostoActionTile(action: .doubleTap, effect: "切换光效")
+                        mostoActionTile(action: .longPress, effect: "打哈欠")
                     }
                 }
             }
         }
     }
 
-    private func mostoActionTile(trigger: String, effect: String) -> some View {
-        VStack(spacing: 2) {
-            Text(trigger)
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(MossOttoStyle.violet)
-            Text(effect)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(MossOttoStyle.inkPrimary)
+    private func mostoActionTile(action: MostoPreviewAction, effect: String) -> some View {
+        let active = selectedMosto == action
+        return Button {
+            let style: UIImpactFeedbackGenerator.FeedbackStyle = action == .longPress ? .soft : (action == .doubleTap ? .medium : .light)
+            UIImpactFeedbackGenerator(style: style).impactOccurred()
+            withAnimation(.spring(response: 0.24, dampingFraction: 0.65)) {
+                selectedMosto = action
+                mostoBounce = true
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
+                withAnimation(.easeOut(duration: 0.14)) {
+                    mostoBounce = false
+                }
+            }
+        } label: {
+            VStack(spacing: 2) {
+                Text(action.rawValue)
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(active ? Color.white : MossOttoStyle.violet)
+                Text(effect)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(active ? Color.white : MossOttoStyle.inkPrimary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 7)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(active ? MossOttoStyle.violet : MossOttoStyle.surfaceMuted))
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 7)
-        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(MossOttoStyle.surfaceMuted))
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(active ? .isSelected : [])
     }
 
     private func atlasRow(cap: String = "", symbol: String? = nil, title: String, chips: [String], demoTitle: String?) -> some View {
@@ -1114,7 +1197,7 @@ struct PrivacyArchitectureContent: View {
                 specRow(
                     icon: "checkmark.seal.fill",
                     tint: MossOttoStyle.moss,
-                    title: "15 条 CI 自动化门禁",
+                    title: "16 条 CI 自动化门禁",
                     detail: "每次构建静态与真机校验离线、帧率与四边防模糊"
                 )
             }

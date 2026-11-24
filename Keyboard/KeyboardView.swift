@@ -11,9 +11,10 @@ final class KeyView: UIView {
     private var guideLabel: UILabel?
     private let icon = UIImageView()
 
-    /// Mosto studio micro-craft: hardware status indicator on 中/英 and Shift, homing bar on Space.
+    /// Mosto studio micro-craft: hardware status indicator on 中/英 and Shift, homing bar on Space, and top-edge optical bevel.
     private var statusDot: CALayer?
     private var spaceNotch: CALayer?
+    private var topHighlight: CALayer?
 
     var pressed = false {
         didSet {
@@ -33,6 +34,7 @@ final class KeyView: UIView {
             }
             statusDot?.isHidden = blanked || Theme.plain || !(spec.action == .toggleLanguage || spec.action == .shift)
             spaceNotch?.isHidden = blanked || Theme.plain || spec.action != .space || bounds.width <= 120
+            topHighlight?.isHidden = blanked || pressed || currentStyle == .accent
         }
     }
 
@@ -145,7 +147,8 @@ final class KeyView: UIView {
         case .char where ["“", "”", "‘", "’"].contains(spec.label):
             label.font = UIFont(name: "PingFangSC-Medium", size: Metrics.symbolFont) ?? Theme.font(Metrics.symbolFont, .medium)
         case .char where Self.balancedBrackets.contains(spec.label):
-            label.font = UIFont(name: "PingFangSC-Regular", size: Metrics.symbolFont) ?? Theme.font(Metrics.symbolFont, .regular)
+            let bracketSize: CGFloat = (spec.label == "【" || spec.label == "】") ? 20.5 : Metrics.symbolFont
+            label.font = UIFont(name: "PingFangSC-Regular", size: bracketSize) ?? Theme.font(bracketSize, .regular)
         case .char where spec.label.count >= 3:
             label.font = Theme.font(18.5, .medium)
         case .char: label.font = Theme.font(Metrics.symbolFont, .medium)
@@ -202,6 +205,7 @@ final class KeyView: UIView {
         CATransaction.begin(); CATransaction.setDisableActions(true)
         layer.backgroundColor = pressed ? pressedBg : restBg
         layer.shadowOpacity = pressed ? 0 : 1
+        topHighlight?.isHidden = blanked || pressed || currentStyle == .accent
         CATransaction.commit()
         if currentStyle == .function {
             let fg = pressed ? pressedFg : restFg
@@ -232,6 +236,10 @@ final class KeyView: UIView {
         CATransaction.begin(); CATransaction.setDisableActions(true)
         layer.shadowColor = under.resolvedColor(with: t).cgColor
         layer.borderColor = Theme.keyBorder.resolvedColor(with: t).cgColor
+        if let bevel = topHighlight {
+            bevel.backgroundColor = Theme.keyHighlight.resolvedColor(with: t).cgColor
+            bevel.isHidden = blanked || pressed || currentStyle == .accent
+        }
         if let dot = statusDot {
             let active = (spec.action == .toggleLanguage && spec.label == "中") || (spec.action == .shift && spec.style == .normal)
             dot.backgroundColor = (active ? Theme.statusLedActive : Theme.statusLedMuted).resolvedColor(with: t).cgColor
@@ -269,8 +277,10 @@ final class KeyView: UIView {
     var hintTextForTests: String? { (hintLabel?.isHidden == false) ? hintLabel?.text : nil }
     var hintFrameForTests: CGRect { (hintLabel?.isHidden == false) ? (hintLabel?.frame ?? .zero) : .zero }
     var hintLitForTests: Bool { hintLit }
+    var hasTopHighlightForTests: Bool { topHighlight != nil && topHighlight?.isHidden == false }
     var labelFontSizeForTests: CGFloat { label.font.pointSize }
     var labelFontNameForTests: String { label.font.fontName }
+    var labelMinYForTests: CGFloat { label.frame.minY }
     var guideChordHintForTests: XiaoheScheme.ChordHint? { spec.guideChordHint }
     var guideTextForTests: String? { (guideLabel?.isHidden == false) ? guideLabel?.attributedText?.string : nil }
 
@@ -301,6 +311,17 @@ final class KeyView: UIView {
             layer.cornerRadius = cr
             layer.shadowPath = UIBezierPath(roundedRect: f, cornerRadius: cr).cgPath
         }
+        let bevel = topHighlight ?? {
+            let b = CALayer()
+            b.cornerRadius = 0.5
+            layer.insertSublayer(b, at: 0)
+            topHighlight = b
+            return b
+        }()
+        let bevelInset = max(3.0, cr * 0.55)
+        bevel.frame = CGRect(x: bevelInset, y: 0.75, width: max(0, f.width - bevelInset * 2), height: 1.0)
+        bevel.backgroundColor = Theme.keyHighlight.resolvedColor(with: traitCollection).cgColor
+        bevel.isHidden = blanked || pressed || currentStyle == .accent
         let wantsDot = !Theme.plain && (spec.action == .toggleLanguage || spec.action == .shift)
         if wantsDot {
             let dot = statusDot ?? {
@@ -339,7 +360,7 @@ final class KeyView: UIView {
         let hasHint = !(hintLabel?.isHidden ?? true)
         let isBracket = Self.balancedBrackets.contains(spec.label)
         let o = cjkPunctuationOffset(label.text, fontSize: label.font.pointSize, font: label.font)
-        let hintDrop: CGFloat = hasHint ? (spec.label.count >= 3 ? 4.0 : (isBracket ? 2.5 : 1.5)) : 0
+        let hintDrop: CGFloat = hasHint ? (spec.label.count >= 3 ? 4.0 : (isBracket ? 3.5 : 1.5)) : 0
         label.frame = f.insetBy(dx: 2, dy: 0).offsetBy(dx: o.x, dy: o.y + hintDrop)
         icon.frame = f
         // 键位提示: the letter moves up and smaller; the initial and finals sit under it (portrait only).
@@ -668,6 +689,8 @@ final class KeyboardView: UIView {
     var onCursorBegin: (() -> Void)?
     var onCursorMove: ((Int) -> CursorMoveOutcome)?
     var onCursorEnd: (() -> Void)?
+    /// Live cursor trackpad telemetry for CandidateBarView HUD: `(active, deltaSteps, endStop, crossedNewline)`.
+    var onCursorTelemetry: ((Bool, Int, Int, Bool) -> Void)?
     /// Whether a drag on the space bar may move the cursor now (not while a pinyin is being composed).
     var canMoveCursor: (() -> Bool)?
     /// A finger lands on a key (where, for the haptic).
@@ -718,6 +741,25 @@ final class KeyboardView: UIView {
     private var trackpadJustCrossedNewline = false
     private var trackpadBadgeLastText = ""
     private var trackpadBadgeLastStop = 0
+    private struct CursorTelemetryState: Equatable {
+        let active: Bool
+        let delta: Int
+        let endStop: Int
+        let crossedNewline: Bool
+    }
+    private var lastEmittedCursorTelemetry: CursorTelemetryState?
+
+    private func emitCursorTelemetry(active: Bool) {
+        let state = CursorTelemetryState(
+            active: active,
+            delta: active ? trackpadStepsDelta : 0,
+            endStop: active ? trackpadEndStop : 0,
+            crossedNewline: active ? trackpadJustCrossedNewline : false
+        )
+        guard state != lastEmittedCursorTelemetry else { return }
+        lastEmittedCursorTelemetry = state
+        onCursorTelemetry?(state.active, state.delta, state.endStop, state.crossedNewline)
+    }
     private var lastTrackpadSize: CGSize = .zero
     var trackpadRulerVisibleForTests: Bool { !trackpadRuler.isHidden }
     var trackpadRulerOffsetForTests: CGFloat { trackpadRulerOffset }
@@ -1296,6 +1338,7 @@ final class KeyboardView: UIView {
                     onFeedback?(.cursorBoundary, p)
                 }
                 advanceTrackpadRuler(dx: dx)
+                emitCursorTelemetry(active: true)
                 // felt by the finger's distance (every 27 pt, ≥ 100 ms apart), not once per character
                 if tr.rhythm.feed(dx: dx, steps: steps, passed: passed, at: now) { onFeedback?(.cursorStep, p) }
             }
@@ -1608,6 +1651,7 @@ final class KeyboardView: UIView {
             bringSubviewToFront(trackpadBadge)
             updateTrackpadRulerColors()
         }
+        emitCursorTelemetry(active: on)
     }
 
     private func finish(_ tr: Tracked, emit: Bool) {
@@ -1732,6 +1776,7 @@ final class KeyboardView: UIView {
             setCursorMode(true, except: idx)
             trackpadStepsDelta = 6
             advanceTrackpadRuler(dx: 14)
+            emitCursorTelemetry(active: true)
         }
     }
 
@@ -1817,6 +1862,17 @@ final class KeyboardView: UIView {
         layoutIfNeeded()
         guard let kv = keyViews.first(where: { $0.spec.action == action }) else { return nil }
         return (kv.labelFontNameForTests, kv.hintFrameForTests)
+    }
+
+    func keyOpticalMetricsForTests(_ action: KeyAction) -> (fontName: String, fontSize: CGFloat, labelMinY: CGFloat, hintFrame: CGRect)? {
+        layoutIfNeeded()
+        guard let kv = keyViews.first(where: { $0.spec.action == action }) else { return nil }
+        return (kv.labelFontNameForTests, kv.labelFontSizeForTests, kv.labelMinYForTests, kv.hintFrameForTests)
+    }
+
+    func keyViewForTests(_ action: KeyAction) -> KeyView? {
+        layoutIfNeeded()
+        return keyViews.first(where: { $0.spec.action == action })
     }
 
     var activePreviewFlickedForTests: Bool {

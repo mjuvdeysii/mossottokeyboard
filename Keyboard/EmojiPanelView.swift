@@ -6,6 +6,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     var onDelete: (() -> Void)?
     var onBack: (() -> Void)?
     var onSettings: (() -> Void)?
+    var onFeedback: ((FeedbackEvent) -> Void)?
 
     struct Category { let name: String; let symbol: String; var items: [String] }
     struct MoodGroup { let title: String; let items: [String] }
@@ -539,10 +540,12 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     }
 
     @objc private func moodTapped(_ b: UIButton) {
+        onFeedback?(.candidate)
         selectMood(b.tag)
     }
 
     @objc private func moodMostoTapped() {
+        onFeedback?(.mosto)
         let hasRecent = displayedMoods.first?.title == "常用"
         let target: Int
         if hasRecent && selectedMood != 0 {
@@ -965,7 +968,12 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         tabTapped(mostoTab)
     }
 
+    @objc func kaomojiShortcutTappedForTests() {
+        kaomojiShortcutTapped()
+    }
+
     @objc private func tabTapped(_ b: UIButton) {
+        onFeedback?(.candidate)
         let tapKaomoji = b.tag == Self.categoryNames.count + 1
         if tapKaomoji != kaomojiMode {
             kaomojiMode = tapKaomoji

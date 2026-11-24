@@ -383,6 +383,11 @@ final class KeyboardViewController: UIInputViewController {
             self.cursorDragHasContext = false
             self.afterLastKey = self.contextSnapshot()
         }
+        keyboard.onCursorTelemetry = { [weak self] active, delta, endStop, crossedNewline in
+            guard let self else { return }
+            self.candidateBar.setCursorTelemetry(active: active, delta: delta, endStop: endStop, crossedNewline: crossedNewline)
+            self.updatePlainLightButton()
+        }
         keyboard.onKeyDown = { [weak self] action, p in self?.feel(.key(action), at: p) }
         keyboard.onFeedback = { [weak self] event, p in self?.feel(event, at: p) }
         // swipe left off delete: clears the active composition or English word (rounds/R3.md, R60)
@@ -872,7 +877,7 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func updatePlainLightButton() {
-        let idle = taps.isEmpty && predictions.isEmpty && enSuggestions.isEmpty && candidateBar.undoTextForTests == nil && !emojiShown && (settingsPanelIfLoaded?.isHidden ?? true) && (gridIfLoaded?.isHidden ?? true) && !candidateBar.isDeleteActionActive && (Theme.plain || !candidateBar.mosto.isHidden)
+        let idle = taps.isEmpty && predictions.isEmpty && enSuggestions.isEmpty && candidateBar.undoTextForTests == nil && !emojiShown && (settingsPanelIfLoaded?.isHidden ?? true) && (gridIfLoaded?.isHidden ?? true) && !candidateBar.isTelemetryOverlayActive && (Theme.plain || !candidateBar.mosto.isHidden)
         let night = isNight
         let h = candidateBar.bounds.height > 0 ? candidateBar.bounds.height : barHeight
         let key = IdleBarKey(idle: idle, plain: Theme.plain, night: night, barH: Int(h.rounded()))
@@ -2156,6 +2161,7 @@ final class KeyboardViewController: UIInputViewController {
         }
         p.onBack = { [weak self] in self?.feel(.key(.page(.letters))); self?.showEmoji(false) }
         p.onSettings = { [weak self] in self?.showSettings(true) }
+        p.onFeedback = { [weak self] ev in self?.feel(ev) }
         return p
     }
 
