@@ -547,13 +547,21 @@ struct LessonCard: View {
         let l = lessons[clamped]
         let xiaohe = model.layout == 1
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
+            HStack(alignment: .center, spacing: 6) {
                 Text(l.title)
                     .font(.subheadline.weight(.bold))
                     .foregroundStyle(MossOttoStyle.inkPrimary)
-                Text("\(clamped + 1)/\(lessons.count)")
-                    .font(.caption2.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(MossOttoStyle.inkSecondary)
+                HStack(spacing: 3.5) {
+                    ForEach(0..<lessons.count, id: \.self) { stepIdx in
+                        let isDone = stepIdx < clamped || model.passedTitles.contains(lessons[stepIdx].title)
+                        let isCurrent = stepIdx == clamped
+                        Capsule()
+                            .fill(isCurrent ? MossOttoStyle.violet : (isDone ? MossOttoStyle.moss : MossOttoStyle.inkSecondary.opacity(0.26)))
+                            .frame(width: isCurrent ? 12 : 4.5, height: 4.5)
+                    }
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("第 \(clamped + 1) 步，共 \(lessons.count) 步")
                 Spacer()
                 if model.justPassed {
                     HStack(spacing: 4) {

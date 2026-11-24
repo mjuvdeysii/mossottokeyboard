@@ -79,7 +79,35 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     private var clearSwipeArmed = false
     private var clearSwipeDimContent = true
     /// What each pooled label shows now (so a label is only redrawn when it changes).
-    private var poolKeys: [String] = []
+    private struct PoolSlotKey: Equatable {
+        let text: String
+        let caption: String
+        let isFirst: Bool
+        let inline: Bool
+        let plain: Bool
+        let dark: Bool
+    }
+    private struct PoolVisualKey: Equatable {
+        let bgKind: UInt8   // 0=clear, 1=pressed, 2=firstRegular, 3=firstAccent
+        let plain: Bool
+        let dark: Bool
+    }
+    private struct WidthKey: Hashable {
+        let text: String
+        let caption: String
+        let isFirst: Bool
+        let inline: Bool
+    }
+    private struct FontMetricsTable {
+        let cjk: CGFloat
+        let middot: CGFloat
+        let ascii: [CGFloat]
+    }
+    private var poolSlots: [PoolSlotKey?] = []
+    private var poolVisuals: [PoolVisualKey?] = []
+    private var lastDivPlain = false
+    private var lastDivDark = false
+    private var cachedDivColorCG: CGColor?
     private var activeFixes: [Fix] = []
     private var activePinpoint = CorrectionPinpoint(slipped: [], missingAnchors: [])
     private var isPrediction = false
@@ -90,7 +118,9 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     /// measured widths by text and caption, kept through a composition.
     private(set) var visibleCount = 0
     private var widths: [CGFloat] = []
-    private var widthCache: [String: CGFloat] = [:]
+    private var widthCache: [WidthKey: CGFloat] = [:]
+    private static var fontAttrCache: [Int: [NSAttributedString.Key: Any]] = [:]
+    private static var widthTables: [Int: FontMetricsTable] = [:]
     private var gesture = StripGesture()
     /// The test bench drives touches with its own clock: the hold is checked against it, no timer runs.
     private var benchTouches = false
@@ -419,7 +449,10 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
                 cancelBtn.configuration = c
             }
             layoutClearFilament()
-            poolKeys = poolKeys.map { _ in "" }
+            cachedDivColorCG = divColor
+            lastDivDark = traitCollection.userInterfaceStyle == .dark
+            poolSlots = poolSlots.map { _ in nil }
+            poolVisuals = poolVisuals.map { _ in nil }
             setNeedsLayout()
         }
     }
@@ -445,8 +478,12 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         undoChip.configuration = uc
         let t = undoText, spoken = undoChip.accessibilityLabel
         undoText = nil; setUndo(t, spoken: spoken)
-        widthCache = [:]
-        poolKeys = poolKeys.map { _ in "" }
+        widthCache.removeAll(keepingCapacity: true)
+        cachedDivColorCG = Theme.candidateDivider.resolvedColor(with: traitCollection).cgColor
+        lastDivPlain = Theme.plain
+        lastDivDark = traitCollection.userInterfaceStyle == .dark
+        poolSlots = poolSlots.map { _ in nil }
+        poolVisuals = poolVisuals.map { _ in nil }
         setNeedsLayout()
     }
 
@@ -859,18 +896,60 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         return t
     }
 
+    private static func attrs(isFirst: Bool) -> [NSAttributedString.Key: Any] {
+        let key = (Theme.plain ? 2 : 0) + (isFirst ? 1 : 0)
+        if let cached = fontAttrCache[key] { return cached }
+        let built: [NSAttributedString.Key: Any] = [.font: isFirst ? firstFont : font]
+        fontAttrCache[key] = built
+        return built
+    }
+
+    private static func fastTextWidth(_ text: String, isFirst: Bool, plain: Bool) -> CGFloat? {
+        let tableKey = (plain ? 2 : 0) + (isFirst ? 1 : 0)
+        let table: FontMetricsTable
+        if let cached = widthTables[tableKey] {
+            table = cached
+        } else {
+            let a = attrs(isFirst: isFirst)
+            let cjk = ("汉" as NSString).size(withAttributes: a).width
+            let mid = ("·" as NSString).size(withAttributes: a).width
+            var ascii = [CGFloat](repeating: 0, count: 95)
+            for code in 0x20...0x7E {
+                let s = String(UnicodeScalar(code)!) as NSString
+                ascii[code - 0x20] = s.size(withAttributes: a).width
+            }
+            table = FontMetricsTable(cjk: cjk, middot: mid, ascii: ascii)
+            widthTables[tableKey] = table
+        }
+        var sum: CGFloat = 0
+        for scalar in text.unicodeScalars {
+            let v = scalar.value
+            if v >= 0x4E00 && v <= 0x9FFF {
+                sum += table.cjk
+            } else if v >= 0x20 && v <= 0x7E {
+                sum += table.ascii[Int(v - 0x20)]
+            } else if v == 0x00B7 {
+                sum += table.middot
+            } else {
+                return nil
+            }
+        }
+        return sum
+    }
+
     /// Width of candidate `i` (cached by text, slot-0 weight, and caption): compact 14pt padding for 4-6 visible candidates.
-    private func measure(_ i: Int, inline: Bool) -> CGFloat {
+    private func measure(_ i: Int, caption cap: NSAttributedString?, inline: Bool) -> CGFloat {
         let c = candidates[i]
-        let cap = captionFor(i)
         let isFirst = i == 0 && !isPrediction
-        let key = (isFirst ? "F" : "R") + (inline ? "1" : "0") + "\u{1}" + c.text + "\u{1}" + (cap?.string ?? "")
+        let capStr = cap?.string ?? ""
+        let key = WidthKey(text: c.text, caption: capStr, isFirst: isFirst, inline: inline)
         if let w = widthCache[key] { return w }
-        let f = isFirst ? Self.firstFont : Self.font
-        let textW = (c.text as NSString).size(withAttributes: [.font: f]).width
+        let textW = Self.fastTextWidth(c.text, isFirst: isFirst, plain: Theme.plain)
+            ?? (c.text as NSString).size(withAttributes: Self.attrs(isFirst: isFirst)).width
         let w: CGFloat
         if let cap {
-            w = inline ? max(38, ceil(textW + 4 + cap.size().width) + 16) : max(38, ceil(max(textW, cap.size().width)) + 16)
+            let capW = cap.size().width
+            w = inline ? max(38, ceil(textW + 4 + capW) + 16) : max(38, ceil(max(textW, capW)) + 16)
         } else {
             w = max(38, ceil(textW) + (isFirst ? 16 : 14))
         }
@@ -878,7 +957,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         return w
     }
 
-    /// Lay the row out from its start to two screens past what is shown (the rest only as the finger gets there:
+    /// Lay the row out from its start to 1.6 screens past what is shown (the rest only as the finger gets there:
     /// a single syllable can have hundreds of candidates). Labels & dividers are pooled and reused.
     private func layoutCandidates() {
         let viewW = strip.bounds.width
@@ -886,9 +965,20 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         let topY: CGFloat = 4
         let labelH: CGFloat = max(18, rowH - 8)
         let inline = bounds.height < Self.twoLineHeight
-        let need = strip.contentOffset.x + max(viewW, 1) * 2
+        let need = strip.contentOffset.x + max(viewW, 1) * 1.6
         let pressed = gesture.highlighted
-        let divColor = Theme.candidateDivider.resolvedColor(with: traitCollection).cgColor
+        let plain = Theme.plain
+        let dark = traitCollection.userInterfaceStyle == .dark
+        let refreshDivColor = cachedDivColorCG == nil || plain != lastDivPlain || dark != lastDivDark
+        let divColor: CGColor
+        if refreshDivColor {
+            divColor = Theme.candidateDivider.resolvedColor(with: traitCollection).cgColor
+            cachedDivColorCG = divColor
+            lastDivPlain = plain
+            lastDivDark = dark
+        } else {
+            divColor = cachedDivColorCG!
+        }
         let divH: CGFloat = min(15, max(10, labelH * 0.45))
         let divY: CGFloat = (rowH - divH) / 2
         var x: CGFloat = 0
@@ -897,8 +987,9 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         var correctionFrame = CGRect.zero
         CATransaction.begin(); CATransaction.setDisableActions(true)
         while n < candidates.count && (x < need || n == 0) {
+            let cap = captionFor(n)
             let w: CGFloat
-            if n < widths.count { w = widths[n] } else { w = measure(n, inline: inline); widths.append(w) }
+            if n < widths.count { w = widths[n] } else { w = measure(n, caption: cap, inline: inline); widths.append(w) }
             if pool.count <= n {
                 let l = UILabel()
                 l.font = Self.font
@@ -909,18 +1000,18 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
                 l.clipsToBounds = true
                 strip.addSubview(l)
                 pool.append(l)
-                poolKeys.append("")
+                poolSlots.append(nil)
+                poolVisuals.append(nil)
             }
             let l = pool[n]
-            l.isHidden = false
+            if l.isHidden { l.isHidden = false }
             let frame = CGRect(x: x, y: topY, width: w, height: labelH)
             if l.frame != frame { l.frame = frame }
             let c = candidates[n]
-            let cap = captionFor(n)
             let isFirst = n == 0 && !isPrediction
-            let key = (isFirst ? "F" : "R") + (inline ? "1" : "0") + "\u{1}" + c.text + "\u{1}" + (cap?.string ?? "")
-            if poolKeys[n] != key {
-                poolKeys[n] = key
+            let slotKey = PoolSlotKey(text: c.text, caption: cap?.string ?? "", isFirst: isFirst, inline: inline, plain: plain, dark: dark)
+            if poolSlots[n] != slotKey {
+                poolSlots[n] = slotKey
                 l.textColor = Theme.candidateText
                 l.font = isFirst ? Self.firstFont : Self.font
                 if let cap {
@@ -933,8 +1024,18 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
                 }
             }
             // Clean, restrained focus highlight on slot 0 (spacebar target); zero text noise.
-            let firstBg = (c.corrected || (isMathResult && n == 0)) ? Theme.correctedTint : Theme.firstCandidateTint
-            l.backgroundColor = n == pressed ? Theme.functionKey : ((isFirst || (isMathResult && n == 0)) ? firstBg : .clear)
+            let isFirstAccent = isFirst && (c.corrected || isMathResult)
+            let bgKind: UInt8 = n == pressed ? 1 : (isFirstAccent ? 3 : ((isFirst || (isMathResult && n == 0)) ? 2 : 0))
+            let visKey = PoolVisualKey(bgKind: bgKind, plain: plain, dark: dark)
+            if poolVisuals[n] != visKey {
+                poolVisuals[n] = visKey
+                switch bgKind {
+                case 1: l.backgroundColor = Theme.functionKey
+                case 3: l.backgroundColor = Theme.correctedTint
+                case 2: l.backgroundColor = Theme.firstCandidateTint
+                default: l.backgroundColor = .clear
+                }
+            }
             if isFirst && c.corrected {
                 let barW: CGFloat = min(14, max(8, w - 16))
                 showCorrectionBar = true
@@ -942,18 +1043,24 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             }
             if n > 0 {
                 let di = n - 1
+                let d: CALayer
+                var divCreated = false
                 if dividerPool.count <= di {
-                    let d = CALayer()
-                    d.backgroundColor = divColor
-                    strip.layer.addSublayer(d)
-                    dividerPool.append(d)
+                    let layer = CALayer()
+                    layer.backgroundColor = divColor
+                    strip.layer.addSublayer(layer)
+                    dividerPool.append(layer)
+                    d = layer
+                    divCreated = true
+                } else {
+                    d = dividerPool[di]
                 }
-                let d = dividerPool[di]
                 let hideDiv = (n == 1 && !isPrediction) || n == pressed || (n - 1) == pressed
-                d.isHidden = hideDiv
+                if d.isHidden != hideDiv { d.isHidden = hideDiv }
                 if !hideDiv {
-                    d.backgroundColor = divColor
-                    d.frame = CGRect(x: x - 0.25, y: divY, width: 0.5, height: divH)
+                    if refreshDivColor && !divCreated { d.backgroundColor = divColor }
+                    let dFrame = CGRect(x: x - 0.25, y: divY, width: 0.5, height: divH)
+                    if d.frame != dFrame { d.frame = dFrame }
                 }
             }
             x += w
@@ -963,7 +1070,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         if dividerPool.count > usedDivs {
             for d in dividerPool.dropFirst(usedDivs) where !d.isHidden { d.isHidden = true }
         }
-        correctionBar.isHidden = !showCorrectionBar
+        if correctionBar.isHidden != !showCorrectionBar { correctionBar.isHidden = !showCorrectionBar }
         if showCorrectionBar {
             correctionBar.backgroundColor = Theme.correctedMark.resolvedColor(with: traitCollection).cgColor
             correctionBar.frame = correctionFrame
@@ -998,7 +1105,8 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             expandButton.backgroundColor = gridExpanded ? Theme.functionKey.withAlphaComponent(0.45) : .clear
             expandButton.layer.cornerRadius = 14
         }
-        expandButton.isHidden = !((total > viewW + 0.5 && !isPrediction) || gridExpanded || idleGear)
+        let hideExpand = !((total > viewW + 0.5 && !isPrediction) || gridExpanded || idleGear)
+        if expandButton.isHidden != hideExpand { expandButton.isHidden = hideExpand }
         updateFade()
     }
 
@@ -3019,43 +3127,106 @@ final class KeyboardSettings {
 }
 
 /// 九宫格 拼音选择: while composing on the keypad, the left column lists the syllables the next keys can spell
-/// (longest first, then the most common). Tapping one fixes those keys to its letters. Scrolls vertically only.
-final class SyllablePickerView: UIView {
+/// (longest first, then the most common) inside an OTTOSSOM recessed ceramic tuner track. Tapping one fixes
+/// those keys to its letters. Scrolls vertically only with a soft bottom overflow fade.
+final class SyllablePickerView: UIView, UIScrollViewDelegate {
     var onPick: ((Int) -> Void)?
+    private let scrollBox = UIView()
     private let scroll = UIScrollView()
+    private let bottomFade = CAGradientLayer()
+    private let activeBar = UIView()
     private var buttons: [UIButton] = []
+    private var dividers: [CALayer] = []
+    private var shown = 0
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        backgroundColor = Theme.functionTop
+        backgroundColor = Theme.functionKey
         layer.cornerRadius = Metrics.cornerRadius
         layer.cornerCurve = .continuous
-        layer.borderWidth = 1.5
-        layer.borderColor = Theme.functionLip.resolvedColor(with: traitCollection).cgColor
+        layer.borderWidth = 0.6
+        layer.borderColor = Theme.keyBorder.resolvedColor(with: traitCollection).cgColor
         clipsToBounds = true
+
+        scrollBox.backgroundColor = .clear
+        addSubview(scrollBox)
+
         scroll.showsHorizontalScrollIndicator = false
+        scroll.showsVerticalScrollIndicator = false
         scroll.alwaysBounceHorizontal = false
+        scroll.delegate = self
         scroll.disableAllEdgeEffects()
-        addSubview(scroll)
+        scrollBox.addSubview(scroll)
+
+        bottomFade.startPoint = CGPoint(x: 0.5, y: 0)
+        bottomFade.endPoint = CGPoint(x: 0.5, y: 1)
+        bottomFade.colors = [UIColor.black.cgColor, UIColor.black.cgColor, UIColor.clear.cgColor]
+
+        activeBar.isUserInteractionEnabled = false
+        activeBar.layer.cornerRadius = 1.25
+        activeBar.layer.cornerCurve = .continuous
+        activeBar.isHidden = true
+        scroll.addSubview(activeBar)
+
         isAccessibilityElement = false
     }
     required init?(coder: NSCoder) { fatalError() }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
         super.traitCollectionDidChange(previous)
-        layer.borderColor = Theme.functionLip.resolvedColor(with: traitCollection).cgColor
+        if previous?.userInterfaceStyle != traitCollection.userInterfaceStyle {
+            refreshAppearance()
+        }
+    }
+
+    func themeChanged() {
+        backgroundColor = Theme.functionKey
+        refreshAppearance()
+        setNeedsLayout()
+    }
+
+    private func refreshAppearance() {
+        let t = traitCollection
+        layer.borderColor = Theme.keyBorder.resolvedColor(with: t).cgColor
+        activeBar.backgroundColor = Theme.selection
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        let divCG = Theme.candidateDivider.resolvedColor(with: t).cgColor
+        for d in dividers { d.backgroundColor = divCG }
+        CATransaction.commit()
+        for (i, b) in buttons.enumerated() {
+            styleButton(b, active: i == 0)
+        }
+    }
+
+    private func styleButton(_ b: UIButton, active: Bool) {
+        b.titleLabel?.font = Theme.font(active ? 16.5 : 16, active ? .bold : .semibold)
+        if active {
+            b.backgroundColor = Theme.key
+            b.layer.cornerRadius = 7
+            b.layer.cornerCurve = .continuous
+            let fg = Theme.plain ? Theme.selection : Theme.keyText
+            b.tintColor = fg
+            b.setTitleColor(fg, for: .normal)
+            b.accessibilityTraits = [.button, .selected]
+        } else {
+            b.backgroundColor = .clear
+            b.layer.cornerRadius = 6
+            b.layer.cornerCurve = .continuous
+            b.tintColor = Theme.keyText
+            b.setTitleColor(Theme.keyText, for: .normal)
+            b.accessibilityTraits = .button
+        }
     }
 
     /// Buttons are kept and relabelled (this runs on every keypad key), never rebuilt.
     func show(_ choices: [String]) {
         while buttons.count < choices.count {
             let b = UIButton(type: .system)
-            b.titleLabel?.font = Theme.font(17, .semibold)
             b.titleLabel?.adjustsFontSizeToFitWidth = true
             b.titleLabel?.minimumScaleFactor = 0.6
-            b.tintColor = Theme.keyText
-            b.setTitleColor(Theme.keyText, for: .normal)
             b.tag = buttons.count
+            styleButton(b, active: b.tag == 0)
             b.addTarget(self, action: #selector(tapped(_:)), for: .touchUpInside)
             scroll.addSubview(b)
             buttons.append(b)
@@ -3064,6 +3235,7 @@ final class SyllablePickerView: UIView {
             let on = i < choices.count
             b.isHidden = !on
             if on {
+                styleButton(b, active: i == 0)
                 UIView.performWithoutAnimation {
                     b.setTitle(choices[i], for: .normal)
                     b.layoutIfNeeded()
@@ -3072,20 +3244,77 @@ final class SyllablePickerView: UIView {
             }
         }
         shown = choices.count
+        refreshAppearance()
         scroll.setContentOffset(.zero, animated: false)
         setNeedsLayout()
     }
-    private var shown = 0
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        updateBottomFade()
+    }
+
+    private func updateBottomFade() {
+        let h = scrollBox.bounds.height
+        let hasMore = h > 32 && scroll.contentSize.height > h + 2 && (scroll.contentOffset.y + h < scroll.contentSize.height - 2)
+        guard hasMore else {
+            if scrollBox.layer.mask != nil { scrollBox.layer.mask = nil }
+            return
+        }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        bottomFade.frame = scrollBox.bounds
+        let frac = Double(min(0.20, 14.0 / h))
+        bottomFade.locations = [0, NSNumber(value: 1.0 - frac), 1]
+        if scrollBox.layer.mask !== bottomFade { scrollBox.layer.mask = bottomFade }
+        CATransaction.commit()
+    }
+
+    var shownCountForTests: Int { shown }
+    var activeBarVisibleForTests: Bool { !activeBar.isHidden && shown > 0 }
+    var dividerCountForTests: Int { dividers.filter { !$0.isHidden }.count }
 
     @objc private func tapped(_ b: UIButton) { onPick?(b.tag) }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        scroll.frame = bounds
-        let h: CGFloat = 40
-        for (i, b) in buttons.enumerated() {
-            b.frame = CGRect(x: 2, y: CGFloat(i) * h, width: bounds.width - 4, height: h)
+        scrollBox.frame = bounds.insetBy(dx: 0, dy: 2)
+        scroll.frame = scrollBox.bounds
+        let rowH: CGFloat = bounds.height < 135 ? 32 : 38
+        let insetX: CGFloat = 3.5
+        let btnW = max(0, bounds.width - insetX * 2)
+        let neededDivs = max(0, shown - 2)
+        while dividers.count < neededDivs {
+            let d = CALayer()
+            d.backgroundColor = Theme.candidateDivider.resolvedColor(with: traitCollection).cgColor
+            scroll.layer.addSublayer(d)
+            dividers.append(d)
         }
-        scroll.contentSize = CGSize(width: bounds.width, height: CGFloat(shown) * h)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for (i, b) in buttons.enumerated() {
+            let y = 2 + CGFloat(i) * rowH
+            b.frame = CGRect(x: insetX, y: y, width: btnW, height: rowH - 2)
+        }
+        if shown > 0, let first = buttons.first {
+            activeBar.isHidden = false
+            activeBar.backgroundColor = Theme.selection
+            let barH: CGFloat = min(14, max(10, first.frame.height - 14))
+            activeBar.frame = CGRect(x: first.frame.minX + 5, y: first.frame.midY - barH / 2, width: 2.5, height: barH)
+            scroll.bringSubviewToFront(activeBar)
+        } else {
+            activeBar.isHidden = true
+        }
+        let divW = max(0, bounds.width - 16)
+        for (di, d) in dividers.enumerated() {
+            let visible = di < neededDivs && bounds.width > 20
+            d.isHidden = !visible
+            if visible {
+                let slotIdx = di + 2
+                d.frame = CGRect(x: 8, y: 1 + CGFloat(slotIdx) * rowH, width: divW, height: 0.5)
+            }
+        }
+        CATransaction.commit()
+        scroll.contentSize = CGSize(width: bounds.width, height: 4 + CGFloat(shown) * rowH)
+        updateBottomFade()
     }
 }

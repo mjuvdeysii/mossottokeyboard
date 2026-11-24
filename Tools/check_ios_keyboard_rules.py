@@ -112,6 +112,17 @@ for dirpath, _dirs, files in os.walk(KEYBOARD):
                 if fn_body and "documentContextBeforeInput" in fn_body and "useInlineMarkedText" not in fn_body:
                     problems.append(f"{path}: {fn_name} reads documentContextBeforeInput synchronously without gating on useInlineMarkedText")
 
+            # Rule 16: Height anti-bounce invariants in KeyboardViewController
+            uvc = extract_func(code, r'override\s+func\s+updateViewConstraints\b')
+            if uvc and "allowsSelfSizing" in uvc:
+                problems.append(f"{path}: updateViewConstraints() mutates allowsSelfSizing (causes extension height bounce)")
+            vdl = extract_func(code, r'override\s+func\s+viewDidLoad\b')
+            if vdl and re.search(r'(layoutIfNeeded|updateConstraintsIfNeeded)\s*\(', vdl):
+                problems.append(f"{path}: viewDidLoad() forces synchronous layout/constraints pass")
+            vdls = extract_func(code, r'override\s+func\s+viewDidLayoutSubviews\b')
+            if vdls and "setNeedsUpdateConstraints" in vdls:
+                problems.append(f"{path}: viewDidLayoutSubviews() calls setNeedsUpdateConstraints() (causes layout bounce loop)")
+
         if name in ("EmojiPanelView.swift", "CandidateViews.swift"):
             # Rule 10: Any layer with shadowOpacity > 0 in EmojiPanelView/CandidateViews must configure shadowPath (no offscreen rasterization)
             if re.search(r'\.shadowOpacity\s*=\s*(?!0(?:\.0+)?\b)\S', code) and "shadowPath" not in code:

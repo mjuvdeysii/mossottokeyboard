@@ -150,6 +150,7 @@ enum KeyboardTests {
         r71XiaoheChordLighting(window)
         r72DrawerTelemetryBracketAndBenchCraft(window)
         r73GridPreeditClearCueAndAppCoverage(window)
+        r74HeightAntiBounceStripSpeedAndTunerCraft(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -3120,6 +3121,68 @@ enum KeyboardTests {
         log(cueShown && noBleed,
             "r73.ClearArmed cue stays opaque and strictly non-overlapping with stripBox",
             "cue=\(cueShown) noBleed=\(noBleed) strip=\(clearBar.stripFrameForTests) pill=\(clearBar.clearArmedPillFrameForTests)")
+    }
+
+    // MARK: - R74: Host height anti-bounce, fast candidate strip & T9 tuner column craft
+
+    static func r74HeightAntiBounceStripSpeedAndTunerCraft(_ window: UIWindow) {
+        let s = KeyboardSettings.shared
+        let prevHeight = s.keyboardHeight
+        defer { s.keyboardHeight = prevHeight }
+
+        // 1. Height anti-bounce: unchanged preset causes 0 constraint mutations across appear, settings, and transient host frames
+        if let pair = makeKeyboard(scheme: 1, in: window) {
+            let (vc, _) = pair
+            vc.view.frame = CGRect(x: 0, y: 0, width: 430, height: 284)
+            s.keyboardHeight = KeyboardHeightPreset.comfortable.rawValue
+            vc.applySettings()
+            vc.view.layoutIfNeeded()
+            vc.resetHeightSyncMutationsForTests()
+
+            vc.beginAppearanceTransition(false, animated: false)
+            vc.endAppearanceTransition()
+            vc.beginAppearanceTransition(true, animated: false)
+            vc.endAppearanceTransition()
+            vc.updateViewConstraints()
+            vc.showSettingsForTests(true)
+            vc.showSettingsForTests(false)
+            for h in [216.0, 452.0, 262.0] {
+                vc.view.frame = CGRect(x: 0, y: 0, width: 430, height: h)
+                vc.view.setNeedsLayout()
+                vc.view.layoutIfNeeded()
+            }
+            let steadyZeroMutations = vc.heightSyncMutationsForTests == 0 && vc.heightConstraintConstantForTests == 262
+
+            s.keyboardHeight = KeyboardHeightPreset.tall.rawValue
+            vc.applySettings()
+            let singleMutationOnChange = vc.heightSyncMutationsForTests == 1 && vc.heightConstraintConstantForTests == 284
+            log(steadyZeroMutations && singleMutationOnChange,
+                "r74.KeyboardViewController holds height rock-steady across host transient frames and mutates once on tier change",
+                "steady=\(steadyZeroMutations) mut=\(vc.heightSyncMutationsForTests) const=\(vc.heightConstraintConstantForTests ?? -1)")
+        } else {
+            log(false, "r74.KeyboardViewController height anti-bounce setup", "engine did not load")
+        }
+
+        // 2. SyllablePickerView ceramic tuner styling (active slot indicator & pooled dividers)
+        let spk = SyllablePickerView(frame: CGRect(x: 0, y: 0, width: 70, height: 190))
+        spk.show(["ni", "mi", "o"])
+        spk.layoutIfNeeded()
+        log(spk.shownCountForTests == 3 && spk.activeBarVisibleForTests && spk.dividerCountForTests == 1,
+            "r74.SyllablePickerView renders ceramic tuner slot card, active bar, and separator lines",
+            "shown=\(spk.shownCountForTests) bar=\(spk.activeBarVisibleForTests) divs=\(spk.dividerCountForTests)")
+
+        // 3. EmojiPanelView unified bottom-left return button across Emoji and Kaomoji modes
+        let ep = EmojiPanelView(frame: CGRect(x: 0, y: 0, width: 402, height: 242))
+        ep.layoutIfNeeded()
+        ep.load(kaomoji: false)
+        ep.layoutIfNeeded()
+        let emojiFn = ep.backButtonUsesFunctionStyleForTests
+        ep.load(kaomoji: true)
+        ep.layoutIfNeeded()
+        let kaoFn = ep.backButtonUsesFunctionStyleForTests
+        log(emojiFn && kaoFn,
+            "r74.EmojiPanelView keeps bottom-left return key visually consistent across Emoji and Kaomoji",
+            "emojiFn=\(emojiFn) kaoFn=\(kaoFn)")
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

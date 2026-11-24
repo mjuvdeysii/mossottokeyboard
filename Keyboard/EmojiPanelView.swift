@@ -136,6 +136,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         let f = tabScroll.convert(gear.frame, to: tabScrollBox)
         return f.width > 0 && f.minX >= -0.5 && f.maxX <= tabScrollBox.bounds.width + 0.5
     }
+    var backButtonUsesFunctionStyleForTests: Bool { backButton.backgroundColor == Theme.functionKey }
 
     final class Cell: UICollectionViewCell {
         let label = UILabel()
@@ -368,9 +369,8 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             b.layer.shadowOffset = CGSize(width: 0, height: Metrics.lip)
             b.layer.cornerRadius = Metrics.cornerRadius
         }
-        backButton.backgroundColor = kaomojiMode ? Theme.accentKey : Theme.functionKey
-        backButton.setTitleColor(kaomojiMode ? Theme.accentText : Theme.keyText, for: .normal)
-        backButton.layer.shadowColor = (kaomojiMode ? Theme.accentLip : Theme.functionLip).resolvedColor(with: t).cgColor
+        backButton.backgroundColor = Theme.functionKey
+        backButton.setTitleColor(Theme.keyText, for: .normal)
         if let kaomojiTab = tabButtons.last {
             if Theme.plain {
                 let cfg = UIImage.SymbolConfiguration(pointSize: 16, weight: .medium)
@@ -780,7 +780,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             ensureSelectedTabVisible(animated: false)
             pendingScrollToSelectedTab = false
         }
-        updateEdgeFade(box: tabScrollBox, scroll: tabScroll, fade: tabFade, edge: 20)
+        updateEdgeFade(box: tabScrollBox, scroll: tabScroll, fade: tabFade, edge: 26)
 
         collection.collectionViewLayout.invalidateLayout()
         collection.layoutIfNeeded()
@@ -890,7 +890,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             return
         }
         if scrollView === tabScroll {
-            updateEdgeFade(box: tabScrollBox, scroll: tabScroll, fade: tabFade, edge: 20)
+            updateEdgeFade(box: tabScrollBox, scroll: tabScroll, fade: tabFade, edge: 26)
             return
         }
         guard scrollView === collection, !kaomojiMode else { return }
@@ -946,7 +946,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         if abs(offsetX - tabScroll.contentOffset.x) > 0.5 {
             tabScroll.setContentOffset(CGPoint(x: offsetX, y: 0), animated: animated)
         }
-        updateEdgeFade(box: tabScrollBox, scroll: tabScroll, fade: tabFade, edge: 20)
+        updateEdgeFade(box: tabScrollBox, scroll: tabScroll, fade: tabFade, edge: 26)
     }
 
     private func setSelected(_ s: Int, animated: Bool = true) {

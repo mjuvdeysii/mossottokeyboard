@@ -46,6 +46,9 @@ final class KeyboardViewController: UIInputViewController {
     private let syllablePicker = SyllablePickerView()
     private var syllableChoices: (start: Int, choices: [(text: String, keys: [Character])]) = (0, [])
     private var heightConstraint: NSLayoutConstraint?
+    private var didConfigureSelfSizing = false
+    private var lastResolvedLandscape = false
+    private var heightSyncMutations = 0
     private var pairAdjustGeneration = 0
     private var justInsertedPair: (open: Character, close: Character)?
     /// Stack of closing marks for active freshly inserted CJK bracket pairs (supports nested pairs with 0 XPC on ordinary pauses).
@@ -271,6 +274,8 @@ final class KeyboardViewController: UIInputViewController {
     var preferredHeightForTests: CGFloat { preferredHeight() }
     func heightForTests(landscape: Bool) -> CGFloat { preferredHeight(landscape: landscape) }
     var heightConstraintConstantForTests: CGFloat? { heightConstraint?.constant }
+    var heightSyncMutationsForTests: Int { heightSyncMutations }
+    func resetHeightSyncMutationsForTests() { heightSyncMutations = 0 }
     func showSettingsForTests(_ on: Bool) { showSettings(on) }
     var plainLightHiddenForTests: Bool { plainLightButton.isHidden }
     var mostoHintHiddenForTests: Bool { mostoHintButton.isHidden }
@@ -289,10 +294,28 @@ final class KeyboardViewController: UIInputViewController {
         // 日光 / 夜灯 only tint it.
         view.backgroundColor = .clear
         root.backgroundColor = Theme.touchable   // never fully clear: iOS drops touches on transparent points
-        view.addSubview(root)
         view.clipsToBounds = true
         root.clipsToBounds = true
-        inputView?.allowsSelfSizing = true
+        heightPreset = KeyboardHeightPreset.clamped(KeyboardSettings.shared.keyboardHeight)
+        if !didConfigureSelfSizing {
+            inputView?.allowsSelfSizing = true
+            didConfigureSelfSizing = true
+        }
+        root.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(root)
+        let initialLand = resolvedIsLandscape()
+        lastResolvedLandscape = initialLand
+        let initialH = preferredHeight(landscape: initialLand)
+        let hc = root.heightAnchor.constraint(equalToConstant: initialH)
+        hc.priority = UILayoutPriority(999)
+        NSLayoutConstraint.activate([
+            root.topAnchor.constraint(equalTo: view.topAnchor),
+            root.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            root.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            root.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            hc,
+        ])
+        heightConstraint = hc
         tintView.isUserInteractionEnabled = false
         root.addSubview(tintView)
         candidateBar.showsPreedit = !useInlineMarkedText
@@ -472,24 +495,17 @@ final class KeyboardViewController: UIInputViewController {
     override func updateViewConstraints() {
         super.updateViewConstraints()
         heightPreset = KeyboardHeightPreset.clamped(KeyboardSettings.shared.keyboardHeight)
-        inputView?.allowsSelfSizing = true
         let targetH = preferredHeight()
-        if let c = heightConstraint {
-            if abs(c.constant - targetH) > 0.5 {
-                c.constant = targetH
-            }
-        } else {
-            let c = view.heightAnchor.constraint(equalToConstant: targetH)
-            c.priority = UILayoutPriority(999)
-            c.isActive = true
-            heightConstraint = c
+        if let c = heightConstraint, abs(c.constant - targetH) > 0.5 {
+            c.constant = targetH
+            heightSyncMutations += 1
         }
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         heightPreset = KeyboardHeightPreset.clamped(KeyboardSettings.shared.keyboardHeight)
-        syncHeightConstraint(forceLayout: true, notifyIfPresetChanged: true, immediateLayout: false)
+        syncHeightConstraint(notifyIfPresetChanged: false, allowImmediateLayout: false)
         lastDocumentID = host.documentIdentifier
         cachedShowGlobe = needsInputModeSwitchKey
         hostEchoesMarked = 0
@@ -549,7 +565,7 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
         super.viewWillTransition(to: size, with: coordinator)
-        syncHeightConstraint(landscape: resolvedIsLandscape(forWidth: size.width), forceLayout: false, notifyIfPresetChanged: false)
+        syncHeightConstraint(landscape: resolvedIsLandscape(forWidth: size.width), notifyIfPresetChanged: false, allowImmediateLayout: true)
     }
 
     private func preferredHeight(landscape: Bool? = nil) -> CGFloat {
@@ -557,26 +573,32 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     @discardableResult
-    private func syncHeightConstraint(landscape: Bool? = nil, forceLayout: Bool = false, notifyIfPresetChanged: Bool = false, immediateLayout: Bool = true) -> CGFloat {
-        inputView?.allowsSelfSizing = true
-        let targetH = preferredHeight(landscape: landscape)
-        let changed: Bool
+    private func syncHeightConstraint(landscape: Bool? = nil, notifyIfPresetChanged: Bool = false, allowImmediateLayout: Bool = true) -> CGFloat {
+        let land = landscape ?? resolvedIsLandscape()
+        lastResolvedLandscape = land
+        let targetH = preferredHeight(landscape: land)
+        var changed = false
         if let c = heightConstraint {
-            changed = abs(c.constant - targetH) > 0.5
-            if changed { c.constant = targetH }
+            if abs(c.constant - targetH) > 0.5 {
+                c.constant = targetH
+                heightSyncMutations += 1
+                changed = true
+            }
         } else {
-            let c = view.heightAnchor.constraint(equalToConstant: targetH)
-            c.priority = UILayoutPriority(999)
-            c.isActive = true
-            heightConstraint = c
+            let hc = root.heightAnchor.constraint(equalToConstant: targetH)
+            hc.priority = UILayoutPriority(999)
+            hc.isActive = true
+            heightConstraint = hc
+            heightSyncMutations += 1
             changed = true
         }
-        if changed || forceLayout {
-            view.setNeedsUpdateConstraints()
-            view.setNeedsLayout()
-            if immediateLayout {
-                view.updateConstraintsIfNeeded()
-                view.layoutIfNeeded()
+        if changed {
+            if allowImmediateLayout && view.window != nil {
+                UIView.performWithoutAnimation {
+                    self.view.layoutIfNeeded()
+                }
+            } else if view.window != nil {
+                view.setNeedsUpdateConstraints()
             }
         }
         if changed || notifyIfPresetChanged {
@@ -587,31 +609,36 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        let b = view.bounds
+        let b = root.bounds.width > 0 ? root.bounds : view.bounds
+        guard b.width > 0, b.height > 0 else { return }
         cachedShowGlobe = needsInputModeSwitchKey
-        if !syllablePicker.isHidden, let f = keyboard.keypadSideColumn() { syllablePicker.frame = f }
-        root.frame = b
-        tintView.frame = b
         // landscape on a phone with rounded corners / the Dynamic Island: keys and candidates stay inside the safe
         // area (as on the system keyboard), the glass and tint still run edge to edge
         let insetL = view.safeAreaInsets.left, insetR = view.safeAreaInsets.right
         let w = b.width - insetL - insetR
+        let reach: CGFloat = min(14, barHeight * 0.3)
+        let safe = CGRect(x: insetL, y: 0, width: w, height: b.height)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        tintView.frame = b
         candidateBar.frame = CGRect(x: insetL, y: 0, width: w, height: barHeight)
         updatePlainLightButton()
         // the keys reach up into the strip — 8 pt always, a little more right after a key (see KeyboardView.hitTest) —
         // never so far that a quick candidate pick lands on a key (the strip is shorter in landscape)
-        let reach: CGFloat = min(14, barHeight * 0.3)
         keyboard.frame = CGRect(x: insetL, y: barHeight - reach, width: w, height: b.height - barHeight + reach)
         keyboard.topReach = reach
+        if !syllablePicker.isHidden, let f = keyboard.keypadSideColumn() { syllablePicker.frame = f }
         gridIfLoaded?.frame = CGRect(x: insetL, y: barHeight, width: w, height: b.height - barHeight)
-        let safe = CGRect(x: insetL, y: 0, width: w, height: b.height)
         settingsPanelIfLoaded?.frame = safe
         if emojiShown { emojiPanel.frame = safe }
-        if let c = heightConstraint {
-            let targetH = preferredHeight()
-            if abs(c.constant - targetH) > 0.5 {
-                c.constant = targetH
-                view.setNeedsUpdateConstraints()
+        CATransaction.commit()
+        if b.width > 100 && b.height > 100 {
+            let actualLand = resolvedIsLandscape(forWidth: b.width)
+            if actualLand != lastResolvedLandscape {
+                lastResolvedLandscape = actualLand
+                DispatchQueue.main.async { [weak self] in
+                    self?.syncHeightConstraint(landscape: actualLand, notifyIfPresetChanged: false, allowImmediateLayout: true)
+                }
             }
         }
     }
@@ -816,6 +843,7 @@ final class KeyboardViewController: UIInputViewController {
             Theme.plain = plain
             keyboard.themeChanged()
             candidateBar.themeChanged()
+            syllablePicker.themeChanged()
             settingsPanelIfLoaded?.themeChanged()
             gridIfLoaded?.themeChanged()
             emojiPanelIfLoaded?.themeChanged()
@@ -965,7 +993,7 @@ final class KeyboardViewController: UIInputViewController {
         }
         reconfigure()
         applyAppearance()
-        syncHeightConstraint(forceLayout: presetChanged, notifyIfPresetChanged: presetChanged)
+        syncHeightConstraint(notifyIfPresetChanged: presetChanged, allowImmediateLayout: view.window != nil)
         onSettingsApplied?()
         if !taps.isEmpty { refresh() }
     }
@@ -2074,16 +2102,14 @@ final class KeyboardViewController: UIInputViewController {
         } else {
             settingsPanelIfLoaded?.isHidden = true
             heightPreset = KeyboardHeightPreset.clamped(KeyboardSettings.shared.keyboardHeight)
-            syncHeightConstraint(forceLayout: true, notifyIfPresetChanged: false)
+            syncHeightConstraint(notifyIfPresetChanged: false, allowImmediateLayout: true)
         }
         candidateBar.isHidden = on
         keyboard.isHidden = on || !(gridIfLoaded?.isHidden ?? true)
         updatePlainLightButton()
         if !on {
             candidateBar.setNeedsLayout()
-            candidateBar.layoutIfNeeded()
             keyboard.setNeedsLayout()
-            keyboard.layoutIfNeeded()
         }
     }
 
