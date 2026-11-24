@@ -401,9 +401,15 @@ struct UnifiedTypingBench: View {
             switch model.benchMode {
             case .free:
                 WrapLayout(spacing: 6, lineSpacing: 6) {
-                    inspirationChip(model.layout == 1 ? "按错纠错：打 jbtmtmqohfhc" : "按错纠错：打 jintianhenrw")
-                    inspirationChip("心算：打 365+18=")
-                    inspirationChip("上滑，出。 / 轻点 Mosto")
+                    inspirationChip(model.layout == 1 ? "纠错演示：jbtmtmqohfhc" : "纠错演示：jintianhenrw") {
+                        model.playInspiration(.correction)
+                    }
+                    inspirationChip("心算演示：365+18=") {
+                        model.playInspiration(.math)
+                    }
+                    inspirationChip("试打：你好。 / 轻点 Mosto") {
+                        model.playInspiration(.flickAndMosto)
+                    }
                 }
             case .demos:
                 WrapLayout(spacing: 6, lineSpacing: 6) {
@@ -481,14 +487,25 @@ struct UnifiedTypingBench: View {
         .buttonStyle(.plain)
     }
 
-    private func inspirationChip(_ text: String) -> some View {
-        Text(text)
-            .font(.caption2.weight(.medium))
-            .foregroundStyle(MossOttoStyle.inkSecondary)
+    private func inspirationChip(_ text: String, action: @escaping () -> Void) -> some View {
+        Button {
+            UISelectionFeedbackGenerator().selectionChanged()
+            action()
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "play.fill")
+                    .font(.system(size: 8.5, weight: .bold))
+                    .foregroundStyle(MossOttoStyle.violet)
+                Text(text)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(MossOttoStyle.inkPrimary)
+            }
             .padding(.horizontal, 10)
             .padding(.vertical, 5.5)
             .background(Capsule().fill(MossOttoStyle.surface))
             .overlay(Capsule().strokeBorder(MossOttoStyle.hairline, lineWidth: 0.7))
+        }
+        .buttonStyle(.plain)
     }
 }
 

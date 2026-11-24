@@ -500,6 +500,7 @@ final class KeyPreview: UIView {
 /// Long-press row of alternates (Gboard style): slide to choose, release to type the highlighted one.
 final class AltPopup: UIView {
     private var labels: [UILabel] = []
+    private let activeIndicator = CALayer()
     let cell: CGFloat
     var selected = 0 { didSet { if selected != oldValue { refresh() } } }
 
@@ -511,29 +512,33 @@ final class AltPopup: UIView {
         self.reversed = reversed
         super.init(frame: CGRect(x: 0, y: 0, width: cell * CGFloat(options.count) + 8, height: height))
         isUserInteractionEnabled = false
-        backgroundColor = Theme.bubble
         layer.cornerRadius = 11
         layer.cornerCurve = .continuous
         layer.borderWidth = 0.5
-        layer.borderColor = Theme.bubbleLip.resolvedColor(with: traitCollection).cgColor
-        layer.shadowColor = (Theme.plain ? UIColor.black : Theme.deepViolet).cgColor
         layer.shadowOpacity = 0.18
         layer.shadowRadius = 6
         layer.shadowOffset = CGSize(width: 0, height: 2.5)
         layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: 11).cgPath
+
+        activeIndicator.cornerRadius = 1
+        activeIndicator.zPosition = 5
+        layer.addSublayer(activeIndicator)
+
+        let optFont = Theme.font(24, .medium)
         for (i, o) in options.enumerated() {
             let slot = reversed ? options.count - 1 - i : i
-            let shift = cjkPunctuationOffset(o, fontSize: 24)
+            let shift = cjkPunctuationOffset(o, fontSize: 24, font: optFont)
             let l = UILabel(frame: CGRect(x: 4 + CGFloat(slot) * cell, y: 4, width: cell, height: height - 8))
-            l.layer.sublayerTransform = CATransform3DMakeTranslation(shift.x, shift.y, 0)
             l.text = o
             l.textAlignment = .center
-            l.font = Theme.font(24, .medium)
+            l.font = optFont
             l.adjustsFontSizeToFitWidth = true
             l.minimumScaleFactor = 0.5
             l.layer.cornerRadius = 8
             l.layer.cornerCurve = .continuous
             l.clipsToBounds = true
+            l.tag = Int((shift.x * 100).rounded())
+            l.accessibilityValue = "\(Int((shift.y * 100).rounded()))"
             addSubview(l)
             labels.append(l)
         }
@@ -541,11 +546,40 @@ final class AltPopup: UIView {
     }
     required init?(coder: NSCoder) { fatalError() }
 
+    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+        super.traitCollectionDidChange(previous)
+        refresh()
+    }
+
     private func refresh() {
+        let t = traitCollection
+        backgroundColor = Theme.bubble
+        layer.borderColor = Theme.bubbleLip.resolvedColor(with: t).cgColor
+        layer.shadowColor = (Theme.plain ? UIColor.black : Theme.deepViolet).cgColor
+        let reduceMotion = UIAccessibility.isReduceMotionEnabled
+        let indicatorColor = (Theme.plain ? Theme.selectionText : Theme.correctedMark).resolvedColor(with: t).cgColor
+
         for (i, l) in labels.enumerated() {
-            l.backgroundColor = i == selected ? Theme.selection : .clear
-            l.textColor = i == selected ? Theme.selectionText : Theme.keyText
+            let active = i == selected
+            l.backgroundColor = active ? Theme.selection : .clear
+            l.textColor = active ? Theme.selectionText : Theme.keyText
+            let sx = CGFloat(l.tag) / 100.0
+            let sy = CGFloat(Int(l.accessibilityValue ?? "0") ?? 0) / 100.0
+            if active && !reduceMotion {
+                l.transform = CGAffineTransform(translationX: sx, y: sy - 1.5).scaledBy(x: 1.07, y: 1.07)
+            } else {
+                l.transform = CGAffineTransform(translationX: sx, y: sy)
+            }
+            if active {
+                let indW = min(14, max(8, l.frame.width - 14))
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                activeIndicator.backgroundColor = indicatorColor
+                activeIndicator.frame = CGRect(x: l.frame.midX - indW / 2, y: bounds.height - 6.5, width: indW, height: 2)
+                CATransaction.commit()
+            }
         }
+        bringSubviewToFront(labels.indices.contains(selected) ? labels[selected] : self)
     }
 
     func index(at x: CGFloat) -> Int {
@@ -1712,6 +1746,18 @@ final class KeyboardView: UIView {
         tracked.values.contains { $0.preview?.isHidden == false && $0.preview?.isFlicked == true }
     }
 
+    var activeAltPopupFrameForTests: CGRect? {
+        tracked.values.compactMap { $0.altPopup?.frame }.first
+    }
+
+    var activeAltPopupSelectedForTests: Int? {
+        tracked.values.compactMap { $0.altPopup?.selected }.first
+    }
+
+    var activeAltOptionsForTests: [String] {
+        tracked.values.first(where: { $0.altPopup != nil })?.altOptions ?? []
+    }
+
     private func showAlt(_ tr: Tracked) {
         guard tr.keyIndex < keyViews.count, !tr.finished else { return }   // a long-press timer after the keys changed
         let kv = keyViews[tr.keyIndex]
@@ -1726,13 +1772,16 @@ final class KeyboardView: UIView {
             recyclePreview(tr.preview); tr.preview = nil
             let f = kv.frame
             let cell = max(f.width, 34)
+            let popupH = min(46, max(36, f.height * 1.08))
             let rowWidth = cell * CGFloat(tr.altOptions.count) + 8
             // the first option sits over the key; the rest run right, or left when the key is near the right edge
             let reversed = f.midX - cell / 2 - 4 + rowWidth > bounds.width - 2
-            let popup = AltPopup(options: tr.altOptions, cell: cell, height: f.height * 1.1, reversed: reversed)
+            let popup = AltPopup(options: tr.altOptions, cell: cell, height: popupH, reversed: reversed)
             var x = reversed ? f.midX + cell / 2 + 4 - rowWidth : f.midX - cell / 2 - 4
             x = min(max(2, x), bounds.width - popup.frame.width - 2)
-            popup.frame.origin = CGPoint(x: x, y: f.minY - popup.frame.height - 4)
+            let topY = superview.map { convert(CGPoint.zero, from: $0).y } ?? bounds.minY
+            let y = max(topY + 2, f.minY - popup.frame.height - 4)
+            popup.frame.origin = CGPoint(x: x, y: y)
             popup.selected = 0
             tr.altAnchorX = tr.location.x
             addSubview(popup)

@@ -284,6 +284,52 @@ final class PlaygroundModel: ObservableObject {
         refresh()
     }
 
+    enum FreeInspiration {
+        case correction
+        case math
+        case flickAndMosto
+    }
+
+    /// Replays a real interactive key sequence on the live studio keyboard so users immediately feel autocorrect,
+    /// trailing arithmetic, or flick punctuation without memorizing test phrases.
+    func playInspiration(_ kind: FreeInspiration, on overrideController: KeyboardViewController? = nil) {
+        let kb = overrideController ?? keyboard
+        keyboardVisible = true
+        benchMode = .free
+        kb?.discardComposition()
+        host.clear()
+        kb?.textDidChange(nil)
+        guard let kb else { return }
+
+        switch kind {
+        case .correction:
+            if layout == 2 { layout = 1 }
+            let keys = layout == 1 ? "jbtmtmqohfhc" : "jintianhenrw"
+            for ch in keys {
+                kb.handle(.char(String(ch)), tap: Tap.exact(ch))
+            }
+        case .math:
+            for ch in "365+18=" {
+                kb.handle(.char(String(ch)), tap: nil)
+            }
+        case .flickAndMosto:
+            if layout == 2 {
+                for d in ["6", "4", "4", "2", "6"] {
+                    if let c = d.first { kb.handle(.t9(c), tap: nil) }
+                }
+            } else {
+                let keys = layout == 1 ? "nihc" : "nihao"
+                for ch in keys {
+                    kb.handle(.char(String(ch)), tap: Tap.exact(ch))
+                }
+            }
+            kb.handle(.space, tap: nil)
+            kb.handle(.char("。"), tap: nil)
+            kb.candidateBarForTests.mosto.hop()
+        }
+        refresh()
+    }
+
     /// Selects a specific interactive showcase demo on the unified typing bench (preserving Xiaohe Shuangpin when compatible).
     func jump(to lesson: Int) {
         guard lessons.indices.contains(lesson) else { return }

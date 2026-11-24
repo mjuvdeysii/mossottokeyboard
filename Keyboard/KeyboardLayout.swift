@@ -269,12 +269,14 @@ enum Layouts {
     private static func pinyinPad(_ ctx: LayoutContext) -> [[KeySpec]] {
         let side: CGFloat = 1.6, mid: CGFloat = 6.8 / 3
         func k(_ d: Character, _ label: String) -> KeySpec { KeySpec(action: .t9(d), label: label, width: mid) }
-        func p(_ s: String, _ alt: String?) -> KeySpec { KeySpec(action: .char(s), label: s, width: side, alt: alt, style: .function, hint: alt) }
-        let row1 = [p("，", "、"), k("'", "分词"), k("2", "ABC"), k("3", "DEF"),
+        func p(_ s: String, _ alt: String?, more: [String] = []) -> KeySpec {
+            KeySpec(action: .char(s), label: s, width: side, alt: alt, style: .function, hint: alt, moreAlts: more)
+        }
+        let row1 = [p("，", "、", more: ["：", "；", "（", "《", "“"]), k("'", "分词"), k("2", "ABC"), k("3", "DEF"),
                     KeySpec(action: .delete, label: "", symbol: "delete.left", width: side, style: .function)]
-        let row2 = [p("。", "…"), k("4", "GHI"), k("5", "JKL"), k("6", "MNO"),
+        let row2 = [p("。", "…", more: ["·", "—", "）", "》", "”"]), k("4", "GHI"), k("5", "JKL"), k("6", "MNO"),
                     KeySpec(action: .clearInput, label: "重输", width: side, style: .function)]
-        let row3 = [p("？", "！"), k("7", "PQRS"), k("8", "TUV"), k("9", "WXYZ"), returnKey(ctx, width: side, wide: true)]
+        let row3 = [p("？", "！", more: ["～", "【", "】", "「", "」"]), k("7", "PQRS"), k("8", "TUV"), k("9", "WXYZ"), returnKey(ctx, width: side, wide: true)]
         let gear: [KeySpec] = ctx.showGlobe
             ? [KeySpec(action: .globe, label: "", symbol: "globe", width: 1, style: .function), emojiKey]
             : [emojiKey]

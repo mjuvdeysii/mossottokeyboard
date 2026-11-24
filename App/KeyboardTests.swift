@@ -143,6 +143,7 @@ enum KeyboardTests {
         r64SpringLoadedModifierGlide(window)
         r65VisualCraftAndOpticalFit(window)
         r66VisualStructureAndThumbErgonomics(window)
+        r67T9AltPopupAndFreeBenchInspirations(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -2639,6 +2640,85 @@ enum KeyboardTests {
         log(allValid,
             "r66.XiaoheDrill interactive key inspector returns verified 2-key examples for zh/sh/liang keys",
             "v=\(vExamples.map(\.code)) l=\(lExamples.map(\.code)) u=\(uExamples.map(\.code))")
+    }
+
+    // MARK: - R67: Nine-grid rich punctuation AltPopup, Row-0 top clamp & interactive Free Bench replays
+
+    static func r67T9AltPopupAndFreeBenchInspirations(_ window: UIWindow) {
+        // 1. Nine-grid punctuation keys expose rich moreAlts without leaving the main keypad
+        let ctx = LayoutContext(page: .letters, chinese: true, showGlobe: false, returnLabel: nil, returnIsAccent: false,
+                                shifted: false, capsLock: false, keyBorders: true, numberGrid: false, pinyinGrid: true,
+                                composing: false, xiaoheGuide: false)
+        let t9Specs = Layouts.rows(ctx).flatMap { $0 }
+        let commaSpec = t9Specs.first { $0.action == .char("，") }
+        let periodSpec = t9Specs.first { $0.action == .char("。") }
+        let questionSpec = t9Specs.first { $0.action == .char("？") }
+        log(commaSpec?.alt == "、" && (commaSpec?.moreAlts.contains("（") == true)
+            && periodSpec?.alt == "…" && (periodSpec?.moreAlts.contains("》") == true)
+            && questionSpec?.alt == "！" && (questionSpec?.moreAlts.contains("【") == true),
+            "r67.pinyinPad punctuation keys expose rich moreAlts for brackets and marks",
+            "comma=\(commaSpec?.moreAlts ?? []) period=\(periodSpec?.moreAlts ?? []) q=\(questionSpec?.moreAlts ?? [])")
+
+        // 2. Long-press on Row-0 `，` in 九宫格 shows AltPopup safely inside root bounds & sliding selects `（` -> `（）`
+        if let kb = makeKeyboard(scheme: 0, grid: true, in: window) {
+            let (vc, h) = kb
+            let board = vc.keyboardViewForTests
+            board.layoutIfNeeded()
+            if let comma = board.keyRectsForTests(.char("，"))?.cap {
+                let cell = max(comma.width, 34)
+                let startPt = CGPoint(x: comma.midX, y: comma.midY)
+                // Hold 0.45s to open AltPopup, then inspect bounds before sliding to index 3 (`（`: ["、", "：", "；", "（", ...])
+                let holdSamples = path(from: startPt, legs: [(.zero, 0.45)])
+                let holdDown = Array(holdSamples.dropLast())
+                board.feedForTests(holdDown)
+                let popupFrame = board.activeAltPopupFrameForTests
+                let options = board.activeAltOptionsForTests
+                let rootTopInBoard = board.convert(CGPoint.zero, from: vc.view).y
+                log(popupFrame != nil && (popupFrame?.minY ?? -999) >= rootTopInBoard && options.count >= 6,
+                    "r67.Row-0 AltPopup clamps inside host keyboard bounds without top clipping",
+                    "frame=\(String(describing: popupFrame)) topLimit=\(rootTopInBoard) opts=\(options.count)")
+
+                // Slide right 3 cells onto `（` and lift
+                let anchorTime = holdDown.last?.time ?? 0
+                let slideStart = CGPoint(x: startPt.x + 8, y: startPt.y)
+                let slideEnd = CGPoint(x: startPt.x + cell * 3 + 4, y: startPt.y)
+                var slideSamples: [TouchSample] = [
+                    TouchSample(id: 1, phase: .moved, point: slideStart, time: anchorTime + 0.02),
+                    TouchSample(id: 1, phase: .moved, point: slideEnd, time: anchorTime + 0.08),
+                    TouchSample(id: 1, phase: .ended, point: slideEnd, time: anchorTime + 0.10),
+                ]
+                board.feedForTests(slideSamples)
+                drain(0.05)
+                _ = slideSamples.popLast()
+                log(h.documentContextBeforeInput == "（" && h.documentContextAfterInput == "）",
+                    "r67.Sliding across Row-0 九宫格 AltPopup inserts matching smart pair with cursor inside",
+                    "before='\(h.documentContextBeforeInput ?? "")' after='\(h.documentContextAfterInput ?? "")'")
+            } else {
+                log(false, "r67.Row-0 AltPopup", "missing comma key rect")
+            }
+        } else {
+            log(false, "r67.Row-0 AltPopup setup")
+        }
+
+        // 3. PlaygroundModel interactive free-bench inspiration replays work end-to-end
+        if let kb = makeKeyboard(scheme: 0, grid: false, in: window) {
+            let (vc, _) = kb
+            let model = PlaygroundModel()
+            model.layout = 1
+            model.playInspiration(.math, on: vc)
+            drain(0.05)
+            log(vc.testState.predictions == ["383"],
+                "r67.PlaygroundModel.playInspiration(.math) triggers live trailing arithmetic candidate 383",
+                "predictions=\(vc.testState.predictions)")
+
+            model.playInspiration(.correction, on: vc)
+            settle(vc)
+            log(vc.testState.composing && !vc.testState.candidates.isEmpty && !vc.activeFirstFixesForTests.isEmpty,
+                "r67.PlaygroundModel.playInspiration(.correction) reproduces live autocorrect pinpoint state",
+                "keys=\(vc.testState.keys) fixes=\(vc.activeFirstFixesForTests.count)")
+        } else {
+            log(false, "r67.PlaygroundModel inspiration setup")
+        }
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key
