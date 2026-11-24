@@ -390,12 +390,15 @@ final class KeyboardViewController: UIInputViewController {
             guard let self else { return false }
             return !self.taps.isEmpty || !self.enTaps.isEmpty
         }
-        keyboard.onClearPreview = { [weak self] on in self?.candidateBar.setClearPreview(on) }
+        keyboard.onClearPreview = { [weak self] on in self?.candidateBar.setClearPreview(on); self?.updatePlainLightButton() }
         keyboard.onClearProgress = { [weak self] progress, armed in
-            self?.candidateBar.setClearProgress(progress, armed: armed, dimContent: true)
+            guard let self else { return }
+            self.candidateBar.setClearProgress(progress, armed: armed, dimContent: true)
+            self.updatePlainLightButton()
         }
         keyboard.onDeleteClutchProgress = { [weak self] progress, engaged in
-            self?.candidateBar.setClearProgress(progress, armed: engaged, dimContent: false)
+            guard let self else { return }
+            self.syncDeleteClutchTelemetry(progress: progress, engaged: engaged)
         }
         keyboard.onDeleteRepeatEnded = { [weak self] in
             self?.finalizeDeleteRepeatUndo()
@@ -869,7 +872,7 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func updatePlainLightButton() {
-        let idle = taps.isEmpty && predictions.isEmpty && enSuggestions.isEmpty && candidateBar.undoTextForTests == nil && !emojiShown && (settingsPanelIfLoaded?.isHidden ?? true) && (gridIfLoaded?.isHidden ?? true) && (Theme.plain || !candidateBar.mosto.isHidden)
+        let idle = taps.isEmpty && predictions.isEmpty && enSuggestions.isEmpty && candidateBar.undoTextForTests == nil && !emojiShown && (settingsPanelIfLoaded?.isHidden ?? true) && (gridIfLoaded?.isHidden ?? true) && !candidateBar.isDeleteActionActive && (Theme.plain || !candidateBar.mosto.isHidden)
         let night = isNight
         let h = candidateBar.bounds.height > 0 ? candidateBar.bounds.height : barHeight
         let key = IdleBarKey(idle: idle, plain: Theme.plain, night: night, barH: Int(h.rounded()))
@@ -1588,7 +1591,25 @@ final class KeyboardViewController: UIInputViewController {
         if !removed.isEmpty, deletedWordsBuffer.count + removed.count <= 120 {
             deletedWordsBuffer = removed + deletedWordsBuffer
         }
+        if candidateBar.isDeleteClutchEngaged {
+            syncDeleteClutchTelemetry(progress: 1.0, engaged: true)
+        }
         if !chinese { updateAutoShift(); reconfigure() }
+    }
+
+    private func syncDeleteClutchTelemetry(progress: CGFloat, engaged: Bool) {
+        let sanitized = deletedWordsBuffer
+            .replacingOccurrences(of: "\r\n", with: "↵")
+            .replacingOccurrences(of: "\n", with: "↵")
+            .replacingOccurrences(of: "\r", with: "↵")
+        candidateBar.setClearProgress(
+            progress,
+            armed: engaged,
+            dimContent: false,
+            deletedText: sanitized,
+            deletedCount: deletedWordsBuffer.count
+        )
+        updatePlainLightButton()
     }
 
     /// Promotes any words removed by a held-delete clutch gesture into the `↩` undo chip once the finger lifts.

@@ -75,9 +75,12 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     private let correctionBar = CALayer()
     private let clearFilament = CALayer()
     private let clearArmedPill = UILabel()
+    private let deletePreviewPill = UILabel()
     private var clearSwipeProgress: CGFloat = 0
     private var clearSwipeArmed = false
     private var clearSwipeDimContent = true
+    private var deleteClutchText: String = ""
+    private var deleteClutchCount: Int = 0
     /// What each pooled label shows now (so a label is only redrawn when it changes).
     private struct PoolSlotKey: Equatable {
         let text: String
@@ -234,6 +237,16 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         clearArmedPill.isUserInteractionEnabled = false
         clearArmedPill.isHidden = true
         addSubview(clearArmedPill)
+        deletePreviewPill.font = Theme.font(11.5, .medium)
+        deletePreviewPill.textAlignment = .center
+        deletePreviewPill.lineBreakMode = .byTruncatingMiddle
+        deletePreviewPill.layer.cornerRadius = 11
+        deletePreviewPill.layer.cornerCurve = .continuous
+        deletePreviewPill.layer.borderWidth = 0.5
+        deletePreviewPill.clipsToBounds = true
+        deletePreviewPill.isUserInteractionEnabled = false
+        deletePreviewPill.isHidden = true
+        addSubview(deletePreviewPill)
         let cfg = UIImage.SymbolConfiguration(pointSize: 16, weight: .regular)
         expandButton.setImage(UIImage(systemName: "chevron.down", withConfiguration: cfg), for: .normal)
         expandButton.tintColor = Theme.secondaryText
@@ -520,15 +533,22 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         setNeedsLayout()
     }
 
-    /// Continuous delete-left swipe or held-delete clutch progress (`0...1`) drives the strip's bottom warm-amber filament synchronously.
-    func setClearProgress(_ progress: CGFloat, armed: Bool, dimContent: Bool = true) {
+    var isDeleteActionActive: Bool { clearSwipeProgress > 0.005 || clearSwipeArmed }
+    var isDeleteClutchEngaged: Bool { clearSwipeArmed && !clearSwipeDimContent }
+
+    /// Continuous delete-left swipe or held-delete clutch progress (`0...1`) drives the strip's bottom warm-amber filament
+    /// and right/left ceramic HUD pills synchronously.
+    func setClearProgress(_ progress: CGFloat, armed: Bool, dimContent: Bool = true,
+                          deletedText: String = "", deletedCount: Int = 0) {
         let p = armed ? 1.0 : min(1, max(0, progress))
         clearSwipeProgress = p
         clearSwipeArmed = armed
         clearSwipeDimContent = dimContent
+        deleteClutchText = (armed && !dimContent) ? deletedText : ""
+        deleteClutchCount = (armed && !dimContent) ? deletedCount : 0
         let a: CGFloat = dimContent ? (armed ? 0.35 : (p > 0.01 ? (1.0 - p * 0.40) : 1.0)) : 1.0
         stripBox.alpha = a
-        expandButton.alpha = (armed && dimContent) ? 0 : a
+        expandButton.alpha = armed ? 0 : a
         preeditDock.alpha = a
         setNeedsLayout()
         layoutIfNeeded()
@@ -541,10 +561,23 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     }
 
     private func layoutClearFilament() {
-        let showCue = clearSwipeArmed && clearSwipeDimContent && forgetOverlay == nil && bounds.width > 120
+        let clutchEngaged = clearSwipeArmed && !clearSwipeDimContent
+        let showCue = clearSwipeArmed && forgetOverlay == nil && bounds.width > 120
         clearArmedPill.isHidden = !showCue
         if showCue {
-            let pillW: CGFloat = 66
+            let cueText: String
+            let pillFont: UIFont
+            if clutchEngaged {
+                cueText = deleteClutchCount > 0 ? "逐词删 · \(deleteClutchCount)字" : "逐词删"
+                pillFont = UIFont.monospacedDigitSystemFont(ofSize: 11.5, weight: .semibold)
+            } else {
+                cueText = "松手清空"
+                pillFont = Theme.font(11.5, .semibold)
+            }
+            clearArmedPill.text = cueText
+            clearArmedPill.font = pillFont
+            let textW = ceil((cueText as NSString).size(withAttributes: [.font: pillFont]).width)
+            let pillW: CGFloat = clutchEngaged ? min(116, max(58, textW + 18)) : 66
             let pillH = min(22, max(18, bounds.height - 16))
             clearArmedPill.frame = CGRect(
                 x: bounds.width - 10 - pillW,
@@ -553,7 +586,6 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
                 height: pillH
             )
             clearArmedPill.layer.cornerRadius = pillH / 2
-            clearArmedPill.font = Theme.font(11.5, .semibold)
             if Theme.plain {
                 clearArmedPill.backgroundColor = Theme.dyn(
                     UIColor(red: 0.94, green: 0.90, blue: 0.97, alpha: 1),
@@ -575,6 +607,37 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             }
             bringSubviewToFront(clearArmedPill)
         }
+
+        let maxPreviewW = showCue ? (clearArmedPill.frame.minX - 18) : 0
+        let showPreview = showCue && clutchEngaged && maxPreviewW >= 68
+        deletePreviewPill.isHidden = !showPreview
+        if showPreview {
+            let previewFont = Theme.font(11.5, .medium)
+            let previewString: String
+            if !deleteClutchText.isEmpty {
+                let snippet = Self.abbreviated(deleteClutchText, to: 10)
+                previewString = maxPreviewW >= 172 ? "已删「\(snippet)」· 松手撤回" : "已删「\(snippet)」"
+            } else {
+                previewString = "已进入逐词快删"
+            }
+            deletePreviewPill.text = previewString
+            deletePreviewPill.font = previewFont
+            let textW = ceil((previewString as NSString).size(withAttributes: [.font: previewFont]).width)
+            let pillW = min(maxPreviewW, max(68, textW + 18))
+            let pillH = min(22, max(18, bounds.height - 16))
+            deletePreviewPill.frame = CGRect(
+                x: 10,
+                y: floor((bounds.height - 2.5 - pillH) / 2),
+                width: pillW,
+                height: pillH
+            )
+            deletePreviewPill.layer.cornerRadius = pillH / 2
+            deletePreviewPill.backgroundColor = Theme.preeditPillBg
+            deletePreviewPill.textColor = Theme.keyText
+            deletePreviewPill.layer.borderColor = Theme.preeditPillBorder.resolvedColor(with: traitCollection).cgColor
+            bringSubviewToFront(deletePreviewPill)
+        }
+
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         if clearSwipeProgress <= 0.005 || bounds.width <= 20 {
@@ -593,10 +656,20 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         CATransaction.commit()
     }
 
+    private static func abbreviated(_ s: String, to limit: Int) -> String {
+        guard s.count > limit else { return s }
+        return String(s.prefix(limit / 2)) + "…" + String(s.suffix(limit - limit / 2 - 1))
+    }
+
     var clearPreviewForTests: Bool { stripBox.alpha < 1 }
     var clearFilamentProgressForTests: CGFloat { clearSwipeProgress }
-    var clearArmedCueShownForTests: Bool { !clearArmedPill.isHidden }
+    var clearArmedCueShownForTests: Bool { !clearArmedPill.isHidden && clearSwipeDimContent }
+    var deleteClutchCueShownForTests: Bool { !clearArmedPill.isHidden && !clearSwipeDimContent }
+    var clearArmedCueTextForTests: String? { clearArmedPill.isHidden ? nil : clearArmedPill.text }
     var clearArmedPillFrameForTests: CGRect { clearArmedPill.frame }
+    var deletePreviewShownForTests: Bool { !deletePreviewPill.isHidden }
+    var deletePreviewTextForTests: String? { deletePreviewPill.isHidden ? nil : deletePreviewPill.text }
+    var deletePreviewPillFrameForTests: CGRect { deletePreviewPill.frame }
     var stripVisibleForTests: Bool { !stripBox.isHidden }
     var clearArmedOpaqueForTests: Bool { (clearArmedPill.backgroundColor?.cgColor.alpha ?? 0) >= 0.99 }
 
@@ -620,6 +693,9 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         get {
             if forgetOverlay != nil {
                 return [forgetConfirmButton, forgetCancelButton].compactMap { $0 }
+            }
+            if isDeleteClutchEngaged {
+                return [deletePreviewPill, clearArmedPill].filter { !$0.isHidden }
             }
             var out: [Any] = []
             let visibleIdle = idleAccessibilityViews.filter { !$0.isHidden }
@@ -777,6 +853,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             undoChip.isHidden = true
             mosto.isHidden = true
             clearArmedPill.isHidden = true
+            deletePreviewPill.isHidden = true
             let pillH = min(30, max(24, h - 10))
             let y = floor((h - pillH) / 2)
             if let cancelBtn = forgetCancelButton {
@@ -794,9 +871,9 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             layoutClearFilament()
             return
         }
-        undoChip.isHidden = undoText == nil
-        preeditDock.isHidden = !preeditDockWanted || !undoChip.isHidden
-        mosto.isHidden = !mostoWanted
+        undoChip.isHidden = undoText == nil || isDeleteClutchEngaged
+        preeditDock.isHidden = !preeditDockWanted || !undoChip.isHidden || isDeleteClutchEngaged
+        mosto.isHidden = !mostoWanted || isDeleteClutchEngaged
         // Inset neatly inside the 28pt idle Mosto capsule (zero overflow or clipping mismatch).
         let pillH = min(28, max(24, h - 12))
         let mSize = min(24, pillH - 4)
@@ -860,7 +937,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         if strip.frame != inner { strip.frame = inner }
         // nothing to show: the strip takes no touches (or when grid is open and live preedit dock replaces duplicate row-1 strip)
         let hideStripForGridDock = gridExpanded && !preeditDock.isHidden && !preeditRaw.isEmpty
-        stripBox.isHidden = (candidates.isEmpty && !typing) || hideStripForGridDock
+        stripBox.isHidden = (candidates.isEmpty && !typing) || hideStripForGridDock || isDeleteClutchEngaged
         layoutCandidates()
     }
 

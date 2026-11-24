@@ -151,6 +151,7 @@ enum KeyboardTests {
         r72DrawerTelemetryBracketAndBenchCraft(window)
         r73GridPreeditClearCueAndAppCoverage(window)
         r74HeightAntiBounceStripSpeedAndTunerCraft(window)
+        r75DeleteClutchHudAndIdleGuard(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -3183,6 +3184,80 @@ enum KeyboardTests {
         log(emojiFn && kaoFn,
             "r74.EmojiPanelView keeps bottom-left return key visually consistent across Emoji and Kaomoji",
             "emojiFn=\(emojiFn) kaoFn=\(kaoFn)")
+    }
+
+    // MARK: - R75: Held-delete clutch telemetry HUD, gear-shift haptic & idle pill collision guard
+
+    static func r75DeleteClutchHudAndIdleGuard(_ window: UIWindow) {
+        // 1. Delete-clutch telemetry HUD renders non-overlapping left preview + right word count capsule across day/night/plain
+        let bar = CandidateBarView(frame: CGRect(x: 0, y: 0, width: 375, height: 42))
+        bar.showsMosto = true
+        bar.setClearProgress(1.0, armed: true, dimContent: false, deletedText: "今天天气真好", deletedCount: 6)
+        bar.layoutIfNeeded()
+        let clutchCueShown = bar.deleteClutchCueShownForTests
+            && bar.clearArmedOpaqueForTests
+            && (bar.clearArmedCueTextForTests == "逐词删 · 6字")
+        let previewShown = bar.deletePreviewShownForTests
+            && (bar.deletePreviewTextForTests?.contains("今天天气真好") == true)
+        let noOverlap = !bar.deletePreviewPillFrameForTests.intersects(bar.clearArmedPillFrameForTests)
+            && bar.deletePreviewPillFrameForTests.maxX < bar.clearArmedPillFrameForTests.minX
+        let mostoHidden = bar.mosto.isHidden
+        log(clutchCueShown && previewShown && noOverlap && mostoHidden,
+            "r75.CandidateBarView renders non-overlapping delete-clutch count + preview capsules and yields Mosto",
+            "cue=\(bar.clearArmedCueTextForTests ?? "nil") preview=\(bar.deletePreviewTextForTests ?? "nil") noOverlap=\(noOverlap) mostoHidden=\(mostoHidden)")
+
+        // 2. Live controller: clutch engagement fires .clearArmed haptic detent, updates deleted count live, hides idle buttons, and hands off to ↩ undo
+        guard let (vc, h) = makeKeyboard(scheme: 0, in: window) else {
+            log(false, "r75.setup", "engine did not load")
+            return
+        }
+        let rec = RecordingFeedbackPlayer()
+        vc.feedbackPlayer = rec
+        let kb = vc.keyboardViewForTests
+        let vcBar = vc.candidateBarForTests
+        guard let delCap = kb.keyRectsForTests(.delete)?.cap else {
+            log(false, "r75.setup", "no delete key")
+            return
+        }
+        let dc = center(delCap)
+
+        reset(vc, h)
+        let seedText = "今天天气真好我们可以一起出去公园散步吧太开心啦好不好"
+        h.insertText(seedText)
+        vc.textDidChange(nil)
+        rec.clear()
+        let t0: CFTimeInterval = 300
+        kb.feedForTests([TouchSample(id: 1, phase: .began, point: dc, time: t0)])
+        kb.advanceForTests(to: t0 + 1.85) // tick 20 (0.42 + 20*0.07 = 1.82s): clutch engages before first word delete at tick 21
+        let engagedHaptic = rec.haptics.contains(where: { $0.kind == .selection })
+        let engagedCue = vcBar.deleteClutchCueShownForTests && vcBar.clearArmedCueTextForTests == "逐词删"
+        let idleHiddenDuringClutch = vc.plainLightHiddenForTests && vc.mostoHintHiddenForTests
+
+        kb.advanceForTests(to: t0 + 2.11) // ticks 21 & 24 delete 4 Hanzi ("真好" then "天气" -> "天气真好")
+        let liveCountCue = vcBar.clearArmedCueTextForTests == "逐词删 · 4字"
+        let livePreviewShown = vcBar.deletePreviewShownForTests && (vcBar.deletePreviewTextForTests?.contains("天气真好") == true)
+        let liveNoOverlap = !vcBar.deletePreviewPillFrameForTests.intersects(vcBar.clearArmedPillFrameForTests)
+        kb.feedForTests([TouchSample(id: 1, phase: .ended, point: dc, time: t0 + 2.12)])
+        drain(0.01)
+        let handoffToUndo = !vcBar.deleteClutchCueShownForTests && !vcBar.deletePreviewShownForTests && vcBar.undoTextForTests == "天气真好"
+        log(engagedHaptic && engagedCue && idleHiddenDuringClutch && liveCountCue && livePreviewShown && liveNoOverlap && handoffToUndo,
+            "r75.Held-delete clutch fires gear-shift detent, tracks deleted chars live without idle collision, and hands off to ↩",
+            "haptic=\(engagedHaptic) cue=\(vcBar.clearArmedCueTextForTests ?? "nil") idleHidden=\(idleHiddenDuringClutch) live=\(liveCountCue) handoff=\(handoffToUndo)")
+
+        // 3. Single-letter ClearSwipe keeps idle light/kaomoji pills hidden while armed (zero collision when taps becomes empty)
+        reset(vc, h)
+        type(vc, "a")
+        settle(vc)
+        let swipeSamples = swipe(from: dc, to: CGVector(dx: -72, dy: 0), duration: 0.18)
+        kb.feedForTests(Array(swipeSamples.dropLast()))
+        let armedSingle = vcBar.clearArmedCueShownForTests && vcBar.clearArmedCueTextForTests == "松手清空"
+        let idleHiddenOnSwipe = vc.plainLightHiddenForTests && vc.mostoHintHiddenForTests
+        kb.feedForTests([swipeSamples.last!])
+        drain(0.01)
+        let restoredChip = vcBar.undoTextForTests == "a"
+        log(armedSingle && idleHiddenOnSwipe && restoredChip,
+            "r75.Single-key ClearSwipe suppresses idle pills during armed preview and restores via ↩",
+            "armed=\(armedSingle) idleHidden=\(idleHiddenOnSwipe) chip=\(vcBar.undoTextForTests ?? "nil")")
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

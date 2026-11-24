@@ -1713,6 +1713,7 @@ final class KeyboardView: UIView {
                 }
             } else {
                 if tr.repeatCount == 20 {
+                    self.onFeedback?(.clearArmed, nil)
                     self.onDeleteClutchProgress?(1.0, true)
                 }
                 if tr.repeatCount % 3 == 0 {

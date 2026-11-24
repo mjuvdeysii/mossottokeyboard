@@ -86,6 +86,7 @@ enum SnapshotRenderer {
             // armed (the candidates faded, delete held); after the clear, the ↩ chip with the keys it took
             Shot(name: "strip_scrolled", page: .letters, state: "composing", borders: true, panel: "scrolled"),
             Shot(name: "clear_armed", page: .letters, state: "composing", borders: true, panel: "clear_armed"),
+            Shot(name: "delete_clutch", page: .letters, state: "idle", borders: true, panel: "delete_clutch"),
             Shot(name: "cleared_undo", page: .letters, state: "cleared", borders: true, panel: nil),
             Shot(name: "press_comma_numbers", page: .numbers, state: "idle", borders: true, panel: "press:，"),
             Shot(name: "emoji", page: .letters, state: "idle", borders: true, panel: "emoji"),
@@ -198,6 +199,10 @@ enum SnapshotRenderer {
                     kb.layoutIfNeeded()
                     kb.demoHold(.delete)
                     bar.setClearPreview(true)
+                } else if shot.panel == "delete_clutch" {
+                    kb.layoutIfNeeded()
+                    kb.demoHold(.delete)
+                    bar.setClearProgress(1.0, armed: true, dimContent: false, deletedText: "今天天气真好", deletedCount: 6)
                 } else if shot.panel == "cursor" {
                     kb.layoutIfNeeded()
                     kb.demoCursorMode()
