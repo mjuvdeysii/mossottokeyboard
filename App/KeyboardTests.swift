@@ -163,6 +163,7 @@ enum KeyboardTests {
         r84ContrastRangefinderAndWorkbenchCraft(window)
         r85CommercialCompanionAndIPFamily(window)
         r86ReleaseCandidatePolish(window)
+        r87WeChatTopGapElimination(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -2319,7 +2320,7 @@ enum KeyboardTests {
         // 5. KeyboardHeightPreset height calibration stays aligned with KeyboardSettings presets
         let tallH = KeyboardHeightPreset.comfortable.totalHeight(landscape: false)
         let compactH = KeyboardHeightPreset.compact.totalHeight(landscape: false)
-        log(tallH == 262 && compactH == 226 && KeyboardHeightPreset.clamped(99) == .standard,
+        log(tallH == 262 && compactH == 226 && KeyboardHeightPreset.clamped(99) == .tall && KeyboardHeightPreset.clamped(-1) == .compact,
             "r63.KeyboardHeightPreset maintains calibrated portrait heights and safe fallback",
             "comfortable=\(tallH) compact=\(compactH)")
     }
@@ -3624,9 +3625,9 @@ enum KeyboardTests {
         vc.view.frame = CGRect(x: 0, y: 0, width: 393, height: 780)
         vc.view.setNeedsLayout()
         vc.view.layoutIfNeeded()
-        let clamped780 = vc.rootFrameForTests.height <= 242.5
+        let clamped780 = vc.rootFrameForTests.height <= 308.5
             && abs(vc.rootFrameForTests.maxY - 780) < 1.0
-            && vc.maxKeycapHeightForTests <= 46
+            && vc.maxKeycapHeightForTests <= 54
 
         s.keyboardHeight = KeyboardHeightPreset.comfortable.rawValue
         vc.applySettings()
@@ -3634,9 +3635,9 @@ enum KeyboardTests {
         vc.view.frame = CGRect(x: 0, y: 0, width: 393, height: 852)
         vc.view.setNeedsLayout()
         vc.view.layoutIfNeeded()
-        let clamped852 = vc.rootFrameForTests.height <= 262.5
+        let clamped852 = vc.rootFrameForTests.height <= 308.5
             && abs(vc.rootFrameForTests.maxY - 852) < 1.0
-            && vc.maxKeycapHeightForTests <= 51
+            && vc.maxKeycapHeightForTests <= 54
 
         log(directViewTarget && prefSyncStandard && clamped780 && prefSyncComfort && clamped852,
             "r83.KeyboardViewController binds view.heightAnchor directly and clamps oversized host frames bottom-up",
@@ -3841,6 +3842,43 @@ enum KeyboardTests {
         log(LegalText.effective == "2026 年 11 月 24 日" && noBetaTerms && hasFamilyIP,
             "r86.LegalText reflects App Store 1.0 release wording and OTTOSSOM IP ownership",
             "effective=\(LegalText.effective) noBeta=\(noBetaTerms) familyIP=\(hasFamilyIP)")
+    }
+
+    // MARK: - R87: Eliminate WeChat ~60 pt Top Empty Glass Gap While Preserving Full-Screen Clamp
+
+    static func r87WeChatTopGapElimination(_ window: UIWindow) {
+        let s = KeyboardSettings.shared
+        let prevHeight = s.keyboardHeight
+        defer { s.keyboardHeight = prevHeight }
+
+        guard let pair = makeKeyboard(scheme: 0, in: window) else {
+            log(false, "r87.WeChat top gap setup", "engine did not load")
+            return
+        }
+        let (vc, _) = pair
+        s.keyboardHeight = KeyboardHeightPreset.standard.rawValue
+        vc.applySettings()
+
+        // 1. WeChat portrait normal container (~301 pt) fills cleanly from minY=0 (zero empty top slab)
+        vc.view.frame = CGRect(x: 0, y: 0, width: 393, height: 301)
+        vc.view.setNeedsLayout()
+        vc.view.layoutIfNeeded()
+        let wechatZeroTopGap = vc.rootFrameForTests.minY == 0
+            && abs(vc.rootFrameForTests.height - 301) < 0.5
+            && vc.maxKeycapHeightForTests >= 46
+            && vc.maxKeycapHeightForTests <= 53
+
+        // 2. Spotlight/Notes exact standard container (242 pt) retains exact 242 pt geometry and keycap height
+        vc.view.frame = CGRect(x: 0, y: 0, width: 393, height: 242)
+        vc.view.setNeedsLayout()
+        vc.view.layoutIfNeeded()
+        let notesStandardOk = vc.rootFrameForTests.minY == 0
+            && abs(vc.rootFrameForTests.height - 242) < 0.5
+            && vc.maxKeycapHeightForTests <= 41
+
+        log(wechatZeroTopGap && notesStandardOk,
+            "r87.WeChat 301pt host fills flush with zero top glass gap while 242pt Notes preserves baseline proportions",
+            "wechat=(\(wechatZeroTopGap),\(vc.rootFrameForTests),\(vc.maxKeycapHeightForTests)) notes=(\(notesStandardOk),\(vc.rootFrameForTests),\(vc.maxKeycapHeightForTests))")
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

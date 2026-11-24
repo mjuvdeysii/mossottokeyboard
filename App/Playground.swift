@@ -366,19 +366,23 @@ struct FamilyLampStageView: View {
             VStack(spacing: 4) {
                 ZStack(alignment: .bottom) {
                     if warmBeadGlow {
+                        let base = Color(uiColor: MossOttoStyle.hex(0xFFC66E))
+                        let peakOpacity = member == .otto ? 0.36 : 0.24
                         Circle()
                             .fill(
                                 RadialGradient(
-                                    colors: [
-                                        Color(uiColor: MossOttoStyle.hex(0xFFC66E)).opacity(member == .otto ? 0.42 : 0.28),
-                                        .clear,
+                                    stops: [
+                                        .init(color: base.opacity(peakOpacity), location: 0.0),
+                                        .init(color: base.opacity(peakOpacity * 0.48), location: 0.38),
+                                        .init(color: base.opacity(peakOpacity * 0.12), location: 0.72),
+                                        .init(color: .clear, location: 1.0),
                                     ],
                                     center: .center,
-                                    startRadius: 2,
-                                    endRadius: height * 0.48
+                                    startRadius: 1,
+                                    endRadius: height * 0.45
                                 )
                             )
-                            .frame(width: height * 0.86, height: height * 0.86)
+                            .frame(width: height * 0.94, height: height * 0.94)
                             .offset(
                                 x: member == .otto ? -height * 0.18 : height * 0.22,
                                 y: member == .otto ? -height * 0.46 : -height * 0.22

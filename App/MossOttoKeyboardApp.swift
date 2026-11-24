@@ -442,8 +442,11 @@ struct GestureAtlasContent: View {
 
     @State private var selectedMosto: MostoPreviewAction? = nil
     @State private var mostoBounce = false
-    @State private var previewNight = false
+    @State private var nightOverride: Bool? = nil
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var previewNight: Bool { nightOverride ?? (colorScheme == .dark) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -483,7 +486,7 @@ struct GestureAtlasContent: View {
                 atlasRow(
                     symbol: "wand.and.stars",
                     title: "整句触点纠错",
-                    chips: ["偏键自动读准", "空格后 ↩ 撤回"]
+                    chips: ["偏键自动读准", "空格后 \u{21A9}\u{FE0E} 撤回"]
                 )
                 Divider()
                 atlasRow(
@@ -580,7 +583,7 @@ struct GestureAtlasContent: View {
         let style: UIImpactFeedbackGenerator.FeedbackStyle = action == .yawn ? .soft : (action == .toggleLight ? .medium : .light)
         UIImpactFeedbackGenerator(style: style).impactOccurred()
         withAnimation(reduceMotion ? .none : .spring(response: 0.24, dampingFraction: 0.65)) {
-            if action == .toggleLight { previewNight.toggle() }
+            if action == .toggleLight { nightOverride = !previewNight }
             selectedMosto = action
             mostoBounce = true
         }

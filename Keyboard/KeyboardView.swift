@@ -1092,7 +1092,7 @@ final class KeyboardView: UIView {
         let contentW = max(1, bounds.width - sideInset * 2)
         let unit = contentW / 10
         let gapX = Metrics.gapX
-        let gapY = min(12, max(8, (rowH * 0.20).rounded()))
+        let gapY = rowH <= 60 ? min(12, max(8, (rowH * 0.20).rounded())) : min(14, max(12, (rowH * 0.22).rounded()))
         hitRects = []
         var i = 0
         var spatialKeys: [SpatialModel.Key] = []

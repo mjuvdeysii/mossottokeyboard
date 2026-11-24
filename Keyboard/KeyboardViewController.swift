@@ -47,6 +47,7 @@ final class KeyboardViewController: UIInputViewController {
     private var syllableChoices: (start: Int, choices: [(text: String, keys: [Character])]) = (0, [])
     private var heightConstraint: NSLayoutConstraint?
     private var didConfigureSelfSizing = false
+    private var didNudgeHeightThisAppearance = false
     private var lastResolvedLandscape = false
     private var heightSyncMutations = 0
     private var pairAdjustGeneration = 0
@@ -461,6 +462,23 @@ final class KeyboardViewController: UIInputViewController {
         super.viewDidAppear(animated)
         LaunchGuard.succeeded()
         releaseOwnGestureDelays(in: view)
+        if !didNudgeHeightThisAppearance {
+            didNudgeHeightThisAppearance = true
+            let targetH = preferredHeight()
+            if view.bounds.height > targetH + 1.5 {
+                if let c = heightConstraint, abs(c.constant - targetH) > 0.5 {
+                    c.constant = targetH
+                    heightSyncMutations += 1
+                }
+                if abs(preferredContentSize.height - targetH) > 0.5 {
+                    preferredContentSize = CGSize(width: 0, height: targetH)
+                }
+                view.setNeedsUpdateConstraints()
+                UIView.performWithoutAnimation {
+                    self.view.layoutIfNeeded()
+                }
+            }
+        }
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.feedbackPlayer.prepare()
@@ -491,8 +509,14 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        didNudgeHeightThisAppearance = false
+        if !didConfigureSelfSizing {
+            inputView?.allowsSelfSizing = true
+            didConfigureSelfSizing = true
+        }
         heightPreset = KeyboardHeightPreset.clamped(KeyboardSettings.shared.keyboardHeight)
         syncHeightConstraint(notifyIfPresetChanged: false, allowImmediateLayout: false)
+        view.setNeedsUpdateConstraints()
         lastDocumentID = host.documentIdentifier
         cachedShowGlobe = needsInputModeSwitchKey
         hostEchoesMarked = 0
@@ -559,6 +583,10 @@ final class KeyboardViewController: UIInputViewController {
         return heightPreset.totalHeight(landscape: landscape ?? resolvedIsLandscape())
     }
 
+    private func maxAdaptiveHeight(targetH: CGFloat, landscape: Bool) -> CGFloat {
+        landscape ? max(targetH, 224) : max(targetH, 308)
+    }
+
     @discardableResult
     private func syncHeightConstraint(landscape: Bool? = nil, notifyIfPresetChanged: Bool = false, allowImmediateLayout: Bool = true) -> CGFloat {
         let land = landscape ?? resolvedIsLandscape()
@@ -604,11 +632,13 @@ final class KeyboardViewController: UIInputViewController {
         cachedShowGlobe = needsInputModeSwitchKey
         let actualLand = resolvedIsLandscape(forWidth: vb.width)
         let targetH = preferredHeight(landscape: actualLand)
-        let activeBarH = heightPreset.toolbarHeight(landscape: actualLand)
-        // Depth-of-defense: clamp rendered keyboard canvas to targetH bottom-anchored inside view.bounds
-        // so abnormal host frames (e.g. WeChat 780-852pt) can NEVER stretch keycaps into vertical pillars.
-        let effectiveH = min(vb.height, targetH)
+        let ceilingH = maxAdaptiveHeight(targetH: targetH, landscape: actualLand)
+        // Allow normal host containers up to ceilingH (e.g. WeChat ~301 pt) to fill flush under the top
+        // Liquid Glass edge (zero empty top slab), while bottom-clamping catastrophic 700-852 pt bugs.
+        let effectiveH = min(vb.height, ceilingH)
         let originY = max(0, vb.height - effectiveH)
+        let extraH = max(0, effectiveH - targetH)
+        let activeBarH = heightPreset.toolbarHeight(landscape: actualLand) + min(actualLand ? 4 : 6, (extraH * 0.12).rounded())
         let clampedRootFrame = CGRect(x: 0, y: originY, width: vb.width, height: effectiveH)
         // landscape on a phone with rounded corners / the Dynamic Island: keys and candidates stay inside the safe
         // area (as on the system keyboard), the glass and tint still run edge to edge
@@ -2069,8 +2099,10 @@ final class KeyboardViewController: UIInputViewController {
         if on {
             let g = grid
             let insetL = view.safeAreaInsets.left, insetR = view.safeAreaInsets.right
-            let rb = root.bounds.height > 0 ? root.bounds : CGRect(x: 0, y: 0, width: view.bounds.width, height: min(view.bounds.height, preferredHeight()))
-            g.frame = CGRect(x: insetL, y: barHeight, width: max(0, rb.width - insetL - insetR), height: max(0, rb.height - barHeight))
+            let maxH = maxAdaptiveHeight(targetH: preferredHeight(), landscape: isLandscape)
+            let rb = root.bounds.height > 0 ? root.bounds : CGRect(x: 0, y: 0, width: view.bounds.width, height: min(view.bounds.height, maxH))
+            let topBarH = candidateBar.bounds.height > 0 ? candidateBar.bounds.height : barHeight
+            g.frame = CGRect(x: insetL, y: topBarH, width: max(0, rb.width - insetL - insetR), height: max(0, rb.height - topBarH))
             if taps.isEmpty, !enSuggestions.isEmpty { g.show(englishCandidates()) }
             else if taps.isEmpty, !predictions.isEmpty { g.show(predictionCandidates()) }
             else if let r = result { g.show(r.candidates) }
@@ -2088,7 +2120,8 @@ final class KeyboardViewController: UIInputViewController {
             showEmoji(false)
             let sp = settingsPanel
             let insetL = view.safeAreaInsets.left, insetR = view.safeAreaInsets.right
-            let rb = root.bounds.height > 0 ? root.bounds : CGRect(x: 0, y: 0, width: view.bounds.width, height: min(view.bounds.height, preferredHeight()))
+            let maxH = maxAdaptiveHeight(targetH: preferredHeight(), landscape: isLandscape)
+            let rb = root.bounds.height > 0 ? root.bounds : CGRect(x: 0, y: 0, width: view.bounds.width, height: min(view.bounds.height, maxH))
             sp.frame = CGRect(x: insetL, y: 0, width: max(0, rb.width - insetL - insetR), height: rb.height)
             sp.isHidden = false
             sp.setNight(isNight)
@@ -2143,7 +2176,8 @@ final class KeyboardViewController: UIInputViewController {
             showGrid(false)
             endEnglishWord()
             emojiPanel.setChinese(chinese)
-            let rb = root.bounds.height > 0 ? root.bounds : CGRect(x: 0, y: 0, width: view.bounds.width, height: min(view.bounds.height, preferredHeight()))
+            let maxH = maxAdaptiveHeight(targetH: preferredHeight(), landscape: isLandscape)
+            let rb = root.bounds.height > 0 ? root.bounds : CGRect(x: 0, y: 0, width: view.bounds.width, height: min(view.bounds.height, maxH))
             emojiPanel.frame = CGRect(x: view.safeAreaInsets.left, y: 0, width: max(0, rb.width - view.safeAreaInsets.left - view.safeAreaInsets.right), height: rb.height)
             emojiPanel.load(kaomoji: kaomoji)
             lastEmojiInserted = ""
