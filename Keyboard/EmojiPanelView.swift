@@ -150,6 +150,8 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     }
     var moodMostoBadgeShownForTests: Bool { !moodMostoBadge.isHidden && moodMostoBadge.bounds.width >= 28 }
     var backButtonUsesFunctionStyleForTests: Bool { backButton.backgroundColor == Theme.functionKey }
+    var dockTabWidthForTests: CGFloat { tabButtons.first?.frame.width ?? 0 }
+    var landscapeDockAllInsideForTests: Bool { gear.frame.maxX <= tabScrollBox.bounds.width + 0.5 }
 
     final class Cell: UICollectionViewCell {
         let label = UILabel()
@@ -795,9 +797,11 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         let defaultSpan = CGFloat(dockItems.count) * 34 + CGFloat(max(0, dockItems.count - 1)) * 3 + 4
         let totalTabW: CGFloat
         if defaultSpan <= boxW {
-            let itemW: CGFloat = 34
-            let itemGap: CGFloat = 3
-            let contentW = CGFloat(dockItems.count) * itemW + CGFloat(max(0, dockItems.count - 1)) * itemGap
+            let count = CGFloat(max(1, dockItems.count))
+            let gaps = CGFloat(max(0, dockItems.count - 1))
+            let itemW = min(44, max(34, floor((boxW - gaps * 6 - 8) / count)))
+            let itemGap = gaps > 0 ? min(8, max(3, floor((boxW - count * itemW - 8) / gaps))) : 0
+            let contentW = count * itemW + gaps * itemGap
             let pad = max(0, (boxW - contentW) / 2)
             for (i, item) in dockItems.enumerated() {
                 item.frame = CGRect(x: pad + CGFloat(i) * (itemW + itemGap), y: ty, width: itemW, height: itemH)

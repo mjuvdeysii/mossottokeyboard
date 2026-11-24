@@ -158,6 +158,7 @@ enum KeyboardTests {
         r79SmartSpacebarPairExitAndMathCue(window)
         r80ContrastCadenceAndBenchCraft(window)
         r81TrackpadGlassSmartRimAndPunctuationCraft(window)
+        r82NumpadSpineEnableDarkAndLandscapeDock(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -3595,6 +3596,57 @@ enum KeyboardTests {
             && ((parenMetrics?.hintFrame.width ?? 0) > 0)
         log(quoteOpticalOk && parenCraftOk, "r81.numbers quotes center via CoreText bounds and CJK parens clear bracket hints",
             "quoteOk=\(quoteOpticalOk) font=\(parenMetrics?.fontName ?? "nil") size=\(parenMetrics?.fontSize ?? 0)")
+    }
+
+    static func r82NumpadSpineEnableDarkAndLandscapeDock(_ window: UIWindow) {
+        _ = window
+        // 1. globe_numpad Row 4 aligns `0` vertically beneath `2 / 5 / 8`
+        let kb = KeyboardView(spatial: SpatialModel.standard())
+        kb.frame = CGRect(x: 0, y: 0, width: 393, height: 214)
+        kb.configure(LayoutContext(page: .numpad, chinese: true, showGlobe: true, returnLabel: nil,
+                                   returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true))
+        let k0 = kb.keyRectsForTests(.char("0"))?.cap ?? .zero
+        let k2 = kb.keyRectsForTests(.char("2"))?.cap ?? .zero
+        let k5 = kb.keyRectsForTests(.char("5"))?.cap ?? .zero
+        let k8 = kb.keyRectsForTests(.char("8"))?.cap ?? .zero
+        let spineAligned = k0.width > 20
+            && abs(k0.midX - k2.midX) < 1.0
+            && abs(k0.midX - k5.midX) < 1.0
+            && abs(k0.midX - k8.midX) < 1.0
+            && abs(k0.width - k8.width) < 1.0
+        log(spineAligned, "r82.globe numpad keeps 0 aligned vertically under 2 5 8 spine",
+            "x0=\(k0.midX) x2=\(k2.midX) x8=\(k8.midX) w0=\(k0.width) w8=\(k8.width)")
+
+        // 2. Landscape emoji dock relaxes icon targets up to 44pt while portrait stays compact
+        let epLand = EmojiPanelView(frame: CGRect(x: 0, y: 0, width: 750, height: 186))
+        epLand.layoutIfNeeded()
+        epLand.load(kaomoji: false)
+        epLand.layoutIfNeeded()
+        let landRelaxed = epLand.dockTabWidthForTests >= 40 && epLand.dockTabWidthForTests <= 45 && epLand.landscapeDockAllInsideForTests
+        let epPort = EmojiPanelView(frame: CGRect(x: 0, y: 0, width: 393, height: 242))
+        epPort.layoutIfNeeded()
+        epPort.load(kaomoji: false)
+        epPort.layoutIfNeeded()
+        let portCompact = epPort.dockTabWidthForTests <= 34
+        log(landRelaxed && portCompact, "r82.landscape emoji dock relaxes targets without affecting portrait slot snap",
+            "landW=\(epLand.dockTabWidthForTests) inside=\(epLand.landscapeDockAllInsideForTests) portW=\(epPort.dockTabWidthForTests)")
+
+        // 3. EnableScreen live verification gate and dark-mode Canvas palette contrast >= 4.5
+        func lum(_ c: UIColor) -> CGFloat {
+            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            c.getRed(&r, green: &g, blue: &b, alpha: &a)
+            func lin(_ v: CGFloat) -> CGFloat { v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4) }
+            return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+        }
+        let fgL = lum(EnablePalette.violet(dark: true))
+        let bgL = lum(MossOttoStyle.hex(0x1F1B2E))
+        let darkCR = (max(fgL, bgL) + 0.05) / (min(fgL, bgL) + 0.05)
+        let verifyOk = !EnableContent.isVerificationPassed("")
+            && !EnableContent.isVerificationPassed("nihao")
+            && EnableContent.isVerificationPassed("测试你好")
+            && darkCR >= 4.5
+        log(verifyOk, "r82.EnableScreen dark Canvas palette meets WCAG AA and detects 你好 verification",
+            "darkCR=\(String(format: "%.2f", darkCR))")
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

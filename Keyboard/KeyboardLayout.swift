@@ -327,11 +327,12 @@ enum Layouts {
         let row3 = [p("/", "*"), d("7"), d("8"), d("9"), returnKey(ctx, width: side, wide: true)]
         // the way back keeps its full width (and the same name as on every other page); with the globe key the two
         // punctuation keys give it the room
-        let back = KeySpec(action: .page(.letters), label: ctx.chinese ? "拼音" : "ABC", width: side, style: .function)
+        let back = KeySpec(action: .page(.letters), label: ctx.chinese ? "拼音" : "ABC", width: ctx.showGlobe ? 1.5 : side, style: .function)
         var row4: [KeySpec] = ctx.showGlobe ? [back, KeySpec(action: .globe, label: "", symbol: "globe", width: 1.2, style: .function)] : [back]
-        let punct: CGFloat = ctx.showGlobe ? 1.4 : side
-        row4 += [KeySpec(action: .char("."), label: ".", width: punct, alt: ",", style: .function, hint: ","), d("0"),
-                 KeySpec(action: .char(":"), label: ":", width: punct, alt: "%", style: .function, hint: "%"),
+        let dotW: CGFloat = ctx.showGlobe ? 1.3 : side
+        let colonW: CGFloat = side
+        row4 += [KeySpec(action: .char("."), label: ".", width: dotW, alt: ",", style: .function, hint: ","), d("0"),
+                 KeySpec(action: .char(":"), label: ":", width: colonW, alt: "%", style: .function, hint: "%"),
                  KeySpec(action: .page(.numbers), label: ctx.chinese ? "符号" : "#+=", width: side, style: .function)]
         return [row1, row2, row3, row4]
     }
