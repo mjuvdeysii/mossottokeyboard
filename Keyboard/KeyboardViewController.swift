@@ -47,7 +47,6 @@ final class KeyboardViewController: UIInputViewController {
     private var syllableChoices: (start: Int, choices: [(text: String, keys: [Character])]) = (0, [])
     private var heightConstraint: NSLayoutConstraint?
     private var didConfigureSelfSizing = false
-    private var didNudgeHeightThisAppearance = false
     private var lastResolvedLandscape = false
     private var heightSyncMutations = 0
     private var pairAdjustGeneration = 0
@@ -229,8 +228,7 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private var isLandscape: Bool { resolvedIsLandscape() }
-    private var barHeight: CGFloat { heightPreset.toolbarHeight(landscape: isLandscape) }
-    var onHeightChanged: ((CGFloat) -> Void)?
+    private var barHeight: CGFloat { Metrics.toolbarHeight(landscape: isLandscape) }
     var onSettingsApplied: (() -> Void)?
 
     // MARK: - Test bench
@@ -290,7 +288,6 @@ final class KeyboardViewController: UIInputViewController {
         root.backgroundColor = Theme.touchable   // never fully clear: iOS drops touches on transparent points
         view.clipsToBounds = true
         root.clipsToBounds = true
-        heightPreset = KeyboardHeightPreset.clamped(KeyboardSettings.shared.keyboardHeight)
         if !didConfigureSelfSizing {
             inputView?.allowsSelfSizing = true
             didConfigureSelfSizing = true
@@ -462,23 +459,6 @@ final class KeyboardViewController: UIInputViewController {
         super.viewDidAppear(animated)
         LaunchGuard.succeeded()
         releaseOwnGestureDelays(in: view)
-        if !didNudgeHeightThisAppearance {
-            didNudgeHeightThisAppearance = true
-            let targetH = preferredHeight()
-            if view.bounds.height > targetH + 1.5 {
-                if let c = heightConstraint, abs(c.constant - targetH) > 0.5 {
-                    c.constant = targetH
-                    heightSyncMutations += 1
-                }
-                if abs(preferredContentSize.height - targetH) > 0.5 {
-                    preferredContentSize = CGSize(width: 0, height: targetH)
-                }
-                view.setNeedsUpdateConstraints()
-                UIView.performWithoutAnimation {
-                    self.view.layoutIfNeeded()
-                }
-            }
-        }
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.feedbackPlayer.prepare()
@@ -496,7 +476,6 @@ final class KeyboardViewController: UIInputViewController {
 
     override func updateViewConstraints() {
         super.updateViewConstraints()
-        heightPreset = KeyboardHeightPreset.clamped(KeyboardSettings.shared.keyboardHeight)
         let targetH = preferredHeight()
         if let c = heightConstraint, abs(c.constant - targetH) > 0.5 {
             c.constant = targetH
@@ -509,14 +488,11 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        didNudgeHeightThisAppearance = false
         if !didConfigureSelfSizing {
             inputView?.allowsSelfSizing = true
             didConfigureSelfSizing = true
         }
-        heightPreset = KeyboardHeightPreset.clamped(KeyboardSettings.shared.keyboardHeight)
-        syncHeightConstraint(notifyIfPresetChanged: false, allowImmediateLayout: false)
-        view.setNeedsUpdateConstraints()
+        syncHeightConstraint(allowImmediateLayout: false)
         lastDocumentID = host.documentIdentifier
         cachedShowGlobe = needsInputModeSwitchKey
         hostEchoesMarked = 0
@@ -576,19 +552,19 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
         super.viewWillTransition(to: size, with: coordinator)
-        syncHeightConstraint(landscape: resolvedIsLandscape(forWidth: size.width), notifyIfPresetChanged: false, allowImmediateLayout: true)
+        syncHeightConstraint(landscape: resolvedIsLandscape(forWidth: size.width), allowImmediateLayout: true)
     }
 
     private func preferredHeight(landscape: Bool? = nil) -> CGFloat {
-        return heightPreset.totalHeight(landscape: landscape ?? resolvedIsLandscape())
+        Metrics.totalHeight(landscape: landscape ?? resolvedIsLandscape())
     }
 
-    private func maxAdaptiveHeight(targetH: CGFloat, landscape: Bool) -> CGFloat {
-        landscape ? max(targetH, 224) : max(targetH, 308)
+    private func maxAdaptiveHeight(landscape: Bool) -> CGFloat {
+        Metrics.maxAdaptiveHeight(landscape: landscape)
     }
 
     @discardableResult
-    private func syncHeightConstraint(landscape: Bool? = nil, notifyIfPresetChanged: Bool = false, allowImmediateLayout: Bool = true) -> CGFloat {
+    private func syncHeightConstraint(landscape: Bool? = nil, allowImmediateLayout: Bool = true) -> CGFloat {
         let land = landscape ?? resolvedIsLandscape()
         lastResolvedLandscape = land
         let targetH = preferredHeight(landscape: land)
@@ -619,9 +595,6 @@ final class KeyboardViewController: UIInputViewController {
                 view.setNeedsUpdateConstraints()
             }
         }
-        if changed || notifyIfPresetChanged {
-            onHeightChanged?(targetH)
-        }
         return targetH
     }
 
@@ -632,13 +605,13 @@ final class KeyboardViewController: UIInputViewController {
         cachedShowGlobe = needsInputModeSwitchKey
         let actualLand = resolvedIsLandscape(forWidth: vb.width)
         let targetH = preferredHeight(landscape: actualLand)
-        let ceilingH = maxAdaptiveHeight(targetH: targetH, landscape: actualLand)
-        // Allow normal host containers up to ceilingH (e.g. WeChat ~301 pt) to fill flush under the top
+        let ceilingH = maxAdaptiveHeight(landscape: actualLand)
+        // Allow normal host containers up to ceilingH (e.g. WeChat ~294-301 pt) to fill flush under the top
         // Liquid Glass edge (zero empty top slab), while bottom-clamping catastrophic 700-852 pt bugs.
         let effectiveH = min(vb.height, ceilingH)
         let originY = max(0, vb.height - effectiveH)
         let extraH = max(0, effectiveH - targetH)
-        let activeBarH = heightPreset.toolbarHeight(landscape: actualLand) + min(actualLand ? 4 : 6, (extraH * 0.12).rounded())
+        let activeBarH = Metrics.toolbarHeight(landscape: actualLand) + min(actualLand ? 4 : 6, (extraH * 0.14).rounded())
         let clampedRootFrame = CGRect(x: 0, y: originY, width: vb.width, height: effectiveH)
         // landscape on a phone with rounded corners / the Dynamic Island: keys and candidates stay inside the safe
         // area (as on the system keyboard), the glass and tint still run edge to edge
@@ -665,7 +638,7 @@ final class KeyboardViewController: UIInputViewController {
         if vb.width > 100 && vb.height > 100 && actualLand != lastResolvedLandscape {
             lastResolvedLandscape = actualLand
             DispatchQueue.main.async { [weak self] in
-                self?.syncHeightConstraint(landscape: actualLand, notifyIfPresetChanged: false, allowImmediateLayout: true)
+                self?.syncHeightConstraint(landscape: actualLand, allowImmediateLayout: true)
             }
         }
     }
@@ -952,9 +925,6 @@ final class KeyboardViewController: UIInputViewController {
         soundOn = s.keySound
         numberPadOn = s.numberPad
         pinyinGridOn = s.pinyinGrid
-        let prevHeightPreset = heightPreset
-        heightPreset = KeyboardHeightPreset.clamped(s.keyboardHeight)
-        let presetChanged = prevHeightPreset != heightPreset
         if let sp = settingsPanelIfLoaded, !sp.isHidden {
             let n = engine.counts()
             sp.setLearned("词库 \(n.lexicon) 条 · 已学习 \(n.learned) 个词")
@@ -965,7 +935,6 @@ final class KeyboardViewController: UIInputViewController {
         }
         reconfigure()
         applyAppearance()
-        syncHeightConstraint(notifyIfPresetChanged: presetChanged, allowImmediateLayout: view.window != nil)
         onSettingsApplied?()
         if !taps.isEmpty { refresh() }
     }
@@ -976,7 +945,6 @@ final class KeyboardViewController: UIInputViewController {
     private var soundOn = true
     private var numberPadOn = false
     private var pinyinGridOn = false
-    private var heightPreset: KeyboardHeightPreset = .standard
     /// Felt and heard as the table says (FeedbackModel), when the switches and 允许完全访问 allow it.
     func feel(_ event: FeedbackEvent, at point: CGPoint? = nil) {
         guard feedbackAllowed else { return }
@@ -2099,7 +2067,7 @@ final class KeyboardViewController: UIInputViewController {
         if on {
             let g = grid
             let insetL = view.safeAreaInsets.left, insetR = view.safeAreaInsets.right
-            let maxH = maxAdaptiveHeight(targetH: preferredHeight(), landscape: isLandscape)
+            let maxH = maxAdaptiveHeight(landscape: isLandscape)
             let rb = root.bounds.height > 0 ? root.bounds : CGRect(x: 0, y: 0, width: view.bounds.width, height: min(view.bounds.height, maxH))
             let topBarH = candidateBar.bounds.height > 0 ? candidateBar.bounds.height : barHeight
             g.frame = CGRect(x: insetL, y: topBarH, width: max(0, rb.width - insetL - insetR), height: max(0, rb.height - topBarH))
@@ -2120,7 +2088,7 @@ final class KeyboardViewController: UIInputViewController {
             showEmoji(false)
             let sp = settingsPanel
             let insetL = view.safeAreaInsets.left, insetR = view.safeAreaInsets.right
-            let maxH = maxAdaptiveHeight(targetH: preferredHeight(), landscape: isLandscape)
+            let maxH = maxAdaptiveHeight(landscape: isLandscape)
             let rb = root.bounds.height > 0 ? root.bounds : CGRect(x: 0, y: 0, width: view.bounds.width, height: min(view.bounds.height, maxH))
             sp.frame = CGRect(x: insetL, y: 0, width: max(0, rb.width - insetL - insetR), height: rb.height)
             sp.isHidden = false
@@ -2130,8 +2098,6 @@ final class KeyboardViewController: UIInputViewController {
             root.bringSubviewToFront(sp)
         } else {
             settingsPanelIfLoaded?.isHidden = true
-            heightPreset = KeyboardHeightPreset.clamped(KeyboardSettings.shared.keyboardHeight)
-            syncHeightConstraint(notifyIfPresetChanged: false, allowImmediateLayout: true)
         }
         candidateBar.isHidden = on
         keyboard.isHidden = on || !(gridIfLoaded?.isHidden ?? true)
@@ -2176,7 +2142,7 @@ final class KeyboardViewController: UIInputViewController {
             showGrid(false)
             endEnglishWord()
             emojiPanel.setChinese(chinese)
-            let maxH = maxAdaptiveHeight(targetH: preferredHeight(), landscape: isLandscape)
+            let maxH = maxAdaptiveHeight(landscape: isLandscape)
             let rb = root.bounds.height > 0 ? root.bounds : CGRect(x: 0, y: 0, width: view.bounds.width, height: min(view.bounds.height, maxH))
             emojiPanel.frame = CGRect(x: view.safeAreaInsets.left, y: 0, width: max(0, rb.width - view.safeAreaInsets.left - view.safeAreaInsets.right), height: rb.height)
             emojiPanel.load(kaomoji: kaomoji)

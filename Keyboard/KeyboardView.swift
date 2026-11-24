@@ -406,7 +406,7 @@ final class KeyView: UIView {
             g.frame = CGRect(x: f.minX + 1, y: f.minY + top, width: f.width - 2, height: f.height - top - 2)
         } else if spec.isLetter {
             let capH = f.height > 0 ? f.height : 40
-            let lf = Theme.font(KeyboardHeightPreset.letterFontSize(forCapHeight: capH), .regular)
+            let lf = Theme.font(Metrics.letterFontSize(forCapHeight: capH), .regular)
             if label.font !== lf { label.font = lf }
         }
         if let h = hintLabel, !h.isHidden {
@@ -1086,7 +1086,7 @@ final class KeyboardView: UIView {
         guard !rows.isEmpty, bounds.width > 0, keyViews.count == rows.reduce(0, { $0 + $1.count }) else { return }
         let availH = max(0, bounds.height - topReach)
         let rawRowH = availH / CGFloat(rows.count)
-        let rowH = min(68, rawRowH)
+        let rowH = min(64, rawRowH)
         let baseTop = topReach + max(0, availH - rowH * CGFloat(rows.count))
         let sideInset: CGFloat = bounds.width > 500 ? Metrics.sideInsetLandscape : Metrics.sideInset
         let contentW = max(1, bounds.width - sideInset * 2)

@@ -121,9 +121,17 @@ for dirpath, _dirs, files in os.walk(KEYBOARD):
             vdl = extract_func(code, r'override\s+func\s+viewDidLoad\b')
             if vdl and re.search(r'(layoutIfNeeded|updateConstraintsIfNeeded)\s*\(', vdl):
                 problems.append(f"{path}: viewDidLoad() forces synchronous layout/constraints pass")
+            vda = extract_func(code, r'override\s+func\s+viewDidAppear\b')
+            if vda and re.search(r'(setNeedsUpdateConstraints|layoutIfNeeded|updateConstraintsIfNeeded)\s*\(', vda):
+                problems.append(f"{path}: viewDidAppear() forces post-appear height relayout/jump")
             vdls = extract_func(code, r'override\s+func\s+viewDidLayoutSubviews\b')
             if vdls and "setNeedsUpdateConstraints" in vdls:
                 problems.append(f"{path}: viewDidLayoutSubviews() calls setNeedsUpdateConstraints() (causes layout bounce loop)")
+
+        # Rule 17: Single calibrated fixed keyboard height (no multi-tier dynamic height regression)
+        for forbidden_sym in ("KeyboardHeightPreset", "ElevationRailView"):
+            if re.search(rf'\b{forbidden_sym}\b', code):
+                problems.append(f"{path}: forbidden multi-tier height symbol `{forbidden_sym}` (must stay locked to single calibrated height)")
 
         if name in ("EmojiPanelView.swift", "CandidateViews.swift"):
             # Rule 10: Any layer with shadowOpacity > 0 in EmojiPanelView/CandidateViews must configure shadowPath (no offscreen rasterization)

@@ -334,7 +334,7 @@ struct CompanionCapabilitiesSection: View {
             icon: "slider.horizontal.3",
             tint: MossOttoStyle.lampAmber,
             title: "键盘设置就在键盘内",
-            detail: "为保护隐私，本应用与系统键盘彼此独立；方案、外观、高度与声效请在键盘内按住表情键调整。"
+            detail: "为保护隐私，本应用与系统键盘彼此独立；方案、外观与声效请在键盘内按住表情键调整。"
         ),
         Item(
             id: "offline",

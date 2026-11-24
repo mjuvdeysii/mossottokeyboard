@@ -14,7 +14,7 @@
 - **隐私政策页面**：仓库 GitHub Pages 的 `privacy.html`（对应 `docs/privacy.html`）
 - **技术支持页面**：仓库 GitHub Pages 的 `index.html`（对应 `docs/index.html`）
 - **使用条款页面**：仓库 GitHub Pages 的 `terms.html`（对应 `docs/terms.html`）
-- **参考验证版本**：1.0 RC（R86，商业化三页签伴侣 App + OTTOSSOM 家族联动 + 微信全屏高度修复收官版）
+- **参考验证版本**：1.0 RC（R88，商业化三页签伴侣 App + OTTOSSOM 家族联动 + 原生统一固定键盘高度收官版）
 
 ## 2. 关键词（Keywords，100 字符以内）
 
@@ -76,7 +76,7 @@ Thank you for reviewing Mosto Keyboard (Mosto键盘).
 3. How to Test:
    - Open Settings > General > Keyboard > Keyboards > Add New Keyboard > select "Mosto键盘".
    - Open Notes or the companion app's Home tab (`伴侣`), tap the native verification field (`真机键盘验证`), and switch to Mosto键盘 using the globe key.
-   - Try typing Xiaohe Shuangpin (e.g., "nihc" -> "你好", or slipped "jbtmtmqohfhc" -> "今天天气很好") or hold the emoji key on the keyboard to adjust Full Pinyin / T9, appearance, height, and feedback inside the keyboard console.
+   - Try typing Xiaohe Shuangpin (e.g., "nihc" -> "你好", or slipped "jbtmtmqohfhc" -> "今天天气很好") or hold the emoji key on the keyboard to adjust Full Pinyin / T9, appearance, and feedback inside the keyboard console.
 
 4. Privacy & Offline Architecture:
    The keyboard extension performs zero network requests, zero clipboard access, and zero analytics tracking.
@@ -92,12 +92,12 @@ Thank you for reviewing Mosto Keyboard (Mosto键盘).
 | 4 | 双材质键盘美学 | 3D 实体键帽与 Liquid Glass 随心切换 | 对角线切分或双卡片同屏对比浅色 3D 实体键帽质感与深色 Liquid Glass 质感，呈现精致光影细节 | 真实渲染界面截图，严禁过度滤镜或失真装饰 |
 | 5 | 你的离线桌面伴侣 | 真实键盘启用指引 + 小鹤双拼指法图谱 | 展示伴侣 App 首页 OTTOSSOM 家族（Moss、Otto 与 Mosto）桌面互动、系统键盘真机验证区与小鹤双拼指法图谱 | 保持原生 iOS 三页签实际 UI 比例与留白构图，零假沙盒 |
 
-## 7. 提审前最终自检清单（R86 1.0 RC 收尾核对）
+## 7. 提审前最终自检清单（R88 1.0 RC 收尾核对）
 
 - [x] **CI 与 SDK 链路核查**：`build` 任务运行于 `macos-15`（`Xcode 26.3 / 17C529`，iOS 26 SDK）负责全量编译、模拟器快照、Keyboard Test Bench 与引擎质量门禁；`testflight` 任务运行于 `xcode-27`（iOS 27 SDK）负责 Release 归档、自动云端签名与上传 TestFlight。
 - [x] **签名与容器边界**：`.xcodeproj` 零签名改动、零新增 `.entitlements`，`App/PrivacyInfo.xcprivacy` 与 `Keyboard/Resources/PrivacyInfo.xcprivacy` 声明完整，`ITSAppUsesNonExemptEncryption = NO`。
-- [x] **静态门禁全绿**：`Tools/check_offline.py`、`Tools/check_no_sync_tap.py` 与 `Tools/check_ios_keyboard_rules.py`（16 条工程红线）全量通过。
-- [x] **1.0 RC 核心体验与合规打磨（R35–R86）**：商业化原生三页签伴侣 App（伴侣 / 指南 / 关于）、OTTOSSOM Moss+Otto+Mosto 同台联动与手机音量检查提示、真实系统输入框验通、微信键盘高度阻断修复与空白空闲顶栏统一、消费级隐私说明、`ThirdParty/` 全套 6 份开源许可齐备、零重影单层雕塑键帽、两阶段引擎加载与全链路 0 阻塞 XPC。
+- [x] **静态门禁全绿**：`Tools/check_offline.py`、`Tools/check_no_sync_tap.py` 与 `Tools/check_ios_keyboard_rules.py`（17 条工程红线）全量通过。
+- [x] **1.0 RC 核心体验与合规打磨（R35–R88）**：商业化原生三页签伴侣 App（伴侣 / 指南 / 关于）、OTTOSSOM Moss+Otto+Mosto 同台联动与手机音量检查提示、真实系统输入框验通、移除易引起宿主抖动的动态多档高度并锁定单一生效原生标准高度（258 pt 竖屏 / 198 pt 横屏，彻底消除微信顶部空档与全屏拉伸）、消费级隐私说明、`ThirdParty/` 全套 6 份开源许可齐备、零重影单层雕塑键帽、两阶段引擎加载与全链路 0 阻塞 XPC。
 - [ ] 核对 App Store Connect 中隐私政策 URL、技术支持 URL 与 `docs/privacy.html`、`docs/index.html` 线上可访问性。
 - [ ] 核对 App Store Connect 隐私标签已勾选“不收集数据（Data Not Collected）”。
 - [ ] 使用真机（未开启“允许完全访问”）完整复测小鹤双拼、全拼、九宫格、成对标点联动删除与中英混输。

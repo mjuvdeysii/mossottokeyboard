@@ -2232,67 +2232,45 @@ enum KeyboardTests {
     }
 
     static func r63AdjustableHeightAndOpticalScale(_ window: UIWindow) {
-        let s = KeyboardSettings.shared
-        let prevHeight = s.keyboardHeight
-        defer { s.keyboardHeight = prevHeight }
-
-        // 1. 4-tier KeyboardHeightPreset totals, clamping, cycling & optical letter sizing
-        let heightsOk = KeyboardHeightPreset.compact.totalHeight(landscape: false) == 226
-            && KeyboardHeightPreset.standard.totalHeight(landscape: false) == 242
-            && KeyboardHeightPreset.comfortable.totalHeight(landscape: false) == 262
-            && KeyboardHeightPreset.tall.totalHeight(landscape: false) == 284
-            && KeyboardHeightPreset.compact.totalHeight(landscape: true) == 186
-            && KeyboardHeightPreset.standard.totalHeight(landscape: true) == 198
-            && KeyboardHeightPreset.comfortable.totalHeight(landscape: true) == 210
-            && KeyboardHeightPreset.tall.totalHeight(landscape: true) == 224
-            && KeyboardHeightPreset.clamped(-3) == .compact
-            && KeyboardHeightPreset.clamped(99) == .tall
-            && KeyboardHeightPreset.tall.next == .compact
-            && KeyboardHeightPreset.letterFontSize(forCapHeight: 37) == 23.5
-            && KeyboardHeightPreset.letterFontSize(forCapHeight: 40) == 24.0
-            && KeyboardHeightPreset.letterFontSize(forCapHeight: 48) == 26.0
+        // 1. Single native-calibrated fixed Metrics totals, adaptive ceiling & optical letter sizing
+        let heightsOk = Metrics.totalHeight(landscape: false) == 258
+            && Metrics.totalHeight(landscape: true) == 198
+            && Metrics.toolbarHeight(landscape: false) == 42
+            && Metrics.toolbarHeight(landscape: true) == 38
+            && Metrics.maxAdaptiveHeight(landscape: false) == 308
+            && Metrics.maxAdaptiveHeight(landscape: true) == 224
+            && Metrics.letterFontSize(forCapHeight: 37) == 23.5
+            && Metrics.letterFontSize(forCapHeight: 40) == 24.0
+            && Metrics.letterFontSize(forCapHeight: 43) == 25.0
+            && Metrics.letterFontSize(forCapHeight: 48) == 26.0
         log(heightsOk,
-            "r63.KeyboardHeightPreset tiers, clamping and optical font scale match calibrated geometry",
-            "portrait=[\(KeyboardHeightPreset.compact.totalHeight(landscape: false)),\(KeyboardHeightPreset.standard.totalHeight(landscape: false)),\(KeyboardHeightPreset.comfortable.totalHeight(landscape: false)),\(KeyboardHeightPreset.tall.totalHeight(landscape: false))]")
+            "r63.Metrics locks single calibrated portrait/landscape heights and optical font scale",
+            "portrait=\(Metrics.totalHeight(landscape: false)) landscape=\(Metrics.totalHeight(landscape: true))")
 
-        // 2. SettingsPanelView 4-bar height pill cycles tiers & clamps persisted values
-        s.keyboardHeight = 99
-        let clampedSetting = s.keyboardHeight == KeyboardHeightPreset.tall.rawValue
-        s.keyboardHeight = KeyboardHeightPreset.standard.rawValue
-        let sp = SettingsPanelView(frame: CGRect(x: 0, y: 0, width: 402, height: 226))
+        // 2. SettingsPanelView renders utility row cleanly without overlap across compact and narrow widths
+        let sp = SettingsPanelView(frame: CGRect(x: 0, y: 0, width: 402, height: 258))
         sp.load()
         sp.layoutIfNeeded()
-        var cycled: [String] = []
-        for _ in 0..<4 {
-            sp.tapHeightPillForTests()
-            cycled.append("\(sp.heightPresetForTests.rawValue):\(sp.heightPillTitleForTests)")
-        }
-        let panelOk = clampedSetting && cycled == ["2:高度·舒展", "3:高度·宽大", "0:高度·紧凑", "1:高度·标准"]
+        let panelOk = sp.utilityRowNonOverlappingForTests && sp.tileIconsLoadedForTests
         log(panelOk,
-            "r63.SettingsPanelView height pill cycles 4 tiers cleanly even at compact height",
-            "clamped=\(clampedSetting) cycled=\(cycled)")
+            "r63.SettingsPanelView renders hardware deck and utility row cleanly at calibrated height",
+            "utilOk=\(sp.utilityRowNonOverlappingForTests) iconsOk=\(sp.tileIconsLoadedForTests)")
 
-        // 3. KeyboardViewController height propagation & onHeightChanged callback
+        // 3. KeyboardViewController reports fixed calibrated portrait/landscape height & updates on transition
         if let pair = makeKeyboard(scheme: 0, in: window) {
             let (vc, _) = pair
-            var reported: [CGFloat] = []
-            vc.onHeightChanged = { reported.append($0) }
-            s.keyboardHeight = KeyboardHeightPreset.compact.rawValue
             vc.applySettings()
             drain(0.02)
-            let hCompact = (vc.preferredHeightForTests, vc.heightForTests(landscape: true))
-            s.keyboardHeight = KeyboardHeightPreset.tall.rawValue
-            vc.applySettings()
-            drain(0.02)
-            let hTall = (vc.preferredHeightForTests, vc.heightForTests(landscape: true))
-            log(hCompact == (226, 186) && hTall == (284, 224) && reported == [226, 284],
-                "r63.KeyboardViewController updates preferred height and notifies listeners on tier changes",
-                "compact=\(hCompact) tall=\(hTall) reported=\(reported)")
+            let hPortrait = vc.preferredHeightForTests
+            let hLandscape = vc.heightForTests(landscape: true)
+            log(hPortrait == 258 && hLandscape == 198 && vc.heightConstraintConstantForTests == 258,
+                "r63.KeyboardViewController locks calibrated fixed portrait and landscape heights",
+                "portrait=\(hPortrait) landscape=\(hLandscape) c=\(vc.heightConstraintConstantForTests ?? -1)")
         } else {
             log(false, "r63.KeyboardViewController setup", "engine did not load")
         }
 
-        // 4. KeyboardView optical cap font scaling & >= 36 pt cap touch target in compact mode
+        // 4. KeyboardView optical cap font scaling across compact, standard (258pt) & adaptive ceiling frames
         func firstLetterFontSize(in kb: KeyboardView) -> CGFloat {
             func findQ(_ v: UIView) -> UILabel? {
                 for sub in v.subviews {
@@ -2309,20 +2287,22 @@ enum KeyboardTests {
         kb.configure(ctx)
         kb.layoutIfNeeded()
         let compactFont = firstLetterFontSize(in: kb)
+        kb.frame = CGRect(x: 0, y: 0, width: 402, height: 216)
+        kb.setNeedsLayout()
+        kb.layoutIfNeeded()
+        let standardFont = firstLetterFontSize(in: kb)
         kb.frame = CGRect(x: 0, y: 0, width: 402, height: 240)
         kb.setNeedsLayout()
         kb.layoutIfNeeded()
         let tallFont = firstLetterFontSize(in: kb)
-        log(compactFont == 23.5 && tallFont == 26.0,
-            "r63.KeyboardView scales letter cap typography optically across compact and tall tiers",
-            "compactFont=\(compactFont) tallFont=\(tallFont)")
+        log(compactFont == 23.5 && standardFont == 25.0 && tallFont == 26.0,
+            "r63.KeyboardView scales letter cap typography optically across cap heights",
+            "compact=\(compactFont) standard=\(standardFont) tall=\(tallFont)")
 
-        // 5. KeyboardHeightPreset height calibration stays aligned with KeyboardSettings presets
-        let tallH = KeyboardHeightPreset.comfortable.totalHeight(landscape: false)
-        let compactH = KeyboardHeightPreset.compact.totalHeight(landscape: false)
-        log(tallH == 262 && compactH == 226 && KeyboardHeightPreset.clamped(99) == .tall && KeyboardHeightPreset.clamped(-1) == .compact,
-            "r63.KeyboardHeightPreset maintains calibrated portrait heights and safe fallback",
-            "comfortable=\(tallH) compact=\(compactH)")
+        // 5. Metrics height helper stays aligned across portrait and landscape
+        log(Metrics.totalHeight(landscape: false) == 258 && Metrics.totalHeight(landscape: true) == 198,
+            "r63.Metrics maintains calibrated portrait and landscape totals",
+            "portrait=\(Metrics.totalHeight(landscape: false)) landscape=\(Metrics.totalHeight(landscape: true))")
     }
 
     // MARK: - R64: Spring-loaded Shift & 123/#+= modifier glide + two-finger chords
@@ -2772,64 +2752,55 @@ enum KeyboardTests {
 
     static func r69HeightPersistenceAndVisualConsole(_ window: UIWindow) {
         let s = KeyboardSettings.shared
-        let prevHeight = s.keyboardHeight
         let prevScheme = s.scheme
+        let prevAppearance = s.appearance
         defer {
-            s.keyboardHeight = prevHeight
             s.scheme = prevScheme
+            s.appearance = prevAppearance
         }
 
         // 1. Without an App Group entitlement, KeyboardSettings must persist directly via UserDefaults.standard
         let usesStd = s.usesStandardDefaultsForTests
-        s.keyboardHeight = KeyboardHeightPreset.comfortable.rawValue
-        let persistedInStandard = (UserDefaults.standard.object(forKey: "keyboardHeight") as? NSNumber)?.intValue == 2
-        s.keyboardHeight = KeyboardHeightPreset.tall.rawValue
-        let roundTripTall = s.keyboardHeight == 3
-            && (UserDefaults.standard.object(forKey: "keyboardHeight") as? NSNumber)?.intValue == 3
-        log(usesStd && persistedInStandard && roundTripTall,
-            "r69.KeyboardSettings persists height tiers reliably in UserDefaults.standard without App Group drops",
-            "usesStd=\(usesStd) persisted=\(persistedInStandard) tall=\(roundTripTall)")
+        s.scheme = 0
+        s.appearance = 2
+        let persistedScheme = (UserDefaults.standard.object(forKey: "scheme") as? NSNumber)?.intValue == 0
+        let persistedLight = (UserDefaults.standard.object(forKey: "appearance") as? NSNumber)?.intValue == 2
+        log(usesStd && persistedScheme && persistedLight,
+            "r69.KeyboardSettings persists preferences reliably in UserDefaults.standard without App Group drops",
+            "usesStd=\(usesStd) scheme=\(persistedScheme) light=\(persistedLight)")
 
-        // 2. Portrait Pro Max / detached bounds must not misclassify 393x242 or 430x284 as landscape or reset to compact
+        // 2. Portrait Pro Max / detached bounds must not misclassify 393x258 or 430x294 as landscape
         if let pair = makeKeyboard(scheme: 1, in: window) {
             let (vc, _) = pair
-            vc.view.frame = CGRect(x: 0, y: 0, width: 430, height: 284)
+            vc.view.frame = CGRect(x: 0, y: 0, width: 430, height: 294)
             vc.showSettingsForTests(true)
-            s.keyboardHeight = KeyboardHeightPreset.tall.rawValue
             vc.applySettings()
             vc.showSettingsForTests(false)
             vc.updateViewConstraints()
             vc.view.layoutIfNeeded()
-            let portraitTallOk = s.keyboardHeight == 3
-                && vc.preferredHeightForTests == 284
-                && vc.heightConstraintConstantForTests == 284
+            let portraitOk = vc.preferredHeightForTests == 258
+                && vc.heightConstraintConstantForTests == 258
 
-            s.keyboardHeight = KeyboardHeightPreset.comfortable.rawValue
-            vc.applySettings()
             vc.beginAppearanceTransition(false, animated: false)
             vc.endAppearanceTransition()
             vc.beginAppearanceTransition(true, animated: false)
             vc.endAppearanceTransition()
             vc.view.layoutIfNeeded()
-            let afterAppearOk = s.keyboardHeight == 2
-                && vc.preferredHeightForTests == 262
-                && vc.heightConstraintConstantForTests == 262
-                && vc.heightForTests(landscape: true) == 210
-            log(portraitTallOk && afterAppearOk,
-                "r69.KeyboardViewController keeps chosen portrait height across settings close, updateViewConstraints, and viewWillAppear",
-                "tallOk=\(portraitTallOk) appearOk=\(afterAppearOk) h=\(vc.preferredHeightForTests) c=\(vc.heightConstraintConstantForTests ?? -1)")
+            let afterAppearOk = vc.preferredHeightForTests == 258
+                && vc.heightConstraintConstantForTests == 258
+                && vc.heightForTests(landscape: true) == 198
+            log(portraitOk && afterAppearOk,
+                "r69.KeyboardViewController holds calibrated portrait height across settings close, updateViewConstraints, and viewWillAppear",
+                "portraitOk=\(portraitOk) appearOk=\(afterAppearOk) h=\(vc.preferredHeightForTests) c=\(vc.heightConstraintConstantForTests ?? -1)")
         } else {
             log(false, "r69.KeyboardViewController height persistence setup", "engine did not load")
         }
 
-        // 3. Visual Hardware Deck icons + direct 1-tap 4-step elevation rail across compact/narrow/landscape bounds
-        s.keyboardHeight = KeyboardHeightPreset.compact.rawValue
+        // 3. Visual Hardware Deck icons + utility row avoid overlap across compact/narrow/landscape bounds
         let sp = SettingsPanelView(frame: CGRect(x: 0, y: 0, width: 375, height: 226))
         sp.load()
         sp.layoutIfNeeded()
         let iconsOk = sp.tileIconsLoadedForTests
-        sp.selectHeightForTests(.tall)
-        let directJumpTall = sp.heightPresetForTests == .tall && s.keyboardHeight == 3
         s.scheme = 0
         sp.load(); sp.layoutIfNeeded()
         let narrowXiaoheOk = sp.utilityRowNonOverlappingForTests
@@ -2840,18 +2811,18 @@ enum KeyboardTests {
         landPanel.setFeedbackAvailable(false)
         landPanel.load(); landPanel.layoutIfNeeded()
         let landOk = landPanel.utilityRowNonOverlappingForTests && landPanel.bannerNonOverlappingForTests
-        log(iconsOk && directJumpTall && narrowXiaoheOk && narrowQuanpinOk && landOk,
-            "r69.Visual Hardware Console renders tile icons, jumps tiers in 1 tap on ElevationRail, and avoids overlap on compact screens",
-            "icons=\(iconsOk) tall=\(directJumpTall) narrow0=\(narrowXiaoheOk) narrow1=\(narrowQuanpinOk) land=\(landOk)")
+        log(iconsOk && narrowXiaoheOk && narrowQuanpinOk && landOk,
+            "r69.Visual Hardware Console renders tile icons cleanly and avoids utilityRow overlap on compact screens",
+            "icons=\(iconsOk) narrow0=\(narrowXiaoheOk) narrow1=\(narrowQuanpinOk) land=\(landOk)")
 
-        // 4. FamilyStageModel syncSoundFromSettings mirrors persisted keySound without altering keyboard extension height/scheme
+        // 4. FamilyStageModel syncSoundFromSettings mirrors persisted keySound without altering keyboard extension scheme/appearance
         let prevSound = s.keySound
-        s.keyboardHeight = KeyboardHeightPreset.comfortable.rawValue
         s.scheme = 0
+        s.appearance = 2
         let family = FamilyStageModel()
         s.keySound = false
         family.syncSoundFromSettings()
-        let syncedOff = !family.soundEnabled && s.keyboardHeight == 2 && s.scheme == 0
+        let syncedOff = !family.soundEnabled && s.scheme == 0 && s.appearance == 2
         s.keySound = true
         family.syncSoundFromSettings()
         let syncedOn = family.soundEnabled
@@ -3028,25 +2999,21 @@ enum KeyboardTests {
             "r72.KeyView balances CJK bracket glyph weight and keeps corner hints separated",
             "font=\(bracketInfo?.fontName ?? "nil") hintW=\(bracketInfo?.hintFrame.width ?? -1)")
 
-        // 2. SettingsPanelView secondary drawer telemetry, synced ElevationRail, reset cleanup & snapshot fit height
-        let prevHeight = KeyboardSettings.shared.keyboardHeight
-        defer { KeyboardSettings.shared.keyboardHeight = prevHeight }
-        let sp = SettingsPanelView(frame: CGRect(x: 0, y: 0, width: 375, height: 242))
+        // 2. SettingsPanelView secondary drawer telemetry, reset cleanup & snapshot fit height
+        let sp = SettingsPanelView(frame: CGRect(x: 0, y: 0, width: 375, height: 258))
         sp.setLearned("词库 1866491 条 · 已学习 12 个词")
         sp.setDiagnostics("本次按键 128 次 · 内存 18 MB · 引擎就绪 14 ms · 震动：开")
         sp.toggleMoreForTests()
         sp.layoutIfNeeded()
-        sp.selectDrawerHeightForTests(.comfortable)
-        let syncedHeight = sp.heightPresetForTests == .comfortable && sp.drawerHeightPresetForTests == .comfortable
         let telemetry = sp.telemetrySummaryForTests
         let telemetryOk = telemetry.lexicon == "186万+" && telemetry.learned == "12 词" && telemetry.mem == "18 MB" && telemetry.ready == "14 ms"
         let fullH = sp.preferredFullHeightForTests
-        let fitOk = fullH > 380 && fullH < 720
+        let fitOk = fullH > 320 && fullH < 700
         sp.toggleMoreForTests() // closes drawer cleanly
         let resetCleared = !sp.isResetConfirmingForTests
-        log(syncedHeight && telemetryOk && fitOk && resetCleared,
-            "r72.SettingsPanelView secondary drawer syncs ElevationRail, formats telemetry chips, and fits compactly",
-            "sync=\(syncedHeight) tele=\(telemetry) fullH=\(fullH) resetCleared=\(resetCleared)")
+        log(telemetryOk && fitOk && resetCleared,
+            "r72.SettingsPanelView secondary drawer formats telemetry chips cleanly and fits compactly",
+            "tele=\(telemetry) fullH=\(fullH) resetCleared=\(resetCleared)")
 
         // 3. Companion App uses focused 3-tab structure & complete 3-member OTTOSSOM IP family
         let nav = AppNavigation()
@@ -3097,17 +3064,13 @@ enum KeyboardTests {
     // MARK: - R74: Host height anti-bounce, fast candidate strip & T9 tuner column craft
 
     static func r74HeightAntiBounceStripSpeedAndTunerCraft(_ window: UIWindow) {
-        let s = KeyboardSettings.shared
-        let prevHeight = s.keyboardHeight
-        defer { s.keyboardHeight = prevHeight }
-
-        // 1. Height anti-bounce: unchanged preset causes 0 constraint mutations across appear, settings, and transient host frames
+        // 1. Height anti-bounce: portrait lock causes 0 constraint mutations across appear, settings, and transient host frames
         if let pair = makeKeyboard(scheme: 1, in: window) {
             let (vc, _) = pair
-            vc.view.frame = CGRect(x: 0, y: 0, width: 430, height: 284)
-            s.keyboardHeight = KeyboardHeightPreset.comfortable.rawValue
+            vc.view.frame = CGRect(x: 0, y: 0, width: 430, height: 258)
             vc.applySettings()
             vc.view.layoutIfNeeded()
+            drain(0.02)
             vc.resetHeightSyncMutationsForTests()
 
             vc.beginAppearanceTransition(false, animated: false)
@@ -3117,18 +3080,27 @@ enum KeyboardTests {
             vc.updateViewConstraints()
             vc.showSettingsForTests(true)
             vc.showSettingsForTests(false)
-            for h in [216.0, 452.0, 262.0] {
+            for h in [216.0, 452.0, 293.5, 301.0, 258.0] {
                 vc.view.frame = CGRect(x: 0, y: 0, width: 430, height: h)
                 vc.view.setNeedsLayout()
                 vc.view.layoutIfNeeded()
             }
-            let steadyZeroMutations = vc.heightSyncMutationsForTests == 0 && vc.heightConstraintConstantForTests == 262
+            drain(0.02)
+            let steadyZeroMutations = vc.heightSyncMutationsForTests == 0 && vc.heightConstraintConstantForTests == 258
 
-            s.keyboardHeight = KeyboardHeightPreset.tall.rawValue
-            vc.applySettings()
-            let singleMutationOnChange = vc.heightSyncMutationsForTests == 1 && vc.heightConstraintConstantForTests == 284
-            log(steadyZeroMutations && singleMutationOnChange,
-                "r74.KeyboardViewController holds height rock-steady across host transient frames and mutates once on tier change",
+            vc.view.frame = CGRect(x: 0, y: 0, width: 874, height: 198)
+            vc.view.setNeedsLayout()
+            vc.view.layoutIfNeeded()
+            drain(0.02)
+            let singleMutationOnLandscape = vc.heightSyncMutationsForTests == 1 && vc.heightConstraintConstantForTests == 198
+
+            vc.view.frame = CGRect(x: 0, y: 0, width: 430, height: 258)
+            vc.view.setNeedsLayout()
+            vc.view.layoutIfNeeded()
+            drain(0.02)
+            let backToPortrait = vc.heightSyncMutationsForTests == 2 && vc.heightConstraintConstantForTests == 258
+            log(steadyZeroMutations && singleMutationOnLandscape && backToPortrait,
+                "r74.KeyboardViewController holds portrait height rock-steady across transient host frames and mutates once per orientation flip",
                 "steady=\(steadyZeroMutations) mut=\(vc.heightSyncMutationsForTests) const=\(vc.heightConstraintConstantForTests ?? -1)")
         } else {
             log(false, "r74.KeyboardViewController height anti-bounce setup", "engine did not load")
@@ -3351,17 +3323,15 @@ enum KeyboardTests {
         let s = KeyboardSettings.shared
         let prevStyle = s.style
         let prevPlain = Theme.plain
-        let prevHeight = s.keyboardHeight
         defer {
             s.style = prevStyle
             Theme.plain = prevPlain
-            s.keyboardHeight = prevHeight
         }
 
         // 1. EmojiPanelView snaps portrait category dock to integer slots (zero trailing heart sliver) & frames moodMosto badge
         s.style = 0
         Theme.plain = false
-        let ep = EmojiPanelView(frame: CGRect(x: 0, y: 0, width: 402, height: 242))
+        let ep = EmojiPanelView(frame: CGRect(x: 0, y: 0, width: 402, height: 258))
         ep.layoutIfNeeded()
         ep.load(kaomoji: false)
         ep.layoutIfNeeded()
@@ -3378,21 +3348,21 @@ enum KeyboardTests {
             "r78.EmojiPanelView prevents trailing dock icon half-slicing and syncs Kaomoji Mosto ceramic badge",
             "noSlice=\(noTrailingSlice) badgeMosto=\(badgeVisibleMosto) badgeHiddenPlain=\(badgeHiddenPlain)")
 
-        // 2. SettingsPanelView replaces bare back link with symmetrical header capsule & inset drawer height track
+        // 2. SettingsPanelView replaces bare back link with symmetrical header capsule & streamlined drawer
         s.style = 0
         Theme.plain = false
-        let sp = SettingsPanelView(frame: CGRect(x: 0, y: 0, width: 390, height: 242))
+        let sp = SettingsPanelView(frame: CGRect(x: 0, y: 0, width: 390, height: 258))
         sp.layoutIfNeeded()
         let initiallyHidden = !sp.showingMoreForTests && !sp.backDeckButtonInHeaderForTests
         sp.toggleMoreForTests()
         sp.layoutIfNeeded()
-        let headerCapsuleShown = sp.showingMoreForTests && sp.backDeckButtonInHeaderForTests && sp.drawerHeightEmbeddedForTests
-        let fullFitOk = sp.preferredFullHeightForTests > 360 && sp.preferredFullHeightForTests < 700
+        let headerCapsuleShown = sp.showingMoreForTests && sp.backDeckButtonInHeaderForTests
+        let fullFitOk = sp.preferredFullHeightForTests > 320 && sp.preferredFullHeightForTests < 700
         sp.toggleMoreForTests()
         sp.layoutIfNeeded()
         let closedCleanly = !sp.showingMoreForTests && !sp.backDeckButtonInHeaderForTests
         log(initiallyHidden && headerCapsuleShown && fullFitOk && closedCleanly,
-            "r78.SettingsPanelView integrates back capsule cleanly in header with inset drawer height well",
+            "r78.SettingsPanelView integrates back capsule cleanly in header with streamlined secondary drawer",
             "init=\(initiallyHidden) shown=\(headerCapsuleShown) fullH=\(sp.preferredFullHeightForTests) closed=\(closedCleanly)")
 
         // 3. XiaoheGuideContent with dual-role slot watermarks and de-duplicated equation meter renders cleanly
@@ -3604,11 +3574,9 @@ enum KeyboardTests {
 
     static func r83HeightExplosionGuardIdleRailAndGlassCraft(_ window: UIWindow) {
         let s = KeyboardSettings.shared
-        let prevHeight = s.keyboardHeight
         let prevStyle = s.style
         let prevPlain = Theme.plain
         defer {
-            s.keyboardHeight = prevHeight
             s.style = prevStyle
             Theme.plain = prevPlain
         }
@@ -3618,10 +3586,9 @@ enum KeyboardTests {
             log(false, "r83.setup", "engine did not load")
             return
         }
-        s.keyboardHeight = KeyboardHeightPreset.standard.rawValue
         vc.applySettings()
         let directViewTarget = vc.heightConstraintTargetIsViewForTests
-        let prefSyncStandard = abs(vc.preferredContentSize.height - 242) < 0.5
+        let prefSyncStandard = abs(vc.preferredContentSize.height - 258) < 0.5
         vc.view.frame = CGRect(x: 0, y: 0, width: 393, height: 780)
         vc.view.setNeedsLayout()
         vc.view.layoutIfNeeded()
@@ -3629,19 +3596,16 @@ enum KeyboardTests {
             && abs(vc.rootFrameForTests.maxY - 780) < 1.0
             && vc.maxKeycapHeightForTests <= 54
 
-        s.keyboardHeight = KeyboardHeightPreset.comfortable.rawValue
-        vc.applySettings()
-        let prefSyncComfort = abs(vc.preferredContentSize.height - 262) < 0.5
-        vc.view.frame = CGRect(x: 0, y: 0, width: 393, height: 852)
+        vc.view.frame = CGRect(x: 0, y: 0, width: 402, height: 852)
         vc.view.setNeedsLayout()
         vc.view.layoutIfNeeded()
         let clamped852 = vc.rootFrameForTests.height <= 308.5
             && abs(vc.rootFrameForTests.maxY - 852) < 1.0
             && vc.maxKeycapHeightForTests <= 54
 
-        log(directViewTarget && prefSyncStandard && clamped780 && prefSyncComfort && clamped852,
+        log(directViewTarget && prefSyncStandard && clamped780 && clamped852,
             "r83.KeyboardViewController binds view.heightAnchor directly and clamps oversized host frames bottom-up",
-            "direct=\(directViewTarget) pref=(\(prefSyncStandard),\(prefSyncComfort)) 780=\(vc.rootFrameForTests)/\(vc.maxKeycapHeightForTests) ok=(\(clamped780),\(clamped852))")
+            "direct=\(directViewTarget) pref=\(prefSyncStandard) 780/852=\(vc.rootFrameForTests)/\(vc.maxKeycapHeightForTests) ok=(\(clamped780),\(clamped852))")
 
         // 2. P1 Visual-first unified idle bar across Mosto & 简洁 styles (free-standing Mosto, ^_^ monogram, icon-only right light button)
         vc.view.frame = CGRect(x: 0, y: 0, width: 393, height: 262)
@@ -3844,41 +3808,52 @@ enum KeyboardTests {
             "effective=\(LegalText.effective) noBeta=\(noBetaTerms) familyIP=\(hasFamilyIP)")
     }
 
-    // MARK: - R87: Eliminate WeChat ~60 pt Top Empty Glass Gap While Preserving Full-Screen Clamp
+    // MARK: - R87/R88: Eliminate WeChat ~60 pt Top Empty Glass Gap & Lock Single Calibrated Height
 
     static func r87WeChatTopGapElimination(_ window: UIWindow) {
-        let s = KeyboardSettings.shared
-        let prevHeight = s.keyboardHeight
-        defer { s.keyboardHeight = prevHeight }
-
         guard let pair = makeKeyboard(scheme: 0, in: window) else {
             log(false, "r87.WeChat top gap setup", "engine did not load")
             return
         }
         let (vc, _) = pair
-        s.keyboardHeight = KeyboardHeightPreset.standard.rawValue
         vc.applySettings()
 
-        // 1. WeChat portrait normal container (~301 pt) fills cleanly from minY=0 (zero empty top slab)
+        // 1. WeChat portrait normal containers (~293.5 pt on Build 403 / ~301 pt) fill flush from minY=0 (zero empty top slab)
+        vc.view.frame = CGRect(x: 0, y: 0, width: 402, height: 293.5)
+        vc.view.setNeedsLayout()
+        vc.view.layoutIfNeeded()
+        let wechat402Ok = vc.rootFrameForTests.minY == 0
+            && abs(vc.rootFrameForTests.height - 293.5) < 0.5
+            && vc.maxKeycapHeightForTests >= 46
+            && vc.maxKeycapHeightForTests <= 53
+
         vc.view.frame = CGRect(x: 0, y: 0, width: 393, height: 301)
         vc.view.setNeedsLayout()
         vc.view.layoutIfNeeded()
-        let wechatZeroTopGap = vc.rootFrameForTests.minY == 0
+        let wechat393Ok = vc.rootFrameForTests.minY == 0
             && abs(vc.rootFrameForTests.height - 301) < 0.5
             && vc.maxKeycapHeightForTests >= 46
             && vc.maxKeycapHeightForTests <= 53
 
-        // 2. Spotlight/Notes exact standard container (242 pt) retains exact 242 pt geometry and keycap height
-        vc.view.frame = CGRect(x: 0, y: 0, width: 393, height: 242)
+        // 2. Post-appear lifecycle causes 0 height constraint mutations (no post-appear jump/bounce)
+        vc.resetHeightSyncMutationsForTests()
+        vc.beginAppearanceTransition(true, animated: false)
+        vc.endAppearanceTransition()
+        vc.view.layoutIfNeeded()
+        let zeroPostAppearJump = vc.heightSyncMutationsForTests == 0
+
+        // 3. Native 258 pt Spotlight/Notes container preserves exact 258 pt geometry and ~43 pt keycap height
+        vc.view.frame = CGRect(x: 0, y: 0, width: 402, height: 258)
         vc.view.setNeedsLayout()
         vc.view.layoutIfNeeded()
         let notesStandardOk = vc.rootFrameForTests.minY == 0
-            && abs(vc.rootFrameForTests.height - 242) < 0.5
-            && vc.maxKeycapHeightForTests <= 41
+            && abs(vc.rootFrameForTests.height - 258) < 0.5
+            && vc.maxKeycapHeightForTests >= 42
+            && vc.maxKeycapHeightForTests <= 44
 
-        log(wechatZeroTopGap && notesStandardOk,
-            "r87.WeChat 301pt host fills flush with zero top glass gap while 242pt Notes preserves baseline proportions",
-            "wechat=(\(wechatZeroTopGap),\(vc.rootFrameForTests),\(vc.maxKeycapHeightForTests)) notes=(\(notesStandardOk),\(vc.rootFrameForTests),\(vc.maxKeycapHeightForTests))")
+        log(wechat402Ok && wechat393Ok && zeroPostAppearJump && notesStandardOk,
+            "r87.WeChat 294/301pt hosts fill flush with zero top glass gap or post-appear jump while 258pt Notes preserves calibrated proportions",
+            "w402=\(wechat402Ok) w393=\(wechat393Ok) noJump=\(zeroPostAppearJump) notes=\(notesStandardOk) frame=\(vc.rootFrameForTests) keyH=\(vc.maxKeycapHeightForTests)")
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

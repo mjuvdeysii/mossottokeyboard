@@ -81,98 +81,18 @@ struct LayoutContext: Equatable {
     var spaceOverride: String? = nil
 }
 
-/// 4 calibrated hardware-aligned keyboard height tiers (OTTOSSOM desk deck elevation).
-/// `.standard` preserves the exact baseline Gboard-calibrated geometry (242 pt portrait / 198 pt landscape).
-enum KeyboardHeightPreset: Int, CaseIterable {
-    case compact = 0
-    case standard = 1
-    case comfortable = 2
-    case tall = 3
-
-    static func clamped(_ raw: Int) -> KeyboardHeightPreset {
-        KeyboardHeightPreset(rawValue: min(max(raw, compact.rawValue), tall.rawValue)) ?? .standard
-    }
-
-    var title: String {
-        switch self {
-        case .compact: return "紧凑"
-        case .standard: return "标准"
-        case .comfortable: return "舒展"
-        case .tall: return "宽大"
-        }
-    }
-
-    /// Concise 1-character mark used inside direct 4-step elevation rails.
-    var shortMark: String {
-        switch self {
-        case .compact: return "紧"
-        case .standard: return "标"
-        case .comfortable: return "舒"
-        case .tall: return "宽"
-        }
-    }
-
-    var next: KeyboardHeightPreset {
-        KeyboardHeightPreset(rawValue: (rawValue + 1) % Self.allCases.count) ?? .standard
-    }
-
-    func rowPitch(landscape: Bool) -> CGFloat {
-        switch (self, landscape) {
-        case (.compact, false): return 46
-        case (.standard, false): return Metrics.rowPitch
-        case (.comfortable, false): return 55
-        case (.tall, false): return 60
-        case (.compact, true): return 37
-        case (.standard, true): return Metrics.rowPitchLandscape
-        case (.comfortable, true): return 43
-        case (.tall, true): return 46
-        }
-    }
-
-    func toolbarHeight(landscape: Bool) -> CGFloat {
-        switch (self, landscape) {
-        case (.tall, false): return 44
-        case (.tall, true): return 40
-        case (_, false): return Metrics.toolbarHeight
-        case (_, true): return Metrics.toolbarHeightLandscape
-        }
-    }
-
-    func totalHeight(landscape: Bool) -> CGFloat {
-        toolbarHeight(landscape: landscape) + 4 * rowPitch(landscape: landscape)
-    }
-
-    /// Stepped tactile weight paired with mechanical travel (compact click -> tall cushion).
-    var hapticIntensity: CGFloat {
-        switch self {
-        case .compact: return 0.42
-        case .standard: return 0.56
-        case .comfortable: return 0.72
-        case .tall: return 0.88
-        }
-    }
-
-    /// Optical letter font size anchored at baseline 40 pt cap height -> 24 pt, scaled in 0.5 pt steps.
-    static func letterFontSize(forCapHeight capHeight: CGFloat) -> CGFloat {
-        let raw = Metrics.letterFont + (capHeight - 40) * 0.25
-        let clamped = min(26.5, max(20.5, raw))
-        return (clamped * 2).rounded() / 2
-    }
-}
-
-/// Geometry measured from Gboard iOS 2.3 on a 402 pt wide iPhone (1206 px screenshots):
-/// toolbar 65 pt, row pitch 53 pt, key gaps ~5.5 pt × 11 pt, space bar 42 pt tall with ~6 pt corners,
-/// borderless keys, letter glyphs ~24 pt. (Gboard's top-row digit hints and letter long-press symbols are left out.)
+/// Geometry aligned with Gboard iOS & native Apple Chinese keyboard (42 pt bar + 4×54 pt = 258 pt portrait,
+/// 38 pt bar + 4×40 pt = 198 pt landscape). Locked to a single calibrated height so host containers never bounce.
 /// Bottom rows: letters 1.25 | 1.125 | 1.125 | space 4 | 1 | 1.5; symbol pages 1.25 | 1.125 | 1.125 | 4 | 2.5.
 /// Symbol third rows: 1.5 | 6 × 7/6 | 1.5. Every page fits on screen, nothing scrolls.
 enum Metrics {
     /// The system keyboard's candidate / prediction strip (no separate pinyin line: the pinyin goes into the field).
     static let toolbarHeight: CGFloat = 42
-    static let rowPitch: CGFloat = 50
+    static let rowPitch: CGFloat = 54
     static let rowPitchLandscape: CGFloat = 40
     static let toolbarHeightLandscape: CGFloat = 38
     static let gapX: CGFloat = 5.5
-    static let gapY: CGFloat = 10
+    static let gapY: CGFloat = 11
     /// Outer horizontal breathing inset so edge keys (q/p, 123/return) sit cleanly inside iOS 26/27 rounded Liquid Glass.
     static let sideInset: CGFloat = 4.5
     static let sideInsetLandscape: CGFloat = 4.0
@@ -185,6 +105,25 @@ enum Metrics {
     static let functionFont: CGFloat = 15.5
     static let hintFont: CGFloat = 11
     static let iconSize: CGFloat = 20.5
+
+    static func toolbarHeight(landscape: Bool) -> CGFloat {
+        landscape ? toolbarHeightLandscape : toolbarHeight
+    }
+
+    static func totalHeight(landscape: Bool) -> CGFloat {
+        landscape ? (toolbarHeightLandscape + 4 * rowPitchLandscape) : (toolbarHeight + 4 * rowPitch)
+    }
+
+    static func maxAdaptiveHeight(landscape: Bool) -> CGFloat {
+        landscape ? 224 : 308
+    }
+
+    /// Optical letter font size anchored at baseline 40 pt cap height -> 24 pt, scaled in 0.5 pt steps.
+    static func letterFontSize(forCapHeight capHeight: CGFloat) -> CGFloat {
+        let raw = letterFont + (capHeight - 40) * 0.25
+        let clamped = min(26.5, max(20.5, raw))
+        return (clamped * 2).rounded() / 2
+    }
 }
 
 enum Layouts {

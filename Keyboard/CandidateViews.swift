@@ -2303,119 +2303,6 @@ private final class HardwareTileButton: UIControl {
     }
 }
 
-/// R69 Visual-First 1-tap 4-step elevation rail (`紧 / 标 / 舒 / 宽`) with ascending hardware height silhouettes.
-private final class ElevationRailView: UIView {
-    var selectedTier: KeyboardHeightPreset = .standard {
-        didSet { if selectedTier != oldValue { refreshAppearance() } }
-    }
-    var embeddedInGroup = false {
-        didSet { if embeddedInGroup != oldValue { refreshAppearance() } }
-    }
-    var onSelect: ((KeyboardHeightPreset) -> Void)?
-
-    private var buttons: [UIButton] = []
-    private var barLayers: [CALayer] = []
-    private var markLabels: [UILabel] = []
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        layer.cornerRadius = 15
-        layer.cornerCurve = .continuous
-        layer.borderWidth = 0.5
-        clipsToBounds = true
-
-        for preset in KeyboardHeightPreset.allCases {
-            let btn = UIButton(type: .custom)
-            btn.tag = preset.rawValue
-            btn.layer.cornerRadius = 12
-            btn.layer.cornerCurve = .continuous
-            btn.accessibilityLabel = "键盘高度：\(preset.title)"
-            btn.accessibilityTraits = .button
-            btn.addTarget(self, action: #selector(tierTapped(_:)), for: .touchUpInside)
-
-            let bar = CALayer()
-            bar.cornerRadius = 1.1
-            btn.layer.addSublayer(bar)
-
-            let lbl = UILabel()
-            lbl.text = preset.shortMark
-            lbl.font = Theme.font(11.5, .semibold)
-            lbl.textAlignment = .left
-            lbl.isUserInteractionEnabled = false
-            btn.addSubview(lbl)
-
-            addSubview(btn)
-            buttons.append(btn)
-            barLayers.append(bar)
-            markLabels.append(lbl)
-        }
-        refreshAppearance()
-    }
-
-    required init?(coder: NSCoder) { fatalError() }
-
-    @objc private func tierTapped(_ sender: UIButton) {
-        let tier = KeyboardHeightPreset.clamped(sender.tag)
-        selectedTier = tier
-        onSelect?(tier)
-    }
-
-    func selectForTests(_ tier: KeyboardHeightPreset) {
-        guard tier.rawValue < buttons.count else { return }
-        tierTapped(buttons[tier.rawValue])
-    }
-
-    func refreshAppearance() {
-        let t = traitCollection
-        backgroundColor = (embeddedInGroup ? Theme.touchable : Theme.settingsGroup).resolvedColor(with: t)
-        layer.borderColor = Theme.keyBorder.resolvedColor(with: t).cgColor
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        for (i, btn) in buttons.enumerated() {
-            let active = i == selectedTier.rawValue
-            let fill: UIColor = active ? Theme.selection : .clear
-            btn.backgroundColor = fill.resolvedColor(with: t)
-            btn.isSelected = active
-            btn.accessibilityValue = active ? "已选" : nil
-            let fg: UIColor = active ? Theme.selectionText : (i <= selectedTier.rawValue ? Theme.keyText : Theme.secondaryText)
-            markLabels[i].textColor = fg.resolvedColor(with: t)
-            markLabels[i].font = Theme.font(11.5, active ? .bold : .semibold)
-            let barColor: UIColor = active ? Theme.selectionText : (i < selectedTier.rawValue ? Theme.selection.withAlphaComponent(0.55) : Theme.statusLedMuted)
-            barLayers[i].backgroundColor = barColor.resolvedColor(with: t).cgColor
-        }
-        CATransaction.commit()
-    }
-
-    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
-        super.traitCollectionDidChange(previous)
-        refreshAppearance()
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        let w = bounds.width, h = bounds.height
-        guard w > 40, h > 16 else { return }
-        let pad: CGFloat = 2.5
-        let gap: CGFloat = 2
-        let count = CGFloat(buttons.count)
-        let segW = max(12, (w - pad * 2 - gap * (count - 1)) / count)
-        let segH = max(12, h - pad * 2)
-        let heights: [CGFloat] = [5, 7.5, 10, 12.5]
-        let barW: CGFloat = 2.5
-        let bottomY = (segH + 12.5) / 2
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        for (i, btn) in buttons.enumerated() {
-            btn.frame = CGRect(x: pad + CGFloat(i) * (segW + gap), y: pad, width: segW, height: segH)
-            let bh = heights[min(i, heights.count - 1)]
-            let barX = max(3.5, floor((segW - 18) * 0.5))
-            barLayers[i].frame = CGRect(x: barX, y: bottomY - bh, width: barW, height: bh)
-            markLabels[i].frame = CGRect(x: barX + barW + 2.5, y: 0, width: max(12, segW - barX - barW - 3.5), height: segH)
-        }
-        CATransaction.commit()
-    }
-}
-
 /// OTTOSSOM miniature ceramic telemetry badge inside the secondary preferences drawer.
 private final class TelemetryChipView: UIView {
     private let valueLabel = UILabel()
@@ -2503,7 +2390,6 @@ final class SettingsPanelView: UIView {
     private let utilityRow = UIView()
     private let guidePill = UIButton(type: .custom)
     private let guideLed = CALayer()
-    private let heightRail = ElevationRailView()
     private let offlineStatusLabel = UILabel()
     private let moreButton = UIButton(type: .system)
 
@@ -2516,7 +2402,6 @@ final class SettingsPanelView: UIView {
     private let englishSwitch = UISwitch()
     private let appearance = UISegmentedControl(items: ["自动", "日光", "夜灯"])
     private let styleControl = UISegmentedControl(items: ["Mosto", "简洁"])
-    private let drawerHeightRail = ElevationRailView()
     private let lexiconChip = TelemetryChipView()
     private let learnedChip = TelemetryChipView()
     private let learnedLabel = UILabel()
@@ -2543,10 +2428,6 @@ final class SettingsPanelView: UIView {
         numberControl.translatesAutoresizingMaskIntoConstraints = false
         numberControl.widthAnchor.constraint(equalToConstant: 156).isActive = true
         for i in 0..<numberControl.numberOfSegments { numberControl.setWidth(78, forSegmentAt: i) }
-        drawerHeightRail.embeddedInGroup = true
-        drawerHeightRail.translatesAutoresizingMaskIntoConstraints = false
-        drawerHeightRail.widthAnchor.constraint(equalToConstant: 200).isActive = true
-        drawerHeightRail.heightAnchor.constraint(equalToConstant: 31).isActive = true
         for sc in [numberControl, appearance, styleControl] {
             sc.selectedSegmentTintColor = Theme.selection
             sc.setTitleTextAttributes([.foregroundColor: Theme.selectionText, .font: Theme.font(13, .semibold)], for: .selected)
@@ -2639,17 +2520,12 @@ final class SettingsPanelView: UIView {
         guidePill.addTarget(self, action: #selector(toggleGuide), for: .touchUpInside)
         utilityRow.addSubview(guidePill)
 
-        offlineStatusLabel.text = "纯离线"
+        offlineStatusLabel.text = "纯离线 · 本机运算"
         offlineStatusLabel.font = Theme.font(11.5, .medium)
         offlineStatusLabel.textColor = Theme.secondaryText
+        offlineStatusLabel.adjustsFontSizeToFitWidth = true
+        offlineStatusLabel.minimumScaleFactor = 0.85
         utilityRow.addSubview(offlineStatusLabel)
-
-        let onElevationSelect: (KeyboardHeightPreset) -> Void = { [weak self] tier in
-            self?.applyElevation(tier)
-        }
-        heightRail.onSelect = onElevationSelect
-        drawerHeightRail.onSelect = onElevationSelect
-        utilityRow.addSubview(heightRail)
 
         moreButton.setTitle("更多 ›", for: .normal)
         moreButton.titleLabel?.font = Theme.font(12, .semibold)
@@ -2676,10 +2552,9 @@ final class SettingsPanelView: UIView {
             row("123 数字键", icon: "number.square", numberControl),
         ], footer: nil)
 
-        section("外观与比例", rows: [
+        section("外观", rows: [
             row("风格", icon: "paintpalette", styleControl),
             row("光线", icon: "sun.max", appearance),
-            row("高度", icon: "arrow.up.and.down.square", drawerHeightRail),
         ], footer: nil)
 
         lexiconChip.configure(value: "--", caption: "内置词库")
@@ -2822,15 +2697,8 @@ final class SettingsPanelView: UIView {
         for tile in hardwareTiles { tile.refreshAppearance() }
         for chip in telemetryChips { chip.refreshAppearance() }
         refreshGuidePill()
-        refreshHeightRail()
     }
 
-    var heightPresetForTests: KeyboardHeightPreset { KeyboardHeightPreset.clamped(KeyboardSettings.shared.keyboardHeight) }
-    var drawerHeightPresetForTests: KeyboardHeightPreset { drawerHeightRail.selectedTier }
-    var heightPillTitleForTests: String { "高度·\(heightPresetForTests.title)" }
-    func tapHeightPillForTests() { cycleHeight() }
-    func selectHeightForTests(_ preset: KeyboardHeightPreset) { heightRail.selectForTests(preset) }
-    func selectDrawerHeightForTests(_ preset: KeyboardHeightPreset) { drawerHeightRail.selectForTests(preset) }
     var tileIconsLoadedForTests: Bool { hardwareTiles.allSatisfy(\.hasSymbolForTests) }
     var isResetConfirmingForTests: Bool { resetConfirming }
     var telemetrySummaryForTests: (lexicon: String, learned: String, mem: String, ready: String) {
@@ -2845,27 +2713,6 @@ final class SettingsPanelView: UIView {
             verticalFittingPriority: .fittingSizeLevel
         )
         return headH + size.height + 22
-    }
-
-    private func refreshHeightRail() {
-        let tier = KeyboardHeightPreset.clamped(KeyboardSettings.shared.keyboardHeight)
-        heightRail.selectedTier = tier
-        heightRail.refreshAppearance()
-        drawerHeightRail.selectedTier = tier
-        drawerHeightRail.refreshAppearance()
-    }
-
-    private func applyElevation(_ tier: KeyboardHeightPreset) {
-        KeyboardSettings.shared.keyboardHeight = tier.rawValue
-        if canProvideHaptic {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred(intensity: tier.hapticIntensity)
-        }
-        load()
-        onChange?()
-    }
-
-    @objc private func cycleHeight() {
-        applyElevation(KeyboardHeightPreset.clamped(KeyboardSettings.shared.keyboardHeight).next)
     }
 
     private func refreshGuidePill() {
@@ -3031,8 +2878,7 @@ final class SettingsPanelView: UIView {
     private func updateStatus(night: Bool? = nil) {
         let s = KeyboardSettings.shared
         let light = night.map { $0 ? "夜灯" : "日光" } ?? (["自动", "日光", "夜灯"][s.appearance])
-        let heightName = KeyboardHeightPreset.clamped(s.keyboardHeight).title
-        statusLabel.text = "\(s.style == 1 ? "简洁" : light) · \(s.scheme == 0 ? "双拼" : "全拼") · \(s.pinyinGrid ? "九宫格" : "全键盘") · \(heightName)"
+        statusLabel.text = "\(s.style == 1 ? "简洁" : light) · \(s.scheme == 0 ? "双拼" : "全拼") · \(s.pinyinGrid ? "九宫格" : "全键盘")"
     }
 
     func load() {
@@ -3100,7 +2946,6 @@ final class SettingsPanelView: UIView {
         appearance.selectedSegmentIndex = s.appearance
         styleControl.selectedSegmentIndex = s.style
         refreshGuidePill()
-        refreshHeightRail()
         setNeedsLayout()
     }
 
@@ -3327,20 +3172,15 @@ final class SettingsPanelView: UIView {
     var hardwareTileCountForTests: Int { hardwareTiles.count }
     var showingMoreForTests: Bool { !moreScroll.isHidden }
     var backDeckButtonInHeaderForTests: Bool { backDeckButton.isDescendant(of: header) && !backDeckButton.isHidden && mostoImage.isHidden }
-    var drawerHeightEmbeddedForTests: Bool {
-        drawerHeightRail.embeddedInGroup
-            && drawerHeightRail.backgroundColor?.resolvedColor(with: traitCollection) != Theme.settingsGroup.resolvedColor(with: traitCollection)
-    }
     func toggleMoreForTests() { if moreScroll.isHidden { openMore() } else { closeMore() } }
     func tapSchemeTileForTests() { toggleScheme() }
     func tapHapticTileForTests() { toggleHaptic() }
     var maxTileHeightForTests: CGFloat { hardwareTiles.map(\.frame.height).max() ?? 0 }
     var utilityRowNonOverlappingForTests: Bool {
-        let guideOk = guidePill.isHidden || (!guidePill.frame.intersects(heightRail.frame) && guidePill.frame.maxX <= utilityRow.bounds.width + 0.5)
-        let offlineOk = offlineStatusLabel.isHidden || (!offlineStatusLabel.frame.intersects(heightRail.frame) && offlineStatusLabel.frame.maxX <= utilityRow.bounds.width + 0.5)
+        let guideOk = guidePill.isHidden || (!guidePill.frame.intersects(moreButton.frame) && guidePill.frame.minX >= 0 && guidePill.frame.maxX <= utilityRow.bounds.width + 0.5)
+        let offlineOk = offlineStatusLabel.isHidden || (!offlineStatusLabel.frame.intersects(moreButton.frame) && offlineStatusLabel.frame.minX >= 0 && offlineStatusLabel.frame.maxX <= utilityRow.bounds.width + 0.5)
         return guideOk && offlineOk
-            && !heightRail.frame.intersects(moreButton.frame)
-            && heightRail.frame.minX >= 0
+            && moreButton.frame.minX >= 0
             && moreButton.frame.maxX <= utilityRow.bounds.width + 0.5
     }
     var bannerNonOverlappingForTests: Bool {
@@ -3391,21 +3231,16 @@ final class SettingsPanelView: UIView {
         utilityRow.frame = CGRect(x: padX, y: min(nextY, max(nextY, bodyFrame.height - utilH - padBot)), width: w - padX * 2, height: utilH)
         let uw = utilityRow.bounds.width
         let gapUtil: CGFloat = 6
-        let moreW = min(74, max(62, (uw * 0.18).rounded()))
+        let moreW = min(76, max(64, (uw * 0.20).rounded()))
         moreButton.frame = CGRect(x: uw - moreW, y: 0, width: moreW, height: utilH)
-        let showGuide = !guidePill.isHidden
-        let leftW: CGFloat = showGuide ? min(98, max(82, (uw * 0.24).rounded())) : min(56, max(44, (uw * 0.14).rounded()))
-        let railMax = max(120, uw - leftW - moreW - gapUtil * 2)
-        let railW = min(204, max(min(railMax, 148), floor((uw * 0.48).rounded())))
-        let railX = uw - moreW - gapUtil - railW
-        heightRail.frame = CGRect(x: railX, y: 0, width: railW, height: utilH)
-        let actualLeftW = max(40, railX - gapUtil)
-        guidePill.frame = CGRect(x: 0, y: 0, width: min(leftW, actualLeftW), height: utilH)
+        let leftAvail = max(40, uw - moreW - gapUtil)
+        let guideW = min(104, max(84, (uw * 0.28).rounded()))
+        guidePill.frame = CGRect(x: 0, y: 0, width: min(guideW, leftAvail), height: utilH)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         guideLed.frame = CGRect(x: 9, y: (utilH - 4.5) / 2, width: 4.5, height: 4.5)
         CATransaction.commit()
-        offlineStatusLabel.frame = CGRect(x: 2, y: 0, width: min(leftW, actualLeftW), height: utilH)
+        offlineStatusLabel.frame = CGRect(x: 2, y: 0, width: leftAvail, height: utilH)
 
         // Layout secondary `moreScroll`
         let size = stack.systemLayoutSizeFitting(
@@ -3438,7 +3273,7 @@ final class KeyboardSettings {
         if FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: Self.appGroupID) != nil,
            let group = UserDefaults(suiteName: Self.appGroupID) {
             if !group.bool(forKey: "migratedToAppGroup") {
-                let keys = ["scheme", "autocorrect", "xiaoheGuide", "english", "pinyinGrid", "numberPad", "style", "appearance", "keyboardHeight", "feedback", "hapticProfile", "keySound", "keyOffsets", "offsetX", "offsetY"]
+                let keys = ["scheme", "autocorrect", "xiaoheGuide", "english", "pinyinGrid", "numberPad", "style", "appearance", "feedback", "hapticProfile", "keySound", "keyOffsets", "offsetX", "offsetY"]
                 for k in keys where group.object(forKey: k) == nil {
                     if let v = standard.object(forKey: k) { group.set(v, forKey: k) }
                 }
@@ -3502,19 +3337,6 @@ final class KeyboardSettings {
         set { d.set(newValue, forKey: "appearance"); notify() }
     }
 
-    /// Keyboard elevation tier: 0 紧凑 / 1 标准 (default) / 2 舒展 / 3 宽大.
-    var keyboardHeight: Int {
-        get {
-            guard let raw = (d.object(forKey: "keyboardHeight") as? NSNumber)?.intValue else {
-                return KeyboardHeightPreset.standard.rawValue
-            }
-            return KeyboardHeightPreset.clamped(raw).rawValue
-        }
-        set {
-            d.set(KeyboardHeightPreset.clamped(newValue).rawValue, forKey: "keyboardHeight")
-            notify()
-        }
-    }
     /// Haptic tap on key down (the key kept its old name: it used to switch sound and haptics together).
     var feedback: Bool {
         get { d.object(forKey: "feedback") as? Bool ?? true }
