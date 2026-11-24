@@ -827,7 +827,7 @@ struct SwitchTesterToy: View {
                             onSelectProfile?(prof.rawValue)
                             let t = SystemFeedbackPlayer.tunedImpact(for: prof, firm: false)
                             UIImpactFeedbackGenerator(style: t.style).impactOccurred(intensity: t.intensity)
-                            readout = "\(prof.title) · \(styleLabel(t.style, t.intensity))"
+                            readout = "\(prof.title) · \(Self.localizedFeel(t.style, t.intensity))"
                         } label: {
                             Text(prof.title)
                                 .font(.caption2.weight(.semibold))
@@ -850,7 +850,7 @@ struct SwitchTesterToy: View {
                 Button {
                     let t = SystemFeedbackPlayer.tunedImpact(for: activeProfile, firm: false)
                     trigger(id: 0, sound: 1104, style: t.style, intensity: t.intensity,
-                            desc: "\(activeProfile.title)字母 · \(styleLabel(t.style, t.intensity))")
+                            desc: "\(activeProfile.title)字母 · \(Self.localizedFeel(t.style, t.intensity))")
                 } label: {
                     MonolithKeycapView(
                         label: "A",
@@ -866,7 +866,7 @@ struct SwitchTesterToy: View {
                 Button {
                     let t = SystemFeedbackPlayer.tunedImpact(for: activeProfile, firm: true)
                     trigger(id: 1, sound: 1104, style: t.style, intensity: t.intensity,
-                            desc: "\(activeProfile.title)空格 · \(styleLabel(t.style, t.intensity))")
+                            desc: "\(activeProfile.title)空格 · \(Self.localizedFeel(t.style, t.intensity))")
                 } label: {
                     MonolithKeycapView(
                         label: "空格",
@@ -881,7 +881,7 @@ struct SwitchTesterToy: View {
                 .buttonStyle(.plain)
 
                 Button {
-                    trigger(id: 2, sound: 1156, style: .soft, intensity: 0.85, desc: "Mosto 彩蛋 · Soft 0.85")
+                    trigger(id: 2, sound: 1156, style: .soft, intensity: 0.85, desc: "Mosto 彩蛋 · 柔弹 85%")
                 } label: {
                     MonolithKeycapView(
                         label: "Mosto",
@@ -910,7 +910,7 @@ struct SwitchTesterToy: View {
                 ImpulseWaveformView(profile: activeProfile, activePulse: pressedKey != nil)
                     .frame(width: 68, height: 18)
 
-                Text(readout ?? defaultSpecReadout(for: activeProfile))
+                Text(readout ?? Self.specReadout(for: activeProfile))
                     .font(.caption2.weight(.semibold).monospacedDigit())
                     .foregroundStyle(MossOttoStyle.inkSecondary)
                     .lineLimit(1)
@@ -955,19 +955,19 @@ struct SwitchTesterToy: View {
         .background(Capsule().fill(MossOttoStyle.surfaceMuted))
     }
 
-    private func defaultSpecReadout(for profile: HapticProfile) -> String {
-        let t = SystemFeedbackPlayer.tunedImpact(for: profile, firm: false)
-        return "\(profile.title) · \(styleLabel(t.style, t.intensity)) · 1104 Hz"
+    static func specReadout(for profile: HapticProfile, firm: Bool = false) -> String {
+        let t = SystemFeedbackPlayer.tunedImpact(for: profile, firm: firm)
+        return "\(profile.title) · \(localizedFeel(t.style, t.intensity))"
     }
 
-    private func styleLabel(_ style: UIImpactFeedbackGenerator.FeedbackStyle, _ intensity: CGFloat) -> String {
+    static func localizedFeel(_ style: UIImpactFeedbackGenerator.FeedbackStyle, _ intensity: CGFloat) -> String {
         let name: String
         switch style {
-        case .rigid: name = "Rigid"
-        case .soft: name = "Soft"
-        default: name = "Light"
+        case .rigid: name = "脆硬"
+        case .soft: name = "柔弹"
+        default: name = "轻弹"
         }
-        return String(format: "%@ %.2f", name, intensity)
+        return "\(name) \(Int((intensity * 100).rounded()))%"
     }
 
     private func trigger(id: Int, sound: SystemSoundID, style: UIImpactFeedbackGenerator.FeedbackStyle, intensity: CGFloat, desc: String) {

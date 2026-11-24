@@ -92,6 +92,8 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     private var dividerPool: [CALayer] = []
     /// Zero-width 2pt focus glow bar beneath slot 0 when autocorrect engaged (replaces noisy jr->ke text).
     private let correctionBar = CALayer()
+    private let clearFilamentTrack = CALayer()
+    private let cursorCenterTick = CALayer()
     private let clearFilament = CALayer()
     private let clearArmedPill = UILabel()
     private let deletePreviewPill = UILabel()
@@ -254,6 +256,14 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         fade.colors = [UIColor.clear.cgColor, UIColor.black.cgColor, UIColor.black.cgColor, UIColor.clear.cgColor]
         addSubview(stripBox)
         bringSubviewToFront(preeditDock)
+        clearFilamentTrack.cornerRadius = 0.75
+        clearFilamentTrack.zPosition = 18
+        clearFilamentTrack.isHidden = true
+        layer.addSublayer(clearFilamentTrack)
+        cursorCenterTick.cornerRadius = 0.5
+        cursorCenterTick.zPosition = 19
+        cursorCenterTick.isHidden = true
+        layer.addSublayer(cursorCenterTick)
         clearFilament.cornerRadius = 1
         clearFilament.zPosition = 20
         clearFilament.isHidden = true
@@ -760,8 +770,12 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         if clearSwipeProgress > 0.005, bounds.width > 20 {
-            clearFilament.isHidden = false
             let span = max(0, bounds.width - 20)
+            clearFilamentTrack.isHidden = false
+            clearFilamentTrack.frame = CGRect(x: 10, y: bounds.height - 1.75, width: span, height: 1.5)
+            clearFilamentTrack.backgroundColor = Theme.separator.resolvedColor(with: traitCollection).withAlphaComponent(0.55).cgColor
+            cursorCenterTick.isHidden = true
+            clearFilament.isHidden = false
             let w = span * clearSwipeProgress
             let h: CGFloat = clearSwipeArmed ? 2.5 : 2.0
             clearFilament.frame = CGRect(x: bounds.width - 10 - w, y: bounds.height - h, width: w, height: h)
@@ -769,8 +783,14 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             clearFilament.backgroundColor = baseColor.resolvedColor(with: traitCollection)
                 .withAlphaComponent(clearSwipeArmed ? 1.0 : (0.55 + 0.45 * clearSwipeProgress)).cgColor
         } else if showCursorHud, bounds.width > 40 {
-            clearFilament.isHidden = false
             let span = max(0, bounds.width - 20)
+            clearFilamentTrack.isHidden = false
+            clearFilamentTrack.frame = CGRect(x: 10, y: bounds.height - 1.75, width: span, height: 1.5)
+            clearFilamentTrack.backgroundColor = Theme.separator.resolvedColor(with: traitCollection).withAlphaComponent(0.55).cgColor
+            cursorCenterTick.isHidden = false
+            cursorCenterTick.frame = CGRect(x: floor(bounds.width / 2 - 0.5), y: bounds.height - 4.5, width: 1.0, height: 4.5)
+            cursorCenterTick.backgroundColor = Theme.secondaryText.resolvedColor(with: traitCollection).withAlphaComponent(0.45).cgColor
+            clearFilament.isHidden = false
             let indW = min(44, max(24, span * 0.14))
             let indX: CGFloat
             if cursorScrubEndStop < 0 {
@@ -791,6 +811,8 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
                 .withAlphaComponent(clamped ? 0.95 : 0.85).cgColor
         } else {
             clearFilament.isHidden = true
+            clearFilamentTrack.isHidden = true
+            cursorCenterTick.isHidden = true
         }
         CATransaction.commit()
     }
@@ -824,6 +846,9 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     var idleKaomojiTitleForTests: String? { kaomojiButton.title(for: .normal) }
     var idleKaomojiHasImageForTests: Bool { kaomojiButton.image(for: .normal) != nil }
     var horizonHairlineShownForTests: Bool { !horizonHairline.isHidden }
+    var clearFilamentTrackShownForTests: Bool { !clearFilamentTrack.isHidden }
+    var cursorCenterTickShownForTests: Bool { !cursorCenterTick.isHidden }
+    var idleLightTintColorForTests: UIColor { lightToggleButton.tintColor }
 
     // MARK: VoiceOver: each laid-out candidate is a button (the strip draws plain labels and reads raw touches)
 
@@ -1002,7 +1027,8 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         lightToggleButton.setTitle(nil, for: .normal)
         lightToggleButton.setImage(Self.idleSymbol(isNightLight ? "moon.fill" : "sun.max.fill"), for: .normal)
         if isNightLight {
-            lightToggleButton.tintColor = Theme.plain ? fg : Theme.hex(0xD8B46C, 0.90)
+            let nightMoon = Theme.dyn(Theme.hex(0x784F0A), Theme.hex(0xE0BE74)).resolvedColor(with: traitCollection)
+            lightToggleButton.tintColor = Theme.plain ? fg : nightMoon
         } else {
             lightToggleButton.tintColor = isForcedDayOnDarkGlass ? Theme.hex(0xEFECE6, 0.92) : fg
         }

@@ -160,6 +160,7 @@ enum KeyboardTests {
         r81TrackpadGlassSmartRimAndPunctuationCraft(window)
         r82NumpadSpineEnableDarkAndLandscapeDock(window)
         r83HeightExplosionGuardIdleRailAndGlassCraft(window)
+        r84ContrastRangefinderAndWorkbenchCraft(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -3738,6 +3739,65 @@ enum KeyboardTests {
         log(marginOk && softOn && softOff,
             "r83.KeyboardView breathes inside rounded Liquid Glass with full-width edge hit zones and dark-glass day softening",
             "margin=\(marginOk) qMinX=\(q?.cap.minX ?? -1) pMaxX=\(p?.cap.maxX ?? -1) soft=(\(softOn),\(softOff))")
+    }
+
+    static func r84ContrastRangefinderAndWorkbenchCraft(_ window: UIWindow) {
+        _ = window
+        let prevPlain = Theme.plain
+        defer { Theme.plain = prevPlain }
+
+        func relLum(_ c: UIColor) -> CGFloat {
+            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            c.getRed(&r, green: &g, blue: &b, alpha: &a)
+            func lin(_ v: CGFloat) -> CGFloat { v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4) }
+            return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+        }
+        func contrast(_ a: UIColor, _ b: UIColor) -> CGFloat {
+            let l1 = relLum(a), l2 = relLum(b)
+            return (max(l1, l2) + 0.05) / (min(l1, l2) + 0.05)
+        }
+
+        // 1. Night moon icon meets WCAG AA (>= 4.5:1) on both light forced glass and dark glass
+        Theme.plain = false
+        let bar = CandidateBarView(frame: CGRect(x: 0, y: 0, width: 393, height: 42))
+        bar.showsMosto = true
+        bar.overrideUserInterfaceStyle = .light
+        bar.setIdleControls(enabled: true, night: true, forcedDayOnDarkGlass: false)
+        bar.layoutIfNeeded()
+        let lightMoonCR = contrast(bar.idleLightTintColorForTests, Theme.hex(0xE8E6EF))
+
+        bar.overrideUserInterfaceStyle = .dark
+        bar.setIdleControls(enabled: true, night: true, forcedDayOnDarkGlass: false)
+        bar.layoutIfNeeded()
+        let darkMoonCR = contrast(bar.idleLightTintColorForTests, Theme.hex(0x32303A))
+        log(lightMoonCR >= 4.5 && darkMoonCR >= 4.5,
+            "r84.Idle moon icon satisfies WCAG AA contrast across light and dark glass",
+            "lightCR=\(String(format: "%.2f", lightMoonCR)) darkCR=\(String(format: "%.2f", darkMoonCR))")
+
+        // 2. Precision cursor rangefinder track & center home tick follow telemetry and swipe states cleanly
+        let trackBar = CandidateBarView(frame: CGRect(x: 0, y: 0, width: 393, height: 42))
+        let idleTrackHidden = !trackBar.clearFilamentTrackShownForTests && !trackBar.cursorCenterTickShownForTests
+        trackBar.setCursorTelemetry(active: true, delta: 4, endStop: 0, crossedNewline: false)
+        let cursorTrackAndTickShown = trackBar.clearFilamentTrackShownForTests && trackBar.cursorCenterTickShownForTests
+        trackBar.setCursorTelemetry(active: false, delta: 0, endStop: 0, crossedNewline: false)
+        let cursorRestored = !trackBar.clearFilamentTrackShownForTests && !trackBar.cursorCenterTickShownForTests
+        trackBar.setClearProgress(0.6, armed: false)
+        let swipeTrackNoCenterTick = trackBar.clearFilamentTrackShownForTests && !trackBar.cursorCenterTickShownForTests
+        trackBar.setClearProgress(0, armed: false)
+        let swipeRestored = !trackBar.clearFilamentTrackShownForTests && !trackBar.cursorCenterTickShownForTests
+        log(idleTrackHidden && cursorTrackAndTickShown && cursorRestored && swipeTrackNoCenterTick && swipeRestored,
+            "r84.CandidateBarView shows recessed rangefinder track and center home tick during cursor scrub",
+            "idle=\(idleTrackHidden) cursor=\(cursorTrackAndTickShown) restored=\(cursorRestored) swipe=\(swipeTrackNoCenterTick) end=\(swipeRestored)")
+
+        // 3. Pure-Chinese SwitchTester telemetry & synced GestureAtlas idle preview actions
+        let chineseReadoutOk = HapticProfile.allCases.allSatisfy { prof in
+            let s = SwitchTesterToy.specReadout(for: prof)
+            return !s.contains("Light") && !s.contains("Rigid") && !s.contains("Soft") && !s.contains("Hz") && s.contains("%")
+        }
+        let atlasEffectsOk = GestureAtlasContent.MostoPreviewAction.allCases.map(\.shortEffect) == ["颜文字", "换光效", "打哈欠"]
+        log(chineseReadoutOk && atlasEffectsOk,
+            "r84.SwitchTesterToy uses pure Chinese tactile telemetry and GestureAtlas mirrors live idle bar",
+            "chinese=\(chineseReadoutOk) atlas=\(atlasEffectsOk)")
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

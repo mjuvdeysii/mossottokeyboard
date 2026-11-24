@@ -408,7 +408,10 @@ struct UnifiedTypingBench: View {
                         .background(Capsule().fill(MossOttoStyle.surfaceMuted))
                         .overlay(Capsule().strokeBorder(MossOttoStyle.hairline, lineWidth: 0.6))
                     }
-                    HStack(spacing: 5) {
+                    Divider()
+                        .overlay(MossOttoStyle.hairline)
+                        .padding(.top, 1)
+                    HStack(spacing: 4) {
                         benchToggle(title: "纠错", isOn: $model.autocorrect)
                         benchToggle(title: "中英", isOn: $model.english)
                         benchToggle(title: "触感", isOn: $model.feedback)
@@ -419,6 +422,7 @@ struct UnifiedTypingBench: View {
                             benchToggle(title: "数字", isOn: $model.numberPad)
                         }
                     }
+                    .padding(.top, 1)
                 }
             }
             .padding(12)
@@ -509,22 +513,23 @@ struct UnifiedTypingBench: View {
             UISelectionFeedbackGenerator().selectionChanged()
             isOn.wrappedValue.toggle()
         } label: {
-            HStack(spacing: 3.5) {
+            HStack(spacing: 4) {
                 Circle()
-                    .fill(isOn.wrappedValue ? MossOttoStyle.moss : MossOttoStyle.inkSecondary.opacity(0.35))
-                    .frame(width: 5, height: 5)
+                    .fill(isOn.wrappedValue ? MossOttoStyle.moss : MossOttoStyle.inkSecondary.opacity(0.28))
+                    .frame(width: 5.5, height: 5.5)
                 Text(title)
-                    .font(.caption2.weight(.semibold))
+                    .font(.caption2.weight(isOn.wrappedValue ? .bold : .medium))
                     .lineLimit(1)
-                    .minimumScaleFactor(0.85)
+                    .minimumScaleFactor(0.82)
                     .foregroundStyle(isOn.wrappedValue ? MossOttoStyle.inkPrimary : MossOttoStyle.inkSecondary)
             }
             .frame(maxWidth: .infinity)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 5.5)
-            .background(Capsule().fill(MossOttoStyle.surfaceMuted))
+            .padding(.vertical, 3.5)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityValue(isOn.wrappedValue ? "开启" : "关闭")
     }
 
     private func inspirationChip(_ text: String, action: @escaping () -> Void) -> some View {
@@ -993,30 +998,32 @@ private struct GestureAtlasView: View {
 struct GestureAtlasContent: View {
     var nav: AppNavigation? = nil
 
-    enum MostoPreviewAction: String {
-        case tap = "轻点"
-        case doubleTap = "双击"
-        case longPress = "长按"
+    enum MostoPreviewAction: String, CaseIterable {
+        case kaomoji = "左侧 Mosto"
+        case toggleLight = "右侧日月"
+        case yawn = "长按 Mosto"
 
-        var sprite: String {
+        var shortEffect: String {
             switch self {
-            case .tap: return "MostoBlink"
-            case .doubleTap: return "MostoNight"
-            case .longPress: return "MostoToyBlink"
+            case .kaomoji: return "颜文字"
+            case .toggleLight: return "换光效"
+            case .yawn: return "打哈欠"
             }
         }
 
         var badge: String {
             switch self {
-            case .tap: return "(=^･ω･^=)  颜文字弹出"
-            case .doubleTap: return "切换台灯暖光 / 暗夜模式"
-            case .longPress: return "慵懒打哈欠 · 软触反馈"
+            case .kaomoji: return "(=^･ω･^=)  无框轻点 · 200+ 颜文字"
+            case .toggleLight: return "日光与夜灯一键切换 · Mosto 同步亮尾"
+            case .yawn: return "按住 0.4s 慵懒打哈欠 · 软触反馈"
             }
         }
     }
 
     @State private var selectedMosto: MostoPreviewAction? = nil
     @State private var mostoBounce = false
+    @State private var previewNight = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -1038,7 +1045,7 @@ struct GestureAtlasContent: View {
                 atlasRow(
                     symbol: "arrow.left.and.right",
                     title: "空格游标与智能跳出",
-                    chips: ["左右滑动游标", "括号内空格跳出", "首尾琥珀止点"],
+                    chips: ["左右滑移游标", "括号空格跳出"],
                     demoTitle: nil
                 )
                 Divider()
@@ -1080,36 +1087,95 @@ struct GestureAtlasContent: View {
                 )
             }
 
-            Card(title: "候选栏左侧 Mosto") {
+            Card(title: "空闲顶栏与声光彩蛋") {
                 VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 10) {
-                        Image(uiImage: mostoImage(selectedMosto?.sprite ?? "Mosto"))
+                    // Miniature live R83 idle bar matching real keyboard top-bar choreography
+                    HStack(spacing: 8) {
+                        Image(uiImage: mostoImage(activePreviewSprite))
                             .resizable()
                             .scaledToFit()
-                            .frame(width: 36, height: 36)
-                            .scaleEffect(mostoBounce ? 1.12 : 1.0)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("指尖声光彩蛋")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(MossOttoStyle.inkPrimary)
-                            Text(selectedMosto?.badge ?? "点按下方手势按钮试玩反馈")
-                                .font(.caption2.weight(.medium))
-                                .foregroundStyle(selectedMosto == nil ? MossOttoStyle.inkSecondary : MossOttoStyle.violet)
-                        }
+                            .frame(width: 28, height: 28)
+                            .scaleEffect((mostoBounce && !reduceMotion) ? 1.16 : 1.0)
+                            .onTapGesture { triggerMostoPreview(.kaomoji) }
+                            .onLongPressGesture(minimumDuration: 0.4) { triggerMostoPreview(.yawn) }
+                            .accessibilityAddTraits(.isButton)
+                            .accessibilityLabel("迷你顶栏 Mosto，轻点颜文字，长按打哈欠")
+
+                        Text(selectedMosto?.badge ?? "轻点左侧 Mosto 或右侧日月图标试玩")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(previewNight ? Color.white.opacity(0.74) : MossOttoStyle.inkSecondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+
                         Spacer(minLength: 4)
-                        Text("200+ 颜文字")
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(MossOttoStyle.violet)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3.5)
-                            .background(Capsule().fill(MossOttoStyle.violet.opacity(0.12)))
+
+                        Button {
+                            triggerMostoPreview(.toggleLight)
+                        } label: {
+                            Image(systemName: previewNight ? "moon.fill" : "sun.max.fill")
+                                .font(.system(size: 13.5, weight: .medium))
+                                .foregroundStyle(
+                                    previewNight
+                                        ? Color(uiColor: MossOttoStyle.hex(0xE0BE74))
+                                        : MossOttoStyle.inkSecondary
+                                )
+                                .frame(width: 34, height: 28)
+                                .background(
+                                    Capsule().fill(
+                                        previewNight
+                                            ? Color.white.opacity(0.14)
+                                            : Color(uiColor: MossOttoStyle.hex(0x633EBF, 0.10))
+                                    )
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("迷你顶栏切换日光与夜灯")
+
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.system(size: 14.5, weight: .regular))
+                            .foregroundStyle(previewNight ? Color.white.opacity(0.68) : MossOttoStyle.inkSecondary)
+                            .frame(width: 26, height: 28)
+                            .accessibilityHidden(true)
                     }
+                    .padding(.horizontal, 10)
+                    .frame(height: 42)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(previewNight ? Color(uiColor: MossOttoStyle.hex(0x211E2D)) : Color(uiColor: MossOttoStyle.hex(0xECEAF3)))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(previewNight ? Color.white.opacity(0.10) : MossOttoStyle.hairline, lineWidth: 0.7)
+                    )
+
                     HStack(spacing: 6) {
-                        mostoActionTile(action: .tap, effect: "颜文字")
-                        mostoActionTile(action: .doubleTap, effect: "切换光效")
-                        mostoActionTile(action: .longPress, effect: "打哈欠")
+                        ForEach(MostoPreviewAction.allCases, id: \.rawValue) { act in
+                            mostoActionTile(action: act, effect: act.shortEffect)
+                        }
                     }
                 }
+            }
+        }
+    }
+
+    private var activePreviewSprite: String {
+        if selectedMosto == .yawn { return "MostoToyBlink" }
+        if previewNight { return "MostoNight" }
+        if selectedMosto == .kaomoji { return "MostoBlink" }
+        return "Mosto"
+    }
+
+    private func triggerMostoPreview(_ action: MostoPreviewAction) {
+        let style: UIImpactFeedbackGenerator.FeedbackStyle = action == .yawn ? .soft : (action == .toggleLight ? .medium : .light)
+        UIImpactFeedbackGenerator(style: style).impactOccurred()
+        withAnimation(reduceMotion ? .none : .spring(response: 0.24, dampingFraction: 0.65)) {
+            if action == .toggleLight { previewNight.toggle() }
+            selectedMosto = action
+            mostoBounce = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
+            withAnimation(.easeOut(duration: 0.14)) {
+                mostoBounce = false
             }
         }
     }
@@ -1117,17 +1183,7 @@ struct GestureAtlasContent: View {
     private func mostoActionTile(action: MostoPreviewAction, effect: String) -> some View {
         let active = selectedMosto == action
         return Button {
-            let style: UIImpactFeedbackGenerator.FeedbackStyle = action == .longPress ? .soft : (action == .doubleTap ? .medium : .light)
-            UIImpactFeedbackGenerator(style: style).impactOccurred()
-            withAnimation(.spring(response: 0.24, dampingFraction: 0.65)) {
-                selectedMosto = action
-                mostoBounce = true
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
-                withAnimation(.easeOut(duration: 0.14)) {
-                    mostoBounce = false
-                }
-            }
+            triggerMostoPreview(action)
         } label: {
             VStack(spacing: 2) {
                 Text(action.rawValue)
