@@ -285,6 +285,18 @@ enum SnapshotRenderer {
             }
         }
         // the companion app's live OTTOSSOM screens (rendered off-screen for CI verification)
+        struct CompanionHomeSnapshotHost: View {
+            @ObservedObject var family: FamilyStageModel
+            @ObservedObject var volume: VolumeMonitor
+            @State private var verifyText = ""
+            @FocusState private var typing: Bool
+            var body: some View {
+                VStack(spacing: 18) {
+                    FamilyLampStageView(model: family, volume: volume)
+                    CompanionEnableCard(added: true, verifyText: $verifyText, typing: $typing)
+                }
+            }
+        }
         for night in [false, true] {
             func page<V: View>(_ v: V) -> some View {
                 v.padding(.horizontal, 16)
@@ -294,34 +306,19 @@ enum SnapshotRenderer {
                     .tint(mostoTint)
                     .environment(\.colorScheme, night ? .dark : .light)
             }
-            let studio = PlaygroundModel()
-            studio.benchMode = .demos
-            studio.step = 2
-            studio.before = "你好今天很热"
-            studio.marked = "jintiantiaqi"
-            studio.activeFixes = [Fix(typed: "tia", meant: "tian")]
-            studio.applyLampMode(night ? .night : .day)
+            let family = FamilyStageModel()
+            family.atmosphere = night ? .night : .day
+            if night { family.activeMember = .otto }
             let vol = VolumeMonitor(defaults: .standard, observeSystem: false, initialVolume: 0.42)
-            let speedModel = PlaygroundModel()
-            speedModel.benchMode = .speed
-            speedModel.before = "今天天"
-            speedModel.marked = "qi"
-            speedModel.speedStart = Date().addingTimeInterval(-3.0)
-            speedModel.speedCadenceBeats = [0.42, 0.68, 0.86, 0.58, 0.94, 0.74, 0.52]
-            speedModel.applyLampMode(night ? .night : .day)
             let parts: [(String, AnyView)] = [
-                ("0", AnyView(page(VStack(spacing: 16) {
-                    DeskLampStageCard(model: studio, volume: vol)
-                    SwitchTesterToy(volume: vol, mode: studio.lampMode, soundEnabled: true) {}
-                }))),
-                ("1", AnyView(page(UnifiedTypingBench(model: studio, volume: vol)))),
+                ("0", AnyView(page(CompanionHomeSnapshotHost(family: family, volume: vol)))),
+                ("1", AnyView(page(CompanionCapabilitiesSection()))),
                 ("2", AnyView(VolumeCheckSheet(monitor: vol)
                     .frame(width: width)
                     .tint(mostoTint)
                     .environment(\.colorScheme, night ? .dark : .light))),
-                ("3", AnyView(page(HandbookContent(added: true)))),
-                ("speed", AnyView(page(UnifiedTypingBench(model: speedModel, volume: vol)))),
-                ("privacy", AnyView(page(PrivacyArchitectureContent()))),
+                ("3", AnyView(page(AboutCompanionContent(added: true)))),
+                ("privacy", AnyView(page(PrivacyCommitmentContent()))),
                 ("atlas", AnyView(page(GestureAtlasContent()))),
             ]
             for (k, v) in parts {

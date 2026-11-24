@@ -128,7 +128,7 @@ struct EnableContent: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(verified ? MossOttoStyle.moss.opacity(0.65) : MossOttoStyle.hairline, lineWidth: verified ? 1.1 : 0.7)
+                    .strokeBorder(verified ? MossOttoStyle.moss.opacity(0.65) : MossOttoStyle.hairline, lineWidth: verified ? 1.1 : 0.5)
             )
             .onChange(of: verified) { ok in
                 if ok { UINotificationFeedbackGenerator().notificationOccurred(.success) }
@@ -215,7 +215,7 @@ private struct EnableStatusHero: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(MossOttoStyle.hairline, lineWidth: 0.7)
+                .strokeBorder(MossOttoStyle.hairline, lineWidth: 0.5)
         )
     }
 
@@ -294,7 +294,7 @@ private struct EnableStepRow: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 15, style: .continuous)
-                .strokeBorder(MossOttoStyle.hairline, lineWidth: 0.7)
+                .strokeBorder(MossOttoStyle.hairline, lineWidth: 0.5)
         )
     }
 }

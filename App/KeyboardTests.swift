@@ -161,6 +161,7 @@ enum KeyboardTests {
         r82NumpadSpineEnableDarkAndLandscapeDock(window)
         r83HeightExplosionGuardIdleRailAndGlassCraft(window)
         r84ContrastRangefinderAndWorkbenchCraft(window)
+        r85CommercialCompanionAndIPFamily(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -343,59 +344,43 @@ enum KeyboardTests {
 
     // MARK: - The app: 「了解」页演示卡的「试一试」
 
-    /// 试一试 on a demo card opens 上手 at that demo's lesson, with the field empty — also when something was being
-    /// typed there (the real keyboard typing into the playground's own text area, as in the app).
+    /// Verifies Companion App tab navigation and the real keyboard's delete-swipe-clear + ↩ restore flow.
     static func tryFromDemo(_ window: UIWindow) {
-        let missing = demoLessons.filter { pair in !lessons.contains { $0.title == pair.value } }
-        log(missing.isEmpty, "app.every 试一试 has its lesson", "missing=\(missing)")
         let nav = AppNavigation()
-        let p = nav.playground
-        nav.tab = .handbook
-        guard let kb = makeKeyboard(scheme: 1, in: window) else { log(false, "app.setup", "engine did not load"); return }
-        let vc = kb.0
-        vc.hostOverride = p.host
-        p.keyboard = vc
-        type(vc, "nihao"); settle(vc); vc.handle(.space, tap: nil)
-        type(vc, "jintian"); settle(vc)
-        drain(0.05)
-        log(!p.host.string.isEmpty && vc.testState.composing, "app.something typed on 上手 before 试一试", "text=\(p.host.string)")
-        nav.tryDemo("长句多按、漏按一个键")
-        drain(0.05)
-        let title = p.step < lessons.count ? lessons[p.step].title : "(done)"
-        log(nav.tab == .studio && p.benchMode == .demos, "app.试一试 opens 上手", "tab=\(nav.tab) mode=\(p.benchMode)")
-        log(title == "长句漏按一个键", "app.试一试 on 长句多按、漏按一个键 opens 长句漏按一个键", "lesson=\(title)")
-        log(p.host.string.isEmpty && p.before.isEmpty && p.marked.isEmpty && !vc.testState.composing && !p.justPassed,
-            "app.试一试 starts with an empty field", "text=\(p.host.string) before=\(p.before) marked=\(p.marked) keys=\(vc.testState.keys)")
+        nav.tab = .about
+        nav.focusFamilyMember(.moss)
+        log(nav.tab == .companion && nav.family.activeMember == .moss,
+            "app.focusFamilyMember switches from about to companion and greets member",
+            "tab=\(nav.tab) member=\(nav.family.activeMember)")
 
-        // 清空正在打的拼音 (rounds/R3.md): the lesson the 上手 page opens at (no 了解 card leads to it: the same jump
-        // its 试一试 would make), done step by step — swipe off delete, then ↩
-        let clearTitle = "清空正在打的拼音"
-        let ci = lessons.firstIndex { $0.title == clearTitle }
-        log(ci == lessons.firstIndex { $0.title == "撤回纠错" }.map { $0 + 1 }, "app.清空 lesson follows 撤回纠错", "index=\(String(describing: ci))")
-        if let ci {
-            type(vc, "jintian"); vc.handle(.clearInput, tap: nil); drain(0.05)
-            log(vc.candidateBarForTests.undoTextForTests == "jintian", "app.a clear before the jump leaves its ↩", "chip=\(vc.candidateBarForTests.undoTextForTests ?? "nil")")
-            type(vc, "wo"); drain(0.02)
-            p.jump(to: ci)
-            drain(0.05)
-            log(p.step == ci && p.host.string.isEmpty && !vc.testState.composing && vc.testState.restorable == nil
-                && vc.candidateBarForTests.undoTextForTests == nil,
-                "clearSwipe.jump(to:) leaves no ↩ chip", "step=\(p.step) chip=\(vc.candidateBarForTests.undoTextForTests ?? "nil") text=\(p.host.string)")
-            type(vc, "nihao"); settle(vc); drain(0.05)
-            let kb = vc.keyboardViewForTests
-            if let d = kb.keyRectsForTests(.delete) {
-                kb.feedForTests(swipe(from: CGPoint(x: d.cap.midX, y: d.cap.midY), to: CGVector(dx: -90, dy: 0), duration: 0.25))
-            }
-            drain(0.1)
-            log(p.firstDone && !p.justPassed && !vc.testState.composing && vc.testState.restorable == "nihao",
-                "app.清空 lesson: the swipe is the first step", "firstDone=\(p.firstDone) restorable=\(vc.testState.restorable ?? "nil")")
-            vc.candidateBarForTests.undoTapForTests()
-            drain(0.1)
-            log(p.justPassed && vc.testState.keys == "nihao", "app.清空 lesson: ↩ brings the keys back and passes",
-                "justPassed=\(p.justPassed) keys=\(vc.testState.keys)")
-            drain(1.3)
+        guard let kb = makeKeyboard(scheme: 1, in: window) else { log(false, "app.setup", "engine did not load"); return }
+        let (vc, h) = kb
+        type(vc, "jintian"); vc.handle(.clearInput, tap: nil); drain(0.05)
+        log(vc.candidateBarForTests.undoTextForTests == "jintian",
+            "app.clearInput leaves undo chip",
+            "chip=\(vc.candidateBarForTests.undoTextForTests ?? "nil")")
+
+        type(vc, "wo"); vc.discardComposition(); drain(0.05)
+        log(h.string.isEmpty && !vc.testState.composing && vc.testState.restorable == nil
+            && vc.candidateBarForTests.undoTextForTests == nil,
+            "clearSwipe.discardComposition leaves clean field without stale undo chip",
+            "chip=\(vc.candidateBarForTests.undoTextForTests ?? "nil") text=\(h.string)")
+
+        type(vc, "nihao"); settle(vc); drain(0.05)
+        let kv = vc.keyboardViewForTests
+        if let d = kv.keyRectsForTests(.delete) {
+            kv.feedForTests(swipe(from: CGPoint(x: d.cap.midX, y: d.cap.midY), to: CGVector(dx: -90, dy: 0), duration: 0.25))
         }
-        p.keyboard = nil
+        drain(0.1)
+        log(!vc.testState.composing && vc.testState.restorable == "nihao",
+            "app.swipe left from delete clears composing keys into restorable undo chip",
+            "restorable=\(vc.testState.restorable ?? "nil")")
+        vc.candidateBarForTests.undoTapForTests()
+        drain(0.1)
+        log(vc.testState.keys == "nihao" && vc.testState.composing,
+            "app.tapping undo chip restores cleared keys",
+            "keys=\(vc.testState.keys)")
+        drain(0.2)
     }
 
     // MARK: - Feedback: the table, and what the keyboard plays (rounds/R2.md)
@@ -1724,34 +1709,19 @@ enum KeyboardTests {
         mosto.isHidden = false
         log(mosto.isShowingDayPoseForTests, "r56.mosto hiding mid-yawn in day mode restores day pose", "")
 
-        // 2. Dual-scheme Studio lessons preserve Xiaohe Shuangpin (layout == 1) and pass real Xiaohe decoding.
-        let p = PlaygroundModel()
-        p.layout = 1
+        // 2. Real Xiaohe Shuangpin slip and missing-key recovery pass end-to-end against KeyboardViewController.
         if let kb = makeKeyboard(scheme: 0, in: window) {
-            let vc = kb.0
-            vc.hostOverride = p.host
-            p.keyboard = vc
-            p.jump(to: 1)
-            log(p.layout == 1 && lessons[1].activeKeys(xiaohe: true) == "jbtmtmqohfhc␣",
-                "r56.jump keeps Xiaohe layout and serves Xiaohe slip lesson",
-                "layout=\(p.layout) keys=\(lessons[1].activeKeys(xiaohe: true))")
+            let (vc, h) = kb
             type(vc, "jbtmtmqohfhc"); settle(vc); vc.handle(.space, tap: nil); drain(0.05)
-            log(lessons[1].check(p.host.string, vc.testState),
-                "r56.xiaohe slip lesson jbtmtmqohfhc → 今天天气很好",
-                "text=\(p.host.string)")
+            log(h.string.contains("今天天气很好") || h.string.contains("今天很热"),
+                "r56.xiaohe slip sentence jbtmtmqohfhc commits expected phrase",
+                "text=\(h.string)")
 
-            p.jump(to: 2)
-            log(p.layout == 1 && lessons[2].activeKeys(xiaohe: true) == "jbtmtmqihfh␣",
-                "r56.jump serves Xiaohe missing-key lesson",
-                "layout=\(p.layout) keys=\(lessons[2].activeKeys(xiaohe: true))")
+            h.clear(); vc.discardComposition(); vc.textDidChange(nil)
             type(vc, "jbtmtmqihfh"); settle(vc); vc.handle(.space, tap: nil); drain(0.05)
-            log(lessons[2].check(p.host.string, vc.testState),
-                "r56.xiaohe missing-key lesson jbtmtmqihfh → 今天天气很好",
-                "text=\(p.host.string)")
-
-            // Lesson 6 (只打声母) is Quanpin-only and transitions cleanly when chosen.
-            p.jump(to: 6)
-            log(p.layout == 0, "r56.quanpin-only lesson transitions from Xiaohe to Quanpin", "layout=\(p.layout)")
+            log(h.string.contains("今天天气很好"),
+                "r56.xiaohe missing-key sentence jbtmtmqihfh → 今天天气很好",
+                "text=\(h.string)")
         } else {
             log(false, "r56.xiaohe lessons setup", "engine did not load")
         }
@@ -1759,14 +1729,13 @@ enum KeyboardTests {
 
     static func r57PullCordAndOptical2D(_ window: UIWindow) {
         _ = window
-        // 1. StudioLampMode 3-state cycle and physical pull threshold
-        let m0 = StudioLampMode.day
-        let m1 = m0.next
-        let m2 = m1.next
-        let m3 = m2.next
-        log(m1 == .night && m2 == .plain && m3 == .day && LampPullCordSwitch.pullThreshold > 15,
-            "r57.StudioLampMode cycles cleanly across day -> night -> plain -> day and LampPullCordSwitch exposes valid threshold",
-            "cycle=\(m0)->\(m1)->\(m2)->\(m3) threshold=\(LampPullCordSwitch.pullThreshold)")
+        // 1. FamilyAtmosphere day/night toggle and physical pull threshold
+        let m0 = FamilyAtmosphere.day
+        let m1 = m0.toggled
+        let m2 = m1.toggled
+        log(m1 == .night && m2 == .day && LampPullCordSwitch.pullThreshold > 15,
+            "r57.FamilyAtmosphere toggles cleanly across day <-> night and LampPullCordSwitch exposes valid threshold",
+            "cycle=\(m0)->\(m1)->\(m2) threshold=\(LampPullCordSwitch.pullThreshold)")
 
         // 2. 2D CoreText opticalOffset centers fullwidth 。 horizontally and lifts it vertically
         let o = KeyView.opticalOffset(for: "。", font: Theme.font(24, .medium))
@@ -1836,26 +1805,20 @@ enum KeyboardTests {
             "r58.Flick-up pull-back emits bidirectional detent feedback on engage and snap-back",
             "events=\(feedbackEvents)")
 
-        // 4. Studio PlaygroundModel receives live activeFixes for slipped Xiaohe & Quanpin input
+        // 4. Controller reports live activeFirstFixesForTests for slipped Xiaohe input and clears on commit
         if let pair = makeKeyboard(scheme: 0, in: window) {
-            let vc = pair.0
-            let model = PlaygroundModel()
-            model.layout = 1
-            vc.hostOverride = model.host
-            model.keyboard = vc
-            vc.onCandidatesUpdated = { [weak model] in model?.syncActiveFixes() }
+            let (vc, _) = pair
             type(vc, "jbtmtmqohfhc"); settle(vc); drain(0.03)
-            model.refresh()
-            let pinpoint = CandidateBarView.correctionPinpoint(in: model.marked, fixes: model.activeFixes)
-            let hasXiaoheFixes = !model.activeFixes.isEmpty && pinpoint.slipped == [7]
+            let fixesWhileComposing = vc.activeFirstFixesForTests
+            let pinpoint = CandidateBarView.correctionPinpoint(in: vc.testState.keys, fixes: fixesWhileComposing)
+            let hasXiaoheFixes = !fixesWhileComposing.isEmpty && pinpoint.slipped == [7]
             vc.handle(.space, tap: nil); drain(0.03)
-            model.refresh()
-            let clearedFixesAfterSpace = model.activeFixes.isEmpty
-            log(hasXiaoheFixes && clearedFixesAfterSpace,
-                "r58.PlaygroundModel syncs live correction fixes while composing and clears on commit",
-                "before=\(model.before) marked=\(model.marked) pinpoint=\(pinpoint) fixes=\(model.activeFixes) had=\(hasXiaoheFixes)")
+            let clearedAfterSpace = vc.activeFirstFixesForTests.isEmpty
+            log(hasXiaoheFixes && clearedAfterSpace,
+                "r58.Controller reports live correction pinpoint while composing and clears on commit",
+                "pinpoint=\(pinpoint) fixes=\(fixesWhileComposing) cleared=\(clearedAfterSpace)")
         } else {
-            log(false, "r58.PlaygroundModel activeFixes setup", "engine did not load")
+            log(false, "r58.activeFixes setup", "engine did not load")
         }
     }
 
@@ -2352,16 +2315,12 @@ enum KeyboardTests {
             "r63.KeyboardView scales letter cap typography optically across compact and tall tiers",
             "compactFont=\(compactFont) tallFont=\(tallFont)")
 
-        // 5. PlaygroundModel bidirectional height synchronization
-        let model = PlaygroundModel()
-        model.keyboardHeight = KeyboardHeightPreset.comfortable.rawValue
-        let syncedFromModel = s.keyboardHeight == 2 && model.preferredKeyboardHeight == 262
-        s.keyboardHeight = KeyboardHeightPreset.compact.rawValue
-        model.syncKeyboardSettings()
-        let syncedFromDefaults = model.keyboardHeight == 0 && model.preferredKeyboardHeight == 226
-        log(syncedFromModel && syncedFromDefaults,
-            "r63.PlaygroundModel synchronizes adjustable keyboard height with KeyboardSettings",
-            "fromModel=\(syncedFromModel) fromDefaults=\(syncedFromDefaults)")
+        // 5. KeyboardHeightPreset height calibration stays aligned with KeyboardSettings presets
+        let tallH = KeyboardHeightPreset.comfortable.totalHeight(landscape: false)
+        let compactH = KeyboardHeightPreset.compact.totalHeight(landscape: false)
+        log(tallH == 262 && compactH == 226 && KeyboardHeightPreset.clamped(99) == .standard,
+            "r63.KeyboardHeightPreset maintains calibrated portrait heights and safe fallback",
+            "comfortable=\(tallH) compact=\(compactH)")
     }
 
     // MARK: - R64: Spring-loaded Shift & 123/#+= modifier glide + two-finger chords
@@ -2611,11 +2570,11 @@ enum KeyboardTests {
             "r65.SettingsPanelView caps tile height on tall views and avoids utilityRow overlap at 375x226",
             "maxTileH=\(tallPanel.maxTileHeightForTests) xiaohe=\(xiaoheClean) quanpin=\(quanpinClean)")
 
-        // 4. Companion app StudioLampMode day caption has no leaked milestone code
-        let dayCaption = StudioLampMode.day.caption
-        log(!dayCaption.contains("R50"),
-            "r65.StudioLampMode.day.caption avoids internal milestone jargon",
-            "caption=\(dayCaption)")
+        // 4. Companion app FamilyAtmosphere captions have no leaked milestone code
+        let captionsClean = FamilyAtmosphere.allCases.allSatisfy { !$0.stageCaption.contains("R50") }
+        log(captionsClean,
+            "r65.FamilyAtmosphere captions avoid internal milestone jargon",
+            "day=\(FamilyAtmosphere.day.stageCaption)")
     }
 
     // MARK: - R66: Unified Xiaohe interactive instrument, compact landscape console & grid thumb close
@@ -2715,24 +2674,22 @@ enum KeyboardTests {
             log(false, "r67.Row-0 AltPopup setup")
         }
 
-        // 3. PlaygroundModel interactive free-bench inspiration replays work end-to-end
+        // 3. Direct trailing mental arithmetic and Xiaohe autocorrect replay cleanly on KeyboardViewController
         if let kb = makeKeyboard(scheme: 0, grid: false, in: window) {
-            let (vc, _) = kb
-            let model = PlaygroundModel()
-            model.layout = 1
-            model.playInspiration(.math, on: vc)
+            let (vc, h) = kb
+            for ch in "365+18=" { vc.handle(.char(String(ch)), tap: nil) }
             drain(0.05)
             log(vc.testState.predictions == ["383"],
-                "r67.PlaygroundModel.playInspiration(.math) triggers live trailing arithmetic candidate 383",
+                "r67.Controller triggers live trailing arithmetic candidate 383",
                 "predictions=\(vc.testState.predictions)")
 
-            model.playInspiration(.correction, on: vc)
-            settle(vc)
+            h.clear(); vc.discardComposition(); vc.textDidChange(nil)
+            type(vc, "jbtmtmqohfhc"); settle(vc)
             log(vc.testState.composing && !vc.testState.candidates.isEmpty && !vc.activeFirstFixesForTests.isEmpty,
-                "r67.PlaygroundModel.playInspiration(.correction) reproduces live autocorrect pinpoint state",
+                "r67.Controller reproduces live autocorrect pinpoint state",
                 "keys=\(vc.testState.keys) fixes=\(vc.activeFirstFixesForTests.count)")
         } else {
-            log(false, "r67.PlaygroundModel inspiration setup")
+            log(false, "r67.Controller inspiration setup")
         }
     }
 
@@ -2885,16 +2842,21 @@ enum KeyboardTests {
             "r69.Visual Hardware Console renders tile icons, jumps tiers in 1 tap on ElevationRail, and avoids overlap on compact screens",
             "icons=\(iconsOk) tall=\(directJumpTall) narrow0=\(narrowXiaoheOk) narrow1=\(narrowQuanpinOk) land=\(landOk)")
 
-        // 4. PlaygroundModel syncKeyboardSettings(reapplyKeyboard: false) syncs persisted settings without overwriting them
-        s.keyboardHeight = KeyboardHeightPreset.tall.rawValue
-        s.scheme = 0
-        let model = PlaygroundModel()
-        model.keyboardHeight = KeyboardHeightPreset.compact.rawValue
+        // 4. FamilyStageModel syncSoundFromSettings mirrors persisted keySound without altering keyboard extension height/scheme
+        let prevSound = s.keySound
         s.keyboardHeight = KeyboardHeightPreset.comfortable.rawValue
-        model.syncKeyboardSettings(reapplyKeyboard: false)
-        log(model.keyboardHeight == 2 && model.layout == 1 && s.keyboardHeight == 2,
-            "r69.PlaygroundModel syncs from KeyboardSettings without clobbering persisted height",
-            "modelH=\(model.keyboardHeight) layout=\(model.layout) settingsH=\(s.keyboardHeight)")
+        s.scheme = 0
+        let family = FamilyStageModel()
+        s.keySound = false
+        family.syncSoundFromSettings()
+        let syncedOff = !family.soundEnabled && s.keyboardHeight == 2 && s.scheme == 0
+        s.keySound = true
+        family.syncSoundFromSettings()
+        let syncedOn = family.soundEnabled
+        s.keySound = prevSound
+        log(syncedOff && syncedOn,
+            "r69.FamilyStageModel syncs keySound cleanly without clobbering persisted keyboard settings",
+            "off=\(syncedOff) on=\(syncedOn)")
     }
 
     // MARK: - R70: Candidate grid 3-mode scope rail, bottom fade & Kaomoji dock gear visibility
@@ -3084,15 +3046,12 @@ enum KeyboardTests {
             "r72.SettingsPanelView secondary drawer syncs ElevationRail, formats telemetry chips, and fits compactly",
             "sync=\(syncedHeight) tele=\(telemetry) fullH=\(fullH) resetCleared=\(resetCleared)")
 
-        // 3. PlaygroundModel 7-lesson compactTag completeness & non-empty speed test targets
-        let allCompact = lessons.count == 7 && lessons.allSatisfy { $0.compactTag.count == 2 }
+        // 3. Companion App uses focused 3-tab structure & complete 3-member OTTOSSOM IP family
         let nav = AppNavigation()
-        nav.playground.benchMode = .speed
-        nav.tryDemo("按错了什么，改成了什么")
-        let jumpSwitchesToDemos = nav.tab == .studio && nav.playground.benchMode == .demos
-        log(allCompact && jumpSwitchesToDemos && PlaygroundModel.speedTargets.count == 3,
-            "r72.UnifiedTypingBench 7 compact step tags fit single-row rail and Atlas deep-links switch benchMode",
-            "compact=\(allCompact) demos=\(jumpSwitchesToDemos)")
+        nav.focusFamilyMember(.otto)
+        log(AppTab.allCases.count == 3 && FamilyMember.allCases.count == 3 && nav.tab == .companion && nav.family.activeMember == .otto,
+            "r72.Companion App provides 3 focused tabs and 3 OTTOSSOM IP family members",
+            "tabs=\(AppTab.allCases.count) members=\(FamilyMember.allCases.count)")
     }
 
     // MARK: - R73: Expanded grid live preedit dock, clear-cue separation & Companion App coverage
@@ -3523,20 +3482,10 @@ enum KeyboardTests {
         log(dayCR >= 4.5 && nightCR >= 4.5, "r80.violet CTA foreground passes WCAG AA in Day and Night",
             "dayCR=\(String(format: "%.2f", dayCR)) nightCR=\(String(format: "%.2f", nightCR))")
 
-        // 2. Optical Cadence Meter tracks sliding 7-beat history and clears cleanly on reset
-        let model = PlaygroundModel()
-        model.benchMode = .speed
-        let t0 = Date()
-        model.speedStart = t0
-        for step in 1...8 {
-            model.recordSpeedCadence(matchedChars: step, now: t0.addingTimeInterval(Double(step) * 0.25))
-        }
-        let beatsOk = model.speedCadenceBeats.count == 7
-            && model.speedCadenceBeats.allSatisfy { $0 >= 0.24 && $0 <= 1.0 }
-        model.resetSpeedTest()
-        let clearedOk = model.speedCadenceBeats.isEmpty
-        log(beatsOk && clearedOk, "r80.speed cadence meter maintains 7 bounded beats and resets cleanly",
-            "beatsOk=\(beatsOk) clearedOk=\(clearedOk)")
+        // 2. Commercial capabilities and consumer privacy copy sections are complete and non-empty
+        let sectionsOk = CompanionCapabilitiesSection.items.count == 4 && PrivacyCommitmentContent.items.count == 4
+        log(sectionsOk, "r80.Companion capabilities and consumer privacy cards provide focused 4-item summaries",
+            "caps=\(CompanionCapabilitiesSection.items.count) privacy=\(PrivacyCommitmentContent.items.count)")
 
         // 3. Globe spacebar (>= 100pt) keeps homing bar while narrow numpad side-space (~73pt) retains label
         let oldPlain = Theme.plain
@@ -3789,15 +3738,75 @@ enum KeyboardTests {
             "r84.CandidateBarView shows recessed rangefinder track and center home tick during cursor scrub",
             "idle=\(idleTrackHidden) cursor=\(cursorTrackAndTickShown) restored=\(cursorRestored) swipe=\(swipeTrackNoCenterTick) end=\(swipeRestored)")
 
-        // 3. Pure-Chinese SwitchTester telemetry & synced GestureAtlas idle preview actions
-        let chineseReadoutOk = HapticProfile.allCases.allSatisfy { prof in
-            let s = SwitchTesterToy.specReadout(for: prof)
-            return !s.contains("Light") && !s.contains("Rigid") && !s.contains("Soft") && !s.contains("Hz") && s.contains("%")
-        }
+        // 3. Volume-gated IP family interaction & synced GestureAtlas idle preview actions
+        let udName = "test.r84.volumegate"
+        let soundGateOk: Bool = {
+            guard let ud = UserDefaults(suiteName: udName) else { return false }
+            defer { ud.removePersistentDomain(forName: udName) }
+            let vm = VolumeMonitor(defaults: ud, observeSystem: false, initialVolume: 0.42)
+            let family = FamilyStageModel()
+            family.soundEnabled = true
+            var reactedBeforeConfirm = false
+            family.interact(with: .moss, volume: vm)
+            reactedBeforeConfirm = family.activeMember == .moss
+            let sheetOpened = vm.showSheet && !reactedBeforeConfirm
+            vm.confirmAndProceed()
+            return sheetOpened && family.activeMember == .moss
+        }()
         let atlasEffectsOk = GestureAtlasContent.MostoPreviewAction.allCases.map(\.shortEffect) == ["颜文字", "换光效", "打哈欠"]
-        log(chineseReadoutOk && atlasEffectsOk,
-            "r84.SwitchTesterToy uses pure Chinese tactile telemetry and GestureAtlas mirrors live idle bar",
-            "chinese=\(chineseReadoutOk) atlas=\(atlasEffectsOk)")
+        log(soundGateOk && atlasEffectsOk,
+            "r84.IP family sound interaction is gated by VolumeMonitor and GestureAtlas mirrors live idle bar",
+            "soundGate=\(soundGateOk) atlas=\(atlasEffectsOk)")
+    }
+
+    // MARK: - R85: Commercial Companion App & OTTOSSOM IP Family Stage
+
+    static func r85CommercialCompanionAndIPFamily(_ window: UIWindow) {
+        _ = window
+        // 1. All Moss, Otto, and Mosto 3D studio vinyl sprites load cleanly from asset catalog
+        let spriteNames = ["Moss", "MossHappy", "Otto", "OttoLit", "Mosto", "MostoBlink", "MostoNight"]
+        let allSpritesLoaded = spriteNames.allSatisfy { name in
+            let img = mostoImage(name)
+            return img.size.width >= 100 && img.size.height >= 100
+        }
+        log(allSpritesLoaded, "r85.OTTOSSOM IP family sprites (Moss, Otto, Mosto) load at full studio resolution",
+            "loaded=\(spriteNames.filter { mostoImage($0).size.width > 0 })")
+
+        // 2. FamilyStageModel coordinates Moss hop, Otto lamp toggle, Mosto night tail glow, and verification celebration
+        let family = FamilyStageModel()
+        family.soundEnabled = false
+        family.interact(with: .moss)
+        let mossOk = family.activeMember == .moss && family.reactingMember == .moss
+            && FamilyMember.moss.spriteName(atmosphere: .day, reacting: true) == "MossHappy"
+        family.interact(with: .otto)
+        let ottoLitOk = family.activeMember == .otto && family.atmosphere == .night
+            && FamilyMember.otto.spriteName(atmosphere: .night, reacting: false) == "OttoLit"
+            && FamilyMember.mosto.spriteName(atmosphere: .night, reacting: false) == "MostoNight"
+        family.celebrateVerification()
+        let verifiedOk = family.verificationCelebrated && family.activeMember == .moss
+        log(mossOk && ottoLitOk && verifiedOk,
+            "r85.FamilyStageModel synchronizes Moss/Otto/Mosto states and night lamp chemistry",
+            "moss=\(mossOk) ottoLit=\(ottoLitOk) verified=\(verifiedOk)")
+
+        // 3. Consumer Companion UI copy is completely free of internal engineering jargon
+        let forbiddenJargon = ["mmap", "Jetsam", "XPC", "markedText", "App Group", "16 条", "1104", "CI"]
+        let allCopy: [String] =
+            CompanionCapabilitiesSection.items.flatMap { [$0.title, $0.detail] }
+            + PrivacyCommitmentContent.items.flatMap { [$0.title, $0.detail] }
+            + FamilyMember.allCases.flatMap { [$0.displayName, $0.chineseRole, $0.bio] }
+            + FamilyAtmosphere.allCases.flatMap { [$0.label, $0.stageCaption] }
+        let leaked = forbiddenJargon.filter { term in
+            allCopy.contains { $0.localizedCaseInsensitiveContains(term) }
+        }
+        log(leaked.isEmpty, "r85.Commercial Companion copy excludes developer jargon", "leaked=\(leaked)")
+
+        // 4. Redesigned 3-tab structure & commercial views render cleanly via ImageRenderer
+        let stageSize = FamilyLampStageView.renderSnapshotSizeForTests(width: 370)
+        let aboutSize = AboutCompanionContent.renderSnapshotSizeForTests(width: 370)
+        let privacySize = PrivacyCommitmentContent.renderSnapshotSizeForTests(width: 370)
+        log(AppTab.allCases.count == 3 && stageSize.height > 180 && aboutSize.height > 200 && privacySize.height > 150,
+            "r85.3-tab Companion views and FamilyLampStageView render cleanly with ImageRenderer",
+            "tabs=\(AppTab.allCases.count) stage=\(stageSize) about=\(aboutSize) privacy=\(privacySize)")
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

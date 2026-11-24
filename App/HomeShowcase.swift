@@ -3,46 +3,8 @@ import UIKit
 import AVFoundation
 import AudioToolbox
 
-/// Full-resolution Mosto sprites from the app asset catalog.
+/// Full-resolution 3D studio vinyl sprites from the app asset catalog (Moss, Otto, Mosto).
 func mostoImage(_ name: String) -> UIImage { UIImage(named: name) ?? UIImage() }
-
-/// Desk-lamp lighting mode shared across the Companion App stage and the embedded R50 keyboard.
-enum StudioLampMode: Int, CaseIterable, Identifiable {
-    case day = 0
-    case night = 1
-    case plain = 2
-
-    var id: Int { rawValue }
-
-    var label: String {
-        switch self {
-        case .day: return "日光"
-        case .night: return "夜灯"
-        case .plain: return "简洁"
-        }
-    }
-
-    var caption: String {
-        switch self {
-        case .day: return "暖瓷桌台 · 哑光单层键帽"
-        case .night: return "深曜石夜桌 · 暖灯珠微光"
-        case .plain: return "中性陶瓷 · 系统比例"
-        }
-    }
-
-    var next: StudioLampMode {
-        switch self {
-        case .day: return .night
-        case .night: return .plain
-        case .plain: return .day
-        }
-    }
-
-    static func from(appearance: Int, style: Int) -> StudioLampMode {
-        if style == 1 { return .plain }
-        return appearance == 2 ? .night : .day
-    }
-}
 
 /// OTTOSSOM (摸索台灯) studio design tokens aligned with `Tools/ip/ip3d.py` and R50 keycap materials.
 enum MossOttoStyle {
@@ -114,13 +76,11 @@ struct LampCone: Shape {
 
 /// Studio desk-lamp overhead cone + subtle ambient wash matching OTTOSSOM photography.
 struct LampConeBackdrop: View {
-    let mode: StudioLampMode
+    let isNight: Bool
     var dimFactor: CGFloat = 0
     @Environment(\.colorScheme) private var scheme
 
-    private var darkLook: Bool {
-        mode == .night || (mode == .plain && scheme == .dark)
-    }
+    private var darkLook: Bool { isNight || scheme == .dark }
 
     private var dimmerOpacity: Double {
         Double(max(0.45, 1.0 - dimFactor * 0.30))
@@ -154,39 +114,26 @@ struct LampConeBackdrop: View {
     }
 
     private var stageBg: Color {
-        switch mode {
-        case .day:
-            return scheme == .dark ? Color(uiColor: MossOttoStyle.hex(0x231E33)) : Color(uiColor: MossOttoStyle.hex(0xFFFDF9))
-        case .night:
-            return Color(uiColor: MossOttoStyle.hex(0x191529))
-        case .plain:
-            return darkLook ? Color(uiColor: MossOttoStyle.hex(0x1E1E24)) : Color(uiColor: MossOttoStyle.hex(0xF5F4F0))
+        if isNight {
+            return Color(uiColor: MossOttoStyle.hex(0x181427))
         }
+        return scheme == .dark ? Color(uiColor: MossOttoStyle.hex(0x231E33)) : Color(uiColor: MossOttoStyle.hex(0xFFFDF8))
     }
 
     private var coneColors: [Color] {
-        switch mode {
-        case .day:
-            let c = Color(uiColor: MossOttoStyle.hex(0xF7CD7A))
-            return [c.opacity(scheme == .dark ? 0.22 : 0.24), c.opacity(0.03), .clear]
-        case .night:
+        if isNight {
             let c = Color(uiColor: MossOttoStyle.hex(0xFFC45A))
-            return [c.opacity(0.28), c.opacity(0.08), .clear]
-        case .plain:
-            let c = Color.white
-            return [c.opacity(darkLook ? 0.08 : 0.45), .clear]
+            return [c.opacity(0.26), c.opacity(0.07), .clear]
         }
+        let c = Color(uiColor: MossOttoStyle.hex(0xF7CD7A))
+        return [c.opacity(darkLook ? 0.20 : 0.22), c.opacity(0.03), .clear]
     }
 
     private var haloColors: [Color] {
-        switch mode {
-        case .day:
-            return [Color(uiColor: MossOttoStyle.hex(0xFFD678)).opacity(0.55), .clear]
-        case .night:
-            return [Color(uiColor: MossOttoStyle.hex(0xFFC45A)).opacity(0.65), .clear]
-        case .plain:
-            return [Color.white.opacity(darkLook ? 0.14 : 0.40), .clear]
+        if isNight {
+            return [Color(uiColor: MossOttoStyle.hex(0xFFC45A)).opacity(0.62), .clear]
         }
+        return [Color(uiColor: MossOttoStyle.hex(0xFFD678)).opacity(0.50), .clear]
     }
 }
 
@@ -194,7 +141,7 @@ struct LampConeBackdrop: View {
 struct LampPullCordSwitch: View {
     static let pullThreshold: CGFloat = 22
 
-    let mode: StudioLampMode
+    let isNight: Bool
     let darkStage: Bool
     @Binding var pullFraction: CGFloat
     var onTrigger: () -> Void
@@ -204,23 +151,17 @@ struct LampPullCordSwitch: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var cordColor: Color {
-        switch mode {
-        case .night: return Color(uiColor: MossOttoStyle.hex(0xFFC45A)).opacity(0.55)
-        case .day: return MossOttoStyle.inkSecondary.opacity(0.42)
-        case .plain: return darkStage ? Color.white.opacity(0.36) : Color.black.opacity(0.28)
-        }
+        if isNight { return Color(uiColor: MossOttoStyle.hex(0xFFC45A)).opacity(0.55) }
+        return darkStage ? Color.white.opacity(0.36) : MossOttoStyle.inkSecondary.opacity(0.42)
     }
 
     private var beadColor: Color {
-        switch mode {
-        case .night: return MossOttoStyle.lampAmber
-        case .day: return MossOttoStyle.violet
-        case .plain: return darkStage ? Color(white: 0.78) : Color(white: 0.35)
-        }
+        if isNight { return MossOttoStyle.lampAmber }
+        return MossOttoStyle.violet
     }
 
     private var collarColor: Color {
-        mode == .night ? Color(uiColor: MossOttoStyle.hex(0xFFE4A8)) : MossOttoStyle.inkSecondary.opacity(0.65)
+        isNight ? Color(uiColor: MossOttoStyle.hex(0xFFE4A8)) : MossOttoStyle.inkSecondary.opacity(0.65)
     }
 
     var body: some View {
@@ -245,7 +186,7 @@ struct LampPullCordSwitch: View {
                         Capsule(style: .continuous)
                             .strokeBorder(Color.black.opacity(darkStage ? 0.28 : 0.12), lineWidth: 0.6)
                     )
-                    .shadow(color: (mode == .night ? MossOttoStyle.lampAmber : Color.black).opacity(mode == .night ? 0.38 : 0.16), radius: armed ? 5 : 2, y: 1.5)
+                    .shadow(color: (isNight ? MossOttoStyle.lampAmber : Color.black).opacity(isNight ? 0.38 : 0.16), radius: armed ? 5 : 2, y: 1.5)
 
                 Circle()
                     .fill(Color.white.opacity(0.42))
@@ -298,7 +239,7 @@ struct LampPullCordSwitch: View {
         )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("台灯拉绳开关")
-        .accessibilityHint("下拉或轻点切换日光、夜灯与简洁光效")
+        .accessibilityHint("下拉或轻点切换日光与夜灯")
         .accessibilityAddTraits(.isButton)
     }
 }
@@ -705,7 +646,7 @@ struct VolumeCheckSheet: View {
                 } label: {
                     MonolithKeycapView(
                         label: "轻敲试听",
-                        secondary: "1104 清脆声",
+                        secondary: "轻脆原声",
                         pressed: samplePressed,
                         ledColor: soundEnabled ? MossOttoStyle.moss : MossOttoStyle.inkSecondary
                     )
@@ -763,7 +704,7 @@ struct VolumeCheckSheet: View {
                 monitor.confirmAndProceed()
                 dismiss()
             } label: {
-                Text("音量合适，开始体验")
+                Text("音量合适，继续")
                     .font(.subheadline.weight(.bold))
                     .foregroundStyle(MossOttoStyle.onViolet)
                     .frame(maxWidth: .infinity)
@@ -784,258 +725,6 @@ struct VolumeCheckSheet: View {
     private func barColor(index: Int) -> Color {
         if index >= 8 { return MossOttoStyle.lampAmber }
         return MossOttoStyle.moss
-    }
-}
-
-// MARK: - 3-Key Physical Switch Tester Toy
-
-struct SwitchTesterToy: View {
-    @ObservedObject var volume: VolumeMonitor
-    var mode: StudioLampMode
-    var soundEnabled: Bool
-    var hapticProfile: Int = 0
-    var onSelectProfile: ((Int) -> Void)? = nil
-    var onToggleSound: (() -> Void)? = nil
-    var onMostoBlink: () -> Void
-
-    @State private var pressedKey: Int? = nil
-    @State private var readout: String? = nil
-
-    private var activeProfile: HapticProfile {
-        HapticProfile(rawValue: hapticProfile) ?? .crisp
-    }
-
-    private var forceNight: Bool? {
-        switch mode {
-        case .night: return true
-        case .day: return false
-        case .plain: return nil
-        }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Text("台灯下 · 3 枚试轴器")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(MossOttoStyle.inkSecondary)
-                Spacer(minLength: 4)
-                HStack(spacing: 4) {
-                    ForEach(HapticProfile.allCases, id: \.rawValue) { prof in
-                        let selected = prof == activeProfile
-                        Button {
-                            onSelectProfile?(prof.rawValue)
-                            let t = SystemFeedbackPlayer.tunedImpact(for: prof, firm: false)
-                            UIImpactFeedbackGenerator(style: t.style).impactOccurred(intensity: t.intensity)
-                            readout = "\(prof.title) · \(Self.localizedFeel(t.style, t.intensity))"
-                        } label: {
-                            Text(prof.title)
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(selected ? MossOttoStyle.onViolet : MossOttoStyle.inkPrimary)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3.5)
-                                .background(
-                                    Capsule().fill(selected ? MossOttoStyle.violet : MossOttoStyle.surface)
-                                )
-                                .overlay(
-                                    Capsule().strokeBorder(selected ? Color.clear : MossOttoStyle.hairline, lineWidth: 0.7)
-                                )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-
-            HStack(spacing: 10) {
-                Button {
-                    let t = SystemFeedbackPlayer.tunedImpact(for: activeProfile, firm: false)
-                    trigger(id: 0, sound: 1104, style: t.style, intensity: t.intensity,
-                            desc: "\(activeProfile.title)字母 · \(Self.localizedFeel(t.style, t.intensity))")
-                } label: {
-                    MonolithKeycapView(
-                        label: "A",
-                        secondary: "\(activeProfile.title)字母",
-                        pressed: pressedKey == 0,
-                        plain: mode == .plain,
-                        forceNight: forceNight
-                    )
-                    .frame(height: 60)
-                }
-                .buttonStyle(.plain)
-
-                Button {
-                    let t = SystemFeedbackPlayer.tunedImpact(for: activeProfile, firm: true)
-                    trigger(id: 1, sound: 1104, style: t.style, intensity: t.intensity,
-                            desc: "\(activeProfile.title)空格 · \(Self.localizedFeel(t.style, t.intensity))")
-                } label: {
-                    MonolithKeycapView(
-                        label: "空格",
-                        secondary: "盲打凹痕",
-                        pressed: pressedKey == 1,
-                        plain: mode == .plain,
-                        forceNight: forceNight,
-                        homingNotch: mode != .plain
-                    )
-                    .frame(height: 60)
-                }
-                .buttonStyle(.plain)
-
-                Button {
-                    trigger(id: 2, sound: 1156, style: .soft, intensity: 0.85, desc: "Mosto 彩蛋 · 柔弹 85%")
-                } label: {
-                    MonolithKeycapView(
-                        label: "Mosto",
-                        secondary: "彩蛋轻捏",
-                        pressed: pressedKey == 2,
-                        plain: mode == .plain,
-                        forceNight: forceNight,
-                        ledColor: MossOttoStyle.lampAmber
-                    )
-                    .frame(height: 60)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(10)
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(MossOttoStyle.surfaceMuted)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(MossOttoStyle.hairline, lineWidth: 0.7)
-            )
-
-            // Full-width OTTOSSOM Acoustic-Haptic Oscilloscope Telemetry Dock (zero orphan bottom pill)
-            HStack(spacing: 10) {
-                ImpulseWaveformView(profile: activeProfile, activePulse: pressedKey != nil)
-                    .frame(width: 68, height: 18)
-
-                Text(readout ?? Self.specReadout(for: activeProfile))
-                    .font(.caption2.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(MossOttoStyle.inkSecondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-
-                Spacer(minLength: 4)
-
-                Group {
-                    if let onToggleSound {
-                        Button {
-                            UISelectionFeedbackGenerator().selectionChanged()
-                            onToggleSound()
-                        } label: {
-                            soundBadgeLabel
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("切换试轴声效，当前\(soundEnabled ? "原声开启" : "静音")")
-                    } else {
-                        soundBadgeLabel
-                    }
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .frame(maxWidth: .infinity)
-            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(MossOttoStyle.surface))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(MossOttoStyle.hairline, lineWidth: 0.7))
-        }
-    }
-
-    private var soundBadgeLabel: some View {
-        HStack(spacing: 4) {
-            Image(systemName: soundEnabled ? "speaker.wave.2.fill" : "speaker.slash")
-                .font(.system(size: 10.5, weight: .semibold))
-                .foregroundStyle(soundEnabled ? MossOttoStyle.moss : MossOttoStyle.inkSecondary)
-            Text(soundEnabled ? "原声" : "静音")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(soundEnabled ? MossOttoStyle.inkPrimary : MossOttoStyle.inkSecondary)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3.5)
-        .background(Capsule().fill(MossOttoStyle.surfaceMuted))
-    }
-
-    static func specReadout(for profile: HapticProfile, firm: Bool = false) -> String {
-        let t = SystemFeedbackPlayer.tunedImpact(for: profile, firm: firm)
-        return "\(profile.title) · \(localizedFeel(t.style, t.intensity))"
-    }
-
-    static func localizedFeel(_ style: UIImpactFeedbackGenerator.FeedbackStyle, _ intensity: CGFloat) -> String {
-        let name: String
-        switch style {
-        case .rigid: name = "脆硬"
-        case .soft: name = "柔弹"
-        default: name = "轻弹"
-        }
-        return "\(name) \(Int((intensity * 100).rounded()))%"
-    }
-
-    private func trigger(id: Int, sound: SystemSoundID, style: UIImpactFeedbackGenerator.FeedbackStyle, intensity: CGFloat, desc: String) {
-        pressedKey = id
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.11) {
-            if pressedKey == id { pressedKey = nil }
-        }
-        volume.gateSoundInteraction(soundEnabled: soundEnabled) {
-            UIImpactFeedbackGenerator(style: style).impactOccurred(intensity: intensity)
-            if soundEnabled {
-                AudioServicesPlaySystemSound(sound)
-            }
-            if id == 2 {
-                onMostoBlink()
-            }
-            readout = desc
-        }
-    }
-}
-
-/// Visualizes each switch profile's physical snap impulse curve without paragraphs of explanation.
-private struct ImpulseWaveformView: View {
-    let profile: HapticProfile
-    var activePulse: Bool = false
-
-    var body: some View {
-        Canvas { ctx, size in
-            let midY = size.height * 0.65
-            var path = Path()
-            let w = size.width
-            let amp = size.height * (activePulse ? 0.62 : 0.54)
-            let peakPt: CGPoint
-            switch profile {
-            case .crisp:
-                peakPt = CGPoint(x: w * 0.24, y: midY - amp)
-                path.move(to: CGPoint(x: 0, y: midY))
-                path.addLine(to: CGPoint(x: w * 0.16, y: midY))
-                path.addLine(to: peakPt)
-                path.addLine(to: CGPoint(x: w * 0.34, y: midY + amp * 0.28))
-                path.addLine(to: CGPoint(x: w * 0.44, y: midY))
-                path.addLine(to: CGPoint(x: w, y: midY))
-            case .mechanical:
-                peakPt = CGPoint(x: w * 0.19, y: midY - amp)
-                path.move(to: CGPoint(x: 0, y: midY))
-                path.addLine(to: CGPoint(x: w * 0.12, y: midY))
-                path.addLine(to: peakPt)
-                path.addLine(to: CGPoint(x: w * 0.27, y: midY + amp * 0.22))
-                path.addLine(to: CGPoint(x: w * 0.35, y: midY - amp * 0.72))
-                path.addLine(to: CGPoint(x: w * 0.44, y: midY))
-                path.addLine(to: CGPoint(x: w, y: midY))
-            case .quiet:
-                peakPt = CGPoint(x: w * 0.31, y: midY - amp * 0.56)
-                path.move(to: CGPoint(x: 0, y: midY))
-                path.addCurve(
-                    to: CGPoint(x: w * 0.62, y: midY),
-                    control1: CGPoint(x: w * 0.20, y: midY - amp * 0.75),
-                    control2: CGPoint(x: w * 0.42, y: midY - amp * 0.75)
-                )
-                path.addLine(to: CGPoint(x: w, y: midY))
-            }
-            ctx.stroke(path, with: .color(MossOttoStyle.violet), style: StrokeStyle(lineWidth: activePulse ? 2.1 : 1.6, lineCap: .round, lineJoin: .round))
-            let dotR: CGFloat = activePulse ? 2.6 : 1.9
-            ctx.fill(
-                Path(ellipseIn: CGRect(x: peakPt.x - dotR, y: peakPt.y - dotR, width: dotR * 2, height: dotR * 2)),
-                with: .color(activePulse ? MossOttoStyle.lampAmber : MossOttoStyle.violet)
-            )
-        }
-        .accessibilityHidden(true)
     }
 }
 
@@ -1088,7 +777,7 @@ struct Card<Content: View>: View {
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(MossOttoStyle.hairline, lineWidth: 0.7)
+                        .strokeBorder(MossOttoStyle.hairline, lineWidth: 0.5)
                 )
         }
     }
