@@ -154,6 +154,7 @@ enum KeyboardTests {
         r75DeleteClutchHudAndIdleGuard(window)
         r76CursorTelemetryHudAndBracketCraft(window)
         r77KeycapBevelAndFeedbackParity(window)
+        r78EmojiDockNoSliceDrawerAndXiaoheSlots(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -3375,6 +3376,66 @@ enum KeyboardTests {
         log(restBevel && pressedHidesBevel && restoredBevel && blankedHidesBevel && firedTabFeedback,
             "r77.KeyView top-edge optical bevel responds to press/blanked and EmojiPanelView triggers tactile feedback",
             "rest=\(restBevel) pressed=\(pressedHidesBevel) restored=\(restoredBevel) blanked=\(blankedHidesBevel) tabFeedback=\(firedTabFeedback)")
+    }
+
+    // MARK: - R78: Emoji dock zero-slice alignment, Mosto mood badge, Settings header back capsule & Xiaohe dual slots
+
+    static func r78EmojiDockNoSliceDrawerAndXiaoheSlots(_ window: UIWindow) {
+        let s = KeyboardSettings.shared
+        let prevStyle = s.style
+        let prevPlain = Theme.plain
+        let prevHeight = s.keyboardHeight
+        defer {
+            s.style = prevStyle
+            Theme.plain = prevPlain
+            s.keyboardHeight = prevHeight
+        }
+
+        // 1. EmojiPanelView snaps portrait category dock to integer slots (zero trailing heart sliver) & frames moodMosto badge
+        s.style = 0
+        Theme.plain = false
+        let ep = EmojiPanelView(frame: CGRect(x: 0, y: 0, width: 402, height: 242))
+        ep.layoutIfNeeded()
+        ep.load(kaomoji: false)
+        ep.layoutIfNeeded()
+        let noTrailingSlice = ep.dockNoTrailingHalfSliceForTests && ep.portraitDockLightbulbUnclippedForTests
+        ep.load(kaomoji: true)
+        ep.layoutIfNeeded()
+        let badgeVisibleMosto = ep.moodMostoBadgeShownForTests && ep.kaomojiDockGearFullyVisibleForTests
+        s.style = 1
+        Theme.plain = true
+        ep.themeChanged()
+        ep.layoutIfNeeded()
+        let badgeHiddenPlain = !ep.moodMostoBadgeShownForTests
+        log(noTrailingSlice && badgeVisibleMosto && badgeHiddenPlain,
+            "r78.EmojiPanelView prevents trailing dock icon half-slicing and syncs Kaomoji Mosto ceramic badge",
+            "noSlice=\(noTrailingSlice) badgeMosto=\(badgeVisibleMosto) badgeHiddenPlain=\(badgeHiddenPlain)")
+
+        // 2. SettingsPanelView replaces bare back link with symmetrical header capsule & inset drawer height track
+        s.style = 0
+        Theme.plain = false
+        let sp = SettingsPanelView(frame: CGRect(x: 0, y: 0, width: 390, height: 242))
+        sp.layoutIfNeeded()
+        let initiallyHidden = !sp.showingMoreForTests && !sp.backDeckButtonInHeaderForTests
+        sp.toggleMoreForTests()
+        sp.layoutIfNeeded()
+        let headerCapsuleShown = sp.showingMoreForTests && sp.backDeckButtonInHeaderForTests && sp.drawerHeightEmbeddedForTests
+        let fullFitOk = sp.preferredFullHeightForTests > 360 && sp.preferredFullHeightForTests < 700
+        sp.toggleMoreForTests()
+        sp.layoutIfNeeded()
+        let closedCleanly = !sp.showingMoreForTests && !sp.backDeckButtonInHeaderForTests
+        log(initiallyHidden && headerCapsuleShown && fullFitOk && closedCleanly,
+            "r78.SettingsPanelView integrates back capsule cleanly in header with inset drawer height well",
+            "init=\(initiallyHidden) shown=\(headerCapsuleShown) fullH=\(sp.preferredFullHeightForTests) closed=\(closedCleanly)")
+
+        // 3. XiaoheGuideContent with dual-role slot watermarks and de-duplicated equation meter renders cleanly
+        let guideSize = XiaoheGuideContent.renderSnapshotSizeForTests(width: 390)
+        let guideRendered = guideSize.width > 300
+            && XiaoheDrill.slotRoleMarks == ["声", "韵"]
+            && !XiaoheDrill.inspectExamplesForTests(key: "u").isEmpty
+        log(guideRendered,
+            "r78.XiaoheGuideContent dual-slot watermarks & condensed comparison meter render cleanly",
+            "width=\(guideSize.width)")
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

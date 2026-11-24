@@ -2093,6 +2093,9 @@ private final class ElevationRailView: UIView {
     var selectedTier: KeyboardHeightPreset = .standard {
         didSet { if selectedTier != oldValue { refreshAppearance() } }
     }
+    var embeddedInGroup = false {
+        didSet { if embeddedInGroup != oldValue { refreshAppearance() } }
+    }
     var onSelect: ((KeyboardHeightPreset) -> Void)?
 
     private var buttons: [UIButton] = []
@@ -2149,7 +2152,7 @@ private final class ElevationRailView: UIView {
 
     func refreshAppearance() {
         let t = traitCollection
-        backgroundColor = Theme.settingsGroup.resolvedColor(with: t)
+        backgroundColor = (embeddedInGroup ? Theme.touchable : Theme.settingsGroup).resolvedColor(with: t)
         layer.borderColor = Theme.keyBorder.resolvedColor(with: t).cgColor
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -2325,9 +2328,10 @@ final class SettingsPanelView: UIView {
         numberControl.translatesAutoresizingMaskIntoConstraints = false
         numberControl.widthAnchor.constraint(equalToConstant: 156).isActive = true
         for i in 0..<numberControl.numberOfSegments { numberControl.setWidth(78, forSegmentAt: i) }
+        drawerHeightRail.embeddedInGroup = true
         drawerHeightRail.translatesAutoresizingMaskIntoConstraints = false
-        drawerHeightRail.widthAnchor.constraint(equalToConstant: 196).isActive = true
-        drawerHeightRail.heightAnchor.constraint(equalToConstant: 30).isActive = true
+        drawerHeightRail.widthAnchor.constraint(equalToConstant: 200).isActive = true
+        drawerHeightRail.heightAnchor.constraint(equalToConstant: 31).isActive = true
         for sc in [numberControl, appearance, styleControl] {
             sc.selectedSegmentTintColor = Theme.selection
             sc.setTitleTextAttributes([.foregroundColor: Theme.selectionText, .font: Theme.font(13, .semibold)], for: .selected)
@@ -2335,7 +2339,20 @@ final class SettingsPanelView: UIView {
             sc.setContentHuggingPriority(.required, for: .horizontal)
         }
 
-        // Header: Mosto + OTTOSSOM Control Deck title + status + Done pill
+        // Header: [backDeck capsule when in secondary drawer] / Mosto + title + Done pill
+        backDeckButton.setImage(UIImage(systemName: "chevron.backward", withConfiguration: UIImage.SymbolConfiguration(pointSize: 10.5, weight: .bold)), for: .normal)
+        backDeckButton.setTitle(" 概览", for: .normal)
+        backDeckButton.titleLabel?.font = Theme.font(12, .semibold)
+        backDeckButton.layer.cornerRadius = 14
+        backDeckButton.layer.cornerCurve = .continuous
+        backDeckButton.layer.borderWidth = 0.5
+        backDeckButton.translatesAutoresizingMaskIntoConstraints = false
+        backDeckButton.widthAnchor.constraint(equalToConstant: 64).isActive = true
+        backDeckButton.heightAnchor.constraint(equalToConstant: 28).isActive = true
+        backDeckButton.accessibilityLabel = "返回控制台概览"
+        backDeckButton.isHidden = true
+        backDeckButton.addTarget(self, action: #selector(closeMore), for: .touchUpInside)
+
         mostoImage.contentMode = .scaleAspectFit
         mostoImage.image = UIImage(named: "mosto_day", in: Bundle(for: SettingsPanelView.self), with: nil)
         titleLabel.text = "Mosto 控制台"
@@ -2358,7 +2375,7 @@ final class SettingsPanelView: UIView {
         doneButton.heightAnchor.constraint(equalToConstant: 28).isActive = true
         doneButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
 
-        let h = UIStackView(arrangedSubviews: [mostoImage, titles, UIView(), doneButton])
+        let h = UIStackView(arrangedSubviews: [backDeckButton, mostoImage, titles, UIView(), doneButton])
         h.alignment = .center
         h.spacing = 8
         mostoImage.widthAnchor.constraint(equalToConstant: 28).isActive = true
@@ -2438,13 +2455,6 @@ final class SettingsPanelView: UIView {
         stack.axis = .vertical
         stack.spacing = 6
         moreScroll.addSubview(stack)
-
-        backDeckButton.setTitle("‹ 返回控制台", for: .normal)
-        backDeckButton.titleLabel?.font = Theme.font(13.5, .semibold)
-        backDeckButton.contentHorizontalAlignment = .leading
-        backDeckButton.addTarget(self, action: #selector(closeMore), for: .touchUpInside)
-        stack.addArrangedSubview(inset(backDeckButton))
-        stack.setCustomSpacing(8, after: stack.arrangedSubviews.last!)
 
         section("输入与按键", rows: [
             row("中英混输", icon: "globe", englishSwitch),
@@ -2572,12 +2582,17 @@ final class SettingsPanelView: UIView {
         let t = traitCollection
         tintColor = Theme.selection
         headerHairline.backgroundColor = Theme.separator.resolvedColor(with: t).cgColor
-        mostoImage.isHidden = Theme.plain
+        let inMore = !moreScroll.isHidden
+        mostoImage.isHidden = Theme.plain || inMore
+        backDeckButton.isHidden = !inMore
+        backDeckButton.backgroundColor = Theme.functionKey
+        backDeckButton.setTitleColor(Theme.keyText, for: .normal)
+        backDeckButton.tintColor = Theme.keyText
+        backDeckButton.layer.borderColor = Theme.keyBorder.resolvedColor(with: t).cgColor
         doneButton.backgroundColor = Theme.plain ? Theme.selection : Theme.accentKey
         doneButton.setTitleColor(Theme.plain ? Theme.selectionText : Theme.accentText, for: .normal)
         moreButton.backgroundColor = Theme.functionKey
         moreButton.setTitleColor(Theme.functionText, for: .normal)
-        backDeckButton.setTitleColor(Theme.selection, for: .normal)
         accessBanner.textColor = Theme.correctedMark
         for sc in [numberControl, appearance, styleControl] {
             sc.selectedSegmentTintColor = Theme.selection
@@ -2945,6 +2960,7 @@ final class SettingsPanelView: UIView {
     func demoScrollToFeedback() {
         moreScroll.isHidden = true
         deckContainer.isHidden = false
+        styleChrome()
         setNeedsLayout()
     }
 
@@ -3031,6 +3047,7 @@ final class SettingsPanelView: UIView {
         deckContainer.isHidden = true
         moreScroll.isHidden = false
         moreScroll.setContentOffset(.zero, animated: false)
+        styleChrome()
         setNeedsLayout()
     }
 
@@ -3044,6 +3061,7 @@ final class SettingsPanelView: UIView {
         resetConfirmationPrompt()
         moreScroll.isHidden = true
         deckContainer.isHidden = false
+        styleChrome()
         setNeedsLayout()
     }
 
@@ -3072,6 +3090,7 @@ final class SettingsPanelView: UIView {
         resetConfirmationPrompt()
         moreScroll.isHidden = true
         deckContainer.isHidden = false
+        styleChrome()
         onClose?()
     }
 
@@ -3093,6 +3112,11 @@ final class SettingsPanelView: UIView {
 
     var hardwareTileCountForTests: Int { hardwareTiles.count }
     var showingMoreForTests: Bool { !moreScroll.isHidden }
+    var backDeckButtonInHeaderForTests: Bool { backDeckButton.isDescendant(of: header) && !backDeckButton.isHidden && mostoImage.isHidden }
+    var drawerHeightEmbeddedForTests: Bool {
+        drawerHeightRail.embeddedInGroup
+            && drawerHeightRail.backgroundColor?.resolvedColor(with: traitCollection) != Theme.settingsGroup.resolvedColor(with: traitCollection)
+    }
     func toggleMoreForTests() { if moreScroll.isHidden { openMore() } else { closeMore() } }
     func tapSchemeTileForTests() { toggleScheme() }
     func tapHapticTileForTests() { toggleHaptic() }
@@ -3175,8 +3199,8 @@ final class SettingsPanelView: UIView {
             withHorizontalFittingPriority: .required,
             verticalFittingPriority: .fittingSizeLevel
         )
-        stack.frame = CGRect(x: 0, y: 6, width: w, height: size.height)
-        moreScroll.contentSize = CGSize(width: w, height: size.height + 16)
+        stack.frame = CGRect(x: 0, y: 10, width: w, height: size.height)
+        moreScroll.contentSize = CGSize(width: w, height: size.height + 20)
     }
 }
 

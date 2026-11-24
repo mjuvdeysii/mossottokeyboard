@@ -272,7 +272,8 @@ final class EngineHost {
                 }
             }
             if !safe {
-                self.queue.async {
+                self.queue.asyncAfter(deadline: .now() + 0.05) { [weak self = self] in
+                    guard let self else { return }
                     self.lock.lock(); let idle = self.latest == 0; self.lock.unlock()
                     if idle { autoreleasepool { _ = d.decode([Tap.exact("w"), Tap.exact("o")]) } }
                 }

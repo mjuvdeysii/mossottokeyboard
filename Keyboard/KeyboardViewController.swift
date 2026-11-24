@@ -2014,7 +2014,7 @@ final class KeyboardViewController: UIInputViewController {
             pendingSelect = (i, shown ?? Candidate(text: "", tapCount: 0, syllables: [], corrected: false, score: 0))
             if wasNil {
                 let targetGen = generation
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self] in
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) { [weak self] in
                     guard let self, self.generation == targetGen, let p = self.pendingSelect else { return }
                     self.pendingSelect = nil
                     if let r = self.result, !r.candidates.isEmpty {

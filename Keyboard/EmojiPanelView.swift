@@ -17,6 +17,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     private let collection: UICollectionView
     private let kaomojiShortcutButton = UIButton(type: .custom)
     private let moodHeader = UIView()
+    private let moodMostoBadge = UIView()
     private let moodMosto = UIImageView()
     private let moodScrollBox = UIView()
     private let moodFade = CAGradientLayer()
@@ -137,6 +138,17 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         let f = tabScroll.convert(gear.frame, to: tabScrollBox)
         return f.width > 0 && f.minX >= -0.5 && f.maxX <= tabScrollBox.bounds.width + 0.5
     }
+    var dockNoTrailingHalfSliceForTests: Bool {
+        let boxW = tabScrollBox.bounds.width
+        guard boxW > 0 else { return false }
+        let items = tabButtons + [gear]
+        if tabScroll.contentSize.width <= boxW + 0.5 { return true }
+        return !items.contains {
+            let f = tabScroll.convert($0.frame, to: tabScrollBox)
+            return f.minX > boxW - 10 && f.minX < boxW - 0.5
+        }
+    }
+    var moodMostoBadgeShownForTests: Bool { !moodMostoBadge.isHidden && moodMostoBadge.bounds.width >= 28 }
     var backButtonUsesFunctionStyleForTests: Bool { backButton.backgroundColor == Theme.functionKey }
 
     final class Cell: UICollectionViewCell {
@@ -241,6 +253,12 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
 
         // Top Kaomoji Mood Tape Ribbon (replaces static section header only in kaomojiMode)
         moodHeader.isHidden = true
+        moodMostoBadge.layer.cornerRadius = 14
+        moodMostoBadge.layer.cornerCurve = .continuous
+        moodMostoBadge.layer.borderWidth = 0.5
+        moodMostoBadge.isUserInteractionEnabled = false
+        moodHeader.addSubview(moodMostoBadge)
+
         moodMosto.contentMode = .scaleAspectFit
         moodMosto.image = UIImage(named: "mosto_day", in: Bundle(for: EmojiPanelView.self), with: nil)
         moodMosto.isUserInteractionEnabled = true
@@ -354,6 +372,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     func themeChanged() {
         applyLips()
         moodMosto.isHidden = Theme.plain
+        moodMostoBadge.isHidden = Theme.plain
         refreshMoodRibbonStyle()
         collection.reloadData()
         setNeedsLayout()
@@ -363,6 +382,8 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         let t = traitCollection
         dockHairline.backgroundColor = Theme.separator.resolvedColor(with: t).cgColor
         moodHairline.backgroundColor = Theme.separator.resolvedColor(with: t).cgColor
+        moodMostoBadge.backgroundColor = Theme.preeditPillBg
+        moodMostoBadge.layer.borderColor = Theme.preeditPillBorder.resolvedColor(with: t).cgColor
         for (b, lip) in [(backButton, Theme.functionLip), (deleteButton, Theme.functionLip), (returnButton, Theme.accentLip)] {
             b.layer.shadowColor = lip.resolvedColor(with: t).cgColor
             b.layer.shadowOpacity = 1
@@ -611,6 +632,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         applyLips()
         moodHeader.isHidden = !kaomoji
         moodMosto.isHidden = Theme.plain
+        moodMostoBadge.isHidden = Theme.plain
         collection.reloadData()
         setNeedsLayout()
         guard bounds.width > 100, bounds.height > 100 else {
@@ -706,9 +728,11 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             moodHeader.isHidden = false
             moodHeader.frame = CGRect(x: 0, y: 0, width: b.width, height: topH)
             let showMosto = !Theme.plain
+            moodMostoBadge.isHidden = !showMosto
             moodMosto.isHidden = !showMosto
-            let lead: CGFloat = showMosto ? 40 : 12
-            moodMosto.frame = CGRect(x: 12, y: (topH - 24) / 2, width: 24, height: 24)
+            let lead: CGFloat = showMosto ? 46 : 12
+            moodMostoBadge.frame = CGRect(x: 10, y: (topH - 28) / 2, width: 30, height: 28)
+            moodMosto.frame = CGRect(x: 15, y: (topH - 20) / 2, width: 20, height: 20)
             moodScrollBox.frame = CGRect(x: lead, y: 0, width: max(0, b.width - lead - 12), height: topH)
             moodScroll.frame = moodScrollBox.bounds
             layoutMoodPills()
@@ -758,32 +782,45 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             btn.layer.shadowPath = UIBezierPath(roundedRect: btn.bounds, cornerRadius: Metrics.cornerRadius).cgPath
         }
 
-        // Scrollable horizontal category pills between backButton and deleteButton (34x34pt touch targets, zero lightbulb clipping)
+        // Scrollable horizontal category pills between backButton and deleteButton:
+        // snap visible slots cleanly inside boxW so no trailing icon gets sliced halfway at rest.
         let tabLeft = backButton.frame.maxX + 6
         let tabRight = deleteButton.frame.minX - 6
         tabScrollBox.frame = CGRect(x: tabLeft, y: 0, width: max(0, tabRight - tabLeft), height: barH)
         tabScroll.frame = tabScrollBox.bounds
         let dockItems = tabButtons + [gear]
-        let itemW: CGFloat = 34
+        let boxW = tabScrollBox.bounds.width
         let itemH: CGFloat = 34
-        let itemGap: CGFloat = 3
-        var tx: CGFloat = 2
         let ty = (barH - itemH) / 2
-        for item in dockItems {
-            item.frame = CGRect(x: tx, y: ty, width: itemW, height: itemH)
-            tx += itemW + itemGap
-        }
-        let totalTabW = tx - itemGap + 2
-        if totalTabW < tabScroll.bounds.width {
-            let extra = (tabScroll.bounds.width - totalTabW) / 2
-            for item in dockItems { item.frame.origin.x += extra }
+        let defaultSpan = CGFloat(dockItems.count) * 34 + CGFloat(max(0, dockItems.count - 1)) * 3 + 4
+        let totalTabW: CGFloat
+        if defaultSpan <= boxW {
+            let itemW: CGFloat = 34
+            let itemGap: CGFloat = 3
+            let contentW = CGFloat(dockItems.count) * itemW + CGFloat(max(0, dockItems.count - 1)) * itemGap
+            let pad = max(0, (boxW - contentW) / 2)
+            for (i, item) in dockItems.enumerated() {
+                item.frame = CGRect(x: pad + CGFloat(i) * (itemW + itemGap), y: ty, width: itemW, height: itemH)
+            }
+            totalTabW = boxW
+        } else {
+            let startX: CGFloat = 2
+            let nVisible = boxW >= 250
+                ? max(7, min(dockItems.count, Int(floor((boxW + 6) / 39))))
+                : max(5, min(dockItems.count, Int(floor((boxW + 2) / 36))))
+            let stride = (boxW - startX + 2) / CGFloat(nVisible)
+            let itemW = min(34, max(26, floor(stride - 5)))
+            for (i, item) in dockItems.enumerated() {
+                item.frame = CGRect(x: startX + CGFloat(i) * stride, y: ty, width: itemW, height: itemH)
+            }
+            totalTabW = startX + CGFloat(dockItems.count - 1) * stride + itemW + 6
         }
         tabScroll.contentSize = CGSize(width: max(tabScroll.bounds.width, totalTabW), height: barH)
         if pendingScrollToSelectedTab || (kaomojiMode && selected == tabButtons.count - 1) {
             ensureSelectedTabVisible(animated: false)
             pendingScrollToSelectedTab = false
         }
-        updateEdgeFade(box: tabScrollBox, scroll: tabScroll, fade: tabFade, edge: 26)
+        updateEdgeFade(box: tabScrollBox, scroll: tabScroll, fade: tabFade, edge: 12)
 
         collection.collectionViewLayout.invalidateLayout()
         collection.layoutIfNeeded()
@@ -949,7 +986,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         if abs(offsetX - tabScroll.contentOffset.x) > 0.5 {
             tabScroll.setContentOffset(CGPoint(x: offsetX, y: 0), animated: animated)
         }
-        updateEdgeFade(box: tabScrollBox, scroll: tabScroll, fade: tabFade, edge: 26)
+        updateEdgeFade(box: tabScrollBox, scroll: tabScroll, fade: tabFade, edge: 12)
     }
 
     private func setSelected(_ s: Int, animated: Bool = true) {

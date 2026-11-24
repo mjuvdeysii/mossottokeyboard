@@ -22,6 +22,13 @@ struct XiaoheGuideContent: View {
     var volume: VolumeMonitor? = nil
     @State private var showCostNotice = false
 
+    @MainActor
+    static func renderSnapshotSizeForTests(width: CGFloat) -> CGSize {
+        let r = ImageRenderer(content: XiaoheGuideContent().frame(width: width).padding(12))
+        r.scale = 2.0
+        return r.uiImage?.size ?? .zero
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             Card(title: "声感指法与键位图谱") {
@@ -52,12 +59,6 @@ struct XiaoheGuideContent: View {
                     VStack(alignment: .leading, spacing: 8) {
                         KeystrokeMeterRow(label: "全拼", ratio: 1.0, metric: "~3.0 键/字", highlight: false)
                         KeystrokeMeterRow(label: "小鹤", ratio: 2.0 / 3.0, metric: "固定 2 键 · 省 33%", highlight: true)
-                    }
-
-                    WrapLayout(spacing: 6, lineSpacing: 6) {
-                        MiniBadgeChip(icon: "brain.head.profile", text: "需记 26 键韵母")
-                        MiniBadgeChip(icon: "lightbulb.min.fill", text: "控制台可开键位提示")
-                        MiniBadgeChip(icon: "arrow.triangle.branch", text: "与全拼共用纠错联想")
                     }
                 }
             }
@@ -196,25 +197,6 @@ private struct KeystrokeMeterRow: View {
     }
 }
 
-private struct MiniBadgeChip: View {
-    let icon: String
-    let text: String
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: icon)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(MossOttoStyle.violet)
-            Text(text)
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(MossOttoStyle.inkSecondary)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(Capsule().fill(MossOttoStyle.surfaceMuted))
-    }
-}
-
 private struct ZeroFormulaRow: View {
     let tag: String
     let pairs: [(String, String)]
@@ -303,6 +285,7 @@ private struct Legend: View {
 /// Interactive tactile + acoustic Xiaohe rhythm drill and live 26-key inspector, volume-gated on first audible tap.
 struct XiaoheDrill: View {
     var volume: VolumeMonitor? = nil
+    static let slotRoleMarks = ["声", "韵"]
 
     private static let words: [(String, String)] = [
         ("你", "ni"), ("好", "hao"), ("我", "wo"), ("是", "shi"), ("中", "zhong"), ("国", "guo"), ("的", "de"),
@@ -415,18 +398,34 @@ struct XiaoheDrill: View {
             HStack(spacing: 8) {
                 ForEach(0..<2, id: \.self) { i in
                     let shown: Character? = i < typed.count ? typed[i] : (verdict == false ? code[i] : nil)
-                    Text(shown.map { String($0).uppercased() } ?? "")
-                        .font(.system(size: 24, weight: .semibold, design: .rounded))
-                        .foregroundStyle(MossOttoStyle.inkPrimary)
-                        .frame(width: 48, height: 52)
-                        .background(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(MossOttoStyle.surfaceMuted)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .strokeBorder(slotColor(i), lineWidth: 1.8)
-                        )
+                    let waitingHere = shown == nil && i == typed.count && verdict == nil
+                    ZStack {
+                        if shown == nil {
+                            VStack(spacing: 3) {
+                                Text(Self.slotRoleMarks[i])
+                                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(waitingHere ? MossOttoStyle.violet.opacity(0.65) : MossOttoStyle.inkSecondary.opacity(0.45))
+                                Circle()
+                                    .fill(waitingHere ? MossOttoStyle.violet : MossOttoStyle.inkSecondary.opacity(0.25))
+                                    .frame(width: 4, height: 4)
+                            }
+                        } else if let ch = shown {
+                            Text(String(ch).uppercased())
+                                .font(.system(size: 24, weight: .semibold, design: .rounded))
+                                .foregroundStyle(MossOttoStyle.inkPrimary)
+                        }
+                    }
+                    .frame(width: 48, height: 52)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(MossOttoStyle.surfaceMuted)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(slotColor(i), lineWidth: 1.8)
+                    )
+                    .accessibilityLabel(i == 0 ? "第 1 键：声母槽" : "第 2 键：韵母槽")
+                    .accessibilityValue(shown.map { String($0).uppercased() } ?? "待输入")
                 }
             }
 
