@@ -51,6 +51,7 @@ struct KeySpec: Equatable {
     /// 小鹤键位提示: the initial (zh / ch / sh) and finals this letter stands for, drawn under the letter
     var guideInitial: String? = nil
     var guideFinals: [String] = []
+    var guideChordHint: XiaoheScheme.ChordHint? = nil
     var moreAlts: [String] = []      // further long-press choices after `alt`, shown as a row
 }
 
@@ -72,6 +73,8 @@ struct LayoutContext: Equatable {
     var composing: Bool = false
     /// 小鹤键位提示: the letter keys show the initials and finals of 小鹤双拼 (learning mode)
     var xiaoheGuide: Bool = false
+    /// Pending odd-beat first key when `xiaoheGuide` is active, illuminating only valid final keys.
+    var xiaohePendingInitial: Character? = nil
 }
 
 /// 4 calibrated hardware-aligned keyboard height tiers (OTTOSSOM desk deck elevation).
@@ -225,6 +228,7 @@ enum Layouts {
                 if ctx.xiaoheGuide, ctx.chinese, let g = XiaoheScheme.keyGuide[c] {
                     spec.guideInitial = g.initial
                     spec.guideFinals = g.finals
+                    spec.guideChordHint = XiaoheScheme.chordHint(forKey: c, after: ctx.xiaohePendingInitial)
                 }
                 specs.append(spec)
             }

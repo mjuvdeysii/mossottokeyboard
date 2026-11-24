@@ -121,7 +121,16 @@ private struct StudioScreen: View {
                         mode: model.lampMode,
                         soundEnabled: model.keySound,
                         hapticProfile: model.hapticProfile,
-                        onSelectProfile: { model.hapticProfile = $0 }
+                        onSelectProfile: { model.hapticProfile = $0 },
+                        onToggleSound: {
+                            if model.keySound {
+                                model.keySound = false
+                            } else {
+                                volume.gateSoundInteraction(soundEnabled: true) {
+                                    model.keySound = true
+                                }
+                            }
+                        }
                     ) {
                         blinkNonce += 1
                     }
@@ -416,7 +425,8 @@ struct UnifiedTypingBench: View {
                     }
                 }
             case .demos:
-                WrapLayout(spacing: 6, lineSpacing: 6) {
+                // Single-row symmetrical 7-node Hardware Step Rail (zero 5+2 uneven wrapping)
+                HStack(spacing: 3) {
                     ForEach(Array(lessons.enumerated()), id: \.offset) { idx, l in
                         let current = model.step == idx
                         let done = model.passedTitles.contains(l.title)
@@ -424,23 +434,30 @@ struct UnifiedTypingBench: View {
                             UISelectionFeedbackGenerator().selectionChanged()
                             model.jump(to: idx)
                         } label: {
-                            HStack(spacing: 5) {
+                            HStack(spacing: 2.5) {
                                 if done {
-                                    Circle().fill(MossOttoStyle.moss).frame(width: 6, height: 6)
+                                    Circle()
+                                        .fill(current ? MossOttoStyle.lampAmber : MossOttoStyle.moss)
+                                        .frame(width: 4.5, height: 4.5)
                                 }
-                                Text(l.shortTitle)
-                                    .font(.caption.weight(.semibold))
+                                Text(l.compactTag)
+                                    .font(.system(size: 11, weight: current ? .bold : .semibold, design: .rounded))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.8)
                             }
                             .foregroundStyle(current ? Color.white : MossOttoStyle.inkPrimary)
-                            .padding(.horizontal, 10)
+                            .frame(maxWidth: .infinity)
                             .padding(.vertical, 6)
-                            .background(Capsule().fill(current ? MossOttoStyle.violet : MossOttoStyle.surface))
-                            .overlay(Capsule().strokeBorder(current ? Color.clear : MossOttoStyle.hairline, lineWidth: 0.7))
+                            .background(Capsule().fill(current ? MossOttoStyle.violet : Color.clear))
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(l.title)
+                        .accessibilityValue(done ? "已完成" : (current ? "当前" : ""))
                     }
                 }
+                .padding(3)
+                .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(MossOttoStyle.surface))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(MossOttoStyle.hairline, lineWidth: 0.7))
                 LessonCard(model: model, index: model.step)
             case .speed:
                 SpeedArenaCard(model: model)
@@ -518,21 +535,59 @@ private struct SpeedArenaCard: View {
     @ObservedObject var model: PlaygroundModel
 
     var body: some View {
+        let total = PlaygroundModel.speedTargets.count
+        let doneCount = model.speedFinishedSeconds != nil ? total : model.speedIndex
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("进度 \(min(model.speedIndex + (model.speedFinishedSeconds != nil ? 1 : 0), PlaygroundModel.speedTargets.count))/\(PlaygroundModel.speedTargets.count)")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(MossOttoStyle.inkSecondary)
-                Spacer()
-                Text(model.currentCPM > 0 ? "\(model.currentCPM) 字/分" : "准备开始")
-                    .font(.caption.weight(.bold).monospacedDigit())
-                    .foregroundStyle(MossOttoStyle.violet)
-                Text("· 最佳 \(model.bestCPM > 0 ? "\(model.bestCPM)" : "--")")
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(MossOttoStyle.inkSecondary)
-                Button("重测") { model.resetSpeedTest() }
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(MossOttoStyle.violet)
+            HStack(spacing: 8) {
+                // 3-segment visual progress bead rail
+                HStack(spacing: 4) {
+                    ForEach(0..<total, id: \.self) { seg in
+                        let isDone = seg < doneCount
+                        let isActive = seg == model.speedIndex && model.speedFinishedSeconds == nil
+                        let frac: CGFloat = isDone ? 1 : (isActive ? CGFloat(model.matchedSpeedPrefixCount) / CGFloat(max(1, model.currentSpeedTarget.count)) : 0)
+                        GeometryReader { g in
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(MossOttoStyle.surfaceMuted)
+                                Capsule()
+                                    .fill(isDone ? MossOttoStyle.moss : MossOttoStyle.violet)
+                                    .frame(width: max(isActive && frac == 0 ? 4 : 0, g.size.width * min(1, frac)))
+                            }
+                        }
+                        .frame(width: 24, height: 5.5)
+                    }
+                }
+
+                Spacer(minLength: 4)
+
+                HStack(spacing: 4) {
+                    Image(systemName: "gauge.with.needle")
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundStyle(MossOttoStyle.violet)
+                    Text(model.currentCPM > 0 ? "\(model.currentCPM) 字/分" : "就绪")
+                        .font(.caption.weight(.bold).monospacedDigit())
+                        .foregroundStyle(MossOttoStyle.violet)
+                    if model.bestCPM > 0 {
+                        Text("· 佳 \(model.bestCPM)")
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(MossOttoStyle.inkSecondary)
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3.5)
+                .background(Capsule().fill(MossOttoStyle.surfaceMuted))
+
+                Button {
+                    UISelectionFeedbackGenerator().selectionChanged()
+                    model.resetSpeedTest()
+                } label: {
+                    Image(systemName: "arrow.counterclockwise")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(MossOttoStyle.violet)
+                        .padding(6)
+                        .background(Circle().fill(MossOttoStyle.violet.opacity(0.11)))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("重测")
             }
 
             if let sec = model.speedFinishedSeconds {
@@ -542,11 +597,11 @@ private struct SpeedArenaCard: View {
                         .scaledToFit()
                         .frame(width: 46, height: 46)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("三句完成 · 均速 \(model.currentCPM) 字/分")
-                            .font(.subheadline.weight(.bold))
+                        Text("均速 \(model.currentCPM) 字/分")
+                            .font(.subheadline.weight(.bold).monospacedDigit())
                             .foregroundStyle(MossOttoStyle.inkPrimary)
-                        Text(String(format: "共 %d 字 · 用时 %.1f 秒", model.speedTotalChars, sec))
-                            .font(.caption)
+                        Text(String(format: "%d 句 · %d 字 · %.1f 秒", total, model.speedTotalChars, sec))
+                            .font(.caption.monospacedDigit())
                             .foregroundStyle(MossOttoStyle.inkSecondary)
                     }
                     Spacer()
@@ -559,11 +614,23 @@ private struct SpeedArenaCard: View {
                         .buttonStyle(.plain)
                 }
             } else {
-                HStack(spacing: 2) {
+                HStack(spacing: 3) {
                     ForEach(Array(model.currentSpeedTarget.enumerated()), id: \.offset) { i, ch in
-                        Text(String(ch))
-                            .font(.system(size: 21, weight: .semibold, design: .rounded))
-                            .foregroundStyle(i < model.matchedSpeedPrefixCount ? MossOttoStyle.violet : MossOttoStyle.inkPrimary)
+                        let matched = i < model.matchedSpeedPrefixCount
+                        let nextChar = i == model.matchedSpeedPrefixCount
+                        VStack(spacing: 2) {
+                            Text(String(ch))
+                                .font(.system(size: 20.5, weight: nextChar ? .bold : .semibold, design: .rounded))
+                                .foregroundStyle(matched ? MossOttoStyle.violet : MossOttoStyle.inkPrimary)
+                                .padding(.horizontal, nextChar ? 3 : 0.5)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                        .fill(nextChar ? MossOttoStyle.violet.opacity(0.12) : Color.clear)
+                                )
+                            Capsule()
+                                .fill(nextChar ? MossOttoStyle.violet : Color.clear)
+                                .frame(width: 12, height: 2)
+                        }
                     }
                 }
             }

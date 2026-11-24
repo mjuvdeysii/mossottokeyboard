@@ -1027,13 +1027,17 @@ final class KeyboardViewController: UIInputViewController {
         candidateBar.xiaoheRhythm = chinese && scheme == .xiaohe && !pinyinGridOn && !taps.contains(where: { $0.group })
         updatePlainLightButton()
         let (label, accent) = returnLabel()
+        let pendingInitial: Character? = (guideOn && scheme == .xiaohe && chinese && !pinyinGridOn && page == .letters && taps.count % 2 == 1)
+            ? taps.last?.key
+            : nil
         let ctx = LayoutContext(page: page, chinese: chinese, showGlobe: cachedShowGlobe,
                                          returnLabel: label, returnIsAccent: accent,
                                          shifted: shifted, capsLock: capsLock,
                                          keyBorders: true,
                                          numberGrid: numberPadOn,   // 123: the 九宫格 pad or the full page
                                          pinyinGrid: pinyinGridOn, composing: !taps.isEmpty,
-                                         xiaoheGuide: guideOn && scheme == .xiaohe)
+                                         xiaoheGuide: guideOn && scheme == .xiaohe,
+                                         xiaohePendingInitial: pendingInitial)
         // most keystrokes change nothing on the keys: skip the work entirely (it ran twice per keystroke before)
         if ctx == lastContext { return }
         lastContext = ctx

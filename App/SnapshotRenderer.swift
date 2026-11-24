@@ -61,6 +61,7 @@ enum SnapshotRenderer {
             Shot(name: "plain_appex_pill", page: .letters, state: "composing", borders: true, panel: nil),
             Shot(name: "plain_numbers", page: .numbers, state: "idle", borders: true, panel: nil),
             Shot(name: "letters_guide", page: .letters, state: "idle", borders: true, panel: nil),
+            Shot(name: "letters_guide_chord", page: .letters, state: "chord", borders: true, panel: nil),
             Shot(name: "letters_shift", page: .letters, state: "shift", borders: true, panel: nil),
             Shot(name: "numbers", page: .numbers, state: "idle", borders: true, panel: nil),
             Shot(name: "symbols", page: .symbols, state: "idle", borders: true, panel: nil),
@@ -134,7 +135,7 @@ enum SnapshotRenderer {
                 let bar = CandidateBarView(frame: CGRect(x: inset, y: 0, width: width, height: barH))
                 bar.mosto.setNight(night)
                 bar.showsMosto = !Theme.plain
-                if shot.name == "plain_appex_pill" {
+                if shot.name == "plain_appex_pill" || shot.name == "letters_guide_chord" {
                     bar.showsPreedit = true
                     bar.xiaoheRhythm = true
                 }
@@ -143,10 +144,13 @@ enum SnapshotRenderer {
                 kb.frame = CGRect(x: inset, y: barH, width: width, height: 4 * pitch)
                 kb.overrideUserInterfaceStyle = night ? .dark : .light
                 root.addSubview(kb)
+                let isGuideShot = shot.name == "letters_guide" || shot.name == "letters_guide_chord"
+                let chordInitial: Character? = shot.name == "letters_guide_chord" ? "q" : nil
                 kb.configure(LayoutContext(page: shot.page, chinese: !shot.name.hasPrefix("en_"), showGlobe: shot.globe, returnLabel: nil,
                                            returnIsAccent: false, shifted: shot.state == "shift", capsLock: false,
                                            keyBorders: shot.borders, pinyinGrid: shot.name.hasPrefix("t9") || shot.name.hasSuffix("_t9"),
-                                           xiaoheGuide: shot.name.hasSuffix("guide")))
+                                           xiaoheGuide: isGuideShot,
+                                           xiaohePendingInitial: chordInitial))
                 // 九宫格 keys have no neighbours to slip onto: its first candidate carries no correction
                 let t9Shot = shot.name.hasPrefix("t9") || shot.name.hasSuffix("_t9")
                 var composing = candidates(["你好", "尼好", "泥好", "拟好", "你", "尼", "泥", "拟", "逆", "腻", "nihc"], correctedFirst: !t9Shot)
@@ -155,6 +159,7 @@ enum SnapshotRenderer {
                 case "composing" where shot.panel == "scrolled":
                     bar.update(preedit: "ni hao", candidates: composing + candidates(["倪", "霓", "匿", "妮", "昵", "溺", "睨", "鲵", "旎", "怩"]))
                 case "composing": bar.update(preedit: shot.name == "plain_appex_pill" ? "nihcj" : "ni hao", candidates: composing)
+                case "chord": bar.update(preedit: "q", candidates: candidates(["去", "起", "其", "前", "请", "钱", "群"], correctedFirst: false))
                 case "cleared":
                     bar.setUndo("nihap", spoken: "撤回清空，恢复为 nihap")
                     bar.update(preedit: "", candidates: [])
@@ -240,6 +245,11 @@ enum SnapshotRenderer {
                         if shot.panel == "settings_full" {
                             panel.setDiagnostics("本次按键 128 次 · 内存 18 MB · 引擎就绪 14 ms · 震动：开")
                             panel.toggleMoreForTests()
+                            panel.layoutIfNeeded()
+                            let fitH = min(760, max(440, ceil(panel.preferredFullHeightForTests)))
+                            root.frame.size.height = fitH
+                            tint.frame = root.bounds
+                            panel.frame = root.bounds
                         }
                     }
                 }

@@ -42,7 +42,8 @@ final class KeyView: UIView {
     private var restFg: UIColor = Theme.keyText
     private var pressedFg: UIColor = Theme.keyText
     private static var symbolCache: [String: UIImage] = [:]
-    private static let opticalPunctuation: Set<String> = ["，", "。", "？", "！", "、", "；", "：", "（", "）", "「", "」", "【", "】", "《", "》"]
+    private static let opticalPunctuation: Set<String> = ["，", "。", "？", "！", "、", "；", "：", "（", "）", "「", "」", "『", "』", "【", "】", "《", "》", "｛", "｝"]
+    private static let balancedBrackets: Set<String> = ["【", "】", "｛", "｝", "《", "》", "「", "」", "『", "』", "（", "）"]
     private static let lowBaselinePunctuation: Set<String> = ["。", "，", "、", "．"]
     private static var opticalOffsetCache: [String: CGPoint] = [:]
 
@@ -143,6 +144,8 @@ final class KeyView: UIView {
         case .char where spec.isLetter: label.font = Theme.font(Metrics.letterFont, .regular)
         case .char where ["“", "”", "‘", "’"].contains(spec.label):
             label.font = UIFont(name: "PingFangSC-Medium", size: Metrics.symbolFont) ?? Theme.font(Metrics.symbolFont, .medium)
+        case .char where Self.balancedBrackets.contains(spec.label):
+            label.font = UIFont(name: "PingFangSC-Regular", size: Metrics.symbolFont) ?? Theme.font(Metrics.symbolFont, .regular)
         case .char where spec.label.count >= 3:
             label.font = Theme.font(18.5, .medium)
         case .char: label.font = Theme.font(Metrics.symbolFont, .medium)
@@ -247,7 +250,10 @@ final class KeyView: UIView {
             let color = hintLit ? Theme.correctedMark : Theme.secondaryText.withAlphaComponent(0.78)
             h.textColor = color.resolvedColor(with: t)
         }
-        if let g = guideLabel, !g.isHidden { g.attributedText = guideText() }
+        if let g = guideLabel, !g.isHidden {
+            let box: CGSize? = bounds.height >= 34 ? CGSize(width: bounds.width - 2, height: bounds.height - bounds.height * 0.40 - 2) : nil
+            g.attributedText = guideText(fitting: box)
+        }
         applyPressState()
         if bounds.width > 0 && (bounds.size != lastCapSize || lastPlainMode != Theme.plain) { layoutCap() }
     }
@@ -261,8 +267,12 @@ final class KeyView: UIView {
     }
 
     var hintTextForTests: String? { (hintLabel?.isHidden == false) ? hintLabel?.text : nil }
+    var hintFrameForTests: CGRect { (hintLabel?.isHidden == false) ? (hintLabel?.frame ?? .zero) : .zero }
     var hintLitForTests: Bool { hintLit }
     var labelFontSizeForTests: CGFloat { label.font.pointSize }
+    var labelFontNameForTests: String { label.font.fontName }
+    var guideChordHintForTests: XiaoheScheme.ChordHint? { spec.guideChordHint }
+    var guideTextForTests: String? { (guideLabel?.isHidden == false) ? guideLabel?.attributedText?.string : nil }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
         super.traitCollectionDidChange(previous)
@@ -327,8 +337,9 @@ final class KeyView: UIView {
         CATransaction.commit()
 
         let hasHint = !(hintLabel?.isHidden ?? true)
+        let isBracket = Self.balancedBrackets.contains(spec.label)
         let o = cjkPunctuationOffset(label.text, fontSize: label.font.pointSize, font: label.font)
-        let hintDrop: CGFloat = hasHint ? (spec.label.count >= 3 ? 4.0 : 1.5) : 0
+        let hintDrop: CGFloat = hasHint ? (spec.label.count >= 3 ? 4.0 : (isBracket ? 2.5 : 1.5)) : 0
         label.frame = f.insetBy(dx: 2, dy: 0).offsetBy(dx: o.x, dy: o.y + hintDrop)
         icon.frame = f
         // 键位提示: the letter moves up and smaller; the initial and finals sit under it (portrait only).
@@ -358,41 +369,91 @@ final class KeyView: UIView {
             let ht = h.text ?? ""
             let tinyMark = ["。", "、", "·", ",", "'", "_"].contains(ht)
             h.font = Theme.font((compact ? 8.5 : 9.5) + (tinyMark ? 1.0 : 0), .semibold)
-            let hw = min(16, max(11, f.width * 0.36))
+            let hw = min(isBracket ? 14 : 16, max(10, f.width * (isBracket ? 0.32 : 0.36)))
             let hh: CGFloat = compact ? 11 : 13
             let hy: CGFloat = (compact ? 1.5 : 2.5) + (ht == "_" ? 1.5 : 0)
-            h.frame = CGRect(x: f.width - hw - 3.5, y: hy, width: hw, height: hh)
+            h.frame = CGRect(x: f.width - hw - (isBracket ? 3.0 : 3.5), y: hy, width: hw, height: hh)
         }
     }
 
-    /// The guide's lines: the initial in the accent colour, then each final; the size shrinks until all lines fit.
+    /// The guide's lines: the initial in the accent colour, then each final; during an odd-beat chord,
+    /// only phonetically valid finals illuminate in accent weight while impossible choices gently recede.
     private func guideText(fitting box: CGSize? = nil) -> NSAttributedString {
-        var lines: [(String, UIColor)] = []
-        if let i = spec.guideInitial { lines.append((i, Theme.correctedMark)) }
-        // under an initial (zh / ch / sh) the finals share one line, so the key never needs a third
-        if spec.guideInitial != nil, spec.guideFinals.count > 1 {
-            lines.append((spec.guideFinals.joined(separator: " "), Theme.guideText))
-        } else {
-            for f in spec.guideFinals { lines.append((f, Theme.guideText)) }
+        let t = traitCollection
+        let accentColor = Theme.correctedMark.resolvedColor(with: t)
+        let normalColor = Theme.guideText.resolvedColor(with: t)
+        let dimmedColor = Theme.guideText.withAlphaComponent(0.24).resolvedColor(with: t)
+
+        struct Segment {
+            let text: String
+            let color: UIColor
+            let bold: Bool
+        }
+        var lines: [[Segment]] = []
+        switch spec.guideChordHint {
+        case nil:
+            if let i = spec.guideInitial { lines.append([Segment(text: i, color: accentColor, bold: false)]) }
+            if spec.guideInitial != nil, spec.guideFinals.count > 1 {
+                lines.append([Segment(text: spec.guideFinals.joined(separator: " "), color: normalColor, bold: false)])
+            } else {
+                for f in spec.guideFinals { lines.append([Segment(text: f, color: normalColor, bold: false)]) }
+            }
+        case .inactive:
+            if let i = spec.guideInitial { lines.append([Segment(text: i, color: dimmedColor, bold: false)]) }
+            if spec.guideInitial != nil, spec.guideFinals.count > 1 {
+                lines.append([Segment(text: spec.guideFinals.joined(separator: " "), color: dimmedColor, bold: false)])
+            } else {
+                for f in spec.guideFinals { lines.append([Segment(text: f, color: dimmedColor, bold: false)]) }
+            }
+        case .match(let matchedIndices, let overrideFinal):
+            if let i = spec.guideInitial { lines.append([Segment(text: i, color: dimmedColor, bold: false)]) }
+            if let overrideFinal {
+                lines.append([Segment(text: overrideFinal, color: accentColor, bold: true)])
+            } else if spec.guideInitial != nil, spec.guideFinals.count > 1 {
+                var row: [Segment] = []
+                for (idx, f) in spec.guideFinals.enumerated() {
+                    if idx > 0 { row.append(Segment(text: " ", color: dimmedColor, bold: false)) }
+                    let lit = matchedIndices.contains(idx)
+                    row.append(Segment(text: f, color: lit ? accentColor : dimmedColor, bold: lit))
+                }
+                lines.append(row)
+            } else {
+                for (idx, f) in spec.guideFinals.enumerated() {
+                    let lit = matchedIndices.contains(idx)
+                    lines.append([Segment(text: f, color: lit ? accentColor : dimmedColor, bold: lit)])
+                }
+            }
         }
         guard !lines.isEmpty else { return NSAttributedString() }
+        let lineStrings = lines.map { $0.map(\.text).joined() }
+        let hasBold = lines.contains { $0.contains { $0.bold } }
         var size: CGFloat = 10
         if let box {
             while size > 6.5 {
-                let font = Theme.font(size, .semibold)
-                let widest = lines.map { ($0.0 as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
+                let font = Theme.font(size, hasBold ? .bold : .semibold)
+                let widest = lineStrings.map { ($0 as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
                 if widest <= box.width && font.lineHeight * CGFloat(lines.count) <= box.height { break }
                 size -= 0.5
             }
         }
+        let regularFont = Theme.font(size, .semibold)
+        let boldFont = Theme.font(size, .bold)
         let para = NSMutableParagraphStyle()
         para.alignment = .center
         para.lineSpacing = 0
-        para.maximumLineHeight = Theme.font(size, .semibold).lineHeight
+        para.maximumLineHeight = (hasBold ? boldFont : regularFont).lineHeight
         let out = NSMutableAttributedString()
-        for (k, (text, color)) in lines.enumerated() {
-            out.append(NSAttributedString(string: (k > 0 ? "\n" : "") + text, attributes: [
-                .font: Theme.font(size, .semibold), .foregroundColor: color, .paragraphStyle: para]))
+        for (lineIdx, segments) in lines.enumerated() {
+            if lineIdx > 0 {
+                out.append(NSAttributedString(string: "\n", attributes: [.font: regularFont, .paragraphStyle: para]))
+            }
+            for seg in segments {
+                out.append(NSAttributedString(string: seg.text, attributes: [
+                    .font: seg.bold ? boldFont : regularFont,
+                    .foregroundColor: seg.color,
+                    .paragraphStyle: para,
+                ]))
+            }
         }
         return out
     }
@@ -1740,6 +1801,21 @@ final class KeyboardView: UIView {
     func keyLabelFontSizeForTests(_ action: KeyAction) -> CGFloat? {
         layoutIfNeeded()
         return keyViews.first(where: { $0.spec.action == action })?.labelFontSizeForTests
+    }
+
+    func guideChordHintForTests(_ action: KeyAction) -> XiaoheScheme.ChordHint? {
+        keyViews.first(where: { $0.spec.action == action })?.guideChordHintForTests
+    }
+
+    func guideTextForTests(_ action: KeyAction) -> String? {
+        layoutIfNeeded()
+        return keyViews.first(where: { $0.spec.action == action })?.guideTextForTests
+    }
+
+    func keyFontAndHintForTests(_ action: KeyAction) -> (fontName: String, hintFrame: CGRect)? {
+        layoutIfNeeded()
+        guard let kv = keyViews.first(where: { $0.spec.action == action }) else { return nil }
+        return (kv.labelFontNameForTests, kv.hintFrameForTests)
     }
 
     var activePreviewFlickedForTests: Bool {

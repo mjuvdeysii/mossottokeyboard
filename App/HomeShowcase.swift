@@ -782,6 +782,7 @@ struct SwitchTesterToy: View {
     var soundEnabled: Bool
     var hapticProfile: Int = 0
     var onSelectProfile: ((Int) -> Void)? = nil
+    var onToggleSound: (() -> Void)? = nil
     var onMostoBlink: () -> Void
 
     @State private var pressedKey: Int? = nil
@@ -813,7 +814,7 @@ struct SwitchTesterToy: View {
                             onSelectProfile?(prof.rawValue)
                             let t = SystemFeedbackPlayer.tunedImpact(for: prof, firm: false)
                             UIImpactFeedbackGenerator(style: t.style).impactOccurred(intensity: t.intensity)
-                            readout = "\(prof.title)轴体 · \(styleLabel(t.style, t.intensity))"
+                            readout = "\(prof.title) · \(styleLabel(t.style, t.intensity))"
                         } label: {
                             Text(prof.title)
                                 .font(.caption2.weight(.semibold))
@@ -867,7 +868,7 @@ struct SwitchTesterToy: View {
                 .buttonStyle(.plain)
 
                 Button {
-                    trigger(id: 2, sound: 1156, style: .soft, intensity: 0.85, desc: "软弹彩蛋 · Soft 0.85")
+                    trigger(id: 2, sound: 1156, style: .soft, intensity: 0.85, desc: "Mosto 彩蛋 · Soft 0.85")
                 } label: {
                     MonolithKeycapView(
                         label: "Mosto",
@@ -891,19 +892,59 @@ struct SwitchTesterToy: View {
                     .strokeBorder(MossOttoStyle.hairline, lineWidth: 0.7)
             )
 
-            HStack(spacing: 8) {
-                ImpulseWaveformView(profile: activeProfile)
-                    .frame(width: 68, height: 16)
-                Text(readout ?? activeProfile.deckValue)
+            // Full-width OTTOSSOM Acoustic-Haptic Oscilloscope Telemetry Dock (zero orphan bottom pill)
+            HStack(spacing: 10) {
+                ImpulseWaveformView(profile: activeProfile, activePulse: pressedKey != nil)
+                    .frame(width: 68, height: 18)
+
+                Text(readout ?? defaultSpecReadout(for: activeProfile))
                     .font(.caption2.weight(.semibold).monospacedDigit())
                     .foregroundStyle(MossOttoStyle.inkSecondary)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+
+                Spacer(minLength: 4)
+
+                Group {
+                    if let onToggleSound {
+                        Button {
+                            UISelectionFeedbackGenerator().selectionChanged()
+                            onToggleSound()
+                        } label: {
+                            soundBadgeLabel
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("切换试轴声效，当前\(soundEnabled ? "原声开启" : "静音")")
+                    } else {
+                        soundBadgeLabel
+                    }
+                }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(Capsule().fill(MossOttoStyle.surface))
-            .overlay(Capsule().strokeBorder(MossOttoStyle.hairline, lineWidth: 0.6))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .frame(maxWidth: .infinity)
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(MossOttoStyle.surface))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(MossOttoStyle.hairline, lineWidth: 0.7))
         }
+    }
+
+    private var soundBadgeLabel: some View {
+        HStack(spacing: 4) {
+            Image(systemName: soundEnabled ? "speaker.wave.2.fill" : "speaker.slash")
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(soundEnabled ? MossOttoStyle.moss : MossOttoStyle.inkSecondary)
+            Text(soundEnabled ? "原声" : "静音")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(soundEnabled ? MossOttoStyle.inkPrimary : MossOttoStyle.inkSecondary)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3.5)
+        .background(Capsule().fill(MossOttoStyle.surfaceMuted))
+    }
+
+    private func defaultSpecReadout(for profile: HapticProfile) -> String {
+        let t = SystemFeedbackPlayer.tunedImpact(for: profile, firm: false)
+        return "\(profile.title) · \(styleLabel(t.style, t.intensity)) · 1104 Hz"
     }
 
     private func styleLabel(_ style: UIImpactFeedbackGenerator.FeedbackStyle, _ intensity: CGFloat) -> String {
@@ -937,30 +978,35 @@ struct SwitchTesterToy: View {
 /// Visualizes each switch profile's physical snap impulse curve without paragraphs of explanation.
 private struct ImpulseWaveformView: View {
     let profile: HapticProfile
+    var activePulse: Bool = false
 
     var body: some View {
         Canvas { ctx, size in
             let midY = size.height * 0.65
             var path = Path()
             let w = size.width
-            let amp = size.height * 0.55
+            let amp = size.height * (activePulse ? 0.62 : 0.54)
+            let peakPt: CGPoint
             switch profile {
             case .crisp:
+                peakPt = CGPoint(x: w * 0.24, y: midY - amp)
                 path.move(to: CGPoint(x: 0, y: midY))
                 path.addLine(to: CGPoint(x: w * 0.16, y: midY))
-                path.addLine(to: CGPoint(x: w * 0.24, y: midY - amp))
+                path.addLine(to: peakPt)
                 path.addLine(to: CGPoint(x: w * 0.34, y: midY + amp * 0.28))
                 path.addLine(to: CGPoint(x: w * 0.44, y: midY))
                 path.addLine(to: CGPoint(x: w, y: midY))
             case .mechanical:
+                peakPt = CGPoint(x: w * 0.19, y: midY - amp)
                 path.move(to: CGPoint(x: 0, y: midY))
                 path.addLine(to: CGPoint(x: w * 0.12, y: midY))
-                path.addLine(to: CGPoint(x: w * 0.19, y: midY - amp))
+                path.addLine(to: peakPt)
                 path.addLine(to: CGPoint(x: w * 0.27, y: midY + amp * 0.22))
                 path.addLine(to: CGPoint(x: w * 0.35, y: midY - amp * 0.72))
                 path.addLine(to: CGPoint(x: w * 0.44, y: midY))
                 path.addLine(to: CGPoint(x: w, y: midY))
             case .quiet:
+                peakPt = CGPoint(x: w * 0.31, y: midY - amp * 0.56)
                 path.move(to: CGPoint(x: 0, y: midY))
                 path.addCurve(
                     to: CGPoint(x: w * 0.62, y: midY),
@@ -969,7 +1015,12 @@ private struct ImpulseWaveformView: View {
                 )
                 path.addLine(to: CGPoint(x: w, y: midY))
             }
-            ctx.stroke(path, with: .color(MossOttoStyle.violet), style: StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
+            ctx.stroke(path, with: .color(MossOttoStyle.violet), style: StrokeStyle(lineWidth: activePulse ? 2.1 : 1.6, lineCap: .round, lineJoin: .round))
+            let dotR: CGFloat = activePulse ? 2.6 : 1.9
+            ctx.fill(
+                Path(ellipseIn: CGRect(x: peakPt.x - dotR, y: peakPt.y - dotR, width: dotR * 2, height: dotR * 2)),
+                with: .color(activePulse ? MossOttoStyle.lampAmber : MossOttoStyle.violet)
+            )
         }
         .accessibilityHidden(true)
     }

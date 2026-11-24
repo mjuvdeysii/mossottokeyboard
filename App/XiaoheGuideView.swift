@@ -340,6 +340,11 @@ struct XiaoheDrill: View {
         return out
     }
 
+    /// All second keys that form a valid Xiaohe syllable when typed after `key`.
+    static func inspectPartnerKeysForTests(key: Character) -> Set<Character> {
+        Set(XiaoheScheme.validSecondKeys(after: key).keys)
+    }
+
     var body: some View {
         VStack(spacing: 12) {
             HStack(spacing: 6) {
@@ -446,6 +451,7 @@ struct XiaoheDrill: View {
         let g = XiaoheScheme.keyGuide[inspectedKey]
         let initialText = g?.initial.map { "借声母 \($0)" } ?? (XiaoheScheme.plainInitials.contains(inspectedKey) ? "声母 \(inspectedKey)" : "零声母占位")
         let finalsText = (g?.finals.isEmpty == false) ? "韵母 " + (g?.finals.joined(separator: " / ") ?? "") : "无对应韵母"
+        let partnerCount = XiaoheScheme.validSecondKeys(after: inspectedKey).count
         let exs = Self.inspectExamplesForTests(key: inspectedKey)
         return HStack(alignment: .center, spacing: 12) {
             Text(String(inspectedKey).uppercased())
@@ -456,9 +462,21 @@ struct XiaoheDrill: View {
                 .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(MossOttoStyle.violet, lineWidth: 1.6))
 
             VStack(alignment: .leading, spacing: 5) {
-                Text("\(initialText)  ·  \(finalsText)")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(MossOttoStyle.inkPrimary)
+                HStack(spacing: 6) {
+                    Text("\(initialText)  ·  \(finalsText)")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(MossOttoStyle.inkPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    if partnerCount > 0 {
+                        Text("可配 \(partnerCount) 韵")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(MossOttoStyle.lampAmber)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(MossOttoStyle.lampAmber.opacity(0.15)))
+                    }
+                }
                 HStack(spacing: 6) {
                     ForEach(exs, id: \.hanzi) { ex in
                         Text("\(ex.hanzi) \(ex.code.uppercased())")
@@ -480,7 +498,13 @@ struct XiaoheDrill: View {
     }
 
     private func keyMark(_ c: Character) -> Color? {
-        if inspectMode { return inspectedKey == c ? MossOttoStyle.violet : nil }
+        if inspectMode {
+            if inspectedKey == c { return MossOttoStyle.violet }
+            if XiaoheScheme.validSecondKeys(after: inspectedKey)[c] != nil {
+                return MossOttoStyle.lampAmber.opacity(0.68)
+            }
+            return nil
+        }
         guard verdict == false else { return nil }
         return code.contains(c) ? MossOttoStyle.lampAmber : nil
     }

@@ -1900,8 +1900,67 @@ private final class ElevationRailView: UIView {
     }
 }
 
+/// OTTOSSOM miniature ceramic telemetry badge inside the secondary preferences drawer.
+private final class TelemetryChipView: UIView {
+    private let valueLabel = UILabel()
+    private let captionLabel = UILabel()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        layer.cornerRadius = 10
+        layer.cornerCurve = .continuous
+        layer.borderWidth = 0.5
+        valueLabel.font = Theme.font(14.5, .bold)
+        valueLabel.textAlignment = .center
+        valueLabel.adjustsFontSizeToFitWidth = true
+        valueLabel.minimumScaleFactor = 0.72
+        captionLabel.font = Theme.font(10.5, .medium)
+        captionLabel.textAlignment = .center
+        captionLabel.adjustsFontSizeToFitWidth = true
+        captionLabel.minimumScaleFactor = 0.75
+
+        let v = UIStackView(arrangedSubviews: [valueLabel, captionLabel])
+        v.axis = .vertical
+        v.spacing = 1.5
+        v.alignment = .fill
+        addSubview(v)
+        v.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            v.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
+            v.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
+            v.topAnchor.constraint(equalTo: topAnchor, constant: 7),
+            v.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -7),
+        ])
+        refreshAppearance()
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    var valueTextForTests: String { valueLabel.text ?? "" }
+
+    func configure(value: String, caption: String) {
+        valueLabel.text = value
+        captionLabel.text = caption
+        isAccessibilityElement = true
+        accessibilityLabel = "\(caption)：\(value)"
+    }
+
+    func refreshAppearance() {
+        let t = traitCollection
+        backgroundColor = Theme.functionKey.resolvedColor(with: t)
+        layer.borderColor = Theme.keyBorder.resolvedColor(with: t).cgColor
+        valueLabel.textColor = Theme.keyText.resolvedColor(with: t)
+        captionLabel.textColor = Theme.secondaryText.resolvedColor(with: t)
+    }
+
+    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+        super.traitCollectionDidChange(previous)
+        refreshAppearance()
+    }
+}
+
 /// OTTOSSOM zero-scroll hardware control deck (2x3 tactile tiles + contextual Xiaohe guide pill) with a clean
-/// secondary drawer (`更多偏好`) for low-frequency toggles, learned lexicon stats & diagnostics.
+/// visual telemetry secondary drawer (`更多 ›`) for low-frequency toggles, learned lexicon stats & diagnostics.
 final class SettingsPanelView: UIView {
     var onClose: (() -> Void)?
     var onChange: (() -> Void)?
@@ -1941,10 +2000,22 @@ final class SettingsPanelView: UIView {
     private let englishSwitch = UISwitch()
     private let appearance = UISegmentedControl(items: ["自动", "日光", "夜灯"])
     private let styleControl = UISegmentedControl(items: ["Mosto", "简洁"])
-    private let heightControl = UISegmentedControl(items: KeyboardHeightPreset.allCases.map(\.title))
+    private let drawerHeightRail = ElevationRailView()
+    private let lexiconChip = TelemetryChipView()
+    private let learnedChip = TelemetryChipView()
     private let learnedLabel = UILabel()
+    private let tapsChip = TelemetryChipView()
+    private let memChip = TelemetryChipView()
+    private let readyChip = TelemetryChipView()
     private let diagLabel = UILabel()
+    private let notePill = UIView()
+    private let noteIcon = UIImageView()
     private let note = UILabel()
+    private var telemetryChips: [TelemetryChipView] { [lexiconChip, learnedChip, tapsChip, memChip, readyChip] }
+    private let resetTrashIcon = UIImageView()
+    private var rawDiagnostics = ""
+    private var cachedLexiconDisplay = "--"
+    private var cachedLearnedDisplay = "0 词"
     private var groups: [UIView] = []
     private var feedbackAvailable = true
 
@@ -1952,14 +2023,17 @@ final class SettingsPanelView: UIView {
         super.init(frame: frame)
         backgroundColor = Theme.touchable
         tintColor = Theme.selection
-        for sw in [englishSwitch] { sw.onTintColor = Theme.selection }
+        englishSwitch.onTintColor = Theme.selection
         numberControl.translatesAutoresizingMaskIntoConstraints = false
         numberControl.widthAnchor.constraint(equalToConstant: 156).isActive = true
         for i in 0..<numberControl.numberOfSegments { numberControl.setWidth(78, forSegmentAt: i) }
-        for sc in [numberControl, appearance, styleControl, heightControl] {
+        drawerHeightRail.translatesAutoresizingMaskIntoConstraints = false
+        drawerHeightRail.widthAnchor.constraint(equalToConstant: 196).isActive = true
+        drawerHeightRail.heightAnchor.constraint(equalToConstant: 30).isActive = true
+        for sc in [numberControl, appearance, styleControl] {
             sc.selectedSegmentTintColor = Theme.selection
-            sc.setTitleTextAttributes([.foregroundColor: Theme.selectionText, .font: Theme.font(13.5, .semibold)], for: .selected)
-            sc.setTitleTextAttributes([.foregroundColor: Theme.keyText, .font: Theme.font(13.5, .medium)], for: .normal)
+            sc.setTitleTextAttributes([.foregroundColor: Theme.selectionText, .font: Theme.font(13, .semibold)], for: .selected)
+            sc.setTitleTextAttributes([.foregroundColor: Theme.keyText, .font: Theme.font(13, .medium)], for: .normal)
             sc.setContentHuggingPriority(.required, for: .horizontal)
         }
 
@@ -2040,15 +2114,11 @@ final class SettingsPanelView: UIView {
         offlineStatusLabel.textColor = Theme.secondaryText
         utilityRow.addSubview(offlineStatusLabel)
 
-        heightRail.onSelect = { [weak self] tier in
-            guard let self else { return }
-            KeyboardSettings.shared.keyboardHeight = tier.rawValue
-            if self.canProvideHaptic {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred(intensity: tier.hapticIntensity)
-            }
-            self.load()
-            self.onChange?()
+        let onElevationSelect: (KeyboardHeightPreset) -> Void = { [weak self] tier in
+            self?.applyElevation(tier)
         }
+        heightRail.onSelect = onElevationSelect
+        drawerHeightRail.onSelect = onElevationSelect
         utilityRow.addSubview(heightRail)
 
         moreButton.setTitle("更多 ›", for: .normal)
@@ -2060,7 +2130,7 @@ final class SettingsPanelView: UIView {
         moreButton.addTarget(self, action: #selector(openMore), for: .touchUpInside)
         utilityRow.addSubview(moreButton)
 
-        // Secondary Drawer (`moreScroll`)
+        // Secondary OTTOSSOM Instrument Drawer (`moreScroll`)
         moreScroll.isHidden = true
         moreScroll.alwaysBounceHorizontal = false
         moreScroll.showsHorizontalScrollIndicator = false
@@ -2078,44 +2148,114 @@ final class SettingsPanelView: UIView {
         stack.addArrangedSubview(inset(backDeckButton))
         stack.setCustomSpacing(8, after: stack.arrangedSubviews.last!)
 
-        section("输入细节", rows: [
-            row("中英混输", englishSwitch),
-            row("123 数字键", numberControl),
-        ], footer: "九宫格下小鹤双拼与全拼均可使用；打 ok、ios 直接出 OK、iOS。")
+        section("输入与按键", rows: [
+            row("中英混输", icon: "globe", englishSwitch),
+            row("123 数字键", icon: "number.square", numberControl),
+        ], footer: nil)
 
-        section("外观微调", rows: [
-            row("风格", styleControl),
-            row("光线", appearance),
-            row("高度", heightControl),
-        ], footer: "Mosto 配备软胶单层键帽；简洁复刻系统 Liquid Glass。高度按 紧凑 / 标准 / 舒展 / 宽大 四档适配单手与双手输入。")
+        section("外观与比例", rows: [
+            row("风格", icon: "paintpalette", styleControl),
+            row("光线", icon: "sun.max", appearance),
+            row("高度", icon: "arrow.up.and.down.square", drawerHeightRail),
+        ], footer: nil)
 
-        learnedLabel.font = .systemFont(ofSize: 14)
+        lexiconChip.configure(value: "--", caption: "内置词库")
+        learnedChip.configure(value: "0 词", caption: "已学习")
+        let lexRow = UIStackView(arrangedSubviews: [lexiconChip, learnedChip])
+        lexRow.axis = .horizontal
+        lexRow.distribution = .fillEqually
+        lexRow.spacing = 8
+
+        learnedLabel.font = Theme.font(12, .medium)
         learnedLabel.textColor = Theme.secondaryText
         learnedLabel.tag = Self.tagSecondary
         learnedLabel.numberOfLines = 0
+        learnedLabel.isHidden = true
+
+        let lexCol = UIStackView(arrangedSubviews: [lexRow, learnedLabel])
+        lexCol.axis = .vertical
+        lexCol.spacing = 6
+
+        resetTrashIcon.contentMode = .scaleAspectFit
+        resetTrashIcon.image = UIImage(systemName: "trash", withConfiguration: UIImage.SymbolConfiguration(pointSize: 13.5, weight: .semibold))
+        resetTrashIcon.translatesAutoresizingMaskIntoConstraints = false
+        resetTrashIcon.widthAnchor.constraint(equalToConstant: 16).isActive = true
+        resetTrashIcon.heightAnchor.constraint(equalToConstant: 16).isActive = true
+
         resetButton.setTitle("清空已学习的词语与触点习惯", for: .normal)
-        resetButton.setTitleColor(.systemRed, for: .normal)
-        resetButton.titleLabel?.font = .systemFont(ofSize: 14.5)
+        resetButton.titleLabel?.font = Theme.font(14, .semibold)
+        resetButton.titleLabel?.adjustsFontSizeToFitWidth = true
+        resetButton.titleLabel?.minimumScaleFactor = 0.85
         resetButton.contentHorizontalAlignment = .leading
         resetButton.addTarget(self, action: #selector(resetTapped), for: .touchUpInside)
-        section("本机学习词库", rows: [learnedLabel, resetButton], footer: nil)
 
-        diagLabel.font = .monospacedDigitSystemFont(ofSize: 12.5, weight: .regular)
+        let resetRow = UIStackView(arrangedSubviews: [resetTrashIcon, resetButton])
+        resetRow.alignment = .center
+        resetRow.spacing = 7
+        section("本机词库", rows: [lexCol, resetRow], footer: nil)
+
+        tapsChip.configure(value: "--", caption: "本次按键")
+        memChip.configure(value: "--", caption: "内存占用")
+        readyChip.configure(value: "--", caption: "引擎就绪")
+        let diagRow = UIStackView(arrangedSubviews: [tapsChip, memChip, readyChip])
+        diagRow.axis = .horizontal
+        diagRow.distribution = .fillEqually
+        diagRow.spacing = 8
+
+        diagLabel.font = .monospacedDigitSystemFont(ofSize: 11.5, weight: .regular)
         diagLabel.textColor = Theme.secondaryText
         diagLabel.tag = Self.tagSecondary
         diagLabel.numberOfLines = 0
+        diagLabel.isHidden = true
+
+        let diagCol = UIStackView(arrangedSubviews: [diagRow, diagLabel])
+        diagCol.axis = .vertical
+        diagCol.spacing = 6
         if Self.isTestFlight {
-            section("测试诊断", rows: [diagLabel], footer: nil)
+            section("实时遥测", rows: [diagCol], footer: nil)
         }
 
+        notePill.backgroundColor = Theme.settingsGroup
+        notePill.tag = Self.tagGroup
+        notePill.layer.cornerRadius = 11
+        notePill.layer.cornerCurve = .continuous
+        noteIcon.contentMode = .scaleAspectFit
+        noteIcon.image = UIImage(systemName: "lock.shield.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 12.5, weight: .semibold))
+        noteIcon.tintColor = Theme.secondaryText
+        noteIcon.translatesAutoresizingMaskIntoConstraints = false
+        noteIcon.widthAnchor.constraint(equalToConstant: 15).isActive = true
+        noteIcon.heightAnchor.constraint(equalToConstant: 15).isActive = true
+
         note.numberOfLines = 0
-        note.font = .systemFont(ofSize: 12)
+        note.font = Theme.font(11.5, .medium)
         note.textColor = Theme.secondaryText
         note.tag = Self.tagSecondary
-        stack.addArrangedSubview(inset(note))
+        note.text = "纯离线本机运算 · 零联网零跨进程共享"
+
+        let noteStack = UIStackView(arrangedSubviews: [noteIcon, note])
+        noteStack.alignment = .center
+        noteStack.spacing = 7
+        notePill.addSubview(noteStack)
+        noteStack.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            noteStack.leadingAnchor.constraint(equalTo: notePill.leadingAnchor, constant: 12),
+            noteStack.trailingAnchor.constraint(equalTo: notePill.trailingAnchor, constant: -12),
+            noteStack.topAnchor.constraint(equalTo: notePill.topAnchor, constant: 8),
+            noteStack.bottomAnchor.constraint(equalTo: notePill.bottomAnchor, constant: -8),
+        ])
+        let noteWrap = UIView()
+        noteWrap.addSubview(notePill)
+        notePill.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            notePill.leadingAnchor.constraint(equalTo: noteWrap.leadingAnchor, constant: 12),
+            notePill.trailingAnchor.constraint(equalTo: noteWrap.trailingAnchor, constant: -12),
+            notePill.topAnchor.constraint(equalTo: noteWrap.topAnchor),
+            notePill.bottomAnchor.constraint(equalTo: noteWrap.bottomAnchor),
+        ])
+        stack.addArrangedSubview(noteWrap)
 
         numberControl.addTarget(self, action: #selector(numberChanged), for: .valueChanged)
-        for c in [appearance, styleControl, heightControl] { c.addTarget(self, action: #selector(drawerChanged), for: .valueChanged) }
+        for c in [appearance, styleControl] { c.addTarget(self, action: #selector(drawerChanged), for: .valueChanged) }
         englishSwitch.addTarget(self, action: #selector(drawerChanged), for: .valueChanged)
 
         styleChrome()
@@ -2123,6 +2263,12 @@ final class SettingsPanelView: UIView {
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    private func destructiveRedColor(for t: UITraitCollection) -> UIColor {
+        t.userInterfaceStyle == .dark
+            ? UIColor(red: 1.0, green: 0.45, blue: 0.45, alpha: 1)
+            : UIColor(red: 0.80, green: 0.16, blue: 0.18, alpha: 1)
+    }
 
     private func styleChrome() {
         let t = traitCollection
@@ -2135,37 +2281,63 @@ final class SettingsPanelView: UIView {
         moreButton.setTitleColor(Theme.functionText, for: .normal)
         backDeckButton.setTitleColor(Theme.selection, for: .normal)
         accessBanner.textColor = Theme.correctedMark
-        for sc in [numberControl, appearance, styleControl, heightControl] {
+        for sc in [numberControl, appearance, styleControl] {
             sc.selectedSegmentTintColor = Theme.selection
-            sc.setTitleTextAttributes([.foregroundColor: Theme.selectionText, .font: Theme.font(13.5, .semibold)], for: .selected)
-            sc.setTitleTextAttributes([.foregroundColor: Theme.keyText, .font: Theme.font(13.5, .medium)], for: .normal)
+            sc.setTitleTextAttributes([.foregroundColor: Theme.selectionText, .font: Theme.font(13, .semibold)], for: .selected)
+            sc.setTitleTextAttributes([.foregroundColor: Theme.keyText, .font: Theme.font(13, .medium)], for: .normal)
         }
         englishSwitch.onTintColor = Theme.selection
+        let red = destructiveRedColor(for: t)
+        resetButton.setTitleColor(red, for: .normal)
+        resetTrashIcon.tintColor = red
+        noteIcon.tintColor = (feedbackAvailable ? Theme.secondaryText : Theme.correctedMark).resolvedColor(with: t)
         for tile in hardwareTiles { tile.refreshAppearance() }
+        for chip in telemetryChips { chip.refreshAppearance() }
         refreshGuidePill()
         refreshHeightRail()
     }
 
     var heightPresetForTests: KeyboardHeightPreset { KeyboardHeightPreset.clamped(KeyboardSettings.shared.keyboardHeight) }
+    var drawerHeightPresetForTests: KeyboardHeightPreset { drawerHeightRail.selectedTier }
     var heightPillTitleForTests: String { "高度·\(heightPresetForTests.title)" }
     func tapHeightPillForTests() { cycleHeight() }
     func selectHeightForTests(_ preset: KeyboardHeightPreset) { heightRail.selectForTests(preset) }
+    func selectDrawerHeightForTests(_ preset: KeyboardHeightPreset) { drawerHeightRail.selectForTests(preset) }
     var tileIconsLoadedForTests: Bool { hardwareTiles.allSatisfy(\.hasSymbolForTests) }
-
-    private func refreshHeightRail() {
-        heightRail.selectedTier = KeyboardHeightPreset.clamped(KeyboardSettings.shared.keyboardHeight)
-        heightRail.refreshAppearance()
+    var isResetConfirmingForTests: Bool { resetConfirming }
+    var telemetrySummaryForTests: (lexicon: String, learned: String, mem: String, ready: String) {
+        (lexiconChip.valueTextForTests, learnedChip.valueTextForTests, memChip.valueTextForTests, readyChip.valueTextForTests)
+    }
+    var preferredFullHeightForTests: CGFloat {
+        let headH: CGFloat = (bounds.height > 60 && bounds.height < 205) ? 36 : 42
+        let w = bounds.width > 60 ? bounds.width : 375
+        let size = stack.systemLayoutSizeFitting(
+            CGSize(width: w, height: 0),
+            withHorizontalFittingPriority: .required,
+            verticalFittingPriority: .fittingSizeLevel
+        )
+        return headH + size.height + 22
     }
 
-    @objc private func cycleHeight() {
-        let s = KeyboardSettings.shared
-        let next = KeyboardHeightPreset.clamped(s.keyboardHeight).next
-        s.keyboardHeight = next.rawValue
+    private func refreshHeightRail() {
+        let tier = KeyboardHeightPreset.clamped(KeyboardSettings.shared.keyboardHeight)
+        heightRail.selectedTier = tier
+        heightRail.refreshAppearance()
+        drawerHeightRail.selectedTier = tier
+        drawerHeightRail.refreshAppearance()
+    }
+
+    private func applyElevation(_ tier: KeyboardHeightPreset) {
+        KeyboardSettings.shared.keyboardHeight = tier.rawValue
         if canProvideHaptic {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred(intensity: next.hapticIntensity)
+            UIImpactFeedbackGenerator(style: .light).impactOccurred(intensity: tier.hapticIntensity)
         }
         load()
         onChange?()
+    }
+
+    @objc private func cycleHeight() {
+        applyElevation(KeyboardHeightPreset.clamped(KeyboardSettings.shared.keyboardHeight).next)
     }
 
     private func refreshGuidePill() {
@@ -2199,7 +2371,7 @@ final class SettingsPanelView: UIView {
     private func section(_ title: String, rows: [UIView], footer: String?) {
         let cap = UILabel()
         cap.text = title
-        cap.font = .systemFont(ofSize: 12.5)
+        cap.font = .systemFont(ofSize: 12)
         cap.textColor = Theme.secondaryText
         cap.tag = Self.tagSecondary
         let capWrap = inset(cap)
@@ -2262,23 +2434,31 @@ final class SettingsPanelView: UIView {
             stack.setCustomSpacing(4, after: wrap)
             let fw = inset(f)
             stack.addArrangedSubview(fw)
-            stack.setCustomSpacing(12, after: fw)
+            stack.setCustomSpacing(10, after: fw)
         } else {
-            stack.setCustomSpacing(12, after: wrap)
+            stack.setCustomSpacing(10, after: wrap)
         }
     }
 
-    private func row(_ text: String, _ control: UIView) -> UIView {
+    private func row(_ text: String, icon: String, _ control: UIView) -> UIView {
+        let iv = UIImageView(image: UIImage(systemName: icon, withConfiguration: UIImage.SymbolConfiguration(pointSize: 13.5, weight: .medium)))
+        iv.contentMode = .scaleAspectFit
+        iv.tintColor = Theme.secondaryText
+        iv.tag = Self.tagIcon
+        iv.translatesAutoresizingMaskIntoConstraints = false
+        iv.widthAnchor.constraint(equalToConstant: 17).isActive = true
+        iv.heightAnchor.constraint(equalToConstant: 17).isActive = true
+
         let l = UILabel()
         l.text = text
-        l.font = .systemFont(ofSize: 15.5)
+        l.font = .systemFont(ofSize: 14.5, weight: .medium)
         l.textColor = Theme.keyText
         l.tag = Self.tagPrimary
-        l.numberOfLines = 0
+        l.numberOfLines = 1
         l.setContentCompressionResistancePriority(.required, for: .horizontal)
-        let s = UIStackView(arrangedSubviews: [l, UIView(), control])
+        let s = UIStackView(arrangedSubviews: [iv, l, UIView(), control])
         s.alignment = .center
-        s.spacing = 10
+        s.spacing = 7
         return s
     }
 
@@ -2291,7 +2471,7 @@ final class SettingsPanelView: UIView {
         #endif
     }()
 
-    private static let tagPrimary = 9_701, tagSecondary = 9_702, tagGroup = 9_703, tagLine = 9_704
+    private static let tagPrimary = 9_701, tagSecondary = 9_702, tagGroup = 9_703, tagLine = 9_704, tagIcon = 9_705
 
     func themeChanged() {
         styleChrome()
@@ -2301,6 +2481,7 @@ final class SettingsPanelView: UIView {
             case Self.tagSecondary: (v as? UILabel)?.textColor = Theme.secondaryText
             case Self.tagGroup: v.backgroundColor = Theme.settingsGroup
             case Self.tagLine: v.backgroundColor = Theme.separator
+            case Self.tagIcon: (v as? UIImageView)?.tintColor = Theme.secondaryText
             default: break
             }
             v.subviews.forEach(walk)
@@ -2391,24 +2572,76 @@ final class SettingsPanelView: UIView {
         englishSwitch.isOn = s.english
         appearance.selectedSegmentIndex = s.appearance
         styleControl.selectedSegmentIndex = s.style
-        heightControl.selectedSegmentIndex = KeyboardHeightPreset.clamped(s.keyboardHeight).rawValue
         refreshGuidePill()
         refreshHeightRail()
         setNeedsLayout()
     }
 
-    func setNote(_ text: String) { note.text = text }
+    func setNote(_ text: String) {
+        let needsAccess = !feedbackAvailable || text.contains("允许完全访问")
+        noteIcon.image = UIImage(
+            systemName: needsAccess ? "exclamationmark.shield.fill" : "lock.shield.fill",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 12.5, weight: .semibold)
+        )
+        noteIcon.tintColor = (needsAccess ? Theme.correctedMark : Theme.secondaryText).resolvedColor(with: traitCollection)
+        note.text = needsAccess
+            ? "需在「设置 › Mosto键盘」开启完全访问以启用震动与声音 · 词库全程离线"
+            : "纯离线本机运算 · 零联网零跨进程共享"
+    }
 
     func setFeedbackAvailable(_ ok: Bool) {
         feedbackAvailable = ok
         accessBanner.isHidden = ok
         hapticTile.isEnabled = ok
         soundTile.isEnabled = ok
+        setNote("")
         load()
     }
 
-    func setLearned(_ text: String) { learnedLabel.text = text }
-    func setDiagnostics(_ text: String) { diagLabel.text = text }
+    private static func extractInt(after marker: String, in text: String) -> Int? {
+        guard let r = text.range(of: marker) else { return nil }
+        var rest = text[r.upperBound...]
+        while let ch = rest.first, !ch.isNumber {
+            if !ch.isWhitespace { break }
+            rest.removeFirst()
+        }
+        let digits = rest.prefix(while: \.isNumber)
+        return digits.isEmpty ? nil : Int(digits)
+    }
+
+    func setLearned(_ text: String) {
+        learnedLabel.text = text
+        if text.contains("已清空") {
+            cachedLearnedDisplay = "已清空"
+            learnedChip.configure(value: cachedLearnedDisplay, caption: "已学习")
+            lexiconChip.configure(value: cachedLexiconDisplay, caption: "内置词库")
+            learnedLabel.isHidden = true
+            return
+        }
+        if let lex = Self.extractInt(after: "词库 ", in: text),
+           let learned = Self.extractInt(after: "已学习 ", in: text) {
+            cachedLexiconDisplay = lex >= 10_000 ? "\(lex / 10_000)万+" : "\(lex)"
+            cachedLearnedDisplay = "\(learned) 词"
+            lexiconChip.configure(value: cachedLexiconDisplay, caption: "内置词库")
+            learnedChip.configure(value: cachedLearnedDisplay, caption: "已学习")
+            learnedLabel.isHidden = true
+        } else {
+            learnedLabel.isHidden = text.isEmpty
+        }
+    }
+
+    func setDiagnostics(_ text: String) {
+        rawDiagnostics = text
+        diagLabel.text = text
+        let tapsVal = Self.extractInt(after: "本次按键 ", in: text).map { "\($0) 次" } ?? "--"
+        let memVal = Self.extractInt(after: "内存 ", in: text).map { "\($0) MB" } ?? "--"
+        let readyVal = Self.extractInt(after: "引擎就绪 ", in: text).map { "\($0) ms" } ?? "--"
+        tapsChip.configure(value: tapsVal, caption: "本次按键")
+        memChip.configure(value: memVal, caption: "内存占用")
+        readyChip.configure(value: readyVal, caption: "引擎就绪")
+        let alertOnly = text.contains("精简模式") || text.contains("内存警告")
+        diagLabel.isHidden = !alertOnly
+    }
 
     /// Snapshot & compatibility helper: keeps the primary zero-scroll Hardware Deck focused.
     func demoScrollToFeedback() {
@@ -2417,7 +2650,7 @@ final class SettingsPanelView: UIView {
         setNeedsLayout()
     }
 
-    var diagnosticsText: String { diagLabel.text ?? "" }
+    var diagnosticsText: String { rawDiagnostics }
 
     // MARK: - Actions & Test Hooks
 
@@ -2503,8 +2736,14 @@ final class SettingsPanelView: UIView {
         setNeedsLayout()
     }
 
+    private func resetConfirmationPrompt() {
+        resetConfirming = false
+        resetButton.setTitle("清空已学习的词语与触点习惯", for: .normal)
+    }
+
     @objc private func closeMore() {
         if canProvideHaptic { UISelectionFeedbackGenerator().selectionChanged() }
+        resetConfirmationPrompt()
         moreScroll.isHidden = true
         deckContainer.isHidden = false
         setNeedsLayout()
@@ -2520,9 +2759,6 @@ final class SettingsPanelView: UIView {
         if styleControl.selectedSegmentIndex >= 0 {
             s.style = styleControl.selectedSegmentIndex
         }
-        if heightControl.selectedSegmentIndex >= 0 {
-            s.keyboardHeight = KeyboardHeightPreset.clamped(heightControl.selectedSegmentIndex).rawValue
-        }
         load()
         onChange?()
     }
@@ -2535,8 +2771,7 @@ final class SettingsPanelView: UIView {
 
     @objc private func closeTapped() {
         if canProvideHaptic { UISelectionFeedbackGenerator().selectionChanged() }
-        resetConfirming = false
-        resetButton.setTitle("清空已学习的词语与触点习惯", for: .normal)
+        resetConfirmationPrompt()
         moreScroll.isHidden = true
         deckContainer.isHidden = false
         onClose?()
@@ -2549,13 +2784,11 @@ final class SettingsPanelView: UIView {
             resetButton.setTitle("确认清空？再点一次立即清空", for: .normal)
             DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
                 guard let self, self.resetConfirming else { return }
-                self.resetConfirming = false
-                self.resetButton.setTitle("清空已学习的词语与触点习惯", for: .normal)
+                self.resetConfirmationPrompt()
             }
         } else {
-            resetConfirming = false
+            resetConfirmationPrompt()
             if canProvideHaptic { UINotificationFeedbackGenerator().notificationOccurred(.success) }
-            resetButton.setTitle("清空已学习的词语与触点习惯", for: .normal)
             onResetLearning?()
         }
     }

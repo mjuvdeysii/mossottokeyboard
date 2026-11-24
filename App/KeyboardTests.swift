@@ -147,6 +147,8 @@ enum KeyboardTests {
         r68StageOverlaysMathSpaceAndEmojiCraft(window)
         r69HeightPersistenceAndVisualConsole(window)
         r70GridScopeRailAndDockCraft(window)
+        r71XiaoheChordLighting(window)
+        r72DrawerTelemetryBracketAndBenchCraft(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -2932,6 +2934,153 @@ enum KeyboardTests {
         log(fadeOnOverflow && fadeOffShort,
             "r70.CandidateGridView enables dynamic bottom fade only when vertical candidates overflow",
             "on=\(fadeOnOverflow) off=\(fadeOffShort)")
+    }
+
+    // MARK: - R71: Xiaohe Live Chord Lighting & Guide Inspector Partner Illumination
+
+    static func r71XiaoheChordLighting(_ window: UIWindow) {
+        // 1. Canonical XiaoheScheme syllable matrix matches lexicon.bin syllables 100% with zero drift
+        let lexPath = KeyboardViewController.resourceBundle.path(forResource: "lexicon", ofType: "bin")
+        let lex = lexPath.flatMap { try? Lexicon(path: $0) }
+        let lexSet = Set(lex?.syllables.filter { XiaoheScheme.code(for: $0) != nil } ?? [])
+        let schemeSet = Set(XiaoheScheme.allSyllables)
+        let missingFromScheme = lexSet.subtracting(schemeSet)
+        let extraInScheme = schemeSet.subtracting(lexSet)
+        var roundTripOk = !lexSet.isEmpty
+        for syl in lexSet {
+            guard let code = XiaoheScheme.code(for: syl), code.count == 2 else { roundTripOk = false; break }
+            let chars = Array(code)
+            if !(XiaoheScheme.validSecondKeys(after: chars[0])[chars[1]]?.contains(syl) ?? false) {
+                roundTripOk = false; break
+            }
+        }
+        log(!lexSet.isEmpty && missingFromScheme.isEmpty && extraInScheme.isEmpty && roundTripOk,
+            "r71.XiaoheScheme.allSyllables matches lexicon.bin 100% and round-trips every 2-key code",
+            "lex=\(lexSet.count) missing=\(missingFromScheme) extra=\(extraInScheme) rt=\(roundTripOk)")
+
+        // 2. Per-final precision & zero-initial overrides
+        let qk = XiaoheScheme.chordHint(forKey: "k", after: "q") // qing -> index 0 ("ing"), NOT "uai"
+        let gk = XiaoheScheme.chordHint(forKey: "k", after: "g") // guai -> index 1 ("uai"), NOT "ing"
+        let js = XiaoheScheme.chordHint(forKey: "s", after: "j") // jiong -> index 1 ("iong"), NOT "ong"
+        let nt = XiaoheScheme.chordHint(forKey: "t", after: "n") // nüe -> index 1 ("üe"), NOT "ue"
+        let nv = XiaoheScheme.chordHint(forKey: "v", after: "n") // nü -> index 1 ("ü"), NOT "ui"
+        let dv = XiaoheScheme.chordHint(forKey: "v", after: "d") // dui -> index 0 ("ui"), NOT "ü"
+        let ai = XiaoheScheme.chordHint(forKey: "i", after: "a") // ai -> override "ai"
+        let er = XiaoheScheme.chordHint(forKey: "r", after: "e") // er -> override "er"
+        let qa = XiaoheScheme.chordHint(forKey: "a", after: "q") // qa -> inactive
+        let precisionOk = qk == .match(finalIndices: [0], overrideFinal: nil)
+            && gk == .match(finalIndices: [1], overrideFinal: nil)
+            && js == .match(finalIndices: [1], overrideFinal: nil)
+            && nt == .match(finalIndices: [1], overrideFinal: nil)
+            && nv == .match(finalIndices: [1], overrideFinal: nil)
+            && dv == .match(finalIndices: [0], overrideFinal: nil)
+            && ai == .match(finalIndices: [], overrideFinal: "ai")
+            && er == .match(finalIndices: [], overrideFinal: "er")
+            && qa == .inactive
+        log(precisionOk,
+            "r71.XiaoheScheme.chordHint discriminates dual-final keys and zero-initial completions accurately",
+            "qk=\(String(describing: qk)) gk=\(String(describing: gk)) er=\(String(describing: er)) qa=\(String(describing: qa))")
+
+        // 3. Live KeyboardViewController + KeyView integration across odd/even beats, delete, and guide toggle
+        let s = KeyboardSettings.shared
+        let prevGuide = s.xiaoheGuide
+        let prevScheme = s.scheme
+        let prevGrid = s.pinyinGrid
+        defer {
+            s.xiaoheGuide = prevGuide
+            s.scheme = prevScheme
+            s.pinyinGrid = prevGrid
+        }
+        if let (vc, _) = makeKeyboard(scheme: 0, grid: false, in: window) {
+            let kv = vc.keyboardViewForTests
+            s.xiaoheGuide = false
+            vc.applySettings()
+            vc.handle(.char("q"), tap: Tap.exact("q"))
+            let offInert = kv.guideChordHintForTests(.char("k")) == nil && kv.guideChordHintForTests(.char("a")) == nil
+            vc.handle(.delete, tap: nil)
+
+            s.xiaoheGuide = true
+            vc.applySettings()
+            let idleNeutral = kv.guideChordHintForTests(.char("k")) == nil
+
+            // Odd beat 1: "q" -> k lights up "ing" (index 0), a dims (.inactive)
+            vc.handle(.char("q"), tap: Tap.exact("q"))
+            let odd1K = kv.guideChordHintForTests(.char("k")) == .match(finalIndices: [0], overrideFinal: nil)
+            let odd1A = kv.guideChordHintForTests(.char("a")) == .inactive
+
+            // Even beat 2: "qi" -> resets back to neutral full chart
+            vc.handle(.char("i"), tap: Tap.exact("i"))
+            let evenReset = kv.guideChordHintForTests(.char("k")) == nil && kv.guideChordHintForTests(.char("a")) == nil
+
+            // Odd beat 3: "qie" -> e is zero-initial -> r shows override "er"
+            vc.handle(.char("e"), tap: Tap.exact("e"))
+            let odd3R = kv.guideChordHintForTests(.char("r")) == .match(finalIndices: [], overrideFinal: "er")
+            let odd3TextR = kv.guideTextForTests(.char("r")) == "er"
+
+            // Delete back to even beat -> resets; delete once more to odd beat "q" -> re-activates
+            vc.handle(.delete, tap: nil)
+            let backEven = kv.guideChordHintForTests(.char("r")) == nil
+            vc.handle(.delete, tap: nil)
+            let backOddQ = kv.guideChordHintForTests(.char("k")) == .match(finalIndices: [0], overrideFinal: nil)
+
+            // Companion App Guide Inspector partner keys match exact same table
+            let vPartners = XiaoheDrill.inspectPartnerKeysForTests(key: "v")
+            let oPartners = XiaoheDrill.inspectPartnerKeysForTests(key: "o")
+            let inspectorOk = vPartners.contains("s") && !vPartners.contains("b") && oPartners == Set(["o", "u"])
+
+            log(offInert && idleNeutral && odd1K && odd1A && evenReset && odd3R && odd3TextR && backEven && backOddQ && inspectorOk,
+                "r71.Live Xiaohe Chord Lighting tracks odd/even beats, backspaces, and Companion App inspector",
+                "off=\(offInert) idle=\(idleNeutral) k=\(odd1K) a=\(odd1A) even=\(evenReset) er=\(odd3R)/\(odd3TextR) back=\(backEven)/\(backOddQ) insp=\(inspectorOk)")
+        } else {
+            log(false, "r71.XiaoheChordLighting setup", "engine did not load")
+        }
+    }
+
+    // MARK: - R72: Visual telemetry drawer, bracket optical weight & single-row 7-step bench rail
+
+    static func r72DrawerTelemetryBracketAndBenchCraft(_ window: UIWindow) {
+        // 1. Bracket glyph font weighting & corner hint separation on symbols/numbers pages
+        let kv = KeyboardView(spatial: SpatialModel.standard(width: 402))
+        kv.frame = CGRect(x: 0, y: 0, width: 402, height: 212)
+        kv.configure(LayoutContext(page: .symbols, chinese: true, showGlobe: false, returnLabel: nil,
+                                   returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true))
+        kv.layoutIfNeeded()
+        let bracketInfo = kv.keyFontAndHintForTests(.char("【"))
+        let fontOk = bracketInfo?.fontName.contains("PingFangSC-Regular") == true
+        let hintOk = (bracketInfo?.hintFrame.width ?? 99) <= 14.5 && (bracketInfo?.hintFrame.width ?? 0) >= 10
+        log(fontOk && hintOk,
+            "r72.KeyView balances CJK bracket glyph weight and keeps corner hints separated",
+            "font=\(bracketInfo?.fontName ?? "nil") hintW=\(bracketInfo?.hintFrame.width ?? -1)")
+
+        // 2. SettingsPanelView secondary drawer telemetry, synced ElevationRail, reset cleanup & snapshot fit height
+        let prevHeight = KeyboardSettings.shared.keyboardHeight
+        defer { KeyboardSettings.shared.keyboardHeight = prevHeight }
+        let sp = SettingsPanelView(frame: CGRect(x: 0, y: 0, width: 375, height: 242))
+        sp.setLearned("词库 1866491 条 · 已学习 12 个词")
+        sp.setDiagnostics("本次按键 128 次 · 内存 18 MB · 引擎就绪 14 ms · 震动：开")
+        sp.toggleMoreForTests()
+        sp.layoutIfNeeded()
+        sp.selectDrawerHeightForTests(.comfortable)
+        let syncedHeight = sp.heightPresetForTests == .comfortable && sp.drawerHeightPresetForTests == .comfortable
+        let telemetry = sp.telemetrySummaryForTests
+        let telemetryOk = telemetry.lexicon == "186万+" && telemetry.learned == "12 词" && telemetry.mem == "18 MB" && telemetry.ready == "14 ms"
+        let fullH = sp.preferredFullHeightForTests
+        let fitOk = fullH > 380 && fullH < 720
+        sp.toggleMoreForTests() // closes drawer cleanly
+        let resetCleared = !sp.isResetConfirmingForTests
+        log(syncedHeight && telemetryOk && fitOk && resetCleared,
+            "r72.SettingsPanelView secondary drawer syncs ElevationRail, formats telemetry chips, and fits compactly",
+            "sync=\(syncedHeight) tele=\(telemetry) fullH=\(fullH) resetCleared=\(resetCleared)")
+
+        // 3. PlaygroundModel 7-lesson compactTag completeness & non-empty speed test targets
+        let allCompact = lessons.count == 7 && lessons.allSatisfy { $0.compactTag.count == 2 }
+        let nav = AppNavigation()
+        nav.playground.benchMode = .speed
+        nav.tryDemo("按错了什么，改成了什么")
+        let jumpSwitchesToDemos = nav.tab == .studio && nav.playground.benchMode == .demos
+        log(allCompact && jumpSwitchesToDemos && PlaygroundModel.speedTargets.count == 3,
+            "r72.UnifiedTypingBench 7 compact step tags fit single-row rail and Atlas deep-links switch benchMode",
+            "compact=\(allCompact) demos=\(jumpSwitchesToDemos)")
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

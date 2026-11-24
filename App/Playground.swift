@@ -13,6 +13,7 @@ private let keyboardExtensionBundle: Bundle? = {
 struct Lesson {
     let title: String
     let shortTitle: String
+    let compactTag: String
     let line: String
     let keys: String
     var slip: Int? = nil
@@ -32,24 +33,24 @@ struct Lesson {
 }
 
 let lessons: [Lesson] = [
-    Lesson(title: "打出“你好”", shortTitle: "你好", line: "轻敲下面字母，按空格上屏。", keys: "nihao␣",
+    Lesson(title: "打出“你好”", shortTitle: "你好", compactTag: "你好", line: "轻敲下面字母，按空格上屏。", keys: "nihao␣",
            xiaoheLine: "小鹤双拼每个字两键（ni + hc），按空格上屏。", xiaoheKeys: "nihc␣",
            check: { t, _ in t.contains("你好") }),
-    Lesson(title: "按错一个键", shortTitle: "错键纠错", line: "故意把 e 按成旁边的 w：留意首选微光提示，空格依然读对。", keys: "jintianhenrw␣", slip: 11,
+    Lesson(title: "按错一个键", shortTitle: "错键纠错", compactTag: "纠错", line: "故意把 e 按成旁边的 w：留意首选微光提示，空格依然读对。", keys: "jintianhenrw␣", slip: 11,
            xiaoheLine: "故意把 qi 按成旁边的 qo：留意首选微光提示，空格依然读对。", xiaoheKeys: "jbtmtmqohfhc␣", xiaoheSlip: 7,
            check: { t, _ in t.contains("今天很热") || t.contains("今天天气很好") }),
-    Lesson(title: "长句漏按一个键", shortTitle: "漏键补全", line: "tian 少按一个 n，整句自动补全并连读。", keys: "jintiantiaqihenhao␣", slip: 10, missing: "n",
+    Lesson(title: "长句漏按一个键", shortTitle: "漏键补全", compactTag: "补全", line: "tian 少按一个 n，整句自动补全并连读。", keys: "jintiantiaqihenhao␣", slip: 10, missing: "n",
            xiaoheLine: "hc 少按一个 c，整句自动补全并连读。", xiaoheKeys: "jbtmtmqihfh␣", xiaoheSlip: 11, xiaoheMissing: "c",
            check: { t, _ in t.contains("今天天气很好") }),
-    Lesson(title: "撤回纠错", shortTitle: "撤回纠错", line: "点候选栏左侧 ↩，刚才输入的原始字母原样回来。", keys: "↩",
+    Lesson(title: "撤回纠错", shortTitle: "撤回纠错", compactTag: "撤回", line: "点候选栏左侧 ↩，刚才输入的原始字母原样回来。", keys: "↩",
            check: { _, s in s.composing && (s.keys.contains("tiaqi") || s.keys.contains("qohf") || s.keys.contains("tmqi")) }),
-    Lesson(title: "清空正在打的拼音", shortTitle: "左划清空", line: "从删除键向左轻划清空拼音，再点 ↩ 恢复。", keys: "⌫↩",
+    Lesson(title: "清空正在打的拼音", shortTitle: "左划清空", compactTag: "清空", line: "从删除键向左轻划清空拼音，再点 ↩ 恢复。", keys: "⌫↩",
            check: { _, s in !s.composing && s.restorable != nil },
            then: { s, keys in s.composing && keys != nil && s.keys == keys }),
-    Lesson(title: "中英混输", shortTitle: "中英混输", line: "中英文夹杂直接打，无需手动切换语言。", keys: "woyongiphonedazi␣",
+    Lesson(title: "中英混输", shortTitle: "中英混输", compactTag: "混输", line: "中英文夹杂直接打，无需手动切换语言。", keys: "woyongiphonedazi␣",
            xiaoheKeys: "woysiphonedazi␣",
            check: { t, _ in t.contains("iPhone打字") }),
-    Lesson(title: "只打声母", shortTitle: "只打声母", line: "常用词只敲声母一样准（全拼）。", keys: "bzd␣", requiresQuanpin: true,
+    Lesson(title: "只打声母", shortTitle: "只打声母", compactTag: "声母", line: "常用词只敲声母一样准（全拼）。", keys: "bzd␣", requiresQuanpin: true,
            check: { t, _ in t.contains("不知道") }),
 ]
 
@@ -546,10 +547,13 @@ struct LessonCard: View {
         let l = lessons[clamped]
         let xiaohe = model.layout == 1
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(l.title)
                     .font(.subheadline.weight(.bold))
                     .foregroundStyle(MossOttoStyle.inkPrimary)
+                Text("\(clamped + 1)/\(lessons.count)")
+                    .font(.caption2.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(MossOttoStyle.inkSecondary)
                 Spacer()
                 if model.justPassed {
                     HStack(spacing: 4) {
