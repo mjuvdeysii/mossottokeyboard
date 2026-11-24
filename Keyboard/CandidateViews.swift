@@ -859,7 +859,8 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             }
             var out: [Any] = []
             if shouldShowIdleControls {
-                out.append(contentsOf: [kaomojiButton, lightToggleButton].filter { !$0.isHidden })
+                if !kaomojiButton.isHidden { out.append(kaomojiButton) }
+                if !lightToggleButton.isHidden { out.append(lightToggleButton) }
             } else {
                 let visibleIdle = idleAccessibilityViews.filter { !$0.isHidden }
                 if !visibleIdle.isEmpty {
