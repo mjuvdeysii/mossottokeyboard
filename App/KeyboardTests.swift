@@ -3581,31 +3581,31 @@ enum KeyboardTests {
             Theme.plain = prevPlain
         }
 
-        // 1. P0 WeChat abnormal host frame guard: direct view.heightAnchor + preferredContentSize + bottom-anchored frame clamp
+        // 1. P0 WeChat abnormal host frame guard: direct view.heightAnchor + pinned root + bottom-anchored content clamp
         guard let (vc, _) = makeKeyboard(scheme: 0, in: window) else {
             log(false, "r83.setup", "engine did not load")
             return
         }
         vc.applySettings()
         let directViewTarget = vc.heightConstraintTargetIsViewForTests
-        let prefSyncStandard = abs(vc.preferredContentSize.height - 258) < 0.5
+        let pinnedStandard = abs((vc.heightConstraintConstantForTests ?? -1) - 258) < 0.5 && vc.rootPinnedToViewForTests
         vc.view.frame = CGRect(x: 0, y: 0, width: 393, height: 780)
         vc.view.setNeedsLayout()
         vc.view.layoutIfNeeded()
-        let clamped780 = vc.rootFrameForTests.height <= 308.5
-            && abs(vc.rootFrameForTests.maxY - 780) < 1.0
+        let clamped780 = vc.contentFrameForTests.height <= 308.5
+            && abs(vc.contentFrameForTests.maxY - 780) < 1.0
             && vc.maxKeycapHeightForTests <= 54
 
         vc.view.frame = CGRect(x: 0, y: 0, width: 402, height: 852)
         vc.view.setNeedsLayout()
         vc.view.layoutIfNeeded()
-        let clamped852 = vc.rootFrameForTests.height <= 308.5
-            && abs(vc.rootFrameForTests.maxY - 852) < 1.0
+        let clamped852 = vc.contentFrameForTests.height <= 308.5
+            && abs(vc.contentFrameForTests.maxY - 852) < 1.0
             && vc.maxKeycapHeightForTests <= 54
 
-        log(directViewTarget && prefSyncStandard && clamped780 && clamped852,
+        log(directViewTarget && pinnedStandard && clamped780 && clamped852,
             "r83.KeyboardViewController binds view.heightAnchor directly and clamps oversized host frames bottom-up",
-            "direct=\(directViewTarget) pref=\(prefSyncStandard) 780/852=\(vc.rootFrameForTests)/\(vc.maxKeycapHeightForTests) ok=(\(clamped780),\(clamped852))")
+            "direct=\(directViewTarget) pinned=\(pinnedStandard) 780/852=\(vc.contentFrameForTests)/\(vc.maxKeycapHeightForTests) ok=(\(clamped780),\(clamped852))")
 
         // 2. P1 Visual-first unified idle bar across Mosto & 简洁 styles (free-standing Mosto, ^_^ monogram, icon-only right light button)
         vc.view.frame = CGRect(x: 0, y: 0, width: 393, height: 262)
@@ -3808,7 +3808,7 @@ enum KeyboardTests {
             "effective=\(LegalText.effective) noBeta=\(noBetaTerms) familyIP=\(hasFamilyIP)")
     }
 
-    // MARK: - R87/R88: Eliminate WeChat ~60 pt Top Empty Glass Gap & Lock Single Calibrated Height
+    // MARK: - R87/R89: Eliminate WeChat Top Empty Glass Gap, Pure-Frame Settings & Settings-Return Drift
 
     static func r87WeChatTopGapElimination(_ window: UIWindow) {
         guard let pair = makeKeyboard(scheme: 0, in: window) else {
@@ -3818,42 +3818,68 @@ enum KeyboardTests {
         let (vc, _) = pair
         vc.applySettings()
 
-        // 1. WeChat portrait normal containers (~293.5 pt on Build 403 / ~301 pt) fill flush from minY=0 (zero empty top slab)
+        // 1. WeChat portrait normal containers (293.5 / 301 / 326 pt) fill flush from minY=0 (zero empty top slab)
         vc.view.frame = CGRect(x: 0, y: 0, width: 402, height: 293.5)
         vc.view.setNeedsLayout()
         vc.view.layoutIfNeeded()
-        let wechat402Ok = vc.rootFrameForTests.minY == 0
-            && abs(vc.rootFrameForTests.height - 293.5) < 0.5
+        let wechat402Ok = vc.contentFrameForTests.minY == 0
+            && abs(vc.contentFrameForTests.height - 293.5) < 0.5
             && vc.maxKeycapHeightForTests >= 46
             && vc.maxKeycapHeightForTests <= 53
 
         vc.view.frame = CGRect(x: 0, y: 0, width: 393, height: 301)
         vc.view.setNeedsLayout()
         vc.view.layoutIfNeeded()
-        let wechat393Ok = vc.rootFrameForTests.minY == 0
-            && abs(vc.rootFrameForTests.height - 301) < 0.5
+        let wechat393Ok = vc.contentFrameForTests.minY == 0
+            && abs(vc.contentFrameForTests.height - 301) < 0.5
             && vc.maxKeycapHeightForTests >= 46
             && vc.maxKeycapHeightForTests <= 53
 
-        // 2. Post-appear lifecycle causes 0 height constraint mutations (no post-appear jump/bounce)
+        vc.view.frame = CGRect(x: 0, y: 0, width: 402, height: 326)
+        vc.view.setNeedsLayout()
+        vc.view.layoutIfNeeded()
+        let wechat326Ok = vc.contentFrameForTests.minY == 0
+            && abs(vc.contentFrameForTests.height - 326) < 0.5
+            && vc.maxKeycapHeightForTests <= 54
+
+        // 2. Pure-frame SettingsPanelView holds 0 Auto Layout constraints and detaches cleanly on close with 0 height drift
+        let spStandalone = SettingsPanelView(frame: CGRect(x: 0, y: 0, width: 402, height: 293.5))
+        spStandalone.toggleMoreForTests()
+        spStandalone.layoutIfNeeded()
+        let zeroSettingsConstraints = spStandalone.constraintCountForTests == 0
+
+        vc.view.frame = CGRect(x: 0, y: 0, width: 402, height: 293.5)
+        vc.view.setNeedsLayout()
+        vc.view.layoutIfNeeded()
+        let beforeSettingsFrame = vc.contentFrameForTests
         vc.resetHeightSyncMutationsForTests()
+        vc.showSettingsForTests(true)
+        let settingsOpened = vc.settingsPanelLoadedForTests
+        vc.showSettingsForTests(false)
+        vc.view.layoutIfNeeded()
+        let afterSettingsClean = settingsOpened
+            && !vc.settingsPanelLoadedForTests
+            && vc.heightSyncMutationsForTests == 0
+            && vc.contentFrameForTests == beforeSettingsFrame
+
+        // 3. Post-appear lifecycle causes 0 height constraint mutations (no post-appear jump/bounce)
         vc.beginAppearanceTransition(true, animated: false)
         vc.endAppearanceTransition()
         vc.view.layoutIfNeeded()
         let zeroPostAppearJump = vc.heightSyncMutationsForTests == 0
 
-        // 3. Native 258 pt Spotlight/Notes container preserves exact 258 pt geometry and ~43 pt keycap height
+        // 4. Native 258 pt Spotlight/Notes container preserves exact 258 pt geometry and ~43 pt keycap height
         vc.view.frame = CGRect(x: 0, y: 0, width: 402, height: 258)
         vc.view.setNeedsLayout()
         vc.view.layoutIfNeeded()
-        let notesStandardOk = vc.rootFrameForTests.minY == 0
-            && abs(vc.rootFrameForTests.height - 258) < 0.5
+        let notesStandardOk = vc.contentFrameForTests.minY == 0
+            && abs(vc.contentFrameForTests.height - 258) < 0.5
             && vc.maxKeycapHeightForTests >= 42
             && vc.maxKeycapHeightForTests <= 44
 
-        log(wechat402Ok && wechat393Ok && zeroPostAppearJump && notesStandardOk,
-            "r87.WeChat 294/301pt hosts fill flush with zero top glass gap or post-appear jump while 258pt Notes preserves calibrated proportions",
-            "w402=\(wechat402Ok) w393=\(wechat393Ok) noJump=\(zeroPostAppearJump) notes=\(notesStandardOk) frame=\(vc.rootFrameForTests) keyH=\(vc.maxKeycapHeightForTests)")
+        log(wechat402Ok && wechat393Ok && wechat326Ok && zeroSettingsConstraints && afterSettingsClean && zeroPostAppearJump && notesStandardOk,
+            "r87.WeChat 294/301/326pt hosts fill flush with zero top gap, pure-frame Settings returns cleanly, and 258pt Notes stays calibrated",
+            "w402=\(wechat402Ok) w393=\(wechat393Ok) w326=\(wechat326Ok) zeroCon=\(zeroSettingsConstraints) ret=\(afterSettingsClean) noJump=\(zeroPostAppearJump) notes=\(notesStandardOk)")
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

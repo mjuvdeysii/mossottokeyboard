@@ -2322,22 +2322,23 @@ private final class TelemetryChipView: UIView {
         captionLabel.adjustsFontSizeToFitWidth = true
         captionLabel.minimumScaleFactor = 0.75
 
-        let v = UIStackView(arrangedSubviews: [valueLabel, captionLabel])
-        v.axis = .vertical
-        v.spacing = 1.5
-        v.alignment = .fill
-        addSubview(v)
-        v.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            v.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
-            v.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
-            v.topAnchor.constraint(equalTo: topAnchor, constant: 7),
-            v.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -7),
-        ])
+        addSubview(valueLabel)
+        addSubview(captionLabel)
         refreshAppearance()
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let b = bounds.insetBy(dx: 6, dy: 6)
+        guard b.width > 0, b.height > 0 else { return }
+        let valH: CGFloat = 18
+        let capH: CGFloat = 14
+        let topY = b.minY + floor(max(0, b.height - (valH + 1.5 + capH)) / 2)
+        valueLabel.frame = CGRect(x: b.minX, y: topY, width: b.width, height: valH)
+        captionLabel.frame = CGRect(x: b.minX, y: valueLabel.frame.maxY + 1.5, width: b.width, height: capH)
+    }
 
     var valueTextForTests: String { valueLabel.text ?? "" }
 
@@ -2362,12 +2363,25 @@ private final class TelemetryChipView: UIView {
     }
 }
 
-/// OTTOSSOM zero-scroll hardware control deck (2x3 tactile tiles + contextual Xiaohe guide pill) with a clean
-/// visual telemetry secondary drawer (`更多 ›`) for low-frequency toggles, learned lexicon stats & diagnostics.
+/// OTTOSSOM zero-scroll hardware control deck (2x3 tactile tiles + contextual Xiaohe guide pill) with a pure-frame
+/// secondary telemetry drawer (`更多 ›`) for low-frequency toggles, learned lexicon stats & diagnostics.
 final class SettingsPanelView: UIView {
     var onClose: (() -> Void)?
     var onChange: (() -> Void)?
     var onResetLearning: (() -> Void)?
+
+    private enum DrawerRowKind {
+        case control(icon: UIImageView, label: UILabel, control: UIView)
+        case chips(views: [TelemetryChipView], detail: UILabel)
+        case reset(icon: UIImageView, button: UIButton)
+    }
+
+    private struct DrawerSection {
+        let headerLabel: UILabel
+        let groupView: UIView
+        let dividers: [UIView]
+        let rows: [DrawerRowKind]
+    }
 
     private let header = UIView()
     private let headerHairline = CALayer()
@@ -2393,10 +2407,10 @@ final class SettingsPanelView: UIView {
     private let offlineStatusLabel = UILabel()
     private let moreButton = UIButton(type: .system)
 
-    // Secondary low-frequency preferences drawer
+    // Secondary low-frequency preferences drawer (pure frame layout — 0 Auto Layout constraints)
     private let moreScroll = UIScrollView()
     private let backDeckButton = UIButton(type: .system)
-    private let stack = UIStackView()
+    private var drawerSections: [DrawerSection] = []
 
     private let numberControl = UISegmentedControl(items: ["完整页", "九宫格"])
     private let englishSwitch = UISwitch()
@@ -2425,26 +2439,20 @@ final class SettingsPanelView: UIView {
         backgroundColor = Theme.touchable
         tintColor = Theme.selection
         englishSwitch.onTintColor = Theme.selection
-        numberControl.translatesAutoresizingMaskIntoConstraints = false
-        numberControl.widthAnchor.constraint(equalToConstant: 156).isActive = true
         for i in 0..<numberControl.numberOfSegments { numberControl.setWidth(78, forSegmentAt: i) }
         for sc in [numberControl, appearance, styleControl] {
             sc.selectedSegmentTintColor = Theme.selection
             sc.setTitleTextAttributes([.foregroundColor: Theme.selectionText, .font: Theme.font(13, .semibold)], for: .selected)
             sc.setTitleTextAttributes([.foregroundColor: Theme.keyText, .font: Theme.font(13, .medium)], for: .normal)
-            sc.setContentHuggingPriority(.required, for: .horizontal)
         }
 
-        // Header: [backDeck capsule when in secondary drawer] / Mosto + title + Done pill
+        // Header: [backDeck capsule when in secondary drawer] / Mosto + title/status + Done pill (pure frame layout)
         backDeckButton.setImage(UIImage(systemName: "chevron.backward", withConfiguration: UIImage.SymbolConfiguration(pointSize: 10.5, weight: .bold)), for: .normal)
         backDeckButton.setTitle(" 概览", for: .normal)
         backDeckButton.titleLabel?.font = Theme.font(12, .semibold)
         backDeckButton.layer.cornerRadius = 14
         backDeckButton.layer.cornerCurve = .continuous
         backDeckButton.layer.borderWidth = 0.5
-        backDeckButton.translatesAutoresizingMaskIntoConstraints = false
-        backDeckButton.widthAnchor.constraint(equalToConstant: 64).isActive = true
-        backDeckButton.heightAnchor.constraint(equalToConstant: 28).isActive = true
         backDeckButton.accessibilityLabel = "返回控制台概览"
         backDeckButton.isHidden = true
         backDeckButton.addTarget(self, action: #selector(closeMore), for: .touchUpInside)
@@ -2458,31 +2466,16 @@ final class SettingsPanelView: UIView {
         statusLabel.font = Theme.font(11.5, .medium)
         statusLabel.textColor = Theme.secondaryText
         statusLabel.tag = Self.tagSecondary
-        let titles = UIStackView(arrangedSubviews: [titleLabel, statusLabel])
-        titles.axis = .vertical
-        titles.spacing = 1
 
         doneButton.setTitle("完成", for: .normal)
         doneButton.titleLabel?.font = Theme.font(14, .bold)
         doneButton.layer.cornerRadius = 14
         doneButton.layer.cornerCurve = .continuous
-        doneButton.translatesAutoresizingMaskIntoConstraints = false
-        doneButton.widthAnchor.constraint(equalToConstant: 56).isActive = true
-        doneButton.heightAnchor.constraint(equalToConstant: 28).isActive = true
         doneButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
 
-        let h = UIStackView(arrangedSubviews: [backDeckButton, mostoImage, titles, UIView(), doneButton])
-        h.alignment = .center
-        h.spacing = 8
-        mostoImage.widthAnchor.constraint(equalToConstant: 28).isActive = true
-        mostoImage.heightAnchor.constraint(equalToConstant: 28).isActive = true
-        header.addSubview(h)
-        h.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            h.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 12),
-            h.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -12),
-            h.centerYAnchor.constraint(equalTo: header.centerYAnchor),
-        ])
+        for v in [backDeckButton, mostoImage, titleLabel, statusLabel, doneButton] as [UIView] {
+            header.addSubview(v)
+        }
         headerHairline.backgroundColor = Theme.separator.resolvedColor(with: traitCollection).cgColor
         header.layer.addSublayer(headerHairline)
         addSubview(header)
@@ -2543,43 +2536,26 @@ final class SettingsPanelView: UIView {
         moreScroll.disableAllEdgeEffects()
         addSubview(moreScroll)
 
-        stack.axis = .vertical
-        stack.spacing = 6
-        moreScroll.addSubview(stack)
+        addSection("输入与按键", rows: [
+            makeControlRow("中英混输", icon: "globe", control: englishSwitch),
+            makeControlRow("123 数字键", icon: "number.square", control: numberControl),
+        ])
 
-        section("输入与按键", rows: [
-            row("中英混输", icon: "globe", englishSwitch),
-            row("123 数字键", icon: "number.square", numberControl),
-        ], footer: nil)
-
-        section("外观", rows: [
-            row("风格", icon: "paintpalette", styleControl),
-            row("光线", icon: "sun.max", appearance),
-        ], footer: nil)
+        addSection("外观", rows: [
+            makeControlRow("风格", icon: "paintpalette", control: styleControl),
+            makeControlRow("光线", icon: "sun.max", control: appearance),
+        ])
 
         lexiconChip.configure(value: "--", caption: "内置词库")
         learnedChip.configure(value: "0 词", caption: "已学习")
-        let lexRow = UIStackView(arrangedSubviews: [lexiconChip, learnedChip])
-        lexRow.axis = .horizontal
-        lexRow.distribution = .fillEqually
-        lexRow.spacing = 8
-
         learnedLabel.font = Theme.font(12, .medium)
         learnedLabel.textColor = Theme.secondaryText
         learnedLabel.tag = Self.tagSecondary
         learnedLabel.numberOfLines = 0
         learnedLabel.isHidden = true
 
-        let lexCol = UIStackView(arrangedSubviews: [lexRow, learnedLabel])
-        lexCol.axis = .vertical
-        lexCol.spacing = 6
-
         resetTrashIcon.contentMode = .scaleAspectFit
         resetTrashIcon.image = UIImage(systemName: "trash", withConfiguration: UIImage.SymbolConfiguration(pointSize: 13.5, weight: .semibold))
-        resetTrashIcon.translatesAutoresizingMaskIntoConstraints = false
-        resetTrashIcon.widthAnchor.constraint(equalToConstant: 16).isActive = true
-        resetTrashIcon.heightAnchor.constraint(equalToConstant: 16).isActive = true
-
         resetButton.setTitle("清空已学习的词语与触点习惯", for: .normal)
         resetButton.titleLabel?.font = Theme.font(14, .semibold)
         resetButton.titleLabel?.adjustsFontSizeToFitWidth = true
@@ -2587,30 +2563,23 @@ final class SettingsPanelView: UIView {
         resetButton.contentHorizontalAlignment = .leading
         resetButton.addTarget(self, action: #selector(resetTapped), for: .touchUpInside)
 
-        let resetRow = UIStackView(arrangedSubviews: [resetTrashIcon, resetButton])
-        resetRow.alignment = .center
-        resetRow.spacing = 7
-        section("本机词库", rows: [lexCol, resetRow], footer: nil)
+        addSection("本机词库", rows: [
+            .chips(views: [lexiconChip, learnedChip], detail: learnedLabel),
+            .reset(icon: resetTrashIcon, button: resetButton),
+        ])
 
         tapsChip.configure(value: "--", caption: "本次按键")
         memChip.configure(value: "--", caption: "内存占用")
         readyChip.configure(value: "--", caption: "引擎就绪")
-        let diagRow = UIStackView(arrangedSubviews: [tapsChip, memChip, readyChip])
-        diagRow.axis = .horizontal
-        diagRow.distribution = .fillEqually
-        diagRow.spacing = 8
-
         diagLabel.font = .monospacedDigitSystemFont(ofSize: 11.5, weight: .regular)
         diagLabel.textColor = Theme.secondaryText
         diagLabel.tag = Self.tagSecondary
         diagLabel.numberOfLines = 0
         diagLabel.isHidden = true
-
-        let diagCol = UIStackView(arrangedSubviews: [diagRow, diagLabel])
-        diagCol.axis = .vertical
-        diagCol.spacing = 6
         if Self.isTestFlight {
-            section("实时遥测", rows: [diagCol], footer: nil)
+            addSection("实时遥测", rows: [
+                .chips(views: [tapsChip, memChip, readyChip], detail: diagLabel),
+            ])
         }
 
         notePill.backgroundColor = Theme.settingsGroup
@@ -2620,37 +2589,14 @@ final class SettingsPanelView: UIView {
         noteIcon.contentMode = .scaleAspectFit
         noteIcon.image = UIImage(systemName: "lock.shield.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 12.5, weight: .semibold))
         noteIcon.tintColor = Theme.secondaryText
-        noteIcon.translatesAutoresizingMaskIntoConstraints = false
-        noteIcon.widthAnchor.constraint(equalToConstant: 15).isActive = true
-        noteIcon.heightAnchor.constraint(equalToConstant: 15).isActive = true
-
         note.numberOfLines = 0
         note.font = Theme.font(11.5, .medium)
         note.textColor = Theme.secondaryText
         note.tag = Self.tagSecondary
         note.text = "纯离线本机运算 · 零联网零跨进程共享"
-
-        let noteStack = UIStackView(arrangedSubviews: [noteIcon, note])
-        noteStack.alignment = .center
-        noteStack.spacing = 7
-        notePill.addSubview(noteStack)
-        noteStack.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            noteStack.leadingAnchor.constraint(equalTo: notePill.leadingAnchor, constant: 12),
-            noteStack.trailingAnchor.constraint(equalTo: notePill.trailingAnchor, constant: -12),
-            noteStack.topAnchor.constraint(equalTo: notePill.topAnchor, constant: 8),
-            noteStack.bottomAnchor.constraint(equalTo: notePill.bottomAnchor, constant: -8),
-        ])
-        let noteWrap = UIView()
-        noteWrap.addSubview(notePill)
-        notePill.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            notePill.leadingAnchor.constraint(equalTo: noteWrap.leadingAnchor, constant: 12),
-            notePill.trailingAnchor.constraint(equalTo: noteWrap.trailingAnchor, constant: -12),
-            notePill.topAnchor.constraint(equalTo: noteWrap.topAnchor),
-            notePill.bottomAnchor.constraint(equalTo: noteWrap.bottomAnchor),
-        ])
-        stack.addArrangedSubview(noteWrap)
+        notePill.addSubview(noteIcon)
+        notePill.addSubview(note)
+        moreScroll.addSubview(notePill)
 
         numberControl.addTarget(self, action: #selector(numberChanged), for: .valueChanged)
         for c in [appearance, styleControl] { c.addTarget(self, action: #selector(drawerChanged), for: .valueChanged) }
@@ -2707,12 +2653,14 @@ final class SettingsPanelView: UIView {
     var preferredFullHeightForTests: CGFloat {
         let headH: CGFloat = (bounds.height > 60 && bounds.height < 205) ? 36 : 42
         let w = bounds.width > 60 ? bounds.width : 375
-        let size = stack.systemLayoutSizeFitting(
-            CGSize(width: w, height: 0),
-            withHorizontalFittingPriority: .required,
-            verticalFittingPriority: .fittingSizeLevel
-        )
-        return headH + size.height + 22
+        return headH + layoutMoreDrawer(width: w, apply: false) + 2
+    }
+    var constraintCountForTests: Int {
+        func count(_ v: UIView) -> Int {
+            let own = (v is UISwitch || v is UISegmentedControl) ? 0 : v.constraints.count
+            return own + v.subviews.reduce(0) { $0 + count($1) }
+        }
+        return count(self)
     }
 
     private func refreshGuidePill() {
@@ -2730,99 +2678,11 @@ final class SettingsPanelView: UIView {
         CATransaction.commit()
     }
 
-    private func inset(_ v: UIView) -> UIView {
-        let wrap = UIView()
-        wrap.addSubview(v)
-        v.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            v.leadingAnchor.constraint(equalTo: wrap.leadingAnchor, constant: 16),
-            v.trailingAnchor.constraint(equalTo: wrap.trailingAnchor, constant: -16),
-            v.topAnchor.constraint(equalTo: wrap.topAnchor, constant: 2),
-            v.bottomAnchor.constraint(equalTo: wrap.bottomAnchor, constant: -2),
-        ])
-        return wrap
-    }
-
-    private func section(_ title: String, rows: [UIView], footer: String?) {
-        let cap = UILabel()
-        cap.text = title
-        cap.font = .systemFont(ofSize: 12)
-        cap.textColor = Theme.secondaryText
-        cap.tag = Self.tagSecondary
-        let capWrap = inset(cap)
-        stack.addArrangedSubview(capWrap)
-        stack.setCustomSpacing(4, after: capWrap)
-
-        let group = UIView()
-        group.backgroundColor = Theme.settingsGroup
-        group.tag = Self.tagGroup
-        group.layer.cornerRadius = 12
-        group.layer.cornerCurve = .continuous
-        let inner = UIStackView()
-        inner.axis = .vertical
-        for (i, r) in rows.enumerated() {
-            if i > 0 {
-                let line = UIView()
-                line.backgroundColor = Theme.separator
-                line.tag = Self.tagLine
-                line.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale).isActive = true
-                inner.addArrangedSubview(line)
-            }
-            let cell = UIView()
-            cell.addSubview(r)
-            r.translatesAutoresizingMaskIntoConstraints = false
-            NSLayoutConstraint.activate([
-                r.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 14),
-                r.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -12),
-                r.topAnchor.constraint(equalTo: cell.topAnchor, constant: 6),
-                r.bottomAnchor.constraint(equalTo: cell.bottomAnchor, constant: -6),
-                cell.heightAnchor.constraint(greaterThanOrEqualToConstant: 40),
-            ])
-            inner.addArrangedSubview(cell)
-        }
-        group.addSubview(inner)
-        inner.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            inner.leadingAnchor.constraint(equalTo: group.leadingAnchor),
-            inner.trailingAnchor.constraint(equalTo: group.trailingAnchor),
-            inner.topAnchor.constraint(equalTo: group.topAnchor),
-            inner.bottomAnchor.constraint(equalTo: group.bottomAnchor),
-        ])
-        let wrap = UIView()
-        wrap.addSubview(group)
-        group.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            group.leadingAnchor.constraint(equalTo: wrap.leadingAnchor, constant: 12),
-            group.trailingAnchor.constraint(equalTo: wrap.trailingAnchor, constant: -12),
-            group.topAnchor.constraint(equalTo: wrap.topAnchor),
-            group.bottomAnchor.constraint(equalTo: wrap.bottomAnchor),
-        ])
-        stack.addArrangedSubview(wrap)
-        groups.append(group)
-        if let footer {
-            let f = UILabel()
-            f.text = footer
-            f.numberOfLines = 0
-            f.font = .systemFont(ofSize: 11.5)
-            f.textColor = Theme.secondaryText
-            f.tag = Self.tagSecondary
-            stack.setCustomSpacing(4, after: wrap)
-            let fw = inset(f)
-            stack.addArrangedSubview(fw)
-            stack.setCustomSpacing(10, after: fw)
-        } else {
-            stack.setCustomSpacing(10, after: wrap)
-        }
-    }
-
-    private func row(_ text: String, icon: String, _ control: UIView) -> UIView {
+    private func makeControlRow(_ text: String, icon: String, control: UIView) -> DrawerRowKind {
         let iv = UIImageView(image: UIImage(systemName: icon, withConfiguration: UIImage.SymbolConfiguration(pointSize: 13.5, weight: .medium)))
         iv.contentMode = .scaleAspectFit
         iv.tintColor = Theme.secondaryText
         iv.tag = Self.tagIcon
-        iv.translatesAutoresizingMaskIntoConstraints = false
-        iv.widthAnchor.constraint(equalToConstant: 17).isActive = true
-        iv.heightAnchor.constraint(equalToConstant: 17).isActive = true
 
         let l = UILabel()
         l.text = text
@@ -2830,11 +2690,124 @@ final class SettingsPanelView: UIView {
         l.textColor = Theme.keyText
         l.tag = Self.tagPrimary
         l.numberOfLines = 1
-        l.setContentCompressionResistancePriority(.required, for: .horizontal)
-        let s = UIStackView(arrangedSubviews: [iv, l, UIView(), control])
-        s.alignment = .center
-        s.spacing = 7
-        return s
+        return .control(icon: iv, label: l, control: control)
+    }
+
+    private func addSection(_ title: String, rows: [DrawerRowKind]) {
+        let cap = UILabel()
+        cap.text = title
+        cap.font = .systemFont(ofSize: 12)
+        cap.textColor = Theme.secondaryText
+        cap.tag = Self.tagSecondary
+        moreScroll.addSubview(cap)
+
+        let group = UIView()
+        group.backgroundColor = Theme.settingsGroup
+        group.tag = Self.tagGroup
+        group.layer.cornerRadius = 12
+        group.layer.cornerCurve = .continuous
+        moreScroll.addSubview(group)
+        groups.append(group)
+
+        var dividers: [UIView] = []
+        for (i, r) in rows.enumerated() {
+            if i > 0 {
+                let line = UIView()
+                line.backgroundColor = Theme.separator
+                line.tag = Self.tagLine
+                group.addSubview(line)
+                dividers.append(line)
+            }
+            switch r {
+            case .control(let iv, let lbl, let ctrl):
+                group.addSubview(iv)
+                group.addSubview(lbl)
+                group.addSubview(ctrl)
+            case .chips(let views, let detail):
+                for chip in views { group.addSubview(chip) }
+                group.addSubview(detail)
+            case .reset(let iv, let btn):
+                group.addSubview(iv)
+                group.addSubview(btn)
+            }
+        }
+        drawerSections.append(DrawerSection(headerLabel: cap, groupView: group, dividers: dividers, rows: rows))
+    }
+
+    @discardableResult
+    private func layoutMoreDrawer(width w: CGFloat, apply: Bool) -> CGFloat {
+        guard w > 60 else { return 0 }
+        var y: CGFloat = 10
+        let groupW = max(40, w - 24)
+        let pxScale = 1 / UIScreen.main.scale
+        for sec in drawerSections {
+            if apply { sec.headerLabel.frame = CGRect(x: 16, y: y, width: max(0, w - 32), height: 16) }
+            y += 22
+            var gy: CGFloat = 0
+            for (idx, row) in sec.rows.enumerated() {
+                if idx > 0 {
+                    if apply { sec.dividers[idx - 1].frame = CGRect(x: 0, y: gy, width: groupW, height: pxScale) }
+                    gy += pxScale
+                }
+                switch row {
+                case .control(let iv, let lbl, let ctrl):
+                    let fit = ctrl.sizeThatFits(CGSize(width: max(80, groupW * 0.60), height: 34))
+                    let maxCtrlW = max(44, groupW - 14 - 17 - 7 - 56 - 8 - 12)
+                    let preferredW = (ctrl === numberControl) ? max(156, fit.width) : fit.width
+                    let ctrlW = min(max(44, ceil(preferredW)), maxCtrlW)
+                    let ctrlH = min(32, max(28, ceil(fit.height)))
+                    let rowH: CGFloat = max(42, ctrlH + 10)
+                    if apply {
+                        iv.frame = CGRect(x: 14, y: gy + floor((rowH - 17) / 2), width: 17, height: 17)
+                        let ctrlX = groupW - 12 - ctrlW
+                        ctrl.frame = CGRect(x: ctrlX, y: gy + floor((rowH - ctrlH) / 2), width: ctrlW, height: ctrlH)
+                        let lblX: CGFloat = 14 + 17 + 7
+                        lbl.frame = CGRect(x: lblX, y: gy + 6, width: max(20, ctrlX - lblX - 8), height: rowH - 12)
+                    }
+                    gy += rowH
+                case .chips(let chips, let detail):
+                    let topPad: CGFloat = 8
+                    let chipH: CGFloat = 50
+                    let botPad: CGFloat = 8
+                    let innerW = max(40, groupW - 26)
+                    let gap: CGFloat = 8
+                    let count = CGFloat(max(1, chips.count))
+                    let chipW = max(20, (innerW - gap * (count - 1)) / count)
+                    if apply {
+                        for (ci, chip) in chips.enumerated() {
+                            chip.frame = CGRect(x: 14 + CGFloat(ci) * (chipW + gap), y: gy + topPad, width: chipW, height: chipH)
+                        }
+                    }
+                    gy += topPad + chipH
+                    if !detail.isHidden, let txt = detail.text, !txt.isEmpty {
+                        let dH = max(16, ceil(detail.sizeThatFits(CGSize(width: innerW, height: 400)).height))
+                        gy += 6
+                        if apply { detail.frame = CGRect(x: 14, y: gy, width: innerW, height: dH) }
+                        gy += dH
+                    }
+                    gy += botPad
+                case .reset(let iv, let btn):
+                    let rowH: CGFloat = 42
+                    if apply {
+                        iv.frame = CGRect(x: 14, y: gy + floor((rowH - 16) / 2), width: 16, height: 16)
+                        let bx: CGFloat = 14 + 16 + 7
+                        btn.frame = CGRect(x: bx, y: gy + 4, width: max(40, groupW - bx - 12), height: rowH - 8)
+                    }
+                    gy += rowH
+                }
+            }
+            if apply { sec.groupView.frame = CGRect(x: 12, y: y, width: groupW, height: gy) }
+            y += gy + 12
+        }
+        let noteTextW = max(40, groupW - 24 - 15 - 7)
+        let noteH = max(16, ceil(note.sizeThatFits(CGSize(width: noteTextW, height: 240)).height))
+        let pillH = noteH + 16
+        if apply {
+            notePill.frame = CGRect(x: 12, y: y, width: groupW, height: pillH)
+            noteIcon.frame = CGRect(x: 12, y: floor((pillH - 15) / 2), width: 15, height: 15)
+            note.frame = CGRect(x: 12 + 15 + 7, y: 8, width: noteTextW, height: noteH)
+        }
+        return y + pillH + 12
     }
 
     static let isTestFlight: Bool = {
@@ -2959,6 +2932,7 @@ final class SettingsPanelView: UIView {
         note.text = needsAccess
             ? "需在「设置 › Mosto键盘」开启完全访问以启用震动与声音 · 词库全程离线"
             : "纯离线本机运算 · 零联网零跨进程共享"
+        setNeedsLayout()
     }
 
     func setFeedbackAvailable(_ ok: Bool) {
@@ -3000,6 +2974,7 @@ final class SettingsPanelView: UIView {
         } else {
             learnedLabel.isHidden = text.isEmpty
         }
+        setNeedsLayout()
     }
 
     func setDiagnostics(_ text: String) {
@@ -3013,6 +2988,7 @@ final class SettingsPanelView: UIView {
         readyChip.configure(value: readyVal, caption: "引擎就绪")
         let alertOnly = text.contains("精简模式") || text.contains("内存警告")
         diagLabel.isHidden = !alertOnly
+        setNeedsLayout()
     }
 
     /// Snapshot & compatibility helper: keeps the primary zero-scroll Hardware Deck focused.
@@ -3193,6 +3169,23 @@ final class SettingsPanelView: UIView {
         guard w > 60, h > 60 else { return }
         let headH: CGFloat = h < 205 ? 36 : 42
         header.frame = CGRect(x: 0, y: 0, width: w, height: headH)
+        let doneW: CGFloat = 56, doneH: CGFloat = 28
+        doneButton.frame = CGRect(x: w - 12 - doneW, y: floor((headH - doneH) / 2), width: doneW, height: doneH)
+        var textLeadX: CGFloat = 12
+        if !backDeckButton.isHidden {
+            let backW: CGFloat = 64, backH: CGFloat = 28
+            backDeckButton.frame = CGRect(x: 12, y: floor((headH - backH) / 2), width: backW, height: backH)
+            textLeadX = 12 + backW + 8
+        } else if !mostoImage.isHidden {
+            let imgSide: CGFloat = 28
+            mostoImage.frame = CGRect(x: 12, y: floor((headH - imgSide) / 2), width: imgSide, height: imgSide)
+            textLeadX = 12 + imgSide + 8
+        }
+        let titleW = max(40, doneButton.frame.minX - 8 - textLeadX)
+        let titleH: CGFloat = 19, statusH: CGFloat = 14
+        let titlesTop = floor((headH - (titleH + 1 + statusH)) / 2)
+        titleLabel.frame = CGRect(x: textLeadX, y: titlesTop, width: titleW, height: titleH)
+        statusLabel.frame = CGRect(x: textLeadX, y: titleLabel.frame.maxY + 1, width: titleW, height: statusH)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         headerHairline.frame = CGRect(x: 12, y: headH - 0.5, width: max(0, w - 24), height: 1 / UIScreen.main.scale)
@@ -3242,14 +3235,9 @@ final class SettingsPanelView: UIView {
         CATransaction.commit()
         offlineStatusLabel.frame = CGRect(x: 2, y: 0, width: leftAvail, height: utilH)
 
-        // Layout secondary `moreScroll`
-        let size = stack.systemLayoutSizeFitting(
-            CGSize(width: w, height: 0),
-            withHorizontalFittingPriority: .required,
-            verticalFittingPriority: .fittingSizeLevel
-        )
-        stack.frame = CGRect(x: 0, y: 10, width: w, height: size.height)
-        moreScroll.contentSize = CGSize(width: w, height: size.height + 20)
+        // Layout secondary `moreScroll` purely with frames
+        let drawerH = layoutMoreDrawer(width: w, apply: true)
+        moreScroll.contentSize = CGSize(width: w, height: drawerH)
     }
 }
 

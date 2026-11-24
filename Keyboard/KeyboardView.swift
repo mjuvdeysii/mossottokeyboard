@@ -1086,7 +1086,7 @@ final class KeyboardView: UIView {
         guard !rows.isEmpty, bounds.width > 0, keyViews.count == rows.reduce(0, { $0 + $1.count }) else { return }
         let availH = max(0, bounds.height - topReach)
         let rawRowH = availH / CGFloat(rows.count)
-        let rowH = min(64, rawRowH)
+        let rowH = min(68, rawRowH)
         let baseTop = topReach + max(0, availH - rowH * CGFloat(rows.count))
         let sideInset: CGFloat = bounds.width > 500 ? Metrics.sideInsetLandscape : Metrics.sideInset
         let contentW = max(1, bounds.width - sideInset * 2)

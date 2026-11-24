@@ -124,6 +124,8 @@ for dirpath, _dirs, files in os.walk(KEYBOARD):
             vda = extract_func(code, r'override\s+func\s+viewDidAppear\b')
             if vda and re.search(r'(setNeedsUpdateConstraints|layoutIfNeeded|updateConstraintsIfNeeded)\s*\(', vda):
                 problems.append(f"{path}: viewDidAppear() forces post-appear height relayout/jump")
+            if "preferredContentSize" in code:
+                problems.append(f"{path}: preferredContentSize conflicts with view.heightAnchor self-sizing in UIInputViewController")
             vdls = extract_func(code, r'override\s+func\s+viewDidLayoutSubviews\b')
             if vdls and "setNeedsUpdateConstraints" in vdls:
                 problems.append(f"{path}: viewDidLayoutSubviews() calls setNeedsUpdateConstraints() (causes layout bounce loop)")
@@ -132,6 +134,14 @@ for dirpath, _dirs, files in os.walk(KEYBOARD):
         for forbidden_sym in ("KeyboardHeightPreset", "ElevationRailView"):
             if re.search(rf'\b{forbidden_sym}\b', code):
                 problems.append(f"{path}: forbidden multi-tier height symbol `{forbidden_sym}` (must stay locked to single calibrated height)")
+
+        # Rule 18: Subviews inside UIInputViewController must use pure frame layout (zero Auto Layout self-sizing pollution)
+        if name in ("CandidateViews.swift", "KeyboardView.swift", "EmojiPanelView.swift", "AmbientLightView.swift"):
+            for al_sym in ("NSLayoutConstraint", "UIStackView", "systemLayoutSizeFitting"):
+                if re.search(rf'\b{al_sym}\b', code):
+                    problems.append(f"{path}: forbidden Auto Layout `{al_sym}` inside keyboard subview (pollutes UIInputView self-sizing)")
+            if re.search(r'(?:top|bottom|leading|trailing|width|height|centerX|centerY)Anchor\.constraint\b', code):
+                problems.append(f"{path}: forbidden Anchor.constraint inside keyboard subview (use pure frame layout)")
 
         if name in ("EmojiPanelView.swift", "CandidateViews.swift"):
             # Rule 10: Any layer with shadowOpacity > 0 in EmojiPanelView/CandidateViews must configure shadowPath (no offscreen rasterization)
