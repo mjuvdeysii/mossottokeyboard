@@ -162,6 +162,7 @@ enum KeyboardTests {
         r83HeightExplosionGuardIdleRailAndGlassCraft(window)
         r84ContrastRangefinderAndWorkbenchCraft(window)
         r85CommercialCompanionAndIPFamily(window)
+        r86ReleaseCandidatePolish(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -3709,16 +3710,20 @@ enum KeyboardTests {
         // 1. Night moon icon meets WCAG AA (>= 4.5:1) on both light forced glass and dark glass
         Theme.plain = false
         let bar = CandidateBarView(frame: CGRect(x: 0, y: 0, width: 393, height: 42))
+        window.addSubview(bar)
+        defer { bar.removeFromSuperview() }
         bar.showsMosto = true
         bar.overrideUserInterfaceStyle = .light
         bar.setIdleControls(enabled: true, night: true, forcedDayOnDarkGlass: false)
         bar.layoutIfNeeded()
-        let lightMoonCR = contrast(bar.idleLightTintColorForTests, Theme.hex(0xE8E6EF))
+        let lightTint = bar.idleLightTintColorForTests.resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))
+        let lightMoonCR = contrast(lightTint, Theme.hex(0xE8E6EF))
 
         bar.overrideUserInterfaceStyle = .dark
         bar.setIdleControls(enabled: true, night: true, forcedDayOnDarkGlass: false)
         bar.layoutIfNeeded()
-        let darkMoonCR = contrast(bar.idleLightTintColorForTests, Theme.hex(0x32303A))
+        let darkTint = bar.idleLightTintColorForTests.resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark))
+        let darkMoonCR = contrast(darkTint, Theme.hex(0x32303A))
         log(lightMoonCR >= 4.5 && darkMoonCR >= 4.5,
             "r84.Idle moon icon satisfies WCAG AA contrast across light and dark glass",
             "lightCR=\(String(format: "%.2f", lightMoonCR)) darkCR=\(String(format: "%.2f", darkMoonCR))")
@@ -3764,7 +3769,7 @@ enum KeyboardTests {
     static func r85CommercialCompanionAndIPFamily(_ window: UIWindow) {
         _ = window
         // 1. All Moss, Otto, and Mosto 3D studio vinyl sprites load cleanly from asset catalog
-        let spriteNames = ["Moss", "MossHappy", "Otto", "OttoLit", "Mosto", "MostoBlink", "MostoNight"]
+        let spriteNames = ["Moss", "MossHappy", "Otto", "OttoLit", "Mosto", "MostoBlink", "MostoNight", "MostoYawn"]
         let allSpritesLoaded = spriteNames.allSatisfy { name in
             let img = mostoImage(name)
             return img.size.width >= 100 && img.size.height >= 100
@@ -3807,6 +3812,35 @@ enum KeyboardTests {
         log(AppTab.allCases.count == 3 && stageSize.height > 180 && aboutSize.height > 200 && privacySize.height > 150,
             "r85.3-tab Companion views and FamilyLampStageView render cleanly with ImageRenderer",
             "tabs=\(AppTab.allCases.count) stage=\(stageSize) about=\(aboutSize) privacy=\(privacySize)")
+    }
+
+    // MARK: - R86: 1.0 RC IP Chemistry & Commercial Legal/Copy Sign-off
+
+    static func r86ReleaseCandidatePolish(_ window: UIWindow) {
+        _ = window
+        // 1. Cross-character IP family chemistry responds across Moss -> Mosto -> Otto
+        let family = FamilyStageModel()
+        family.soundEnabled = false
+        family.interact(with: .moss)
+        let mossPaired = family.reactingMember == .moss && family.secondaryReactingMember == .mosto
+        family.interact(with: .mosto)
+        let mostoPaired = family.reactingMember == .mosto && family.secondaryReactingMember == .otto
+        family.interact(with: .otto)
+        let ottoPaired = family.reactingMember == .otto && family.secondaryReactingMember == .mosto
+        log(mossPaired && mostoPaired && ottoPaired,
+            "r86.OTTOSSOM IP family interactions trigger cross-character chemistry",
+            "moss=\(mossPaired) mosto=\(mostoPaired) otto=\(ottoPaired)")
+
+        // 2. LegalText matches App Store 1.0 wording and covers OTTOSSOM IP family
+        let termsText = LegalText.docs.first(where: { $0.id == "terms" })?.sections.flatMap(\.1).compactMap { item -> String? in
+            if case .text(let s) = item { return s }
+            return nil
+        }.joined(separator: " ") ?? ""
+        let noBetaTerms = !termsText.contains("TestFlight 公开测试版")
+        let hasFamilyIP = termsText.contains("Moss") && termsText.contains("Otto") && termsText.contains("Mosto")
+        log(LegalText.effective == "2026 年 11 月 24 日" && noBetaTerms && hasFamilyIP,
+            "r86.LegalText reflects App Store 1.0 release wording and OTTOSSOM IP ownership",
+            "effective=\(LegalText.effective) noBeta=\(noBetaTerms) familyIP=\(hasFamilyIP)")
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

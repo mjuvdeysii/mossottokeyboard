@@ -116,7 +116,7 @@ struct XiaoheGuideContent: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(MossOttoStyle.hairline, lineWidth: 0.7)
+                    .strokeBorder(MossOttoStyle.hairline, lineWidth: 0.5)
             )
         }
     }
@@ -164,7 +164,7 @@ private struct SyllableEquation: View {
         .frame(minWidth: 24, minHeight: 28)
         .padding(.horizontal, 4)
         .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(MossOttoStyle.surface))
-        .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(MossOttoStyle.hairline, lineWidth: 0.7))
+        .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(MossOttoStyle.hairline, lineWidth: 0.5))
     }
 }
 

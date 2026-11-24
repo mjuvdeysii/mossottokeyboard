@@ -253,10 +253,20 @@ struct CompanionEnableCard: View {
                             .foregroundStyle(MossOttoStyle.inkSecondary.opacity(0.68))
                             .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
                     } else {
-                        TextField("切换到 Mosto 系统键盘，打一句“你好”试试", text: $verifyText)
-                            .focused(typing)
-                            .font(.subheadline)
-                            .frame(minHeight: 34)
+                        HStack(spacing: 8) {
+                            TextField("切换到 Mosto 系统键盘，打一句“你好”试试", text: $verifyText)
+                                .focused(typing)
+                                .font(.subheadline)
+                                .frame(minHeight: 34)
+                            if !verifyText.isEmpty {
+                                Button("清空") {
+                                    verifyText = ""
+                                }
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(MossOttoStyle.violet)
+                                .buttonStyle(.plain)
+                            }
+                        }
                     }
                 }
                 .padding(.horizontal, 12)
@@ -560,7 +570,7 @@ struct GestureAtlasContent: View {
     }
 
     private var activePreviewSprite: String {
-        if selectedMosto == .yawn { return "MostoToyBlink" }
+        if selectedMosto == .yawn { return "MostoYawn" }
         if previewNight { return "MostoNight" }
         if selectedMosto == .kaomoji { return "MostoBlink" }
         return "Mosto"

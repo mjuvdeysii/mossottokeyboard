@@ -85,6 +85,7 @@ final class FamilyStageModel: ObservableObject {
     @Published var atmosphere: FamilyAtmosphere = .day
     @Published var activeMember: FamilyMember = .mosto
     @Published var reactingMember: FamilyMember? = nil
+    @Published var secondaryReactingMember: FamilyMember? = nil
     @Published var reactionNonce: Int = 0
     @Published var soundEnabled: Bool = KeyboardSettings.shared.keySound
     @Published var statusLine: String = "轻点 Moss、Mosto 或 Otto 打个招呼，下拉右角灯绳换光线"
@@ -97,7 +98,8 @@ final class FamilyStageModel: ObservableObject {
             if member == .otto {
                 self.atmosphere = self.atmosphere.toggled
             }
-            self.triggerReaction(member: member)
+            let secondary: FamilyMember = member == .moss ? .mosto : (member == .mosto ? .otto : .mosto)
+            self.triggerReaction(member: member, secondary: secondary)
 
             if KeyboardSettings.shared.feedback {
                 let style: UIImpactFeedbackGenerator.FeedbackStyle = member == .moss ? .light : (member == .mosto ? .soft : .medium)
@@ -135,7 +137,7 @@ final class FamilyStageModel: ObservableObject {
             guard let self else { return }
             self.atmosphere = self.atmosphere.toggled
             self.activeMember = self.atmosphere.isNight ? .otto : .mosto
-            self.triggerReaction(member: self.atmosphere.isNight ? .otto : .moss)
+            self.triggerReaction(member: self.atmosphere.isNight ? .otto : .moss, secondary: .mosto)
             if KeyboardSettings.shared.feedback {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred(intensity: 0.72)
             }
@@ -161,7 +163,7 @@ final class FamilyStageModel: ObservableObject {
     func celebrateVerification() {
         verificationCelebrated = true
         activeMember = .moss
-        triggerReaction(member: .moss, duration: 1.25)
+        triggerReaction(member: .moss, secondary: .mosto, duration: 1.25)
         statusLine = "真机键盘已验通，Moss、Otto 和 Mosto 都准备好了"
     }
 
@@ -169,13 +171,15 @@ final class FamilyStageModel: ObservableObject {
         soundEnabled = KeyboardSettings.shared.keySound
     }
 
-    private func triggerReaction(member: FamilyMember, duration: TimeInterval = 0.85) {
+    private func triggerReaction(member: FamilyMember, secondary: FamilyMember? = nil, duration: TimeInterval = 0.85) {
         reactingMember = member
+        secondaryReactingMember = secondary
         reactionNonce += 1
         let expected = reactionNonce
         DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
             guard let self, self.reactionNonce == expected else { return }
             self.reactingMember = nil
+            self.secondaryReactingMember = nil
         }
     }
 }
@@ -227,7 +231,7 @@ struct FamilyLampStageView: View {
                             member: .otto,
                             height: 112,
                             hopOffset: -3,
-                            warmBeadGlow: model.atmosphere.isNight || model.reactingMember == .otto
+                            warmBeadGlow: model.atmosphere.isNight || model.reactingMember == .otto || model.secondaryReactingMember == .otto
                         )
                     }
                     .padding(.horizontal, 14)
@@ -265,48 +269,19 @@ struct FamilyLampStageView: View {
                 .fill(darkStage ? Color.white.opacity(0.08) : MossOttoStyle.hairline)
                 .frame(height: 0.5)
 
-            HStack(spacing: 10) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(model.activeMember.displayName + " · " + model.activeMember.chineseRole)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(darkStage ? Color.white.opacity(0.92) : MossOttoStyle.inkPrimary)
-                    Text(model.statusLine)
-                        .font(.caption2)
-                        .foregroundStyle(darkStage ? Color.white.opacity(0.68) : MossOttoStyle.inkSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) {
+                    footerText
+                    Spacer(minLength: 6)
+                    footerLampButton
                 }
-
-                Spacer(minLength: 6)
-
-                Button {
-                    withAnimation(reduceMotion ? .none : .easeInOut(duration: 0.26)) {
-                        model.toggleAtmosphere(volume: volume)
+                VStack(alignment: .leading, spacing: 8) {
+                    footerText
+                    HStack {
+                        Spacer(minLength: 0)
+                        footerLampButton
                     }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: model.atmosphere.isNight ? "moon.fill" : "sun.max.fill")
-                            .font(.system(size: 11, weight: .semibold))
-                        Text(model.atmosphere.label)
-                            .font(.caption2.weight(.semibold))
-                    }
-                    .foregroundStyle(
-                        model.atmosphere.isNight
-                            ? Color(uiColor: MossOttoStyle.hex(0x191529))
-                            : (darkStage ? Color.white : MossOttoStyle.inkPrimary)
-                    )
-                    .padding(.horizontal, 11)
-                    .padding(.vertical, 6)
-                    .frame(minHeight: 32)
-                    .background(
-                        Capsule().fill(
-                            model.atmosphere.isNight
-                                ? Color(uiColor: MossOttoStyle.hex(0xFFC45A))
-                                : (darkStage ? Color.white.opacity(0.14) : MossOttoStyle.surfaceMuted)
-                        )
-                    )
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("切换桌面光线，当前\(model.atmosphere.label)")
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 11)
@@ -320,8 +295,52 @@ struct FamilyLampStageView: View {
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .strokeBorder(darkStage ? Color.white.opacity(0.12) : MossOttoStyle.hairline, lineWidth: 0.6)
+                .strokeBorder(darkStage ? Color.white.opacity(0.12) : MossOttoStyle.hairline, lineWidth: 0.5)
         )
+    }
+
+    private var footerText: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(model.activeMember.displayName + " · " + model.activeMember.chineseRole)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(darkStage ? Color.white.opacity(0.92) : MossOttoStyle.inkPrimary)
+            Text(model.statusLine)
+                .font(.caption2)
+                .foregroundStyle(darkStage ? Color.white.opacity(0.68) : MossOttoStyle.inkSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var footerLampButton: some View {
+        Button {
+            withAnimation(reduceMotion ? .none : .easeInOut(duration: 0.26)) {
+                model.toggleAtmosphere(volume: volume)
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: model.atmosphere.isNight ? "moon.fill" : "sun.max.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                Text(model.atmosphere.label)
+                    .font(.caption2.weight(.semibold))
+            }
+            .foregroundStyle(
+                model.atmosphere.isNight
+                    ? Color(uiColor: MossOttoStyle.hex(0x191529))
+                    : (darkStage ? Color.white : MossOttoStyle.inkPrimary)
+            )
+            .padding(.horizontal, 11)
+            .padding(.vertical, 6)
+            .frame(minHeight: 32)
+            .background(
+                Capsule().fill(
+                    model.atmosphere.isNight
+                        ? Color(uiColor: MossOttoStyle.hex(0xFFC45A))
+                        : (darkStage ? Color.white.opacity(0.14) : MossOttoStyle.surfaceMuted)
+                )
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("切换桌面光线，当前\(model.atmosphere.label)")
     }
 
     @ViewBuilder
@@ -331,11 +350,13 @@ struct FamilyLampStageView: View {
         hopOffset: CGFloat,
         warmBeadGlow: Bool
     ) -> some View {
-        let reacting = model.reactingMember == member
+        let isPrimary = model.reactingMember == member
+        let isSecondary = model.secondaryReactingMember == member
+        let reacting = isPrimary || isSecondary
         let selected = model.activeMember == member
         let sprite = member.spriteName(atmosphere: model.atmosphere, reacting: reacting)
-        let motionScale: CGFloat = (reacting && !reduceMotion) ? (member == .moss ? 1.05 : 1.03) : 1.0
-        let motionY: CGFloat = (reacting && !reduceMotion) ? hopOffset : 0
+        let motionScale: CGFloat = reduceMotion ? 1.0 : (isPrimary ? (member == .moss ? 1.05 : 1.03) : (isSecondary ? 1.015 : 1.0))
+        let motionY: CGFloat = reduceMotion ? 0 : (isPrimary ? hopOffset : (isSecondary ? hopOffset * 0.35 : 0))
 
         Button {
             withAnimation(reduceMotion ? .none : .spring(response: 0.30, dampingFraction: 0.64)) {

@@ -1027,8 +1027,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         lightToggleButton.setTitle(nil, for: .normal)
         lightToggleButton.setImage(Self.idleSymbol(isNightLight ? "moon.fill" : "sun.max.fill"), for: .normal)
         if isNightLight {
-            let nightMoon = Theme.dyn(Theme.hex(0x784F0A), Theme.hex(0xE0BE74)).resolvedColor(with: traitCollection)
-            lightToggleButton.tintColor = Theme.plain ? fg : nightMoon
+            lightToggleButton.tintColor = Theme.plain ? fg : Theme.dyn(Theme.hex(0x784F0A), Theme.hex(0xE0BE74))
         } else {
             lightToggleButton.tintColor = isForcedDayOnDarkGlass ? Theme.hex(0xEFECE6, 0.92) : fg
         }

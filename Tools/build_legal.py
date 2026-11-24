@@ -10,7 +10,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPO = "https://github.com/mjuvdeysii/mossottokeyboard"
 ISSUES = REPO + "/issues"
 SITE = "https://mjuvdeysii.github.io/mossottokeyboard"
-EFFECTIVE = "2026 年 10 月 29 日"
+EFFECTIVE = "2026 年 11 月 24 日"
 
 # Each document: (id, title, [(heading, [paragraph | ["bullet", ...]])])
 DOCS = [
@@ -44,8 +44,8 @@ DOCS = [
         ("儿童隐私", [
             "本应用不收集任何人的个人信息，包括儿童的个人信息。",
         ]),
-        ("测试版反馈", [
-            "通过 TestFlight 参与测试时，你主动提交的反馈（说明文字、截图）与测试者信息由 Apple 依 TestFlight 条款处理并提供给开发者，仅用于测试沟通与改进本应用。",
+        ("应用商店与反馈", [
+            "通过 App Store 或 TestFlight 参与反馈时，你主动提交的说明文字、截图与系统报告由 Apple 按对应平台条款处理并提供给开发者，仅用于沟通排查与改进本应用；你也可随时通过 " + ISSUES + " 直接联系开发者。",
         ]),
         ("政策更新与联系", [
             "本政策如有更新，会在本页面与 App 内公布，并更新生效日期。",
@@ -53,9 +53,9 @@ DOCS = [
         ]),
     ]),
     ("terms", "用户协议与免责声明", [
-        ("测试版", [
-            "当前版本为 TestFlight 公开测试版，功能可能随时变动，可能存在错误、崩溃或本机数据（包括学习记录）丢失。",
-            "候选、自动纠错与联想可能出错。发送消息、填写付款、医疗、法律等重要内容前，请自行核对上屏的文字。",
+        ("使用提示", [
+            "候选、自动纠错与联想根据本机词库及统计语言模型计算得出，可能存在偏差或错别字。发送消息、填写付款、医疗、法律等重要内容前，请自行核对实际输入的文字。",
+            "本应用随版本迭代可能调整功能界面与词库数据，重要内容建议另行保留备份。",
         ]),
         ("按现状提供", [
             "在适用法律允许的最大范围内，本应用按“现状”和“现有”提供，不作任何明示或默示的保证，包括但不限于适销性、特定用途适用性与不侵权的保证。",
@@ -65,7 +65,7 @@ DOCS = [
             "候选词来自开源词库与统计语言模型（按词语在公开语料中出现的次数排序，不是 AI 生成），可能包含不准确或不当的词语，不代表开发者的观点。你可以在候选栏长按自己学过的词将其删除。",
         ]),
         ("知识产权", [
-            "Mosto 角色形象与名称归开发者所有。本应用源代码以 GPL-3.0 许可开源：" + REPO,
+            "OTTOSSOM 家族（Moss、Otto、Mosto）角色形象、造型与名称归开发者所有。本应用源代码以 GPL-3.0 许可开源：" + REPO,
             "第三方词库、语言模型与数据按各自的许可使用，详见“开源许可”。",
         ]),
         ("商标与关系声明", [
@@ -145,11 +145,11 @@ def page_body(sections):
         parts.append(f"<section><h2>{html.escape(heading)}</h2>{''.join(inner)}</section>")
     return "\n".join(parts)
 
-INDEX_BODY = f"""<section><h2>纯双拼与全拼的 iOS 键盘</h2>
-<p>小鹤双拼 · 全拼 · 九宫格，按触点位置自动纠错，中英混输。住在键盘里的小魔王 Mosto 陪你打字。</p>
-<p>键盘不联网，不收集任何数据；你学过的词和触点习惯只存在你的设备上。</p></section>
-<section><h2>参加公开测试</h2><p>通过 TestFlight 公开链接加入测试；安装后在 设置 › 通用 › 键盘 › 键盘 › 添加新键盘 中选择 Mosto键盘。</p></section>
-<section><h2>支持与反馈</h2><p>在 TestFlight 中截图即可提交反馈，或在这里提问：<a href="{ISSUES}">{ISSUES}</a></p></section>"""
+INDEX_BODY = f"""<section><h2>纯离线小鹤双拼与全拼 iOS 键盘</h2>
+<p>小鹤双拼 · 全拼 · 九宫格，按触点位置自动纠错，支持中英混输。OTTOSSOM 家族的 Moss、Otto 与 Mosto 陪你安静打字。</p>
+<p>键盘扩展与伴侣应用全程不联网，不读取剪贴板，不收集任何个人数据；你学过的词和触点习惯只留在你的设备上。</p></section>
+<section><h2>启用方式</h2><p>安装后打开伴侣应用首页，或前往 设置 › 通用 › 键盘 › 键盘 › 添加新键盘 选择 Mosto键盘，长按地球键切换即可打字；不开启“允许完全访问”也能使用全部核心功能。</p></section>
+<section><h2>支持与反馈</h2><p>欢迎在使用中反馈建议与问题：<a href="{ISSUES}">{ISSUES}</a></p></section>"""
 
 def main():
     os.makedirs(os.path.join(ROOT, "docs"), exist_ok=True)

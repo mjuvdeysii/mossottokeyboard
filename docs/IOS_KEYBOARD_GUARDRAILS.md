@@ -7,7 +7,7 @@
 - **铁律**：
   1. 组合打字态（`!taps.isEmpty`）每键 **0 次**额外 `documentContext` 读取（`refresh()` 与 `handle()` 末尾禁止无条件读上下文）。；中文普通断句按空格仅在 `inInsertedPair` 标志为真时才检查跳出右括号，日常空格 **0 次 XPC**。
   2. 仅在起打首键（`taps.isEmpty`）通过异步预取缓存上下文（`Rule 14` 门禁 `letter(_:tap:)` / `initialEngineContext()` 禁止 `.appex` 首键同步读取 `documentContextBeforeInput`）；空格拖动光标在 `.began` 一次性快照后本地按 Swift `Character` 步进。
-  3. **`.appex` 零 `setMarkedText` XPC**：真实键盘扩展内禁止向宿主发送行内 `setMarkedText`（由 `Rule 9` 强制门禁，只允许通过 `CandidateBarView` 顶部实时原字母槽展示输入流；仅伴侣 App 沙盒/测试台保留行内预编辑以维持完整测试覆盖），彻底消除 Safari/`WKWebView` 组合态卡顿与回声竞争；同时保持 CoreText 非 BMP 缺字形（`.LastResort` / `.notdef`）零豆腐块过滤。
+  3. **`.appex` 零 `setMarkedText` XPC**：真实键盘扩展内禁止向宿主发送行内 `setMarkedText`（由 `Rule 9` 强制门禁，只允许通过 `CandidateBarView` 顶部实时原字母槽展示输入流；仅 `KeyboardTests` / `FakeTextHost` 单元测试保留行内预编辑断言以维持完整回归覆盖），彻底消除 Safari/`WKWebView` 组合态卡顿与回声竞争；同时保持 CoreText 非 BMP 缺字形（`.LastResort` / `.notdef`）零豆腐块过滤。
   4. `viewWillDisappear` 失焦瞬间禁止同步读取 `documentContextBeforeInput` 或同步写 `UserDefaults`。
 
 ## 2. CoreAnimation 渲染与帧率红线（120Hz ProMotion 零掉帧）
