@@ -1324,7 +1324,7 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let side: CGFloat = 56; closeButton.isHidden = true; closeButton.frame = .zero
+        let side: CGFloat = 56
         let dockH: CGFloat = 52
         collection.frame = CGRect(x: 0, y: 0, width: bounds.width, height: max(0, bounds.height - dockH))
         collection.contentInset = UIEdgeInsets(top: 2, left: 0, bottom: 6, right: 0)
@@ -1338,6 +1338,11 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         deleteButton.frame = CGRect(x: bounds.width - side + 4, y: by, width: side - 10, height: bh)
         deleteButton.layer.shadowPath = UIBezierPath(roundedRect: deleteButton.bounds, cornerRadius: Metrics.cornerRadius).cgPath
         bringSubviewToFront(deleteButton)
+        let closeW: CGFloat = 52
+        closeButton.isHidden = false
+        closeButton.frame = CGRect(x: deleteButton.frame.minX - 8 - closeW, y: by, width: closeW, height: bh)
+        closeButton.layer.shadowPath = UIBezierPath(roundedRect: closeButton.bounds, cornerRadius: Metrics.cornerRadius).cgPath
+        bringSubviewToFront(closeButton)
     }
 
     func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int { displayedIndices.count }
@@ -1375,6 +1380,8 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
 
     var displayedCountForTests: Int { displayedIndices.count }
     var singleCharButtonHiddenForTests: Bool { singleCharButton.isHidden }
+    var closeButtonHiddenForTests: Bool { closeButton.isHidden }
+    func tapCloseForTests() { closeTapped() }
     func toggleSingleCharForTests() { toggleSingleChar() }
     func selectDisplayedForTests(_ i: Int) { if i < displayedIndices.count { onSelect?(displayedIndices[i]) } }
     func longPressDisplayedForTests(_ i: Int) { if i < displayedIndices.count { onLongPress?(displayedIndices[i]) } }
@@ -2127,6 +2134,9 @@ final class SettingsPanelView: UIView {
             && !heightPill.frame.intersects(moreButton.frame)
             && !offlineStatusLabel.frame.intersects(heightPill.frame)
     }
+    var bannerNonOverlappingForTests: Bool {
+        accessBanner.isHidden || (!accessBanner.frame.intersects(utilityRow.frame) && !accessBanner.frame.intersects(hapticTile.frame))
+    }
 
     override func layoutSubviews() {
         super.layoutSubviews()
@@ -2144,15 +2154,16 @@ final class SettingsPanelView: UIView {
         moreScroll.frame = bodyFrame
 
         // Layout 2x3 Hardware Tile Matrix inside `deckContainer` (0 scroll in portrait & landscape)
+        let compactH = h < 205
         let padX: CGFloat = 10
         let gapX: CGFloat = 8
-        let gapY: CGFloat = h < 205 ? 6 : 8
-        let bannerH: CGFloat = accessBanner.isHidden ? 0 : 18
-        let utilH: CGFloat = 30
-        let padTop: CGFloat = h < 205 ? 6 : 10
-        let padBot: CGFloat = h < 205 ? 6 : 10
+        let gapY: CGFloat = compactH ? 4 : 8
+        let bannerH: CGFloat = accessBanner.isHidden ? 0 : (compactH ? 16 : 18)
+        let utilH: CGFloat = compactH ? 28 : 30
+        let padTop: CGFloat = compactH ? 4 : 10
+        let padBot: CGFloat = compactH ? 4 : 10
         let availH = bodyFrame.height - padTop - padBot - utilH - bannerH - gapY * (accessBanner.isHidden ? 2 : 3)
-        let rowH = min(84, max(42, floor(availH / 2)))
+        let rowH = min(84, max(compactH ? 38 : 42, floor(availH / 2)))
         let colW = max(40, (w - padX * 2 - gapX * 2) / 3)
         let row1 = [schemeTile, layoutTile, lightTile]
         let row2 = [hapticTile, soundTile, correctTile]
@@ -2168,7 +2179,7 @@ final class SettingsPanelView: UIView {
             accessBanner.frame = CGRect(x: padX, y: nextY, width: w - padX * 2, height: bannerH)
             nextY += bannerH + gapY
         }
-        utilityRow.frame = CGRect(x: padX, y: min(nextY, bodyFrame.height - utilH - 4), width: w - padX * 2, height: utilH)
+        utilityRow.frame = CGRect(x: padX, y: min(nextY, max(nextY, bodyFrame.height - utilH - padBot)), width: w - padX * 2, height: utilH)
         let uw = utilityRow.bounds.width
         let moreW = min(106, max(84, (uw * 0.28).rounded()))
         let heightW = min(104, max(84, (uw * 0.28).rounded()))

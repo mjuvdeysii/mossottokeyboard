@@ -142,6 +142,7 @@ enum KeyboardTests {
         r63AdjustableHeightAndOpticalScale(window)
         r64SpringLoadedModifierGlide(window)
         r65VisualCraftAndOpticalFit(window)
+        r66VisualStructureAndThumbErgonomics(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -2599,6 +2600,45 @@ enum KeyboardTests {
         log(!dayCaption.contains("R50"),
             "r65.StudioLampMode.day.caption avoids internal milestone jargon",
             "caption=\(dayCaption)")
+    }
+
+    // MARK: - R66: Unified Xiaohe interactive instrument, compact landscape console & grid thumb close
+
+    static func r66VisualStructureAndThumbErgonomics(_ window: UIWindow) {
+        // 1. SettingsPanelView at compact landscape (480x186) with Full Access OFF banner shows zero overlaps
+        let landPanel = SettingsPanelView(frame: CGRect(x: 0, y: 0, width: 480, height: 186))
+        landPanel.setFeedbackAvailable(false)
+        landPanel.load()
+        landPanel.layoutIfNeeded()
+        log(landPanel.utilityRowNonOverlappingForTests && landPanel.bannerNonOverlappingForTests,
+            "r66.SettingsPanelView keeps accessBanner and utilityRow non-overlapping at 480x186 compact landscape",
+            "util=\(landPanel.utilityRowNonOverlappingForTests) banner=\(landPanel.bannerNonOverlappingForTests)")
+
+        // 2. CandidateGridView exposes thumb-reachable bottom dock collapse button beside delete
+        let grid = CandidateGridView(frame: CGRect(x: 0, y: 0, width: 402, height: 220))
+        grid.show([
+            Candidate(text: "你好", tapCount: 4, syllables: [1, 2], corrected: false, score: 0),
+            Candidate(text: "你", tapCount: 2, syllables: [1], corrected: false, score: 0),
+        ])
+        grid.layoutIfNeeded()
+        var closedCount = 0
+        grid.onClose = { closedCount += 1 }
+        grid.tapCloseForTests()
+        log(!grid.closeButtonHiddenForTests && closedCount == 1,
+            "r66.CandidateGridView shows bottom dock close button and triggers onClose on tap",
+            "hidden=\(grid.closeButtonHiddenForTests) closed=\(closedCount)")
+
+        // 3. XiaoheDrill interactive key inspector returns verified 2-key examples for tricky keys
+        let vExamples = XiaoheDrill.inspectExamplesForTests(key: "v")
+        let lExamples = XiaoheDrill.inspectExamplesForTests(key: "l")
+        let uExamples = XiaoheDrill.inspectExamplesForTests(key: "u")
+        let allValid = !vExamples.isEmpty && !lExamples.isEmpty && !uExamples.isEmpty
+            && vExamples.allSatisfy { $0.code.contains("v") && $0.code.count == 2 }
+            && lExamples.allSatisfy { $0.code.contains("l") && $0.code.count == 2 }
+            && uExamples.allSatisfy { $0.code.contains("u") && $0.code.count == 2 }
+        log(allValid,
+            "r66.XiaoheDrill interactive key inspector returns verified 2-key examples for zh/sh/liang keys",
+            "v=\(vExamples.map(\.code)) l=\(lExamples.map(\.code)) u=\(uExamples.map(\.code))")
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key
