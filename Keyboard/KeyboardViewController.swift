@@ -1032,6 +1032,7 @@ final class KeyboardViewController: UIInputViewController {
             if handleCount % 40 == 0 { peakFootprint = max(peakFootprint, memoryFootprintMB()) }   // a few µs
         }
         candidateBar.dismissForget()
+        let pendingMathResult: String? = (action == .space && taps.isEmpty && enTaps.isEmpty && showingMathPrediction) ? predictions.first : nil
         if action.endsSuggestions { clearPredictions() }
         // a clear can be taken back only until the next key
         cleared = nil
@@ -1056,7 +1057,7 @@ final class KeyboardViewController: UIInputViewController {
         case .char(let s):
             if let tap, page == .letters { letter(s, tap: tap) } else { symbol(s) }
         case .space:
-            space()
+            space(mathResult: pendingMathResult)
         case .delete:
             delete()
         case .ret:
@@ -1301,7 +1302,15 @@ final class KeyboardViewController: UIInputViewController {
         return s
     }
 
-    private func space() {
+    private func space(mathResult: String? = nil) {
+        if let mathAns = mathResult {
+            forgetLastWord()
+            lastHostWriteTime = CACurrentMediaTime()
+            host.insertText(mathAns)
+            lastCommittedContext = String((lastCommittedContext + mathAns).suffix(8))
+            engine.setContext(lastCommittedContext)
+            return
+        }
         if !chinese, !enTaps.isEmpty {
             applyEnglishAutocorrection()
             endEnglishWord()

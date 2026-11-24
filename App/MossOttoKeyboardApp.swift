@@ -852,7 +852,7 @@ private struct GestureAtlasView: View {
                     atlasRow(
                         cap: "365+=",
                         title: "四则心算与相对日期直出",
-                        detail: "直接敲 286/4= 或带括号算式在候选栏直出结果；打 明天 / 下周一 / 今年 / 本月 自动联想对应日期。",
+                        detail: "直接敲 286/4= 或带括号算式在候选栏直出结果，按空格或轻点即可上屏并支持继续连算；打 明天 / 下周一 / 今年 / 本月 自动联想对应日期。",
                         demoTitle: "中英混输"
                     )
                     Divider()

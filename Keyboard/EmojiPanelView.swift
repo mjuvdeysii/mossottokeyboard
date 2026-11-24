@@ -11,7 +11,10 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     struct MoodGroup { let title: String; let items: [String] }
 
     private var sections: [Category] = []
+    private let collectionBox = UIView()
+    private let collectionFade = CAGradientLayer()
     private let collection: UICollectionView
+    private let kaomojiShortcutButton = UIButton(type: .custom)
     private let moodHeader = UIView()
     private let moodMosto = UIImageView()
     private let moodScrollBox = UIView()
@@ -121,6 +124,14 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     var moodTitlesForTests: [String] { displayedMoods.map(\.title) }
     func tapMoodMostoForTests() { moodMostoTapped() }
     var kaomojiRowHeightForTests: CGFloat { kaomojiRowHeight }
+    var collectionBottomFadeActiveForTests: Bool { collectionBox.layer.mask === collectionFade }
+    var kaomojiShortcutVisibleForTests: Bool { !kaomojiShortcutButton.isHidden }
+    var kaomojiModeForTests: Bool { kaomojiMode }
+    func tapKaomojiShortcutForTests() { kaomojiShortcutTapped() }
+    var collectionForTests: UICollectionView { collection }
+    var portraitDockLightbulbUnclippedForTests: Bool {
+        tabButtons.count > 6 && tabButtons[6].frame.maxX <= tabScrollBox.bounds.width
+    }
 
     final class Cell: UICollectionViewCell {
         let label = UILabel()
@@ -199,6 +210,11 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         super.init(frame: frame)
         backgroundColor = Theme.touchable
 
+        collectionBox.backgroundColor = .clear
+        collectionFade.startPoint = CGPoint(x: 0.5, y: 0)
+        collectionFade.endPoint = CGPoint(x: 0.5, y: 1)
+        collectionFade.colors = [UIColor.black.cgColor, UIColor.black.cgColor, UIColor.clear.cgColor]
+
         collection.backgroundColor = .clear
         collection.clipsToBounds = true
         collection.disableAllEdgeEffects()
@@ -209,7 +225,13 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         collection.delegate = self
         collection.register(Cell.self, forCellWithReuseIdentifier: "e")
         collection.register(Header.self, forSupplementaryViewOfKind: UICollectionView.elementKindSectionHeader, withReuseIdentifier: "h")
-        addSubview(collection)
+        collectionBox.addSubview(collection)
+        addSubview(collectionBox)
+
+        kaomojiShortcutButton.layer.borderWidth = 0.5
+        kaomojiShortcutButton.accessibilityLabel = "打开 Mosto 颜文字"
+        kaomojiShortcutButton.addTarget(self, action: #selector(kaomojiShortcutTapped), for: .touchUpInside)
+        addSubview(kaomojiShortcutButton)
 
         // Top Kaomoji Mood Tape Ribbon (replaces static section header only in kaomojiMode)
         moodHeader.isHidden = true
@@ -323,15 +345,6 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
 
     required init?(coder: NSCoder) { fatalError() }
 
-    private static func resizedFace(_ face: UIImage) -> UIImage {
-        let side: CGFloat = 24
-        return UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { _ in
-            let scale = min(side / face.size.width, side / face.size.height)
-            let w = face.size.width * scale, h = face.size.height * scale
-            face.draw(in: CGRect(x: (side - w) / 2, y: (side - h) / 2, width: w, height: h))
-        }
-    }
-
     func themeChanged() {
         applyLips()
         moodMosto.isHidden = Theme.plain
@@ -371,10 +384,52 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
                 moodMosto.image = UIImage(named: imgName, in: Bundle(for: EmojiPanelView.self), with: nil)
             }
         }
+        updateKaomojiShortcutStyle()
         deleteButton.backgroundColor = Theme.functionKey
         deleteButton.tintColor = Theme.keyText
         gear.tintColor = Theme.secondaryText
         updateMoodMostoPose(animated: false)
+    }
+
+    private func updateKaomojiShortcutStyle() {
+        let t = traitCollection
+        let night = KeyboardSettings.shared.appearance == 2 || (KeyboardSettings.shared.appearance == 0 && t.userInterfaceStyle == .dark)
+        var cfg = UIButton.Configuration.filled()
+        cfg.cornerStyle = .capsule
+        cfg.baseBackgroundColor = Theme.preeditPillBg
+        cfg.baseForegroundColor = Theme.keyText
+        cfg.contentInsets = NSDirectionalEdgeInsets(top: 2, leading: 7, bottom: 2, trailing: 9)
+        cfg.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
+            var out = incoming
+            out.font = Theme.font(11.5, .semibold)
+            return out
+        }
+        if Theme.plain {
+            cfg.image = nil
+            cfg.title = "颜文字 ›"
+            cfg.imagePadding = 0
+        } else {
+            let imgName = night ? "mosto_night" : "mosto_day"
+            if let face = UIImage(named: imgName, in: Bundle(for: EmojiPanelView.self), with: nil) {
+                cfg.image = Self.resizedFace(face, side: 15).withRenderingMode(.alwaysOriginal)
+                cfg.imagePadding = 4
+            } else {
+                cfg.image = nil
+                cfg.imagePadding = 0
+            }
+            cfg.title = "颜文字"
+        }
+        kaomojiShortcutButton.configuration = cfg
+        kaomojiShortcutButton.layer.borderColor = Theme.preeditPillBorder.resolvedColor(with: t).cgColor
+        kaomojiShortcutButton.layer.cornerCurve = .continuous
+    }
+
+    private static func resizedFace(_ face: UIImage, side: CGFloat = 24) -> UIImage {
+        return UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { _ in
+            let scale = min(side / face.size.width, side / face.size.height)
+            let w = face.size.width * scale, h = face.size.height * scale
+            face.draw(in: CGRect(x: (side - w) / 2, y: (side - h) / 2, width: w, height: h))
+        }
     }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
@@ -553,6 +608,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         setNeedsLayout()
         guard bounds.width > 100, bounds.height > 100 else {
             if kaomoji { setSelected(Self.categoryNames.count + 1, animated: false) }
+            updateCollectionBottomFade()
             return
         }
         layoutIfNeeded()
@@ -560,9 +616,11 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         if kaomoji {
             setSelected(Self.categoryNames.count + 1, animated: false)
             collection.setContentOffset(.zero, animated: false)
+            updateCollectionBottomFade()
             return
         }
         scrollTo(recent.isEmpty ? 1 : 0, animated: false)
+        updateCollectionBottomFade()
     }
 
     func setChinese(_ chinese: Bool) {
@@ -575,11 +633,12 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     private var cellSide: CGFloat {
         let w = collection.bounds.width - 8
         guard w > 100 else { return 40 }
-        let across = max(8, Int(w / 46))
+        let compactLand = bounds.height < 210 && w > 500
+        let across = compactLand ? max(12, Int(w / 40)) : max(8, Int(w / 46))
         return floor(w / CGFloat(across))
     }
 
-    private func updateEdgeFade(box: UIView, scroll: UIScrollView, fade: CAGradientLayer) {
+    private func updateEdgeFade(box: UIView, scroll: UIScrollView, fade: CAGradientLayer, edge: CGFloat = 12) {
         let w = box.bounds.width
         let x = scroll.contentOffset.x
         let left = x > 0.5
@@ -591,9 +650,27 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         fade.frame = box.bounds
-        let e = Double(12 / w)
+        let e = Double(min(0.24, edge / w))
         fade.locations = [0, NSNumber(value: left ? e : 0), NSNumber(value: right ? 1 - e : 1), 1]
         if box.layer.mask !== fade { box.layer.mask = fade }
+        CATransaction.commit()
+    }
+
+    private func updateCollectionBottomFade() {
+        let h = collectionBox.bounds.height
+        let hasMoreBelow = !kaomojiMode
+            && collection.contentSize.height > h + 2
+            && (collection.contentOffset.y + h < collection.contentSize.height - 2)
+        guard h > 40, hasMoreBelow else {
+            if collectionBox.layer.mask != nil { collectionBox.layer.mask = nil }
+            return
+        }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        collectionFade.frame = collectionBox.bounds
+        let frac = Double(min(0.16, 15.0 / h))
+        collectionFade.locations = [0, NSNumber(value: 1.0 - frac), 1]
+        if collectionBox.layer.mask !== collectionFade { collectionBox.layer.mask = collectionFade }
         CATransaction.commit()
     }
 
@@ -637,7 +714,26 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             moodHeader.isHidden = true
         }
 
-        collection.frame = CGRect(x: 0, y: topH, width: b.width, height: max(0, b.height - topH - barH))
+        collectionBox.frame = CGRect(x: 0, y: topH, width: b.width, height: max(0, b.height - topH - barH))
+        collection.frame = collectionBox.bounds
+        if let flow = collection.collectionViewLayout as? UICollectionViewFlowLayout {
+            flow.sectionInset = UIEdgeInsets(top: 2, left: 4, bottom: b.height < 210 ? 2 : 4, right: 4)
+        }
+        kaomojiShortcutButton.isHidden = kaomojiMode
+        if !kaomojiMode {
+            let headerH: CGFloat = b.height < 210 ? 22 : 26
+            let pillH: CGFloat = b.height < 210 ? 20 : 22
+            let fitW = ceil(kaomojiShortcutButton.sizeThatFits(CGSize(width: 140, height: pillH)).width)
+            let pillW = max(Theme.plain ? 62 : 76, fitW)
+            kaomojiShortcutButton.frame = CGRect(
+                x: max(8, b.width - pillW - 8),
+                y: topH + floor((headerH - pillH) / 2),
+                width: pillW,
+                height: pillH
+            )
+            kaomojiShortcutButton.layer.cornerRadius = pillH / 2
+            bringSubviewToFront(kaomojiShortcutButton)
+        }
 
         dockBar.frame = CGRect(x: 0, y: b.height - barH, width: b.width, height: barH)
         CATransaction.begin()
@@ -645,7 +741,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         dockHairline.frame = CGRect(x: 8, y: 0, width: max(0, b.width - 16), height: 1 / UIScreen.main.scale)
         CATransaction.commit()
 
-        let side: CGFloat = 56
+        let side: CGFloat = 54
         let btnH: CGFloat = barH - 8
         let btnY: CGFloat = 4
         backButton.frame = CGRect(x: 6, y: btnY, width: side, height: btnH)
@@ -655,15 +751,15 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             btn.layer.shadowPath = UIBezierPath(roundedRect: btn.bounds, cornerRadius: Metrics.cornerRadius).cgPath
         }
 
-        // Scrollable horizontal category pills between backButton and deleteButton (36x34pt touch targets, zero squish)
+        // Scrollable horizontal category pills between backButton and deleteButton (34x34pt touch targets, zero lightbulb clipping)
         let tabLeft = backButton.frame.maxX + 6
         let tabRight = deleteButton.frame.minX - 6
         tabScrollBox.frame = CGRect(x: tabLeft, y: 0, width: max(0, tabRight - tabLeft), height: barH)
         tabScroll.frame = tabScrollBox.bounds
         let dockItems = tabButtons + [gear]
-        let itemW: CGFloat = 36
+        let itemW: CGFloat = 34
         let itemH: CGFloat = 34
-        let itemGap: CGFloat = 4
+        let itemGap: CGFloat = 3
         var tx: CGFloat = 2
         let ty = (barH - itemH) / 2
         for item in dockItems {
@@ -680,10 +776,12 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             ensureSelectedTabVisible(animated: false)
             pendingScrollToSelectedTab = false
         }
-        updateEdgeFade(box: tabScrollBox, scroll: tabScroll, fade: tabFade)
+        updateEdgeFade(box: tabScrollBox, scroll: tabScroll, fade: tabFade, edge: 20)
 
         collection.collectionViewLayout.invalidateLayout()
+        collection.layoutIfNeeded()
         if !kaomojiMode { updateSelection() }
+        updateCollectionBottomFade()
     }
 
     // MARK: - Collection
@@ -756,7 +854,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
 
     func collectionView(_ collectionView: UICollectionView, layout: UICollectionViewLayout, referenceSizeForHeaderInSection section: Int) -> CGSize {
         if kaomojiMode { return .zero }
-        return sections[section].items.isEmpty ? .zero : CGSize(width: collectionView.bounds.width, height: 28)
+        return sections[section].items.isEmpty ? .zero : CGSize(width: collectionView.bounds.width, height: bounds.height < 210 ? 22 : 26)
     }
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
@@ -788,11 +886,12 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             return
         }
         if scrollView === tabScroll {
-            updateEdgeFade(box: tabScrollBox, scroll: tabScroll, fade: tabFade)
+            updateEdgeFade(box: tabScrollBox, scroll: tabScroll, fade: tabFade, edge: 20)
             return
         }
         guard scrollView === collection, !kaomojiMode else { return }
         updateSelection()
+        updateCollectionBottomFade()
     }
 
     // MARK: - Categories
@@ -838,7 +937,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         if abs(offsetX - tabScroll.contentOffset.x) > 0.5 {
             tabScroll.setContentOffset(CGPoint(x: offsetX, y: 0), animated: animated)
         }
-        updateEdgeFade(box: tabScrollBox, scroll: tabScroll, fade: tabFade)
+        updateEdgeFade(box: tabScrollBox, scroll: tabScroll, fade: tabFade, edge: 20)
     }
 
     private func setSelected(_ s: Int, animated: Bool = true) {
@@ -850,6 +949,11 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             b.isEnabled = !sections[i].items.isEmpty
         }
         ensureSelectedTabVisible(animated: animated)
+    }
+
+    @objc private func kaomojiShortcutTapped() {
+        guard let mostoTab = tabButtons.last else { return }
+        tabTapped(mostoTab)
     }
 
     @objc private func tabTapped(_ b: UIButton) {
@@ -867,6 +971,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         } else {
             scrollTo(b.tag, animated: false)
         }
+        updateCollectionBottomFade()
     }
 
     @objc private func backTapped() { onBack?() }

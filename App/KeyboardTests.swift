@@ -144,6 +144,7 @@ enum KeyboardTests {
         r65VisualCraftAndOpticalFit(window)
         r66VisualStructureAndThumbErgonomics(window)
         r67T9AltPopupAndFreeBenchInspirations(window)
+        r68StageOverlaysMathSpaceAndEmojiCraft(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -2241,9 +2242,7 @@ enum KeyboardTests {
         let toggledToRecent = ep.activeMoodIndexForTests == 0 && ep.displayedKaomojiCountForTests == 1
         ep.tapMoodMostoForTests()
         let toggledToSign = ep.activeMoodIndexForTests == signIdx
-        if let cv = ep.subviews.compactMap({ $0 as? UICollectionView }).first {
-            ep.collectionView(cv, didSelectItemAt: IndexPath(item: 0, section: 0))
-        }
+        ep.collectionView(ep.collectionForTests, didSelectItemAt: IndexPath(item: 0, section: 0))
         ep.selectMoodForTests(0)
         let syncedRecentCount = ep.displayedKaomojiCountForTests
         log(titlesBefore.first == "常用" && nightPose == "mosto_night" && yawnPose == "mosto_yawn" && toggledToRecent && toggledToSign && syncedRecentCount == 2,
@@ -2719,6 +2718,79 @@ enum KeyboardTests {
         } else {
             log(false, "r67.PlaygroundModel inspiration setup")
         }
+    }
+
+    // MARK: - R68: Math Spacebar Commit & Chained Calc, Exclusive Forget Stage, Clear Cue & Emoji Craft
+
+    static func r68StageOverlaysMathSpaceAndEmojiCraft(_ window: UIWindow) {
+        // 1. Trailing mental math commits via Spacebar cleanly and chains follow-up arithmetic
+        if let pair = makeKeyboard(scheme: 1, in: window) {
+            let (vc, h) = pair
+            vc.handle(.page(.numbers), tap: nil)
+            for ch in ["3", "6", "5", "+", "1", "8", "="] { vc.handle(.char(ch), tap: nil) }
+            drain(0.03)
+            let preds1 = vc.testState.predictions
+            vc.handle(.space, tap: nil)
+            drain(0.03)
+            let afterSpace1 = h.string
+            let predsCleared = vc.testState.predictions.isEmpty
+            for ch in ["+", "1", "0", "="] { vc.handle(.char(ch), tap: nil) }
+            drain(0.03)
+            let preds2 = vc.testState.predictions
+            vc.handle(.space, tap: nil)
+            drain(0.03)
+            log(preds1 == ["383"] && afterSpace1 == "365+18=383" && predsCleared
+                && preds2 == ["393"] && h.string == "365+18=383+10=393",
+                "r68.Space commits trailing math result cleanly and chains subsequent calculations",
+                "preds1=\(preds1) s1=\(afterSpace1) preds2=\(preds2) final=\(h.string)")
+        } else {
+            log(false, "r68.math space setup")
+        }
+
+        // 2. Exclusive Forget Stage hides underlying strip/preedit/expand cleanly and restores on cancel
+        let bar = CandidateBarView(frame: CGRect(x: 0, y: 0, width: 402, height: 42))
+        bar.showsPreedit = true
+        bar.update(preedit: "nihc", candidates: [
+            Candidate(text: "你好", tapCount: 4, syllables: [1], corrected: true, score: 0),
+            Candidate(text: "尼好", tapCount: 4, syllables: [1], corrected: false, score: 0),
+        ])
+        bar.layoutIfNeeded()
+        bar.offerForget("摸索小鹤双拼键盘测试长词") {}
+        let active = bar.forgetOverlayActiveForTests
+        let hidesUnderlying = bar.forgetOverlayHidesStripForTests
+        let nonOverlap = bar.forgetButtonsNonOverlappingForTests
+        bar.tapForgetCancelForTests()
+        bar.layoutIfNeeded()
+        log(active && hidesUnderlying && nonOverlap && !bar.forgetOverlayActiveForTests && bar.laidOutForTests >= 2,
+            "r68.CandidateBarView.offerForget stages exclusive non-overlapping overlay and restores cleanly on cancel",
+            "active=\(active) hides=\(hidesUnderlying) nonOverlap=\(nonOverlap) restored=\(!bar.forgetOverlayActiveForTests) laid=\(bar.laidOutForTests)")
+
+        // 3. Armed delete-left swipe shows clearArmedCue without triggering during held-delete clutch (dimContent: false)
+        bar.setClearProgress(1, armed: true, dimContent: true)
+        let swipeCueShown = bar.clearArmedCueShownForTests
+        bar.setClearProgress(1, armed: true, dimContent: false)
+        let clutchCueHidden = !bar.clearArmedCueShownForTests
+        bar.setClearProgress(0, armed: false, dimContent: true)
+        log(swipeCueShown && clutchCueHidden && !bar.clearArmedCueShownForTests,
+            "r68.ClearArmed micro-cue displays only for armed delete-left swipe and resets cleanly",
+            "swipeCue=\(swipeCueShown) clutchHidden=\(clutchCueHidden)")
+
+        // 4. EmojiPanelView soft bottom fade, unclipped portrait dock lightbulb, and 1-tap sticky-header Kaomoji shortcut
+        for e in ["👍", "😭", "❤️", "🙏", "😂"] { EmojiPanelView.remember(e) }
+        let ep = EmojiPanelView(frame: CGRect(x: 0, y: 0, width: 402, height: 242))
+        ep.layoutIfNeeded()
+        ep.load(kaomoji: false)
+        ep.layoutIfNeeded()
+        let fadeOn = ep.collectionBottomFadeActiveForTests
+        let shortcutShown = ep.kaomojiShortcutVisibleForTests
+        let bulbUnclipped = ep.portraitDockLightbulbUnclippedForTests
+        ep.tapKaomojiShortcutForTests()
+        ep.layoutIfNeeded()
+        let switchedToKaomoji = ep.kaomojiModeForTests && !ep.kaomojiShortcutVisibleForTests
+            && !ep.collectionBottomFadeActiveForTests && ep.tabScrollOffsetXForTests > 20
+        log(fadeOn && shortcutShown && bulbUnclipped && switchedToKaomoji,
+            "r68.EmojiPanelView applies soft bottom fade, keeps portrait dock lightbulb unclipped, and opens Kaomoji in 1 tap",
+            "fade=\(fadeOn) shortcut=\(shortcutShown) bulb=\(bulbUnclipped) kao=\(switchedToKaomoji) offsetX=\(ep.tabScrollOffsetXForTests)")
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

@@ -17,6 +17,29 @@ enum SnapshotRenderer {
         }
     }
 
+    private static func isPureBlack(_ image: UIImage) -> Bool {
+        guard let cg = image.cgImage, cg.width >= 4, cg.height >= 4 else { return true }
+        let w = cg.width, h = cg.height
+        var rgba = [UInt8](repeating: 0, count: 4)
+        guard let ctx = CGContext(
+            data: &rgba,
+            width: 1,
+            height: 1,
+            bitsPerComponent: 8,
+            bytesPerRow: 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return false }
+        for (px, py) in [(w / 4, h / 4), (w / 2, h / 2), ((3 * w) / 4, (3 * h) / 4)] {
+            ctx.clear(CGRect(x: 0, y: 0, width: 1, height: 1))
+            if let pixel = cg.cropping(to: CGRect(x: px, y: py, width: 1, height: 1)) {
+                ctx.draw(pixel, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+                if rgba[0] > 2 || rgba[1] > 2 || rgba[2] > 2 { return false }
+            }
+        }
+        return true
+    }
+
     @MainActor
     static func run(in scene: UIWindowScene) {
         let fm = FileManager.default
@@ -218,8 +241,14 @@ enum SnapshotRenderer {
                 root.setNeedsLayout(); root.layoutIfNeeded()
                 kb.layoutIfNeeded(); bar.layoutIfNeeded()
                 let format = UIGraphicsImageRendererFormat(); format.scale = 3
-                let img = UIGraphicsImageRenderer(bounds: root.bounds, format: format).image { _ in
-                    root.drawHierarchy(in: root.bounds, afterScreenUpdates: true)
+                var drew = false
+                var img = UIGraphicsImageRenderer(bounds: root.bounds, format: format).image { _ in
+                    drew = root.drawHierarchy(in: root.bounds, afterScreenUpdates: true)
+                }
+                if !drew || isPureBlack(img) {
+                    img = UIGraphicsImageRenderer(bounds: root.bounds, format: format).image { ctx in
+                        root.layer.render(in: ctx.cgContext)
+                    }
                 }
                 let file = dir.appendingPathComponent("\(night ? "night" : "day")_\(shot.name).png")
                 try? img.pngData()?.write(to: file)

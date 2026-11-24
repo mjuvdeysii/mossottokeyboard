@@ -74,8 +74,10 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     /// Zero-width 2pt focus glow bar beneath slot 0 when autocorrect engaged (replaces noisy jr->ke text).
     private let correctionBar = CALayer()
     private let clearFilament = CALayer()
+    private let clearArmedPill = UILabel()
     private var clearSwipeProgress: CGFloat = 0
     private var clearSwipeArmed = false
+    private var clearSwipeDimContent = true
     /// What each pooled label shows now (so a label is only redrawn when it changes).
     private var poolKeys: [String] = []
     private var activeFixes: [Fix] = []
@@ -192,6 +194,16 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         clearFilament.zPosition = 20
         clearFilament.isHidden = true
         layer.addSublayer(clearFilament)
+        clearArmedPill.text = "松手清空"
+        clearArmedPill.font = Theme.font(11.5, .semibold)
+        clearArmedPill.textAlignment = .center
+        clearArmedPill.layer.cornerRadius = 11
+        clearArmedPill.layer.cornerCurve = .continuous
+        clearArmedPill.layer.borderWidth = 0.5
+        clearArmedPill.clipsToBounds = true
+        clearArmedPill.isUserInteractionEnabled = false
+        clearArmedPill.isHidden = true
+        addSubview(clearArmedPill)
         let cfg = UIImage.SymbolConfiguration(pointSize: 16, weight: .regular)
         expandButton.setImage(UIImage(systemName: "chevron.down", withConfiguration: cfg), for: .normal)
         expandButton.tintColor = Theme.secondaryText
@@ -400,6 +412,12 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             let divColor = Theme.candidateDivider.resolvedColor(with: traitCollection).cgColor
             for d in dividerPool { d.backgroundColor = divColor }
             correctionBar.backgroundColor = Theme.correctedMark.resolvedColor(with: traitCollection).cgColor
+            if let cancelBtn = forgetCancelButton {
+                var c = cancelBtn.configuration
+                c?.baseBackgroundColor = Theme.functionKey
+                c?.baseForegroundColor = Theme.functionText
+                cancelBtn.configuration = c
+            }
             layoutClearFilament()
             poolKeys = poolKeys.map { _ in "" }
             setNeedsLayout()
@@ -414,6 +432,12 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         preeditDock.backgroundColor = Theme.preeditPillBg
         applyPreeditText(preeditRaw, fixes: activeFixes)
         correctionBar.backgroundColor = Theme.correctedMark.resolvedColor(with: traitCollection).cgColor
+        if let cancelBtn = forgetCancelButton {
+            var c = cancelBtn.configuration
+            c?.baseBackgroundColor = Theme.functionKey
+            c?.baseForegroundColor = Theme.functionText
+            cancelBtn.configuration = c
+        }
         layoutClearFilament()
         var uc = undoChip.configuration
         uc?.baseBackgroundColor = Theme.correctedTint
@@ -464,9 +488,10 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         let p = armed ? 1.0 : min(1, max(0, progress))
         clearSwipeProgress = p
         clearSwipeArmed = armed
+        clearSwipeDimContent = dimContent
         let a: CGFloat = dimContent ? (armed ? 0.35 : (p > 0.01 ? (1.0 - p * 0.40) : 1.0)) : 1.0
         stripBox.alpha = a
-        expandButton.alpha = a
+        expandButton.alpha = (armed && dimContent) ? 0 : a
         preeditDock.alpha = a
         layoutClearFilament()
     }
@@ -478,6 +503,37 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     }
 
     private func layoutClearFilament() {
+        let showCue = clearSwipeArmed && clearSwipeDimContent && forgetOverlay == nil && bounds.width > 120
+        clearArmedPill.isHidden = !showCue
+        if showCue {
+            let pillW: CGFloat = 66
+            let pillH = min(22, max(18, bounds.height - 16))
+            clearArmedPill.frame = CGRect(
+                x: bounds.width - 10 - pillW,
+                y: floor((bounds.height - 2.5 - pillH) / 2),
+                width: pillW,
+                height: pillH
+            )
+            clearArmedPill.layer.cornerRadius = pillH / 2
+            clearArmedPill.font = Theme.font(11.5, .semibold)
+            if Theme.plain {
+                clearArmedPill.backgroundColor = Theme.correctedTint
+                clearArmedPill.textColor = Theme.correctedMark
+                clearArmedPill.layer.borderColor = Theme.correctedMark.withAlphaComponent(0.45).resolvedColor(with: traitCollection).cgColor
+            } else {
+                let goldAccent = Theme.dyn(Theme.gold, Theme.goldGlow)
+                clearArmedPill.backgroundColor = Theme.dyn(
+                    UIColor(red: 0.96, green: 0.91, blue: 0.78, alpha: 0.96),
+                    UIColor(red: 0.30, green: 0.24, blue: 0.14, alpha: 0.96)
+                )
+                clearArmedPill.textColor = Theme.dyn(
+                    UIColor(red: 0.45, green: 0.28, blue: 0.04, alpha: 1),
+                    Theme.goldGlow
+                )
+                clearArmedPill.layer.borderColor = goldAccent.withAlphaComponent(0.55).resolvedColor(with: traitCollection).cgColor
+            }
+            bringSubviewToFront(clearArmedPill)
+        }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         if clearSwipeProgress <= 0.005 || bounds.width <= 20 {
@@ -498,6 +554,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
 
     var clearPreviewForTests: Bool { stripBox.alpha < 1 }
     var clearFilamentProgressForTests: CGFloat { clearSwipeProgress }
+    var clearArmedCueShownForTests: Bool { !clearArmedPill.isHidden }
 
     // MARK: VoiceOver: each laid-out candidate is a button (the strip draws plain labels and reads raw touches)
 
@@ -517,6 +574,9 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
 
     override var accessibilityElements: [Any]? {
         get {
+            if forgetOverlay != nil {
+                return [forgetConfirmButton, forgetCancelButton].compactMap { $0 }
+            }
             var out: [Any] = []
             let visibleIdle = idleAccessibilityViews.filter { !$0.isHidden }
             if !visibleIdle.isEmpty {
@@ -534,7 +594,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
                         : "已纠错：" + candidates[i].fixes.map { "\($0.typed) 改为 \($0.meant)" }.joined(separator: "，")
                 } else if isMathResult {
                     e.accessibilityValue = "心算结果"
-                    e.accessibilityHint = "轻点插入"
+                    e.accessibilityHint = "轻点或按空格插入"
                 } else if isPrediction {
                     e.accessibilityValue = "联想，键盘猜的下一个词"
                     e.accessibilityHint = "轻点插入"
@@ -607,6 +667,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             inUpdate = false
         }
         let busy = !candidates.isEmpty
+        if !busy && forgetOverlay != nil { dismissForget() }
         setMosto(!busy && !typing && showsMosto && undoText == nil)
         preeditDock.isHidden = text.isEmpty || prediction || !showsPreedit
         setNeedsLayout()
@@ -660,6 +721,34 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     override func layoutSubviews() {
         super.layoutSubviews()
         let h = bounds.height
+        if let overlay = forgetOverlay {
+            overlay.frame = bounds
+            stripBox.isHidden = true
+            preeditDock.isHidden = true
+            expandButton.isHidden = true
+            undoChip.isHidden = true
+            mosto.isHidden = true
+            clearArmedPill.isHidden = true
+            let pillH = min(30, max(24, h - 10))
+            let y = floor((h - pillH) / 2)
+            if let cancelBtn = forgetCancelButton {
+                let cFit = cancelBtn.sizeThatFits(CGSize(width: 100, height: pillH))
+                let cancelW = min(68, max(52, ceil(cFit.width)))
+                cancelBtn.frame = CGRect(x: max(10, bounds.width - 10 - cancelW), y: y, width: cancelW, height: pillH)
+                if let confirmBtn = forgetConfirmButton {
+                    let maxConfirmW = max(80, cancelBtn.frame.minX - 18)
+                    let mFit = confirmBtn.sizeThatFits(CGSize(width: maxConfirmW, height: pillH))
+                    let confirmW = min(maxConfirmW, ceil(mFit.width))
+                    confirmBtn.frame = CGRect(x: 10, y: y, width: confirmW, height: pillH)
+                }
+            }
+            bringSubviewToFront(overlay)
+            layoutClearFilament()
+            return
+        }
+        undoChip.isHidden = undoText == nil
+        preeditDock.isHidden = preeditRaw.isEmpty || isPrediction || !showsPreedit
+        mosto.isHidden = !mostoWanted
         // Inset neatly inside the 28pt idle Mosto capsule (zero overflow or clipping mismatch).
         let pillH = min(28, max(24, h - 12))
         let mSize = min(24, pillH - 4)
@@ -1086,32 +1175,75 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
 
     // MARK: - Remove a learned word
 
-    private var forgetButton: UIButton?
+    private var forgetOverlay: UIView?
+    private var forgetConfirmButton: UIButton?
+    private var forgetCancelButton: UIButton?
 
-    /// A one-tap confirmation over the candidate row: "删除已学词语「…」". Any other touch dismisses it.
+    var forgetOverlayActiveForTests: Bool { forgetOverlay != nil }
+    var forgetOverlayHidesStripForTests: Bool { forgetOverlay != nil && stripBox.isHidden && expandButton.isHidden }
+    var forgetButtonsNonOverlappingForTests: Bool {
+        guard let c = forgetConfirmButton, let x = forgetCancelButton else { return false }
+        return !c.frame.intersects(x.frame) && c.frame.minX >= 8 && x.frame.maxX <= bounds.width - 8
+    }
+    func tapForgetCancelForTests() { dismissForget() }
+
+    /// An exclusive staged confirmation replacing the strip momentarily: "删除「…」" + "取消".
     func offerForget(_ text: String, confirm: @escaping () -> Void) {
         dismissForget()
+        let overlay = UIView(frame: bounds)
+        overlay.backgroundColor = .clear
+
         var cfg = UIButton.Configuration.filled()
-        cfg.title = "删除已学词语「\(text)」"
-        cfg.baseBackgroundColor = .systemRed
+        cfg.title = "删除「\(text)」"
+        cfg.titleLineBreakMode = .byTruncatingMiddle
+        cfg.image = UIImage(systemName: "trash", withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold))
+        cfg.imagePadding = 5
+        cfg.baseBackgroundColor = Theme.dyn(
+            UIColor(red: 0.84, green: 0.22, blue: 0.24, alpha: 1),
+            UIColor(red: 0.90, green: 0.30, blue: 0.30, alpha: 1)
+        )
         cfg.baseForegroundColor = .white
         cfg.cornerStyle = .capsule
-        cfg.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 14, bottom: 6, trailing: 14)
-        let b = UIButton(configuration: cfg, primaryAction: UIAction { [weak self] _ in confirm(); self?.dismissForget() })
-        b.sizeToFit()
-        b.frame.origin = CGPoint(x: 10, y: (bounds.height - b.bounds.height) / 2)
-        addSubview(b)
-        forgetButton = b
-        forgetTimer = Timer.scheduledTimer(withTimeInterval: 4, repeats: false) { [weak self, weak b] _ in
-            if let b, self?.forgetButton === b { self?.dismissForget() }
+        cfg.contentInsets = NSDirectionalEdgeInsets(top: 5, leading: 12, bottom: 5, trailing: 13)
+        let confirmBtn = UIButton(configuration: cfg, primaryAction: UIAction { [weak self] _ in
+            confirm()
+            self?.dismissForget()
+        })
+        confirmBtn.accessibilityLabel = "确认删除已学词语 \(text)"
+
+        var cancelCfg = UIButton.Configuration.filled()
+        cancelCfg.title = "取消"
+        cancelCfg.baseBackgroundColor = Theme.functionKey
+        cancelCfg.baseForegroundColor = Theme.functionText
+        cancelCfg.cornerStyle = .capsule
+        cancelCfg.contentInsets = NSDirectionalEdgeInsets(top: 5, leading: 12, bottom: 5, trailing: 12)
+        let cancelBtn = UIButton(configuration: cancelCfg, primaryAction: UIAction { [weak self] _ in
+            self?.dismissForget()
+        })
+        cancelBtn.accessibilityLabel = "取消删除"
+
+        overlay.addSubview(confirmBtn)
+        overlay.addSubview(cancelBtn)
+        addSubview(overlay)
+        forgetOverlay = overlay
+        forgetConfirmButton = confirmBtn
+        forgetCancelButton = cancelBtn
+        setNeedsLayout()
+        layoutIfNeeded()
+
+        forgetTimer = Timer.scheduledTimer(withTimeInterval: 4, repeats: false) { [weak self, weak overlay] _ in
+            if let overlay, self?.forgetOverlay === overlay { self?.dismissForget() }
         }
     }
 
     func dismissForget() {
         forgetTimer?.invalidate()
         forgetTimer = nil
-        forgetButton?.removeFromSuperview()
-        forgetButton = nil
+        forgetOverlay?.removeFromSuperview()
+        forgetOverlay = nil
+        forgetConfirmButton = nil
+        forgetCancelButton = nil
+        setNeedsLayout()
     }
 }
 
