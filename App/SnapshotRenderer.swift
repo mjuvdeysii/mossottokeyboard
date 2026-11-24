@@ -80,6 +80,7 @@ enum SnapshotRenderer {
             Shot(name: "press_g", page: .letters, state: "composing", borders: true, panel: "press:g"),
             Shot(name: "press_q", page: .letters, state: "composing", borders: true, panel: "press:q"),
             Shot(name: "cursor_drag", page: .letters, state: "idle", borders: true, panel: "cursor"),
+            Shot(name: "smart_space", page: .letters, state: "smart_space", borders: true, panel: nil),
             Shot(name: "forced_light", page: .letters, state: "composing", borders: true, panel: "forced"),
             Shot(name: "forget_word", page: .letters, state: "composing", borders: true, panel: "forget"),
             // rounds/R3.md: the strip scrolled to the middle of a long list (both edges fade); a swipe left off delete
@@ -151,7 +152,8 @@ enum SnapshotRenderer {
                                            returnIsAccent: false, shifted: shot.state == "shift", capsLock: false,
                                            keyBorders: shot.borders, pinyinGrid: shot.name.hasPrefix("t9") || shot.name.hasSuffix("_t9"),
                                            xiaoheGuide: isGuideShot,
-                                           xiaohePendingInitial: chordInitial))
+                                           xiaohePendingInitial: chordInitial,
+                                           spaceOverride: shot.state == "smart_space" ? "跳出 》" : nil))
                 // 九宫格 keys have no neighbours to slip onto: its first candidate carries no correction
                 let t9Shot = shot.name.hasPrefix("t9") || shot.name.hasSuffix("_t9")
                 var composing = candidates(["你好", "尼好", "泥好", "拟好", "你", "尼", "泥", "拟", "逆", "腻", "nihc"], correctedFirst: !t9Shot)

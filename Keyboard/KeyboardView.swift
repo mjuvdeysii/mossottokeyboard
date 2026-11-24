@@ -44,7 +44,7 @@ final class KeyView: UIView {
     private var restFg: UIColor = Theme.keyText
     private var pressedFg: UIColor = Theme.keyText
     private static var symbolCache: [String: UIImage] = [:]
-    private static let opticalPunctuation: Set<String> = ["，", "。", "？", "！", "、", "；", "：", "（", "）", "「", "」", "『", "』", "【", "】", "《", "》", "｛", "｝"]
+    private static let opticalPunctuation: Set<String> = ["，", "。", "？", "！", "、", "；", "：", "（", "）", "「", "」", "『", "』", "【", "】", "《", "》", "｛", "｝", "“", "”"]
     private static let balancedBrackets: Set<String> = ["【", "】", "｛", "｝", "《", "》", "「", "」", "『", "』", "（", "）"]
     private static let lowBaselinePunctuation: Set<String> = ["。", "，", "、", "．"]
     private static var opticalOffsetCache: [String: CGPoint] = [:]
@@ -147,7 +147,7 @@ final class KeyView: UIView {
         case .char where ["“", "”", "‘", "’"].contains(spec.label):
             label.font = UIFont(name: "PingFangSC-Medium", size: Metrics.symbolFont) ?? Theme.font(Metrics.symbolFont, .medium)
         case .char where Self.balancedBrackets.contains(spec.label):
-            let bracketSize: CGFloat = (spec.label == "【" || spec.label == "】") ? 20.5 : Metrics.symbolFont
+            let bracketSize: CGFloat = ["【", "】", "（", "）"].contains(spec.label) ? 20.5 : Metrics.symbolFont
             label.font = UIFont(name: "PingFangSC-Regular", size: bracketSize) ?? Theme.font(bracketSize, .regular)
         case .char where spec.label.count >= 3:
             label.font = Theme.font(18.5, .medium)
@@ -235,7 +235,9 @@ final class KeyView: UIView {
         pressedFg = downFg.resolvedColor(with: t)
         CATransaction.begin(); CATransaction.setDisableActions(true)
         layer.shadowColor = under.resolvedColor(with: t).cgColor
-        layer.borderColor = Theme.keyBorder.resolvedColor(with: t).cgColor
+        let smartSpaceRim = spec.action == .space && spec.isSmartSpace
+        layer.borderWidth = smartSpaceRim ? 1.0 : 0.5
+        layer.borderColor = (smartSpaceRim ? Theme.correctedMark.withAlphaComponent(0.50) : Theme.keyBorder).resolvedColor(with: t).cgColor
         if let bevel = topHighlight {
             bevel.backgroundColor = Theme.keyHighlight.resolvedColor(with: t).cgColor
             bevel.isHidden = blanked || pressed || currentStyle == .accent
@@ -288,6 +290,7 @@ final class KeyView: UIView {
     var guideChordHintForTests: XiaoheScheme.ChordHint? { spec.guideChordHint }
     var guideTextForTests: String? { (guideLabel?.isHidden == false) ? guideLabel?.attributedText?.string : nil }
     var isSmartSpaceShownForTests: Bool { spec.isSmartSpace && !label.isHidden }
+    var smartSpaceRimActiveForTests: Bool { spec.isSmartSpace && layer.borderWidth >= 0.9 }
     var visibleLabelTextForTests: String? { label.isHidden ? nil : label.text }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
@@ -395,11 +398,14 @@ final class KeyView: UIView {
             let compact = f.height < 34
             let ht = h.text ?? ""
             let tinyMark = ["。", "、", "·", ",", "'", "_"].contains(ht)
+            let bracketHint = ["【", "】", "「", "」", "『", "』"].contains(ht)
             h.font = Theme.font((compact ? 8.5 : 9.5) + (tinyMark ? 1.0 : 0), .semibold)
-            let hw = min(isBracket ? 14 : 16, max(10, f.width * (isBracket ? 0.32 : 0.36)))
+            h.textAlignment = bracketHint ? .center : .right
+            let hw = min(isBracket || bracketHint ? 14 : 16, max(10, f.width * (isBracket || bracketHint ? 0.32 : 0.36)))
             let hh: CGFloat = compact ? 11 : 13
             let hy: CGFloat = (compact ? 1.5 : 2.5) + (ht == "_" ? 1.5 : 0)
-            h.frame = CGRect(x: f.width - hw - (isBracket ? 3.0 : 3.5), y: hy, width: hw, height: hh)
+            let ho = bracketHint ? cjkPunctuationOffset(ht, fontSize: h.font.pointSize, font: h.font) : .zero
+            h.frame = CGRect(x: f.width - hw - (isBracket || bracketHint ? 3.0 : 3.5) + ho.x, y: hy + ho.y, width: hw, height: hh)
         }
     }
 
@@ -772,6 +778,14 @@ final class KeyboardView: UIView {
     }
     private var lastTrackpadSize: CGSize = .zero
     var trackpadRulerVisibleForTests: Bool { !trackpadRuler.isHidden }
+    var trackpadRulerAboveKeysForTests: Bool {
+        guard let subs = layer.sublayers, let rIdx = subs.firstIndex(of: trackpadRuler) else { return false }
+        let maxKeyIdx = keyViews.compactMap { subs.firstIndex(of: $0.layer) }.max() ?? -1
+        return rIdx > maxKeyIdx
+    }
+    var blankedKeyMinAlphaForTests: CGFloat {
+        keyViews.filter { $0.blanked }.map(\.alpha).min() ?? 1.0
+    }
     var trackpadRulerOffsetForTests: CGFloat { trackpadRulerOffset }
     var trackpadEndStopForTests: Int { trackpadEndStop }
     var trackpadOverdragForTests: CGFloat { trackpadRubberBandOffset }
@@ -1643,7 +1657,10 @@ final class KeyboardView: UIView {
     }
 
     private func setCursorMode(_ on: Bool, except index: Int) {
-        for (i, kv) in keyViews.enumerated() where i != index { kv.blanked = on }
+        for (i, kv) in keyViews.enumerated() where i != index {
+            kv.blanked = on
+            kv.alpha = on ? 0.42 : 1.0
+        }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         trackpadRuler.isHidden = !on
@@ -1659,6 +1676,7 @@ final class KeyboardView: UIView {
         CATransaction.commit()
         if on {
             bringSubviewToFront(trackpadBadge)
+            layer.insertSublayer(trackpadRuler, below: trackpadBadge.layer)
             updateTrackpadRulerColors()
         }
         emitCursorTelemetry(active: on)

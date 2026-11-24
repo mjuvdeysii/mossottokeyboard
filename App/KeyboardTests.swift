@@ -157,6 +157,7 @@ enum KeyboardTests {
         r78EmojiDockNoSliceDrawerAndXiaoheSlots(window)
         r79SmartSpacebarPairExitAndMathCue(window)
         r80ContrastCadenceAndBenchCraft(window)
+        r81TrackpadGlassSmartRimAndPunctuationCraft(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -3550,6 +3551,50 @@ enum KeyboardTests {
         let numpadSpaceNoNotch = !kv.spaceNotchVisibleForTests
         log(globeSpaceNotchShown && numpadSpaceNoNotch, "r80.globe spacebar preserves homing bar without affecting numpad space label",
             "globeNotch=\(globeSpaceNotchShown) numpadNoNotch=\(numpadSpaceNoNotch)")
+    }
+
+    static func r81TrackpadGlassSmartRimAndPunctuationCraft(_ window: UIWindow) {
+        _ = window
+        // 1. Trackpad vernier ruler renders above smoked-glass blanked keys during spacebar drag
+        let kb = KeyboardView(spatial: SpatialModel.standard())
+        kb.frame = CGRect(x: 0, y: 0, width: 393, height: 214)
+        kb.configure(LayoutContext(page: .letters, chinese: true, showGlobe: false, returnLabel: nil,
+                                   returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true))
+        kb.layoutIfNeeded()
+        kb.demoCursorMode()
+        let rulerOnTop = kb.trackpadRulerVisibleForTests && kb.trackpadRulerAboveKeysForTests
+        let smokedGlass = kb.blankedKeyMinAlphaForTests < 0.6
+        log(rulerOnTop && smokedGlass, "r81.trackpad ruler floats cleanly over smoked-glass dimmed keycaps",
+            "rulerOnTop=\(rulerOnTop) minAlpha=\(String(format: "%.2f", kb.blankedKeyMinAlphaForTests))")
+
+        // 2. Contextual smart spacebar lights active accent rim and clears back to default hairline
+        let kvSpace = KeyboardView(spatial: SpatialModel.standard())
+        kvSpace.frame = CGRect(x: 0, y: 0, width: 393, height: 214)
+        kvSpace.configure(LayoutContext(page: .letters, chinese: true, showGlobe: false, returnLabel: nil,
+                                        returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true,
+                                        spaceOverride: "跳出 》"))
+        kvSpace.layoutIfNeeded()
+        let activeRim = (kvSpace.keyViewForTests(.space)?.isSmartSpaceShownForTests == true)
+            && (kvSpace.keyViewForTests(.space)?.smartSpaceRimActiveForTests == true)
+        kvSpace.configure(LayoutContext(page: .letters, chinese: true, showGlobe: false, returnLabel: nil,
+                                        returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true))
+        kvSpace.layoutIfNeeded()
+        let resetRim = kvSpace.keyViewForTests(.space)?.smartSpaceRimActiveForTests == false
+        log(activeRim && resetRim, "r81.smart spacebar illuminates accent rim and resets to standard hairline",
+            "activeRim=\(activeRim) resetRim=\(resetRim)")
+
+        // 3. Numbers page Chinese quotes center optically and parentheses share 20.5pt PingFangSC sizing
+        let openQuoteOffset = KeyView.opticalOffset(for: "“", font: Theme.font(22, .medium))
+        let closeQuoteOffset = KeyView.opticalOffset(for: "”", font: Theme.font(22, .medium))
+        kvSpace.configure(LayoutContext(page: .numbers, chinese: true, showGlobe: false, returnLabel: nil,
+                                        returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true))
+        let parenMetrics = kvSpace.keyOpticalMetricsForTests(.char("（"))
+        let quoteOpticalOk = openQuoteOffset != .zero || closeQuoteOffset != .zero
+        let parenCraftOk = (parenMetrics?.fontName.contains("PingFangSC") == true)
+            && abs((parenMetrics?.fontSize ?? 0) - 20.5) < 0.1
+            && ((parenMetrics?.hintFrame.width ?? 0) > 0)
+        log(quoteOpticalOk && parenCraftOk, "r81.numbers quotes center via CoreText bounds and CJK parens clear bracket hints",
+            "quoteOk=\(quoteOpticalOk) font=\(parenMetrics?.fontName ?? "nil") size=\(parenMetrics?.fontSize ?? 0)")
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

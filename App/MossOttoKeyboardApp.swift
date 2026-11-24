@@ -1037,8 +1037,8 @@ struct GestureAtlasContent: View {
                 Divider()
                 atlasRow(
                     symbol: "arrow.left.and.right",
-                    title: "空格横向拖移光标",
-                    chips: ["左右滑动游标", "首尾琥珀止点"],
+                    title: "空格游标与智能跳出",
+                    chips: ["左右滑动游标", "括号内空格跳出", "首尾琥珀止点"],
                     demoTitle: nil
                 )
                 Divider()
