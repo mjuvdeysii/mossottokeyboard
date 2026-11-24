@@ -971,29 +971,89 @@ private struct GestureAtlasView: View {
 
 private struct PrivacyArchitectureView: View {
     var body: some View {
-        List {
-            Section("零联网与零共享隔离") {
-                row("0 次网络请求", "键盘扩展与伴侣 App 不包含 URLSession、WebView 埋点或任何第三方统计 SDK。")
-                row("0 次剪贴板读取", "不访问 UIPasteboard，保持系统默认权限即可使用完整中文输入、双拼与心算。")
-                row("0 App Group 容器", "伴侣 App 与系统键盘扩展各自隔离，不跨进程同步按键或词库数据。")
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                Card(title: "零联网与零共享仪表盘") {
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                        telemetryTile(value: "0", label: "网络请求", icon: "wifi.slash", tint: MossOttoStyle.moss)
+                        telemetryTile(value: "0", label: "剪贴板读取", icon: "doc.on.clipboard", tint: MossOttoStyle.moss)
+                        telemetryTile(value: "0", label: "跨进程共享", icon: "lock.shield.fill", tint: MossOttoStyle.violet)
+                        telemetryTile(value: "45 MB", label: "只读词库", icon: "memorychip", tint: MossOttoStyle.lampAmber)
+                    }
+                }
+
+                Card(title: "键盘扩展工程红线") {
+                    specRow(
+                        icon: "cpu",
+                        tint: MossOttoStyle.violet,
+                        title: "只读 mmap 零脏页",
+                        detail: "词库与语言模型按需映射，严守 Jetsam 上限"
+                    )
+                    Divider()
+                    specRow(
+                        icon: "bolt.horizontal.fill",
+                        tint: MossOttoStyle.lampAmber,
+                        title: "全链路 0 阻塞 XPC",
+                        detail: "零行内 markedText · 空格零等待 · 首键异步预取"
+                    )
+                    Divider()
+                    specRow(
+                        icon: "checkmark.seal.fill",
+                        tint: MossOttoStyle.moss,
+                        title: "15 条 CI 自动化门禁",
+                        detail: "每次构建静态与真机校验离线、帧率与四边防模糊"
+                    )
+                }
             }
-            Section("iOS 键盘扩展工程红线") {
-                row("45 MB Jetsam 只读映射", "词库与语言模型以只读 mmap 加载，零脏内存常驻，保留热缓存的同时严控内存上限。")
-                row("全链路 0 阻塞 XPC 守则", "扩展内零行内 setMarkedText XPC、空格 0-XPC，首键复用异步预取上下文，候选条宽度跨词保留缓存。")
-                row("15 条 CI 自动化铁律门禁", "每次构建静态与真机校验网络 API、同步等待解码、离屏阴影光栅化、空 setMarkedText、首键热路径 XPC 与 iOS 26 四边滚动防模糊。")
-            }
+            .padding(16)
         }
-        .listStyle(.insetGrouped)
+        .background(MossOttoStyle.canvas.ignoresSafeArea())
         .navigationTitle("隐私与工程红线")
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    private func row(_ title: String, _ detail: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title).font(.subheadline.weight(.semibold))
-            Text(detail).font(.caption).foregroundStyle(.secondary)
+    private func telemetryTile(value: String, label: String, icon: String, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Image(systemName: icon)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(tint)
+                Spacer()
+                Circle()
+                    .fill(tint)
+                    .frame(width: 5, height: 5)
+            }
+            Text(value)
+                .font(.system(size: 22, weight: .bold, design: .rounded).monospacedDigit())
+                .foregroundStyle(MossOttoStyle.inkPrimary)
+            Text(label)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(MossOttoStyle.inkSecondary)
         }
-        .padding(.vertical, 2)
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(MossOttoStyle.surfaceMuted))
+        .accessibilityElement(children: .combine)
+    }
+
+    private func specRow(icon: String, tint: Color, title: String, detail: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: 30, height: 30)
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(tint.opacity(0.12)))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(MossOttoStyle.inkPrimary)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(MossOttoStyle.inkSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
     }
 }
 

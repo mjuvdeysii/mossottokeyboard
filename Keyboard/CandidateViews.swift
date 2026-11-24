@@ -1247,8 +1247,23 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     }
 }
 
-/// Full candidate list as a wrapping grid (vertical scroll only).
-final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionViewDelegateFlowLayout {
+/// Full candidate list as a wrapping grid (vertical scroll only) with a 3-mode scope rail (`全部 / 词组 / 单字`),
+/// live count badge, and smooth bottom overflow fade into the thumb dock.
+final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionViewDelegateFlowLayout, UIScrollViewDelegate {
+    enum FilterMode: Int, CaseIterable {
+        case all = 0
+        case phrases = 1
+        case singleChar = 2
+
+        var title: String {
+            switch self {
+            case .all: return "全部"
+            case .phrases: return "词组"
+            case .singleChar: return "单字"
+            }
+        }
+    }
+
     var onSelect: ((Int) -> Void)?
     var onClose: (() -> Void)?
     var onDelete: (() -> Void)?
@@ -1257,35 +1272,79 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
 
     private var allCandidates: [Candidate] = []
     private var displayedIndices: [Int] = []
-    private var singleCharOnly = false
+    private var filterMode: FilterMode = .all
+    private let collectionBox = UIView()
+    private let collectionFade = CAGradientLayer()
     private let collection: UICollectionView
     private let dockBar = UIView()
     private let dockHairline = CALayer()
     private let closeButton = UIButton(type: .system)
     private let deleteButton = UIButton(type: .system)
-    private let singleCharButton = UIButton(type: .system)
+    private let filterRail = UIView()
+    private var filterButtons: [UIButton] = []
+    private let countBadge = UILabel()
     private var deleteTimer: Timer?
 
-    private func updateFilterButtonStyle() {
-        let active = singleCharOnly
-        singleCharButton.titleLabel?.font = Theme.font(14, .semibold)
-        singleCharButton.backgroundColor = active ? Theme.accentKey : Theme.functionKey
-        singleCharButton.setTitleColor(active ? Theme.accentText : Theme.functionText, for: .normal)
-        singleCharButton.layer.cornerRadius = Metrics.cornerRadius
-        singleCharButton.layer.shadowOffset = CGSize(width: 0, height: Metrics.lip)
-        singleCharButton.layer.shadowColor = (active ? Theme.accentLip : Theme.functionLip).resolvedColor(with: traitCollection).cgColor
-        singleCharButton.accessibilityTraits = active ? [.button, .selected] : .button
+    private func updateFilterRailStyle() {
+        let t = traitCollection
+        filterRail.backgroundColor = Theme.settingsGroup.resolvedColor(with: t)
+        filterRail.layer.borderColor = Theme.keyBorder.resolvedColor(with: t).cgColor
+        for (i, b) in filterButtons.enumerated() {
+            let active = i == filterMode.rawValue
+            b.backgroundColor = (active ? Theme.selection : .clear).resolvedColor(with: t)
+            b.setTitleColor((active ? Theme.selectionText : Theme.keyText).resolvedColor(with: t), for: .normal)
+            b.titleLabel?.font = Theme.font(12, active ? .bold : .semibold)
+            b.accessibilityTraits = active ? [.button, .selected] : .button
+        }
+        countBadge.backgroundColor = Theme.settingsGroup.resolvedColor(with: t)
+        countBadge.layer.borderColor = Theme.keyBorder.resolvedColor(with: t).cgColor
+        countBadge.textColor = Theme.secondaryText.resolvedColor(with: t)
     }
 
     private func rebuildDisplayed() {
-        if singleCharOnly {
-            displayedIndices = allCandidates.indices.filter { allCandidates[$0].text.count == 1 }
-        } else {
+        switch filterMode {
+        case .all:
             displayedIndices = Array(allCandidates.indices)
+        case .phrases:
+            displayedIndices = allCandidates.indices.filter { allCandidates[$0].text.count > 1 }
+        case .singleChar:
+            displayedIndices = allCandidates.indices.filter { allCandidates[$0].text.count == 1 }
         }
         let hasSingle = allCandidates.contains(where: { $0.text.count == 1 })
         let hasMulti = allCandidates.contains(where: { $0.text.count > 1 })
-        singleCharButton.isHidden = !(hasSingle && hasMulti)
+        filterRail.isHidden = !(hasSingle && hasMulti)
+
+        let total = displayedIndices.count
+        switch filterMode {
+        case .all:
+            countBadge.text = total > 0 ? "\(total)" : ""
+        case .phrases:
+            countBadge.text = "\(total) 词"
+        case .singleChar:
+            countBadge.text = "\(total) 字"
+        }
+        countBadge.isHidden = allCandidates.isEmpty
+    }
+
+    private func updateCollectionBottomFade() {
+        let h = collectionBox.bounds.height
+        let hasMoreBelow = collection.contentSize.height > h + 2
+            && (collection.contentOffset.y + h < collection.contentSize.height - 2)
+        guard h > 40, hasMoreBelow else {
+            if collectionBox.layer.mask != nil { collectionBox.layer.mask = nil }
+            return
+        }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        collectionFade.frame = collectionBox.bounds
+        let frac = Double(min(0.14, 12.0 / h))
+        collectionFade.locations = [0, NSNumber(value: 1.0 - frac), 1]
+        if collectionBox.layer.mask !== collectionFade { collectionBox.layer.mask = collectionFade }
+        CATransaction.commit()
+    }
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        if scrollView === collection { updateCollectionBottomFade() }
     }
 
     func themeChanged() {
@@ -1297,7 +1356,7 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
             b.layer.shadowOffset = CGSize(width: 0, height: Metrics.lip)
             b.layer.shadowColor = Theme.functionLip.resolvedColor(with: traitCollection).cgColor
         }
-        updateFilterButtonStyle()
+        updateFilterRailStyle()
         collection.reloadData()
         setNeedsLayout()
     }
@@ -1352,6 +1411,13 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         collection = UICollectionView(frame: .zero, collectionViewLayout: layout)
         super.init(frame: frame)
         backgroundColor = Theme.touchable   // on the system glass, like the keys (never fully clear: see Theme.touchable)
+        collectionFade.startPoint = CGPoint(x: 0.5, y: 0)
+        collectionFade.endPoint = CGPoint(x: 0.5, y: 1)
+        collectionFade.colors = [UIColor.black.cgColor, UIColor.black.cgColor, UIColor.clear.cgColor]
+        collectionBox.backgroundColor = .clear
+        collectionBox.clipsToBounds = true
+        addSubview(collectionBox)
+
         collection.backgroundColor = .clear
         collection.clipsToBounds = true
         collection.disableAllEdgeEffects()
@@ -1360,7 +1426,8 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         collection.dataSource = self
         collection.delegate = self
         collection.register(Cell.self, forCellWithReuseIdentifier: "c")
-        addSubview(collection)
+        collectionBox.addSubview(collection)
+
         dockHairline.backgroundColor = Theme.separator.resolvedColor(with: traitCollection).cgColor
         dockBar.backgroundColor = .clear
         dockBar.layer.addSublayer(dockHairline)
@@ -1368,8 +1435,7 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         let cfg = UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
         closeButton.setImage(UIImage(systemName: "chevron.up", withConfiguration: cfg), for: .normal)
         deleteButton.setImage(UIImage(systemName: "delete.left", withConfiguration: cfg), for: .normal)
-        singleCharButton.setTitle("单字", for: .normal)
-        for b in [closeButton, deleteButton, singleCharButton] {
+        for b in [closeButton, deleteButton] {
             b.tintColor = Theme.functionText
             b.backgroundColor = Theme.functionKey
             b.layer.cornerRadius = Metrics.cornerRadius
@@ -1379,19 +1445,45 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
             b.layer.shadowRadius = 0
             b.layer.shadowOffset = CGSize(width: 0, height: Metrics.lip)
             b.layer.shadowColor = Theme.functionLip.resolvedColor(with: traitCollection).cgColor
-            addSubview(b)
+            dockBar.addSubview(b)
         }
-        updateFilterButtonStyle()
-        singleCharButton.isHidden = true
+
+        filterRail.layer.cornerRadius = 15
+        filterRail.layer.cornerCurve = .continuous
+        filterRail.layer.borderWidth = 0.5
+        filterRail.clipsToBounds = true
+        for mode in FilterMode.allCases {
+            let b = UIButton(type: .custom)
+            b.tag = mode.rawValue
+            b.setTitle(mode.title, for: .normal)
+            b.layer.cornerRadius = 12
+            b.layer.cornerCurve = .continuous
+            b.accessibilityLabel = "候选筛选：\(mode.title)"
+            b.addTarget(self, action: #selector(filterButtonTapped(_:)), for: .touchUpInside)
+            filterRail.addSubview(b)
+            filterButtons.append(b)
+        }
+        filterRail.isHidden = true
+        dockBar.addSubview(filterRail)
+
+        countBadge.font = Theme.font(11.5, .semibold)
+        countBadge.textAlignment = .center
+        countBadge.layer.cornerRadius = 11
+        countBadge.layer.cornerCurve = .continuous
+        countBadge.layer.borderWidth = 0.5
+        countBadge.clipsToBounds = true
+        countBadge.isAccessibilityElement = false
+        countBadge.isHidden = true
+        dockBar.addSubview(countBadge)
+
+        updateFilterRailStyle()
         closeButton.accessibilityLabel = "收起候选"
         deleteButton.accessibilityLabel = "删除"
-        singleCharButton.accessibilityLabel = "只看单字"
         closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
         deleteButton.addTarget(self, action: #selector(deleteDown), for: .touchDown)
         for ev: UIControl.Event in [.touchUpInside, .touchUpOutside, .touchCancel] {
             deleteButton.addTarget(self, action: #selector(deleteUp), for: ev)
         }
-        singleCharButton.addTarget(self, action: #selector(toggleSingleChar), for: .touchUpInside)
         let lp = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPress(_:)))
         lp.minimumPressDuration = StripGesture.holdTime
         collection.addGestureRecognizer(lp)
@@ -1407,7 +1499,7 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         super.traitCollectionDidChange(previous)
         dockHairline.backgroundColor = Theme.separator.resolvedColor(with: traitCollection).cgColor
         for b in [closeButton, deleteButton] { b.layer.shadowColor = Theme.functionLip.resolvedColor(with: traitCollection).cgColor }
-        updateFilterButtonStyle()
+        updateFilterRailStyle()
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -1434,47 +1526,97 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         guard let ip = collection.indexPathForItem(at: p), ip.item < displayedIndices.count else { return }
         onLongPress?(displayedIndices[ip.item])
     }
+    @objc private func filterButtonTapped(_ sender: UIButton) {
+        setFilterMode(FilterMode(rawValue: sender.tag) ?? .all)
+    }
     @objc private func toggleSingleChar() {
-        singleCharOnly.toggle()
+        setFilterMode(filterMode == .singleChar ? .all : .singleChar)
+    }
+
+    private func setFilterMode(_ next: FilterMode) {
+        guard next != filterMode else { return }
+        filterMode = next
         rebuildDisplayed()
-        updateFilterButtonStyle()
+        updateFilterRailStyle()
+        setNeedsLayout()
         onFilterToggle?()
         collection.reloadData()
         collection.setContentOffset(.zero, animated: false)
+        collection.layoutIfNeeded()
+        updateCollectionBottomFade()
     }
 
     func show(_ candidates: [Candidate], preserveFilter: Bool = false) {
         allCandidates = candidates
-        if !preserveFilter || !candidates.contains(where: { $0.text.count == 1 }) {
-            singleCharOnly = false
+        if !preserveFilter {
+            filterMode = .all
+        } else {
+            switch filterMode {
+            case .all: break
+            case .phrases:
+                if !candidates.contains(where: { $0.text.count > 1 }) { filterMode = .all }
+            case .singleChar:
+                if !candidates.contains(where: { $0.text.count == 1 }) { filterMode = .all }
+            }
         }
         rebuildDisplayed()
-        updateFilterButtonStyle()
+        updateFilterRailStyle()
+        setNeedsLayout()
         collection.reloadData()
         collection.setContentOffset(.zero, animated: false)
+        layoutIfNeeded()
+        updateCollectionBottomFade()
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let side: CGFloat = 56
-        let dockH: CGFloat = 52
-        collection.frame = CGRect(x: 0, y: 0, width: bounds.width, height: max(0, bounds.height - dockH))
-        collection.contentInset = UIEdgeInsets(top: 2, left: 0, bottom: 6, right: 0)
+        let side: CGFloat = 54
+        let dockH: CGFloat = 50
+        collectionBox.frame = CGRect(x: 0, y: 0, width: bounds.width, height: max(0, bounds.height - dockH))
+        collection.frame = collectionBox.bounds
+        collection.contentInset = UIEdgeInsets(top: 2, left: 0, bottom: 8, right: 0)
         dockBar.frame = CGRect(x: 0, y: bounds.height - dockH, width: bounds.width, height: dockH)
         dockHairline.frame = CGRect(x: 10, y: 0, width: max(0, bounds.width - 20), height: 1 / UIScreen.main.scale)
-        let bh: CGFloat = 40
-        let by = bounds.height - bh - 6
-        singleCharButton.frame = CGRect(x: 8, y: by, width: 64, height: bh)
-        singleCharButton.layer.shadowPath = UIBezierPath(roundedRect: singleCharButton.bounds, cornerRadius: Metrics.cornerRadius).cgPath
-        bringSubviewToFront(singleCharButton)
-        deleteButton.frame = CGRect(x: bounds.width - side + 4, y: by, width: side - 10, height: bh)
+
+        let bh: CGFloat = 38
+        let by = (dockH - bh) / 2
+        deleteButton.frame = CGRect(x: bounds.width - side + 2, y: by, width: side - 10, height: bh)
         deleteButton.layer.shadowPath = UIBezierPath(roundedRect: deleteButton.bounds, cornerRadius: Metrics.cornerRadius).cgPath
-        bringSubviewToFront(deleteButton)
-        let closeW: CGFloat = 52
+        let closeW: CGFloat = 46
         closeButton.isHidden = false
-        closeButton.frame = CGRect(x: deleteButton.frame.minX - 8 - closeW, y: by, width: closeW, height: bh)
+        closeButton.frame = CGRect(x: deleteButton.frame.minX - 6 - closeW, y: by, width: closeW, height: bh)
         closeButton.layer.shadowPath = UIBezierPath(roundedRect: closeButton.bounds, cornerRadius: Metrics.cornerRadius).cgPath
-        bringSubviewToFront(closeButton)
+
+        let rightLimit = closeButton.frame.minX - 6
+        let badgeW: CGFloat = countBadge.isHidden ? 0 : min(48, max(30, ceil((countBadge.text as NSString? ?? "").size(withAttributes: [.font: countBadge.font as Any]).width) + 14))
+        if filterRail.isHidden {
+            filterRail.frame = .zero
+            if !countBadge.isHidden {
+                countBadge.frame = CGRect(x: 8, y: (dockH - 24) / 2, width: badgeW, height: 24)
+            }
+        } else {
+            let railH: CGFloat = 32
+            let railY = (dockH - railH) / 2
+            let railMaxW = max(116, rightLimit - 8 - (badgeW > 0 ? badgeW + 6 : 0))
+            let railW = min(156, railMaxW)
+            filterRail.frame = CGRect(x: 8, y: railY, width: railW, height: railH)
+            let pad: CGFloat = 2.5
+            let gap: CGFloat = 2
+            let segW = max(24, (railW - pad * 2 - gap * CGFloat(max(1, filterButtons.count - 1))) / CGFloat(max(1, filterButtons.count)))
+            for (i, b) in filterButtons.enumerated() {
+                b.frame = CGRect(x: pad + CGFloat(i) * (segW + gap), y: pad, width: segW, height: railH - pad * 2)
+            }
+            if !countBadge.isHidden {
+                let badgeX = filterRail.frame.maxX + 6
+                let availBadge = max(0, rightLimit - badgeX)
+                countBadge.frame = availBadge >= 26
+                    ? CGRect(x: badgeX, y: (dockH - 22) / 2, width: min(badgeW, availBadge), height: 22)
+                    : .zero
+                countBadge.isHidden = availBadge < 26
+            }
+        }
+        collection.layoutIfNeeded()
+        updateCollectionBottomFade()
     }
 
     func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int { displayedIndices.count }
@@ -1510,9 +1652,19 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         onSelect?(displayedIndices[indexPath.item])
     }
 
+    var collectionForTests: UICollectionView { collection }
     var displayedCountForTests: Int { displayedIndices.count }
-    var singleCharButtonHiddenForTests: Bool { singleCharButton.isHidden }
+    var singleCharButtonHiddenForTests: Bool { filterRail.isHidden }
     var closeButtonHiddenForTests: Bool { closeButton.isHidden }
+    var filterModeForTests: Int { filterMode.rawValue }
+    func selectFilterForTests(_ mode: Int) { setFilterMode(FilterMode(rawValue: mode) ?? .all) }
+    var countBadgeTextForTests: String { countBadge.text ?? "" }
+    var collectionBottomFadeActiveForTests: Bool { collectionBox.layer.mask === collectionFade }
+    var dockControlsNonOverlappingForTests: Bool {
+        let railOk = filterRail.isHidden || (!filterRail.frame.intersects(closeButton.frame) && !filterRail.frame.intersects(deleteButton.frame) && filterRail.frame.minX >= 0)
+        let badgeOk = countBadge.isHidden || (!countBadge.frame.intersects(filterRail.frame) && !countBadge.frame.intersects(closeButton.frame))
+        return railOk && badgeOk && !closeButton.frame.intersects(deleteButton.frame) && deleteButton.frame.maxX <= dockBar.bounds.width + 0.5
+    }
     func tapCloseForTests() { closeTapped() }
     func toggleSingleCharForTests() { toggleSingleChar() }
     func selectDisplayedForTests(_ i: Int) { if i < displayedIndices.count { onSelect?(displayedIndices[i]) } }

@@ -132,6 +132,10 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     var portraitDockLightbulbUnclippedForTests: Bool {
         tabButtons.count > 6 && tabButtons[6].frame.maxX <= tabScrollBox.bounds.width
     }
+    var kaomojiDockGearFullyVisibleForTests: Bool {
+        let f = tabScroll.convert(gear.frame, to: tabScrollBox)
+        return f.width > 0 && f.minX >= -0.5 && f.maxX <= tabScrollBox.bounds.width + 0.5
+    }
 
     final class Cell: UICollectionViewCell {
         let label = UILabel()
@@ -926,13 +930,18 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
 
     private func ensureSelectedTabVisible(animated: Bool) {
         guard selected >= 0, selected < tabButtons.count, tabScroll.bounds.width > 0, tabScroll.contentSize.width > 0 else { return }
-        let target = tabButtons[selected].frame.insetBy(dx: -12, dy: 0)
         let maxX = max(0, tabScroll.contentSize.width - tabScroll.bounds.width)
         var offsetX = tabScroll.contentOffset.x
-        if target.maxX > offsetX + tabScroll.bounds.width {
-            offsetX = min(maxX, target.maxX - tabScroll.bounds.width)
-        } else if target.minX < offsetX {
-            offsetX = max(0, target.minX)
+        if selected == tabButtons.count - 1 {
+            // Snap cleanly to the trailing edge so Mosto and `gear` sit completely clear of edge fade.
+            offsetX = maxX
+        } else {
+            let target = tabButtons[selected].frame.insetBy(dx: -12, dy: 0)
+            if target.maxX > offsetX + tabScroll.bounds.width {
+                offsetX = min(maxX, target.maxX - tabScroll.bounds.width)
+            } else if target.minX < offsetX {
+                offsetX = max(0, target.minX)
+            }
         }
         if abs(offsetX - tabScroll.contentOffset.x) > 0.5 {
             tabScroll.setContentOffset(CGPoint(x: offsetX, y: 0), animated: animated)

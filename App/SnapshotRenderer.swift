@@ -200,6 +200,7 @@ enum SnapshotRenderer {
                     let grid = CandidateGridView(frame: kb.frame)
                     root.addSubview(grid)
                     kb.isHidden = true
+                    bar.gridExpanded = true
                     grid.show(composing + candidates(["倪", "霓", "匿", "妮", "昵", "溺", "睨", "鲵", "旎", "怩"]))
                 } else if shot.panel == "longpress" {
                     // the row a long press on ， opens (slot 7.5–8.5 of the bottom row), "？" highlighted

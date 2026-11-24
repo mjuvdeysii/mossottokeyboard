@@ -146,6 +146,7 @@ enum KeyboardTests {
         r67T9AltPopupAndFreeBenchInspirations(window)
         r68StageOverlaysMathSpaceAndEmojiCraft(window)
         r69HeightPersistenceAndVisualConsole(window)
+        r70GridScopeRailAndDockCraft(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -2149,12 +2150,12 @@ enum KeyboardTests {
         var gridDetail = "grid=nil"
         if let grid {
             grid.layoutIfNeeded()
-            let coll = grid.subviews.compactMap { $0 as? UICollectionView }.first
-            coll?.layoutIfNeeded()
+            let coll = grid.collectionForTests
+            coll.layoutIfNeeded()
             drain(0.01)
-            let cell = coll?.cellForItem(at: IndexPath(item: 0, section: 0)) as? CandidateGridView.Cell
+            let cell = coll.cellForItem(at: IndexPath(item: 0, section: 0)) as? CandidateGridView.Cell
             barVisible = cell != nil && cell?.correctionBar.isHidden == false
-            gridDetail = "coll=\(coll != nil) cell=\(cell != nil) barHidden=\(cell?.correctionBar.isHidden ?? true)"
+            gridDetail = "coll=true cell=\(cell != nil) barHidden=\(cell?.correctionBar.isHidden ?? true)"
         }
         log(barVisible, "r61.CandidateGridView renders correctionBar accent under corrected slot 0", gridDetail)
         reset(vc, h)
@@ -2880,6 +2881,57 @@ enum KeyboardTests {
         log(model.keyboardHeight == 2 && model.layout == 1 && s.keyboardHeight == 2,
             "r69.PlaygroundModel syncs from KeyboardSettings without clobbering persisted height",
             "modelH=\(model.keyboardHeight) layout=\(model.layout) settingsH=\(s.keyboardHeight)")
+    }
+
+    // MARK: - R70: Candidate grid 3-mode scope rail, bottom fade & Kaomoji dock gear visibility
+
+    static func r70GridScopeRailAndDockCraft(_ window: UIWindow) {
+        // 1. EmojiPanelView snaps Kaomoji dock cleanly so Mosto and trailing gear sit inside dock viewport
+        let ep = EmojiPanelView(frame: CGRect(x: 0, y: 0, width: 402, height: 242))
+        ep.layoutIfNeeded()
+        ep.load(kaomoji: true)
+        ep.layoutIfNeeded()
+        log(ep.tabScrollOffsetXForTests > 20 && ep.kaomojiDockGearFullyVisibleForTests,
+            "r70.EmojiPanelView keeps trailing settings gear completely visible inside Kaomoji dock",
+            "offsetX=\(ep.tabScrollOffsetXForTests) gearVisible=\(ep.kaomojiDockGearFullyVisibleForTests)")
+
+        // 2. CandidateGridView 3-mode scope rail (全部 / 词组 / 单字), live count badge, real-index mapping & dock non-overlap
+        let grid = CandidateGridView(frame: CGRect(x: 0, y: 0, width: 375, height: 200))
+        let mixed = ["你好", "今天", "你", "尼", "泥"].map {
+            Candidate(text: $0, tapCount: $0.count * 2, syllables: [1], corrected: false, score: 0)
+        }
+        grid.show(mixed)
+        grid.layoutIfNeeded()
+        let allOk = grid.displayedCountForTests == 5 && grid.countBadgeTextForTests == "5" && grid.filterModeForTests == 0
+        grid.selectFilterForTests(1)
+        var longPressIdx = -1
+        grid.onLongPress = { longPressIdx = $0 }
+        grid.longPressDisplayedForTests(1)
+        let phrasesOk = grid.displayedCountForTests == 2 && grid.countBadgeTextForTests == "2 词" && longPressIdx == 1
+        grid.selectFilterForTests(2)
+        let singleOk = grid.displayedCountForTests == 3 && grid.countBadgeTextForTests == "3 字"
+        let narrowOk = grid.dockControlsNonOverlappingForTests
+        grid.frame = CGRect(x: 0, y: 0, width: 480, height: 160)
+        grid.setNeedsLayout(); grid.layoutIfNeeded()
+        let landOk = grid.dockControlsNonOverlappingForTests
+        log(allOk && phrasesOk && singleOk && narrowOk && landOk,
+            "r70.CandidateGridView filters all/phrases/single-char with live badge, real index mapping, and non-overlapping dock",
+            "all=\(allOk) phrases=\(phrasesOk) single=\(singleOk) narrow=\(narrowOk) land=\(landOk)")
+
+        // 3. CandidateGridView bottom fade activates on vertical overflow and stays off for short lists
+        let overflowGrid = CandidateGridView(frame: CGRect(x: 0, y: 0, width: 402, height: 180))
+        let many = (0..<28).map { i in
+            Candidate(text: "词\(i)", tapCount: 4, syllables: [1, 2], corrected: false, score: 0)
+        }
+        overflowGrid.show(many)
+        overflowGrid.layoutIfNeeded()
+        let fadeOnOverflow = overflowGrid.collectionBottomFadeActiveForTests
+        overflowGrid.show([Candidate(text: "好", tapCount: 2, syllables: [1], corrected: false, score: 0)])
+        overflowGrid.layoutIfNeeded()
+        let fadeOffShort = !overflowGrid.collectionBottomFadeActiveForTests
+        log(fadeOnOverflow && fadeOffShort,
+            "r70.CandidateGridView enables dynamic bottom fade only when vertical candidates overflow",
+            "on=\(fadeOnOverflow) off=\(fadeOffShort)")
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

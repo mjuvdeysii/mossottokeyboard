@@ -13,9 +13,9 @@ struct EnableScreen: View {
                 EnableStatusHero(added: added)
 
                 VStack(spacing: 10) {
-                    EnableStepRow(step: 1, title: "打开系统设置", detail: "设置 › 通用 › 键盘 › 键盘", art: .settings)
-                    EnableStepRow(step: 2, title: "添加 Mosto键盘", detail: "点「添加新键盘」选中 Mosto键盘", art: .add)
-                    EnableStepRow(step: 3, title: "切到地球键开打", detail: "无需开启「允许完全访问」，全功能本机离线运行", art: .globe)
+                    EnableStepRow(step: 1, title: "打开设置", detail: "设置 › 通用 › 键盘 › 键盘", art: .settings)
+                    EnableStepRow(step: 2, title: "添加 Mosto", detail: "添加新键盘 › 选中 Mosto键盘", art: .add)
+                    EnableStepRow(step: 3, title: "地球键切换", detail: "长按地球键切换 · 无需完全访问", art: .globe)
                 }
 
                 if let url = URL(string: UIApplication.openSettingsURLString) {
@@ -121,14 +121,14 @@ private struct EnableStatusHero: View {
             }
             .frame(width: 44, height: 44)
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(added ? "Mosto键盘已在系统启用" : "三步把 Mosto 装进系统键盘")
+            VStack(alignment: .leading, spacing: 4) {
+                Text(added ? "Mosto键盘已就绪" : "三步启用 Mosto键盘")
                     .font(.headline)
                     .foregroundStyle(MossOttoStyle.inkPrimary)
-                Text(added ? "在任意应用长按地球键切换；系统键盘的偏好直接在键盘内「按住表情键」调整。" : "全程约半分钟，零联网权限也能使用全部纠错、双拼与心算能力。")
-                    .font(.caption)
-                    .foregroundStyle(MossOttoStyle.inkSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 6) {
+                    statusChip(icon: "lock.fill", text: "纯离线")
+                    statusChip(icon: added ? "globe" : "gearshape", text: added ? "长按地球键切换" : "按住 ☺︎ 调控制台")
+                }
             }
             Spacer(minLength: 0)
         }
@@ -141,6 +141,20 @@ private struct EnableStatusHero: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(MossOttoStyle.hairline, lineWidth: 0.7)
         )
+    }
+
+    private func statusChip(icon: String, text: String) -> some View {
+        HStack(spacing: 3.5) {
+            Image(systemName: icon)
+                .font(.system(size: 9.5, weight: .semibold))
+                .foregroundStyle(MossOttoStyle.violet)
+            Text(text)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(MossOttoStyle.inkSecondary)
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background(Capsule().fill(MossOttoStyle.surfaceMuted))
     }
 }
 
