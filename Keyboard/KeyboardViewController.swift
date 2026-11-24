@@ -19,7 +19,7 @@ final class KeyboardViewController: UIInputViewController {
     // system's, so 自动 can always read the real light / dark mode.
     private let root = UIView()
     private let tintView = AmbientLightView()
-    private let candidateBar = CandidateBarView(); private let plainLightButton = UIButton(type: .system); private let mostoHintButton = UIButton(type: .system); private var lastEmojiInserted = ""
+    private let candidateBar = CandidateBarView(); private var lastEmojiInserted = ""
     private lazy var keyboard = KeyboardView(spatial: spatial)
     private var gridIfLoaded: CandidateGridView?
     private var grid: CandidateGridView {
@@ -116,16 +116,6 @@ final class KeyboardViewController: UIInputViewController {
     private var useInlineMarkedText: Bool { !Self.inExtension || hostOverride != nil }
     private var cachedReturnKeyType: UIReturnKeyType = .default
     private var cachedShowGlobe = false
-    private struct IdleBarKey: Equatable { let idle: Bool; let plain: Bool; let night: Bool; let barH: Int }
-    private var lastIdleBarKey: IdleBarKey?
-    private static var idleSymbolCache: [String: UIImage] = [:]
-    private static func idleSymbol(_ name: String) -> UIImage? {
-        if let img = idleSymbolCache[name] { return img }
-        let cfg = UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold)
-        let img = UIImage(systemName: name, withConfiguration: cfg)?.withRenderingMode(.alwaysTemplate)
-        if let img { idleSymbolCache[name] = img }
-        return img
-    }
     private static let zhReturnTitles: [UIReturnKeyType: String] = [
         .go: "前往", .search: "搜索", .send: "发送", .done: "完成",
         .next: "下一项", .join: "加入", .route: "路线", .continue: "继续",
@@ -277,8 +267,11 @@ final class KeyboardViewController: UIInputViewController {
     var heightSyncMutationsForTests: Int { heightSyncMutations }
     func resetHeightSyncMutationsForTests() { heightSyncMutations = 0 }
     func showSettingsForTests(_ on: Bool) { showSettings(on) }
-    var plainLightHiddenForTests: Bool { plainLightButton.isHidden }
-    var mostoHintHiddenForTests: Bool { mostoHintButton.isHidden }
+    var plainLightHiddenForTests: Bool { candidateBar.idleLightHiddenForTests }
+    var mostoHintHiddenForTests: Bool { candidateBar.idleKaomojiHiddenForTests }
+    var heightConstraintTargetIsViewForTests: Bool { heightConstraint?.firstItem === view }
+    var rootFrameForTests: CGRect { root.frame }
+    var maxKeycapHeightForTests: CGFloat { keyboard.maxKeycapHeightForTests }
     var testSettled: Bool { taps.isEmpty || resultGeneration == generation }
     var onCandidatesUpdated: (() -> Void)?
     var activeFirstFixesForTests: [Fix] {
@@ -301,21 +294,15 @@ final class KeyboardViewController: UIInputViewController {
             inputView?.allowsSelfSizing = true
             didConfigureSelfSizing = true
         }
-        root.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(root)
         let initialLand = resolvedIsLandscape()
         lastResolvedLandscape = initialLand
         let initialH = preferredHeight(landscape: initialLand)
-        let hc = root.heightAnchor.constraint(equalToConstant: initialH)
+        let hc = view.heightAnchor.constraint(equalToConstant: initialH)
         hc.priority = UILayoutPriority(999)
-        NSLayoutConstraint.activate([
-            root.topAnchor.constraint(equalTo: view.topAnchor),
-            root.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            root.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            root.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            hc,
-        ])
+        hc.isActive = true
         heightConstraint = hc
+        preferredContentSize = CGSize(width: 0, height: initialH)
         tintView.isUserInteractionEnabled = false
         root.addSubview(tintView)
         candidateBar.showsPreedit = !useInlineMarkedText
@@ -455,22 +442,8 @@ final class KeyboardViewController: UIInputViewController {
         }
 
         for v in [candidateBar, keyboard] as [UIView] { root.addSubview(v) }
-        mostoHintButton.layer.cornerCurve = .continuous
-        mostoHintButton.titleLabel?.font = Theme.font(12, .semibold)
-        mostoHintButton.accessibilityLabel = "Mosto 颜文字"
-        mostoHintButton.addAction(UIAction { [weak self] _ in self?.candidateBar.onMostoTap?() }, for: .touchUpInside)
-        let lp = UILongPressGestureRecognizer(target: self, action: #selector(mostoHeld(_:)))
-        lp.minimumPressDuration = 0.42
-        mostoHintButton.addGestureRecognizer(lp)
-        candidateBar.addSubview(mostoHintButton)
-        candidateBar.bringSubviewToFront(candidateBar.mosto)
-        candidateBar.mosto.isUserInteractionEnabled = false
-        plainLightButton.layer.cornerCurve = .continuous
-        plainLightButton.titleLabel?.font = Theme.font(12, .semibold)
-        plainLightButton.accessibilityLabel = "切换日光与夜灯"
-        plainLightButton.addAction(UIAction { [weak self] _ in self?.candidateBar.onMostoDoubleTap?() }, for: .touchUpInside)
-        candidateBar.addSubview(plainLightButton)
-        candidateBar.idleAccessibilityViews = [mostoHintButton, plainLightButton]
+        candidateBar.onLightToggle = { [weak self] in self?.candidateBar.onMostoDoubleTap?() }
+        candidateBar.onMostoLongPress = { [weak self] in self?.triggerMostoYawn() }
         cachedReturnKeyType = host.returnKeyType ?? .default
         cachedShowGlobe = needsInputModeSwitchKey
         applySettings()
@@ -510,6 +483,9 @@ final class KeyboardViewController: UIInputViewController {
         if let c = heightConstraint, abs(c.constant - targetH) > 0.5 {
             c.constant = targetH
             heightSyncMutations += 1
+        }
+        if abs(preferredContentSize.height - targetH) > 0.5 {
+            preferredContentSize = CGSize(width: 0, height: targetH)
         }
     }
 
@@ -596,12 +572,15 @@ final class KeyboardViewController: UIInputViewController {
                 changed = true
             }
         } else {
-            let hc = root.heightAnchor.constraint(equalToConstant: targetH)
+            let hc = view.heightAnchor.constraint(equalToConstant: targetH)
             hc.priority = UILayoutPriority(999)
             hc.isActive = true
             heightConstraint = hc
             heightSyncMutations += 1
             changed = true
+        }
+        if abs(preferredContentSize.height - targetH) > 0.5 {
+            preferredContentSize = CGSize(width: 0, height: targetH)
         }
         if changed {
             if allowImmediateLayout && view.window != nil {
@@ -620,36 +599,43 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        let b = root.bounds.width > 0 ? root.bounds : view.bounds
-        guard b.width > 0, b.height > 0 else { return }
+        let vb = view.bounds
+        guard vb.width > 0, vb.height > 0 else { return }
         cachedShowGlobe = needsInputModeSwitchKey
+        let actualLand = resolvedIsLandscape(forWidth: vb.width)
+        let targetH = preferredHeight(landscape: actualLand)
+        let activeBarH = heightPreset.toolbarHeight(landscape: actualLand)
+        // Depth-of-defense: clamp rendered keyboard canvas to targetH bottom-anchored inside view.bounds
+        // so abnormal host frames (e.g. WeChat 780-852pt) can NEVER stretch keycaps into vertical pillars.
+        let effectiveH = min(vb.height, targetH)
+        let originY = max(0, vb.height - effectiveH)
+        let clampedRootFrame = CGRect(x: 0, y: originY, width: vb.width, height: effectiveH)
         // landscape on a phone with rounded corners / the Dynamic Island: keys and candidates stay inside the safe
         // area (as on the system keyboard), the glass and tint still run edge to edge
         let insetL = view.safeAreaInsets.left, insetR = view.safeAreaInsets.right
-        let w = b.width - insetL - insetR
-        let reach: CGFloat = min(14, barHeight * 0.3)
-        let safe = CGRect(x: insetL, y: 0, width: w, height: b.height)
+        let w = max(0, vb.width - insetL - insetR)
+        let reach: CGFloat = min(14, activeBarH * 0.3)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
+        root.frame = clampedRootFrame
+        let b = root.bounds
+        let safe = CGRect(x: insetL, y: 0, width: w, height: b.height)
         tintView.frame = b
-        candidateBar.frame = CGRect(x: insetL, y: 0, width: w, height: barHeight)
+        candidateBar.frame = CGRect(x: insetL, y: 0, width: w, height: activeBarH)
         updatePlainLightButton()
         // the keys reach up into the strip — 8 pt always, a little more right after a key (see KeyboardView.hitTest) —
         // never so far that a quick candidate pick lands on a key (the strip is shorter in landscape)
-        keyboard.frame = CGRect(x: insetL, y: barHeight - reach, width: w, height: b.height - barHeight + reach)
+        keyboard.frame = CGRect(x: insetL, y: activeBarH - reach, width: w, height: max(0, b.height - activeBarH + reach))
         keyboard.topReach = reach
         if !syllablePicker.isHidden, let f = keyboard.keypadSideColumn() { syllablePicker.frame = f }
-        gridIfLoaded?.frame = CGRect(x: insetL, y: barHeight, width: w, height: b.height - barHeight)
+        gridIfLoaded?.frame = CGRect(x: insetL, y: activeBarH, width: w, height: max(0, b.height - activeBarH))
         settingsPanelIfLoaded?.frame = safe
         if emojiShown { emojiPanel.frame = safe }
         CATransaction.commit()
-        if b.width > 100 && b.height > 100 {
-            let actualLand = resolvedIsLandscape(forWidth: b.width)
-            if actualLand != lastResolvedLandscape {
-                lastResolvedLandscape = actualLand
-                DispatchQueue.main.async { [weak self] in
-                    self?.syncHeightConstraint(landscape: actualLand, notifyIfPresetChanged: false, allowImmediateLayout: true)
-                }
+        if vb.width > 100 && vb.height > 100 && actualLand != lastResolvedLandscape {
+            lastResolvedLandscape = actualLand
+            DispatchQueue.main.async { [weak self] in
+                self?.syncHeightConstraint(landscape: actualLand, notifyIfPresetChanged: false, allowImmediateLayout: true)
             }
         }
     }
@@ -866,11 +852,13 @@ final class KeyboardViewController: UIInputViewController {
         let sysDark = systemIsDark
         let mode = KeyboardSettings.shared.appearance
         let night = mode == 1 ? false : mode == 2 ? true : sysDark
+        let forcedDay = sysDark && !night
         let glass: UIUserInterfaceStyle = sysDark ? .dark : .light   // strip, capsules, emoji and settings always match the host glass
         let keys: UIUserInterfaceStyle = mode == 0 ? glass : (night ? .dark : .light)
         isNight = night
         root.overrideUserInterfaceStyle = glass
         keyboard.overrideUserInterfaceStyle = keys
+        keyboard.softenedForDarkGlass = forcedDay
         tintView.night = night
         tintView.forcedNight = false
         tintView.forcedDay = false
@@ -879,81 +867,20 @@ final class KeyboardViewController: UIInputViewController {
         tintView.isHidden = Theme.plain
         root.backgroundColor = Theme.touchable
         settingsPanelIfLoaded?.setNight(night)
-        lastIdleBarKey = nil
         updatePlainLightButton()
     }
 
     private func updatePlainLightButton() {
-        let idle = taps.isEmpty && predictions.isEmpty && enSuggestions.isEmpty && candidateBar.undoTextForTests == nil && !emojiShown && (settingsPanelIfLoaded?.isHidden ?? true) && (gridIfLoaded?.isHidden ?? true) && !candidateBar.isTelemetryOverlayActive && (Theme.plain || !candidateBar.mosto.isHidden)
-        let night = isNight
-        let h = candidateBar.bounds.height > 0 ? candidateBar.bounds.height : barHeight
-        let key = IdleBarKey(idle: idle, plain: Theme.plain, night: night, barH: Int(h.rounded()))
-        if key == lastIdleBarKey { return }
-        lastIdleBarKey = key
-        guard idle else {
-            mostoHintButton.isHidden = true
-            mostoHintButton.isUserInteractionEnabled = false
-            plainLightButton.isHidden = true
-            plainLightButton.isUserInteractionEnabled = false
-            return
-        }
-        let pillH = min(28, max(24, h - 12))
-        let pillY = floor((h - pillH) / 2)
-        let fg = Theme.secondaryText.resolvedColor(with: root.traitCollection)
-        let borderCG = Theme.preeditPillBorder.resolvedColor(with: root.traitCollection).cgColor
-
-        mostoHintButton.isHidden = false
-        mostoHintButton.isUserInteractionEnabled = true
-        mostoHintButton.backgroundColor = Theme.preeditPillBg
-        mostoHintButton.layer.cornerRadius = pillH / 2
-        mostoHintButton.layer.borderWidth = 0.5
-        mostoHintButton.layer.borderColor = borderCG
-        if Theme.plain {
-            mostoHintButton.configuration = nil
-            mostoHintButton.titleLabel?.font = Theme.font(12, .semibold)
-            mostoHintButton.contentHorizontalAlignment = .center
-            mostoHintButton.frame = CGRect(x: 88, y: pillY, width: 76, height: pillH)
-            mostoHintButton.setImage(Self.idleSymbol("face.smiling"), for: .normal)
-            mostoHintButton.imageView?.overrideUserInterfaceStyle = .light
-            mostoHintButton.tintColor = fg
-            mostoHintButton.setTitleColor(fg, for: .normal)
-            mostoHintButton.setTitle(" 颜文字", for: .normal)
-        } else {
-            mostoHintButton.setImage(nil, for: .normal)
-            mostoHintButton.setTitle(nil, for: .normal)
-            var c = UIButton.Configuration.plain()
-            c.title = "颜文字"
-            c.baseForegroundColor = fg
-            c.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 11)
-            c.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
-                var out = incoming
-                out.font = Theme.font(12, .semibold)
-                return out
-            }
-            mostoHintButton.configuration = c
-            mostoHintButton.contentHorizontalAlignment = .trailing
-            mostoHintButton.frame = CGRect(x: 10, y: pillY, width: 86, height: pillH)
-        }
-        candidateBar.bringSubviewToFront(mostoHintButton)
-        if !Theme.plain { candidateBar.bringSubviewToFront(candidateBar.mosto) }
-
-        let lightX = Theme.plain ? 10 : mostoHintButton.frame.maxX + 6
-        plainLightButton.frame = CGRect(x: lightX, y: pillY, width: 72, height: pillH)
-        plainLightButton.layer.cornerRadius = pillH / 2
-        plainLightButton.layer.borderWidth = 0.5
-        plainLightButton.layer.borderColor = borderCG
-        plainLightButton.isHidden = false
-        plainLightButton.isUserInteractionEnabled = true
-        candidateBar.bringSubviewToFront(plainLightButton)
-        plainLightButton.setImage(Self.idleSymbol(night ? "moon.stars.fill" : "sun.max.fill"), for: .normal)
-        plainLightButton.setTitle(night ? (Theme.plain ? " 夜光" : " 夜灯") : " 日光", for: .normal)
-        plainLightButton.tintColor = night ? UIColor(red: 0.96, green: 0.78, blue: 0.32, alpha: 1) : fg
-        plainLightButton.setTitleColor(fg, for: .normal)
-        plainLightButton.backgroundColor = Theme.preeditPillBg
+        let allowed = taps.isEmpty
+            && predictions.isEmpty
+            && enSuggestions.isEmpty
+            && !emojiShown
+            && (settingsPanelIfLoaded?.isHidden ?? true)
+            && (gridIfLoaded?.isHidden ?? true)
+        candidateBar.setIdleControls(enabled: allowed, night: isNight, forcedDayOnDarkGlass: systemIsDark && !isNight)
     }
 
-    @objc private func mostoHeld(_ g: UILongPressGestureRecognizer) {
-        guard g.state == .began else { return }
+    private func triggerMostoYawn() {
         feel(.mosto)
         yawnGeneration &+= 1
         let gen = yawnGeneration
@@ -2142,7 +2069,8 @@ final class KeyboardViewController: UIInputViewController {
         if on {
             let g = grid
             let insetL = view.safeAreaInsets.left, insetR = view.safeAreaInsets.right
-            g.frame = CGRect(x: insetL, y: barHeight, width: view.bounds.width - insetL - insetR, height: view.bounds.height - barHeight)
+            let rb = root.bounds.height > 0 ? root.bounds : CGRect(x: 0, y: 0, width: view.bounds.width, height: min(view.bounds.height, preferredHeight()))
+            g.frame = CGRect(x: insetL, y: barHeight, width: max(0, rb.width - insetL - insetR), height: max(0, rb.height - barHeight))
             if taps.isEmpty, !enSuggestions.isEmpty { g.show(englishCandidates()) }
             else if taps.isEmpty, !predictions.isEmpty { g.show(predictionCandidates()) }
             else if let r = result { g.show(r.candidates) }
@@ -2160,7 +2088,8 @@ final class KeyboardViewController: UIInputViewController {
             showEmoji(false)
             let sp = settingsPanel
             let insetL = view.safeAreaInsets.left, insetR = view.safeAreaInsets.right
-            sp.frame = CGRect(x: insetL, y: 0, width: view.bounds.width - insetL - insetR, height: view.bounds.height)
+            let rb = root.bounds.height > 0 ? root.bounds : CGRect(x: 0, y: 0, width: view.bounds.width, height: min(view.bounds.height, preferredHeight()))
+            sp.frame = CGRect(x: insetL, y: 0, width: max(0, rb.width - insetL - insetR), height: rb.height)
             sp.isHidden = false
             sp.setNight(isNight)
             sp.load()
@@ -2214,7 +2143,8 @@ final class KeyboardViewController: UIInputViewController {
             showGrid(false)
             endEnglishWord()
             emojiPanel.setChinese(chinese)
-            emojiPanel.frame = CGRect(x: view.safeAreaInsets.left, y: 0, width: view.bounds.width - view.safeAreaInsets.left - view.safeAreaInsets.right, height: view.bounds.height)
+            let rb = root.bounds.height > 0 ? root.bounds : CGRect(x: 0, y: 0, width: view.bounds.width, height: min(view.bounds.height, preferredHeight()))
+            emojiPanel.frame = CGRect(x: view.safeAreaInsets.left, y: 0, width: max(0, rb.width - view.safeAreaInsets.left - view.safeAreaInsets.right), height: rb.height)
             emojiPanel.load(kaomoji: kaomoji)
             lastEmojiInserted = ""
             root.bringSubviewToFront(emojiPanel)

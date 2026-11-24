@@ -22,6 +22,11 @@ final class KeyView: UIView {
             if pressed != oldValue { applyPressState() }
         }
     }
+    var softenedForDarkGlass = false {
+        didSet {
+            if softenedForDarkGlass != oldValue { updateColors() }
+        }
+    }
     private var hasApplied = false
     private(set) var applyRunsForTests = 0
     /// While the space bar drives the cursor the other caps go blank, as in the iOS trackpad mode.
@@ -216,14 +221,19 @@ final class KeyView: UIView {
 
     private func updateColors() {
         let t = traitCollection
+        let softDay = softenedForDarkGlass && t.userInterfaceStyle != .dark
         let rest: UIColor, down: UIColor, under: UIColor, fg: UIColor, downFg: UIColor
         currentStyle = spec.action == .shift && spec.style == .normal ? .normal : spec.style
         switch currentStyle {
         case .normal:
-            rest = Theme.key; down = Theme.keyPressed; under = Theme.keyLip
+            rest = softDay ? Theme.forcedDayKey : Theme.key
+            down = softDay ? Theme.forcedDayKeyPressed : Theme.keyPressed
+            under = softDay ? Theme.forcedDayKeyLip : Theme.keyLip
             fg = Theme.keyText; downFg = Theme.keyText
         case .function:
-            rest = Theme.functionKey; down = Theme.functionPressed; under = Theme.functionLip
+            rest = softDay ? Theme.forcedDayFunctionKey : Theme.functionKey
+            down = softDay ? Theme.forcedDayFunctionPressed : Theme.functionPressed
+            under = softDay ? Theme.forcedDayFunctionLip : Theme.functionLip
             fg = Theme.functionText; downFg = Theme.keyText
         case .accent:
             rest = Theme.accentKey; down = Theme.accentPressed; under = Theme.accentLip
@@ -237,9 +247,12 @@ final class KeyView: UIView {
         layer.shadowColor = under.resolvedColor(with: t).cgColor
         let smartSpaceRim = spec.action == .space && spec.isSmartSpace
         layer.borderWidth = smartSpaceRim ? 1.0 : 0.5
-        layer.borderColor = (smartSpaceRim ? Theme.correctedMark.withAlphaComponent(0.50) : Theme.keyBorder).resolvedColor(with: t).cgColor
+        let borderColor = smartSpaceRim
+            ? Theme.correctedMark.withAlphaComponent(0.50)
+            : (softDay ? Theme.forcedDayKeyBorder : Theme.keyBorder)
+        layer.borderColor = borderColor.resolvedColor(with: t).cgColor
         if let bevel = topHighlight {
-            bevel.backgroundColor = Theme.keyHighlight.resolvedColor(with: t).cgColor
+            bevel.backgroundColor = (softDay ? Theme.forcedDayHighlight : Theme.keyHighlight).resolvedColor(with: t).cgColor
             bevel.isHidden = blanked || pressed || currentStyle == .accent
         }
         if let dot = statusDot {
@@ -292,6 +305,7 @@ final class KeyView: UIView {
     var isSmartSpaceShownForTests: Bool { spec.isSmartSpace && !label.isHidden }
     var smartSpaceRimActiveForTests: Bool { spec.isSmartSpace && layer.borderWidth >= 0.9 }
     var visibleLabelTextForTests: String? { label.isHidden ? nil : label.text }
+    var isSoftenedForDarkGlassForTests: Bool { softenedForDarkGlass }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
         super.traitCollectionDidChange(previous)
@@ -328,8 +342,9 @@ final class KeyView: UIView {
             return b
         }()
         let bevelInset = max(3.0, cr * 0.55)
+        let softDay = softenedForDarkGlass && traitCollection.userInterfaceStyle != .dark
         bevel.frame = CGRect(x: bevelInset, y: 0.75, width: max(0, f.width - bevelInset * 2), height: 1.0)
-        bevel.backgroundColor = Theme.keyHighlight.resolvedColor(with: traitCollection).cgColor
+        bevel.backgroundColor = (softDay ? Theme.forcedDayHighlight : Theme.keyHighlight).resolvedColor(with: traitCollection).cgColor
         bevel.isHidden = blanked || pressed || currentStyle == .accent
         let wantsDot = !Theme.plain && (spec.action == .toggleLanguage || spec.action == .shift || spec.isSmartSpace)
         if wantsDot {
@@ -733,6 +748,14 @@ final class KeyboardView: UIView {
     private(set) var context: LayoutContext?
     private var rows: [[KeySpec]] = []
     private var keyViews: [KeyView] = []
+    var softenedForDarkGlass = false {
+        didSet {
+            guard softenedForDarkGlass != oldValue else { return }
+            keyViews.forEach { $0.softenedForDarkGlass = softenedForDarkGlass }
+        }
+    }
+    var softenedForDarkGlassForTests: Bool { softenedForDarkGlass }
+    var maxKeycapHeightForTests: CGFloat { keyViews.map(\.frame.height).max() ?? 0 }
     /// The style changed: every key redraws in it.
     func themeChanged() {
         keyViews.forEach { $0.themeChanged() }
@@ -1037,6 +1060,7 @@ final class KeyboardView: UIView {
         globeButton = nil
         let borders = context?.keyBorders ?? false
         keyViews = rows.flatMap { $0 }.map { KeyView(spec: $0, borders: borders) }
+        for kv in keyViews { kv.softenedForDarkGlass = softenedForDarkGlass }
         keyViews.forEach { addSubview($0) }
         if let idx = keyViews.firstIndex(where: { $0.spec.action == .globe }), let ic = inputController {
             // The system input-mode menu needs a real UIControl wired to handleInputModeList.
@@ -1060,8 +1084,13 @@ final class KeyboardView: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         guard !rows.isEmpty, bounds.width > 0, keyViews.count == rows.reduce(0, { $0 + $1.count }) else { return }
-        let rowH = (bounds.height - topReach) / CGFloat(rows.count)
-        let unit = bounds.width / 10
+        let availH = max(0, bounds.height - topReach)
+        let rawRowH = availH / CGFloat(rows.count)
+        let rowH = min(68, rawRowH)
+        let baseTop = topReach + max(0, availH - rowH * CGFloat(rows.count))
+        let sideInset: CGFloat = bounds.width > 500 ? Metrics.sideInsetLandscape : Metrics.sideInset
+        let contentW = max(1, bounds.width - sideInset * 2)
+        let unit = contentW / 10
         let gapX = Metrics.gapX
         let gapY = min(12, max(8, (rowH * 0.20).rounded()))
         hitRects = []
@@ -1075,11 +1104,12 @@ final class KeyboardView: UIView {
             var x = (10 - total) / 2
             for (j, spec) in row.enumerated() {
                 let w = spec.width == 0 ? flexW : spec.width
-                let y = topReach + CGFloat(r) * rowH
-                let frame = CGRect(x: x * unit + gapX / 2, y: y + gapY / 2, width: w * unit - gapX, height: rowH - gapY)
+                let originX = sideInset + x * unit
+                let y = baseTop + CGFloat(r) * rowH
+                let frame = CGRect(x: originX + gapX / 2, y: y + gapY / 2, width: w * unit - gapX, height: rowH - gapY)
                 keyViews[i].frame = frame
-                var hit = CGRect(x: x * unit, y: y, width: w * unit, height: rowH)
-                if r == 0 { hit = CGRect(x: hit.minX, y: 0, width: hit.width, height: rowH + topReach) }
+                var hit = CGRect(x: originX, y: y, width: w * unit, height: rowH)
+                if r == 0 { hit = CGRect(x: hit.minX, y: 0, width: hit.width, height: baseTop + rowH) }
                 if j == 0 { hit = CGRect(x: 0, y: hit.minY, width: hit.maxX, height: hit.height) }
                 if j == row.count - 1 { hit.size.width = bounds.width - hit.minX }
                 hitRects.append(hit)

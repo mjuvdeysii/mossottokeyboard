@@ -113,6 +113,8 @@ for dirpath, _dirs, files in os.walk(KEYBOARD):
                     problems.append(f"{path}: {fn_name} reads documentContextBeforeInput synchronously without gating on useInlineMarkedText")
 
             # Rule 16: Height anti-bounce invariants in KeyboardViewController
+            if "root.heightAnchor" in code:
+                problems.append(f"{path}: height constraint must attach directly to view.heightAnchor, never root.heightAnchor (causes WeChat full-screen stretch)")
             uvc = extract_func(code, r'override\s+func\s+updateViewConstraints\b')
             if uvc and "allowsSelfSizing" in uvc:
                 problems.append(f"{path}: updateViewConstraints() mutates allowsSelfSizing (causes extension height bounce)")

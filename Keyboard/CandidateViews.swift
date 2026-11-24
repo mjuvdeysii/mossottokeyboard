@@ -44,10 +44,29 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     /// Mosto: a tap opens his 颜文字, a double tap switches 日光 / 夜灯.
     var onMostoTap: (() -> Void)?
     var onMostoDoubleTap: (() -> Void)?
+    /// Long press on free-standing Mosto triggers his signature yawn demo.
+    var onMostoLongPress: (() -> Void)?
+    /// Dedicated icon-only day/night light toggle inside the idle bar.
+    var onLightToggle: (() -> Void)?
     /// Long press on a candidate (to offer removing a learned word).
     var onLongPress: ((Int) -> Void)?
     /// Tap on the leading raw-key preview pill: commits the literal typed letters immediately.
     var onPreeditTap: (() -> Void)?
+
+    private var idleControlsEnabled = true
+    private var isNightLight = false
+    private var isForcedDayOnDarkGlass = false
+    private let kaomojiButton = UIButton(type: .system)
+    private let lightToggleButton = UIButton(type: .system)
+    private let horizonHairline = CALayer()
+    private static var idleSymbolCache: [String: UIImage] = [:]
+    private static func idleSymbol(_ name: String) -> UIImage? {
+        if let img = idleSymbolCache[name] { return img }
+        let cfg = UIImage.SymbolConfiguration(pointSize: 13.5, weight: .medium)
+        let img = UIImage(systemName: name, withConfiguration: cfg)?.withRenderingMode(.alwaysTemplate)
+        if let img { idleSymbolCache[name] = img }
+        return img
+    }
 
     private let preeditDock = UIView()
     private let preeditClip = UIView()
@@ -119,7 +138,15 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     private var activePinpoint = CorrectionPinpoint(slipped: [], missingAnchors: [])
     private var isPrediction = false
     private var isMathResult = false
-    var gridExpanded = false { didSet { if gridExpanded != oldValue { setNeedsLayout(); layoutIfNeeded() } } }
+    var gridExpanded = false {
+        didSet {
+            if gridExpanded != oldValue {
+                updateIdleControlsVisibility()
+                setNeedsLayout()
+                layoutIfNeeded()
+            }
+        }
+    }
     private var candidates: [Candidate] = []
     /// Candidates laid out so far (the row is laid out a screen or two ahead of what is shown), their widths, and
     /// measured widths by text and caption, kept through a composition.
@@ -277,6 +304,23 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         mosto.addGestureRecognizer(single)
         mosto.onActivate = { [weak self] in self?.onMostoTap?() }
         mosto.onToggleLight = { [weak self] in self?.onMostoDoubleTap?() }
+        mosto.isUserInteractionEnabled = false
+
+        horizonHairline.zPosition = 5
+        horizonHairline.isHidden = true
+        layer.addSublayer(horizonHairline)
+
+        kaomojiButton.layer.cornerCurve = .continuous
+        kaomojiButton.addAction(UIAction { [weak self] _ in self?.onMostoTap?() }, for: .touchUpInside)
+        let kaomojiLP = UILongPressGestureRecognizer(target: self, action: #selector(kaomojiHeld(_:)))
+        kaomojiLP.minimumPressDuration = 0.42
+        kaomojiButton.addGestureRecognizer(kaomojiLP)
+        addSubview(kaomojiButton)
+
+        lightToggleButton.layer.cornerCurve = .continuous
+        lightToggleButton.addAction(UIAction { [weak self] _ in self?.onLightToggle?() }, for: .touchUpInside)
+        addSubview(lightToggleButton)
+
         update(preedit: "", candidates: [])
     }
 
@@ -495,6 +539,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         undoChip.configuration = uc
         let t = undoText, spoken = undoChip.accessibilityLabel
         undoText = nil; setUndo(t, spoken: spoken)
+        updateIdleControlsVisibility()
         widthCache.removeAll(keepingCapacity: true)
         cachedDivColorCG = Theme.candidateDivider.resolvedColor(with: traitCollection).cgColor
         lastDivPlain = Theme.plain
@@ -534,6 +579,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             setMosto(candidates.isEmpty && !typing && showsMosto)
         }
         undoChip.isHidden = typed == nil
+        updateIdleControlsVisibility()
         setNeedsLayout()
     }
 
@@ -556,6 +602,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         stripBox.alpha = a
         expandButton.alpha = (armed || cursorScrubActive) ? 0 : a
         preeditDock.alpha = a
+        updateIdleControlsVisibility()
         setNeedsLayout()
         layoutIfNeeded()
     }
@@ -585,6 +632,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         if !clearSwipeArmed && clearSwipeProgress <= 0.01 {
             expandButton.alpha = active ? 0 : 1
         }
+        updateIdleControlsVisibility()
         setNeedsLayout()
         layoutIfNeeded()
     }
@@ -767,6 +815,15 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     var cursorModePillTextForTests: String? { (cursorScrubActive && !deletePreviewPill.isHidden) ? deletePreviewPill.text : nil }
     var stripVisibleForTests: Bool { !stripBox.isHidden }
     var clearArmedOpaqueForTests: Bool { (clearArmedPill.backgroundColor?.cgColor.alpha ?? 0) >= 0.99 }
+    var idleLightHiddenForTests: Bool { lightToggleButton.isHidden }
+    var idleKaomojiHiddenForTests: Bool { kaomojiButton.isHidden }
+    var idleLightFrameForTests: CGRect { lightToggleButton.frame }
+    var idleKaomojiFrameForTests: CGRect { kaomojiButton.frame }
+    var expandButtonFrameForTests: CGRect { expandButton.frame }
+    var idleLightTitleForTests: String? { lightToggleButton.title(for: .normal) }
+    var idleKaomojiTitleForTests: String? { kaomojiButton.title(for: .normal) }
+    var idleKaomojiHasImageForTests: Bool { kaomojiButton.image(for: .normal) != nil }
+    var horizonHairlineShownForTests: Bool { !horizonHairline.isHidden }
 
     // MARK: VoiceOver: each laid-out candidate is a button (the strip draws plain labels and reads raw touches)
 
@@ -777,6 +834,14 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         if let hit = super.hitTest(point, with: event), hit !== self { return hit }
+        if !lightToggleButton.isHidden, lightToggleButton.isUserInteractionEnabled, lightToggleButton.frame.width > 0 {
+            let expanded = CGRect(x: lightToggleButton.frame.minX - 2, y: 0, width: lightToggleButton.frame.width + 4, height: bounds.height)
+            if expanded.contains(point) { return lightToggleButton }
+        }
+        if !kaomojiButton.isHidden, kaomojiButton.isUserInteractionEnabled, kaomojiButton.frame.width > 0 {
+            let expanded = CGRect(x: kaomojiButton.frame.minX - 4, y: 0, width: kaomojiButton.frame.width + 8, height: bounds.height)
+            if expanded.contains(point) { return kaomojiButton }
+        }
         if !preeditDock.isHidden && !preeditRaw.isEmpty && preeditDock.frame.width > 0 {
             let expanded = CGRect(x: preeditDock.frame.minX, y: 0, width: preeditDock.frame.width, height: bounds.height)
             if expanded.contains(point) { return preeditDock }
@@ -793,11 +858,15 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
                 return [deletePreviewPill, clearArmedPill].filter { !$0.isHidden }
             }
             var out: [Any] = []
-            let visibleIdle = idleAccessibilityViews.filter { !$0.isHidden }
-            if !visibleIdle.isEmpty {
-                out.append(contentsOf: visibleIdle)
-            } else if !mosto.isHidden {
-                out.append(mosto)
+            if shouldShowIdleControls {
+                out.append(contentsOf: [kaomojiButton, lightToggleButton].filter { !$0.isHidden })
+            } else {
+                let visibleIdle = idleAccessibilityViews.filter { !$0.isHidden }
+                if !visibleIdle.isEmpty {
+                    out.append(contentsOf: visibleIdle)
+                } else if !mosto.isHidden {
+                    out.append(mosto)
+                }
             }
             if !undoChip.isHidden { out.append(undoChip) }
             if !preeditDock.isHidden && !preeditRaw.isEmpty { out.append(preeditDock) }
@@ -848,6 +917,104 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
 
     @objc private func mostoTapped() { onMostoTap?() }
     @objc private func mostoDoubleTapped() { mosto.hop(); onMostoDoubleTap?() }
+    @objc private func kaomojiHeld(_ g: UILongPressGestureRecognizer) {
+        guard g.state == .began, !Theme.plain else { return }
+        onMostoLongPress?()
+    }
+
+    func setIdleControls(enabled: Bool, night: Bool, forcedDayOnDarkGlass: Bool = false) {
+        let changed = idleControlsEnabled != enabled || isNightLight != night || isForcedDayOnDarkGlass != forcedDayOnDarkGlass
+        idleControlsEnabled = enabled
+        isNightLight = night
+        isForcedDayOnDarkGlass = forcedDayOnDarkGlass
+        updateIdleControlsVisibility()
+        if changed { setNeedsLayout() }
+    }
+
+    private var shouldShowIdleControls: Bool {
+        idleControlsEnabled
+            && candidates.isEmpty
+            && !typing
+            && undoText == nil
+            && !gridExpanded
+            && forgetOverlay == nil
+            && !isTelemetryOverlayActive
+            && (Theme.plain || mostoWanted || showsMosto)
+    }
+
+    private func updateIdleControlsVisibility() {
+        let show = shouldShowIdleControls
+        kaomojiButton.isHidden = !show
+        kaomojiButton.isUserInteractionEnabled = show
+        lightToggleButton.isHidden = !show
+        lightToggleButton.isUserInteractionEnabled = show
+    }
+
+    private func layoutIdleControls(height h: CGFloat, edgeAlign: CGFloat) {
+        updateIdleControlsVisibility()
+        let showHorizon = isForcedDayOnDarkGlass && forgetOverlay == nil
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        horizonHairline.isHidden = !showHorizon
+        if showHorizon {
+            horizonHairline.frame = CGRect(x: edgeAlign, y: h - 0.5, width: max(0, bounds.width - edgeAlign * 2), height: 0.5)
+            horizonHairline.backgroundColor = UIColor(white: 1, alpha: 0.12).cgColor
+        }
+        CATransaction.commit()
+        guard shouldShowIdleControls else { return }
+
+        let pillH = min(28, max(24, h - 12))
+        let pillY = floor((h - pillH) / 2)
+        let fg = Theme.secondaryText.resolvedColor(with: traitCollection)
+        let borderCG = Theme.preeditPillBorder.resolvedColor(with: traitCollection).cgColor
+
+        if Theme.plain {
+            kaomojiButton.configuration = nil
+            kaomojiButton.setImage(nil, for: .normal)
+            kaomojiButton.setTitle("^_^", for: .normal)
+            kaomojiButton.titleLabel?.font = Theme.font(12.5, .medium)
+            kaomojiButton.setTitleColor(fg, for: .normal)
+            kaomojiButton.backgroundColor = Theme.preeditPillBg
+            kaomojiButton.layer.cornerRadius = pillH / 2
+            kaomojiButton.layer.borderWidth = 0.5
+            kaomojiButton.layer.borderColor = borderCG
+            kaomojiButton.frame = CGRect(x: edgeAlign + 2, y: pillY, width: 40, height: pillH)
+            kaomojiButton.accessibilityLabel = "颜文字"
+            kaomojiButton.accessibilityHint = "轻点打开颜文字"
+            bringSubviewToFront(kaomojiButton)
+        } else {
+            kaomojiButton.configuration = nil
+            kaomojiButton.setTitle(nil, for: .normal)
+            kaomojiButton.setImage(nil, for: .normal)
+            kaomojiButton.backgroundColor = .clear
+            kaomojiButton.layer.borderWidth = 0
+            kaomojiButton.frame = CGRect(x: max(2, mosto.frame.midX - 22), y: 0, width: 44, height: h)
+            kaomojiButton.accessibilityLabel = "Mosto 颜文字"
+            kaomojiButton.accessibilityHint = "轻点选颜文字，按住让 Mosto 打哈欠"
+            bringSubviewToFront(mosto)
+            bringSubviewToFront(kaomojiButton)
+        }
+
+        let lightW: CGFloat = 34
+        let lightX = expandButton.frame.minX - 6 - lightW
+        lightToggleButton.configuration = nil
+        lightToggleButton.setTitle(nil, for: .normal)
+        lightToggleButton.setImage(Self.idleSymbol(isNightLight ? "moon.fill" : "sun.max.fill"), for: .normal)
+        if isNightLight {
+            lightToggleButton.tintColor = Theme.plain ? fg : Theme.hex(0xD8B46C, 0.90)
+        } else {
+            lightToggleButton.tintColor = isForcedDayOnDarkGlass ? Theme.hex(0xEFECE6, 0.92) : fg
+        }
+        lightToggleButton.backgroundColor = Theme.preeditPillBg
+        lightToggleButton.layer.cornerRadius = pillH / 2
+        lightToggleButton.layer.borderWidth = 0.5
+        lightToggleButton.layer.borderColor = borderCG
+        lightToggleButton.frame = CGRect(x: lightX, y: pillY, width: lightW, height: pillH)
+        lightToggleButton.accessibilityLabel = "切换日光与夜灯"
+        lightToggleButton.accessibilityValue = isNightLight ? "当前夜灯" : "当前日光"
+        lightToggleButton.accessibilityHint = "轻点切换键盘光线"
+        bringSubviewToFront(lightToggleButton)
+    }
 
     private var preeditDockWanted: Bool {
         !preeditRaw.isEmpty && !isPrediction && (showsPreedit || gridExpanded)
@@ -889,6 +1056,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         if !busy && forgetOverlay != nil { dismissForget() }
         setMosto(!busy && !typing && showsMosto && undoText == nil)
         preeditDock.isHidden = !preeditDockWanted
+        updateIdleControlsVisibility()
         setNeedsLayout()
         layoutIfNeeded()
     }
@@ -897,7 +1065,13 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     /// keyboard has been idle a moment, fading in rather than popping up — never flickering between words.
     /// Keys are being composed (the candidates may not have arrived yet): Mosto stays out of the way.
     var typing = false {
-        didSet { if typing != oldValue { setMosto(!typing && candidates.isEmpty && showsMosto && undoText == nil); setNeedsLayout() } }
+        didSet {
+            if typing != oldValue {
+                setMosto(!typing && candidates.isEmpty && showsMosto && undoText == nil)
+                updateIdleControlsVisibility()
+                setNeedsLayout()
+            }
+        }
     }
 
     /// Mosto is (about to be) shown or put away — his night light follows him.
@@ -913,14 +1087,24 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
 
     private func setMosto(_ on: Bool) {
         // put away even when he was never asked for (a new strip starts with him hidden, 简洁 never shows him)
-        if !on, !mostoWanted { mosto.isHidden = true; return }
+        if !on, !mostoWanted {
+            mosto.isHidden = true
+            updateIdleControlsVisibility()
+            return
+        }
         guard on != mostoWanted else { return }
         mostoWanted = on
         if !on { onMostoShown?(false) }
         mostoTimer?.invalidate(); mostoTimer = nil
-        guard on else { mosto.layer.removeAllAnimations(); mosto.isHidden = true; return }
+        guard on else {
+            mosto.layer.removeAllAnimations()
+            mosto.isHidden = true
+            updateIdleControlsVisibility()
+            return
+        }
         mosto.isHidden = false
         mosto.transform = .identity
+        updateIdleControlsVisibility()
         if window == nil || UIAccessibility.isReduceMotionEnabled {
             mosto.alpha = 1
             onMostoShown?(true)
@@ -940,6 +1124,8 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     override func layoutSubviews() {
         super.layoutSubviews()
         let h = bounds.height
+        let sidePad: CGFloat = bounds.width > 500 ? Metrics.sideInsetLandscape : Metrics.sideInset
+        let edgeAlign = sidePad + Metrics.gapX / 2
         if let overlay = forgetOverlay {
             overlay.frame = bounds
             stripBox.isHidden = true
@@ -949,6 +1135,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             mosto.isHidden = true
             clearArmedPill.isHidden = true
             deletePreviewPill.isHidden = true
+            layoutIdleControls(height: h, edgeAlign: edgeAlign)
             let pillH = min(30, max(24, h - 10))
             let y = floor((h - pillH) / 2)
             if let cancelBtn = forgetCancelButton {
@@ -970,12 +1157,11 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         undoChip.isHidden = undoText == nil || hideChromeForHud
         preeditDock.isHidden = !preeditDockWanted || !undoChip.isHidden || hideChromeForHud
         mosto.isHidden = !mostoWanted || hideChromeForHud
-        // Inset neatly inside the 28pt idle Mosto capsule (zero overflow or clipping mismatch).
-        let pillH = min(28, max(24, h - 12))
-        let mSize = min(24, pillH - 4)
-        mosto.frame = CGRect(x: 14, y: floor((h - mSize) / 2), width: mSize, height: mSize)
-        let expandW: CGFloat = 36
-        expandButton.frame = CGRect(x: bounds.width - expandW, y: 0, width: expandW, height: h)
+        let mSize = min(28, max(24, h - 12))
+        mosto.frame = CGRect(x: edgeAlign + 4, y: floor((h - mSize) / 2), width: mSize, height: mSize)
+        let expandW: CGFloat = 34
+        expandButton.frame = CGRect(x: bounds.width - edgeAlign - expandW + 3, y: 0, width: expandW, height: h)
+        layoutIdleControls(height: h, edgeAlign: edgeAlign)
         // Start at 10pt so the first element cleanly clears iOS 26/27 Liquid Glass top-left corner radius.
         var lead: CGFloat = 10
         if !undoChip.isHidden {
@@ -993,7 +1179,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             let pillH = min(26, max(20, h - 14))
             let pillW: CGFloat
             if gridExpanded {
-                pillW = max(60, bounds.width - expandW - 18)
+                pillW = max(60, expandButton.frame.minX - 16)
             } else {
                 let maxPillW = min(110, floor(bounds.width * 0.28))
                 pillW = min(max(30, textW + 18), maxPillW)
@@ -1025,7 +1211,8 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             preeditDock.frame = .zero
         }
         layoutClearFilament()
-        let rightLimit = clearArmedPill.isHidden ? (bounds.width - expandW) : min(bounds.width - expandW, clearArmedPill.frame.minX - 6)
+        let expandMinX = expandButton.frame.minX
+        let rightLimit = clearArmedPill.isHidden ? expandMinX : min(expandMinX, clearArmedPill.frame.minX - 6)
         // Keep stripBox and CandidateStrip spanning the FULL bar height (0..h) so taps on the upper third never miss.
         let box = CGRect(x: lead, y: 0, width: max(0, rightLimit - lead), height: h)
         if stripBox.frame != box { stripBox.frame = box }
@@ -1521,6 +1708,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         forgetOverlay = overlay
         forgetConfirmButton = confirmBtn
         forgetCancelButton = cancelBtn
+        updateIdleControlsVisibility()
         setNeedsLayout()
         layoutIfNeeded()
 
@@ -1536,6 +1724,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         forgetOverlay = nil
         forgetConfirmButton = nil
         forgetCancelButton = nil
+        updateIdleControlsVisibility()
         setNeedsLayout()
     }
 }
@@ -2815,8 +3004,7 @@ final class SettingsPanelView: UIView {
 
     private func updateStatus(night: Bool? = nil) {
         let s = KeyboardSettings.shared
-        let nightName = s.style == 1 ? "夜光" : "夜灯"
-        let light = night.map { $0 ? nightName : "日光" } ?? (["自动", "日光", nightName][s.appearance])
+        let light = night.map { $0 ? "夜灯" : "日光" } ?? (["自动", "日光", "夜灯"][s.appearance])
         let heightName = KeyboardHeightPreset.clamped(s.keyboardHeight).title
         statusLabel.text = "\(s.style == 1 ? "简洁" : light) · \(s.scheme == 0 ? "双拼" : "全拼") · \(s.pinyinGrid ? "九宫格" : "全键盘") · \(heightName)"
     }

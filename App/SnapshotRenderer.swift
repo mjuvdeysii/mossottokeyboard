@@ -54,6 +54,9 @@ enum SnapshotRenderer {
         struct Shot { let name: String; let page: KeyboardPage; let state: String; let borders: Bool; let panel: String?; var globe = false; var land = false }
         let shots: [Shot] = [
             Shot(name: "letters_idle", page: .letters, state: "idle", borders: true, panel: nil),
+            Shot(name: "plain_idle", page: .letters, state: "idle", borders: true, panel: nil),
+            Shot(name: "forced_idle", page: .letters, state: "idle", borders: true, panel: "forced"),
+            Shot(name: "plain_forced_idle", page: .letters, state: "idle", borders: true, panel: "forced"),
             Shot(name: "letters_composing", page: .letters, state: "composing", borders: true, panel: nil),
             Shot(name: "letters_predict", page: .letters, state: "predict", borders: true, panel: nil),
             Shot(name: "letters_undo", page: .letters, state: "undo", borders: true, panel: nil),
@@ -137,6 +140,7 @@ enum SnapshotRenderer {
                 let bar = CandidateBarView(frame: CGRect(x: inset, y: 0, width: width, height: barH))
                 bar.mosto.setNight(night)
                 bar.showsMosto = !Theme.plain
+                bar.setIdleControls(enabled: true, night: night, forcedDayOnDarkGlass: forced && !night)
                 if shot.name == "plain_appex_pill" || shot.name == "letters_guide_chord" {
                     bar.showsPreedit = true
                     bar.xiaoheRhythm = true
@@ -145,6 +149,7 @@ enum SnapshotRenderer {
                 let kb = KeyboardView(spatial: SpatialModel.standard(width: Double(width)))
                 kb.frame = CGRect(x: inset, y: barH, width: width, height: 4 * pitch)
                 kb.overrideUserInterfaceStyle = night ? .dark : .light
+                kb.softenedForDarkGlass = forced && !night
                 root.addSubview(kb)
                 let isGuideShot = shot.name == "letters_guide" || shot.name == "letters_guide_chord"
                 let chordInitial: Character? = shot.name == "letters_guide_chord" ? "q" : nil
@@ -217,8 +222,9 @@ enum SnapshotRenderer {
                     grid.show(composing + candidates(["倪", "霓", "匿", "妮", "昵", "溺", "睨", "鲵", "旎", "怩"]))
                 } else if shot.panel == "longpress" {
                     // the row a long press on ， opens (slot 7.5–8.5 of the bottom row), "？" highlighted
-                    let unit = width / 10
-                    let key = CGRect(x: 7.5 * unit + Metrics.gapX / 2, y: 3 * Metrics.rowPitch + Metrics.gapY / 2,
+                    let sideInset: CGFloat = shot.land ? Metrics.sideInsetLandscape : Metrics.sideInset
+                    let unit = (width - sideInset * 2) / 10
+                    let key = CGRect(x: sideInset + 7.5 * unit + Metrics.gapX / 2, y: 3 * Metrics.rowPitch + Metrics.gapY / 2,
                                      width: unit - Metrics.gapX, height: Metrics.rowPitch - Metrics.gapY)
                     let popup = AltPopup(options: ["。", "？", "！", "、", "…", "："], cell: max(key.width, 34), height: key.height * 1.1, reversed: true)
                     var x = key.midX + popup.cell / 2 + 4 - popup.frame.width

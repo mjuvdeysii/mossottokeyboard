@@ -159,6 +159,7 @@ enum KeyboardTests {
         r80ContrastCadenceAndBenchCraft(window)
         r81TrackpadGlassSmartRimAndPunctuationCraft(window)
         r82NumpadSpineEnableDarkAndLandscapeDock(window)
+        r83HeightExplosionGuardIdleRailAndGlassCraft(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -3647,6 +3648,96 @@ enum KeyboardTests {
             && darkCR >= 4.5
         log(verifyOk, "r82.EnableScreen dark Canvas palette meets WCAG AA and detects 你好 verification",
             "darkCR=\(String(format: "%.2f", darkCR))")
+    }
+
+    static func r83HeightExplosionGuardIdleRailAndGlassCraft(_ window: UIWindow) {
+        let s = KeyboardSettings.shared
+        let prevHeight = s.keyboardHeight
+        let prevStyle = s.style
+        let prevPlain = Theme.plain
+        defer {
+            s.keyboardHeight = prevHeight
+            s.style = prevStyle
+            Theme.plain = prevPlain
+        }
+
+        // 1. P0 WeChat abnormal host frame guard: direct view.heightAnchor + preferredContentSize + bottom-anchored frame clamp
+        guard let (vc, _) = makeKeyboard(scheme: 0, in: window) else {
+            log(false, "r83.setup", "engine did not load")
+            return
+        }
+        s.keyboardHeight = KeyboardHeightPreset.standard.rawValue
+        vc.applySettings()
+        let directViewTarget = vc.heightConstraintTargetIsViewForTests
+        let prefSyncStandard = abs(vc.preferredContentSize.height - 242) < 0.5
+        vc.view.frame = CGRect(x: 0, y: 0, width: 393, height: 780)
+        vc.view.setNeedsLayout()
+        vc.view.layoutIfNeeded()
+        let clamped780 = vc.rootFrameForTests.height <= 242.5
+            && abs(vc.rootFrameForTests.maxY - 780) < 1.0
+            && vc.maxKeycapHeightForTests <= 46
+
+        s.keyboardHeight = KeyboardHeightPreset.comfortable.rawValue
+        vc.applySettings()
+        let prefSyncComfort = abs(vc.preferredContentSize.height - 262) < 0.5
+        vc.view.frame = CGRect(x: 0, y: 0, width: 393, height: 852)
+        vc.view.setNeedsLayout()
+        vc.view.layoutIfNeeded()
+        let clamped852 = vc.rootFrameForTests.height <= 262.5
+            && abs(vc.rootFrameForTests.maxY - 852) < 1.0
+            && vc.maxKeycapHeightForTests <= 51
+
+        log(directViewTarget && prefSyncStandard && clamped780 && prefSyncComfort && clamped852,
+            "r83.KeyboardViewController binds view.heightAnchor directly and clamps oversized host frames bottom-up",
+            "direct=\(directViewTarget) pref=(\(prefSyncStandard),\(prefSyncComfort)) 780=\(vc.rootFrameForTests)/\(vc.maxKeycapHeightForTests) ok=(\(clamped780),\(clamped852))")
+
+        // 2. P1 Visual-first unified idle bar across Mosto & 简洁 styles (free-standing Mosto, ^_^ monogram, icon-only right light button)
+        vc.view.frame = CGRect(x: 0, y: 0, width: 393, height: 262)
+        s.style = 0
+        vc.applySettings()
+        vc.view.setNeedsLayout()
+        vc.view.layoutIfNeeded()
+        let bar = vc.candidateBarForTests
+        let mostoShown = !vc.mostoHintHiddenForTests && !vc.plainLightHiddenForTests && bar.mosto.frame.width >= 26
+        let mostoTextFree = bar.idleKaomojiTitleForTests == nil && bar.idleLightTitleForTests == nil
+        let mostoLightFrame = bar.idleLightFrameForTests
+        let mostoLightRightAligned = mostoLightFrame.minX > 260 && mostoLightFrame.maxX < bar.expandButtonFrameForTests.minX
+
+        s.style = 1
+        vc.applySettings()
+        vc.view.setNeedsLayout()
+        vc.view.layoutIfNeeded()
+        let plainMostoHidden = bar.mosto.isHidden && !vc.mostoHintHiddenForTests && !vc.plainLightHiddenForTests
+        let plainKaomojiClean = bar.idleKaomojiTitleForTests == "^_^"
+            && !bar.idleKaomojiHasImageForTests
+            && bar.idleKaomojiFrameForTests.minX < 25
+        let plainLightFrame = bar.idleLightFrameForTests
+        let plainLightConsistent = bar.idleLightTitleForTests == nil
+            && abs(plainLightFrame.minX - mostoLightFrame.minX) < 1.0
+
+        log(mostoShown && mostoTextFree && mostoLightRightAligned && plainMostoHidden && plainKaomojiClean && plainLightConsistent,
+            "r83.CandidateBarView unifies icon-only right light toggle, free-standing Mosto, and ^_^ monogram across styles",
+            "mosto=(\(mostoShown),\(mostoTextFree),\(mostoLightRightAligned)) plain=(\(plainMostoHidden),\(plainKaomojiClean),\(plainLightConsistent))")
+
+        // 3. P1 Liquid Glass side breathing margins (full-width outer hit zones) & forced-day softened keycap state
+        let kv = KeyboardView(spatial: SpatialModel.standard(width: 393))
+        kv.frame = CGRect(x: 0, y: 0, width: 393, height: 200)
+        kv.configure(LayoutContext(page: .letters, chinese: true, showGlobe: false, returnLabel: nil,
+                                   returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true))
+        kv.layoutIfNeeded()
+        let q = kv.keyRectsForTests(.char("q"))
+        let p = kv.keyRectsForTests(.char("p"))
+        let marginOk = (q?.cap.minX ?? 0) >= 6.5
+            && (393 - (p?.cap.maxX ?? 393)) >= 6.5
+            && (q?.hit.minX ?? -1) == 0
+            && abs((p?.hit.maxX ?? 0) - 393) < 0.5
+        kv.softenedForDarkGlass = true
+        let softOn = kv.softenedForDarkGlassForTests && (kv.keyViewForTests(.char("q"))?.isSoftenedForDarkGlassForTests == true)
+        kv.softenedForDarkGlass = false
+        let softOff = !kv.softenedForDarkGlassForTests && (kv.keyViewForTests(.char("q"))?.isSoftenedForDarkGlassForTests == false)
+        log(marginOk && softOn && softOff,
+            "r83.KeyboardView breathes inside rounded Liquid Glass with full-width edge hit zones and dark-glass day softening",
+            "margin=\(marginOk) qMinX=\(q?.cap.minX ?? -1) pMaxX=\(p?.cap.maxX ?? -1) soft=(\(softOn),\(softOff))")
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

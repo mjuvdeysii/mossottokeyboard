@@ -171,8 +171,11 @@ enum Metrics {
     static let rowPitch: CGFloat = 50
     static let rowPitchLandscape: CGFloat = 40
     static let toolbarHeightLandscape: CGFloat = 38
-    static let gapX: CGFloat = 6
+    static let gapX: CGFloat = 5.5
     static let gapY: CGFloat = 10
+    /// Outer horizontal breathing inset so edge keys (q/p, 123/return) sit cleanly inside iOS 26/27 rounded Liquid Glass.
+    static let sideInset: CGFloat = 4.5
+    static let sideInsetLandscape: CGFloat = 4.0
     /// Precision 1.0 pt bottom contact grounding across both styles.
     static var lip: CGFloat { 1.0 }
     /// Apple continuous squircle cap corners.
@@ -463,6 +466,15 @@ enum Theme {
     static var keyHighlight: UIColor { plain ? plain_keyHighlight : mosto_keyHighlight }
     private static let mosto_keyHighlight = dyn(UIColor(white: 1, alpha: 0.80), hex(0xFFE4A8, 0.28))
     private static let plain_keyHighlight: UIColor = dyn(UIColor(white: 1, alpha: 0.90), UIColor(white: 1, alpha: 0.20))
+    /// Softened ceramic key tones when 日光 keys sit over Dark system Liquid Glass (Spotlight / dark apps).
+    static var forcedDayKey: UIColor { plain ? hex(0xEAECEF) : hex(0xF1EDF6) }
+    static var forcedDayKeyPressed: UIColor { plain ? hex(0xD8DCE4) : hex(0xE1DAE9) }
+    static var forcedDayKeyLip: UIColor { plain ? hex(0x8D93A0) : hex(0x988FB0) }
+    static var forcedDayFunctionKey: UIColor { plain ? hex(0xC6CBD6) : hex(0xDDD7EB) }
+    static var forcedDayFunctionPressed: UIColor { plain ? hex(0xDDE1EA) : hex(0xCCC4E0) }
+    static var forcedDayFunctionLip: UIColor { plain ? hex(0x7C828F) : hex(0x8B81A6) }
+    static var forcedDayKeyBorder: UIColor { plain ? UIColor(white: 0, alpha: 0.14) : hex(0x22193D, 0.14) }
+    static let forcedDayHighlight: UIColor = UIColor(white: 1, alpha: 0.45)
     static var bubble: UIColor { plain ? plain_bubble : mosto_bubble }
     private static let mosto_bubble: UIColor = dyn(hex(0xFFFFFF), hex(0x3A3450))
     private static let plain_bubble: UIColor = dyn(hex(0xFFFFFF), hex(0x52535A))
