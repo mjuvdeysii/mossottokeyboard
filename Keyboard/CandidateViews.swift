@@ -493,7 +493,8 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         stripBox.alpha = a
         expandButton.alpha = (armed && dimContent) ? 0 : a
         preeditDock.alpha = a
-        layoutClearFilament()
+        setNeedsLayout()
+        layoutIfNeeded()
     }
 
     /// A swipe left off delete is armed: the candidates fade to show they are about to go (no animation: it follows
@@ -517,14 +518,17 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             clearArmedPill.layer.cornerRadius = pillH / 2
             clearArmedPill.font = Theme.font(11.5, .semibold)
             if Theme.plain {
-                clearArmedPill.backgroundColor = Theme.correctedTint
+                clearArmedPill.backgroundColor = Theme.dyn(
+                    UIColor(red: 0.94, green: 0.90, blue: 0.97, alpha: 1),
+                    UIColor(red: 0.22, green: 0.18, blue: 0.28, alpha: 1)
+                )
                 clearArmedPill.textColor = Theme.correctedMark
                 clearArmedPill.layer.borderColor = Theme.correctedMark.withAlphaComponent(0.45).resolvedColor(with: traitCollection).cgColor
             } else {
                 let goldAccent = Theme.dyn(Theme.gold, Theme.goldGlow)
                 clearArmedPill.backgroundColor = Theme.dyn(
-                    UIColor(red: 0.96, green: 0.91, blue: 0.78, alpha: 0.96),
-                    UIColor(red: 0.30, green: 0.24, blue: 0.14, alpha: 0.96)
+                    UIColor(red: 0.96, green: 0.91, blue: 0.78, alpha: 1),
+                    UIColor(red: 0.28, green: 0.22, blue: 0.13, alpha: 1)
                 )
                 clearArmedPill.textColor = Theme.dyn(
                     UIColor(red: 0.45, green: 0.28, blue: 0.04, alpha: 1),
@@ -555,6 +559,9 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     var clearPreviewForTests: Bool { stripBox.alpha < 1 }
     var clearFilamentProgressForTests: CGFloat { clearSwipeProgress }
     var clearArmedCueShownForTests: Bool { !clearArmedPill.isHidden }
+    var clearArmedPillFrameForTests: CGRect { clearArmedPill.frame }
+    var stripVisibleForTests: Bool { !stripBox.isHidden }
+    var clearArmedOpaqueForTests: Bool { (clearArmedPill.backgroundColor?.cgColor.alpha ?? 0) >= 0.99 }
 
     // MARK: VoiceOver: each laid-out candidate is a button (the strip draws plain labels and reads raw touches)
 
@@ -565,7 +572,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         if let hit = super.hitTest(point, with: event), hit !== self { return hit }
-        if showsPreedit && !preeditDock.isHidden && !preeditRaw.isEmpty && preeditDock.frame.width > 0 {
+        if !preeditDock.isHidden && !preeditRaw.isEmpty && preeditDock.frame.width > 0 {
             let expanded = CGRect(x: preeditDock.frame.minX, y: 0, width: preeditDock.frame.width, height: bounds.height)
             if expanded.contains(point) { return preeditDock }
         }
@@ -585,7 +592,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
                 out.append(mosto)
             }
             if !undoChip.isHidden { out.append(undoChip) }
-            if showsPreedit && !preeditDock.isHidden && !preeditRaw.isEmpty { out.append(preeditDock) }
+            if !preeditDock.isHidden && !preeditRaw.isEmpty { out.append(preeditDock) }
             for (i, l) in labels.enumerated() where !l.isHidden {
                 let e = CandidateElement(accessibilityContainer: self)
                 e.accessibilityLabel = i < candidates.count ? candidates[i].text : l.text
@@ -634,11 +641,15 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     @objc private func mostoTapped() { onMostoTap?() }
     @objc private func mostoDoubleTapped() { mosto.hop(); onMostoDoubleTap?() }
 
+    private var preeditDockWanted: Bool {
+        !preeditRaw.isEmpty && !isPrediction && (showsPreedit || gridExpanded)
+    }
+
     /// Immediately show typed keys in the leading single-row live keystroke dock (0 ms, 0 XPC).
     func setPreedit(_ text: String) {
         let changed = preeditRaw != text || !activeFixes.isEmpty
         if changed { applyPreeditText(text, fixes: []) }
-        let show = showsPreedit && !isPrediction && !text.isEmpty
+        let show = preeditDockWanted
         if preeditDock.isHidden != !show || changed {
             preeditDock.isHidden = !show
             setNeedsLayout()
@@ -669,7 +680,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         let busy = !candidates.isEmpty
         if !busy && forgetOverlay != nil { dismissForget() }
         setMosto(!busy && !typing && showsMosto && undoText == nil)
-        preeditDock.isHidden = text.isEmpty || prediction || !showsPreedit
+        preeditDock.isHidden = !preeditDockWanted
         setNeedsLayout()
         layoutIfNeeded()
     }
@@ -747,7 +758,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             return
         }
         undoChip.isHidden = undoText == nil
-        preeditDock.isHidden = preeditRaw.isEmpty || isPrediction || !showsPreedit
+        preeditDock.isHidden = !preeditDockWanted || !undoChip.isHidden
         mosto.isHidden = !mostoWanted
         // Inset neatly inside the 28pt idle Mosto capsule (zero overflow or clipping mismatch).
         let pillH = min(28, max(24, h - 12))
@@ -762,7 +773,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             undoChip.frame = CGRect(x: 10, y: (h - sz.height) / 2, width: sz.width, height: sz.height)
             lead = undoChip.frame.maxX + 6
             preeditDock.frame = .zero
-        } else if showsPreedit && !preeditDock.isHidden, !preeditRaw.isEmpty {
+        } else if !preeditDock.isHidden, !preeditRaw.isEmpty {
             let textW: CGFloat
             if let attr = preedit.attributedText, attr.length > 0 {
                 textW = ceil(attr.size().width)
@@ -803,16 +814,17 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         } else {
             preeditDock.frame = .zero
         }
+        layoutClearFilament()
+        let rightLimit = clearArmedPill.isHidden ? (bounds.width - expandW) : min(bounds.width - expandW, clearArmedPill.frame.minX - 6)
         // Keep stripBox and CandidateStrip spanning the FULL bar height (0..h) so taps on the upper third never miss.
-        let box = CGRect(x: lead, y: 0, width: max(0, bounds.width - expandW - lead), height: h)
+        let box = CGRect(x: lead, y: 0, width: max(0, rightLimit - lead), height: h)
         if stripBox.frame != box { stripBox.frame = box }
         let inner = CGRect(origin: .zero, size: box.size)
         if strip.frame != inner { strip.frame = inner }
-        // nothing to show: the strip takes no touches (or when grid is open and dock expands full-width above it)
-        let hideStripForGridDock = gridExpanded && showsPreedit && !preeditDock.isHidden && !preeditRaw.isEmpty
+        // nothing to show: the strip takes no touches (or when grid is open and live preedit dock replaces duplicate row-1 strip)
+        let hideStripForGridDock = gridExpanded && !preeditDock.isHidden && !preeditRaw.isEmpty
         stripBox.isHidden = (candidates.isEmpty && !typing) || hideStripForGridDock
         layoutCandidates()
-        layoutClearFilament()
     }
 
     /// Keep the candidate strip pure and high-density while composing (zero jr->ke / 原键 clutter).

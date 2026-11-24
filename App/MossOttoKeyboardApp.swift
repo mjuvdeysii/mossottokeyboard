@@ -919,104 +919,140 @@ private struct GestureAtlasView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                Card(title: "高频核心手势") {
-                    atlasRow(
-                        cap: "，↑。",
-                        title: "标点上滑副符号",
-                        formula: "，↑ 。  ·  / ↑ 、  ·  ¥ ↑ $  ·  （ ↑ 【",
-                        demoTitle: nil
-                    )
-                    Divider()
-                    atlasRow(
-                        cap: "123↗",
-                        title: "滑键借层与双手和弦",
-                        formula: "按住 123 / Shift 滑向目标键直出回弹 · 双指连打",
-                        demoTitle: nil
-                    )
-                    Divider()
-                    atlasRow(
-                        cap: "←␣→",
-                        title: "空格横向拖移光标",
-                        formula: "左右滑移光标 · 跨行 / 首尾亮起琥珀止点",
-                        demoTitle: nil
-                    )
-                    Divider()
-                    atlasRow(
-                        cap: "←⌫↩",
-                        title: "左划清空 + 长按删词离合",
-                        formula: "左划整词清空留 ↩ · 长按 >1s 逐词快删",
-                        demoTitle: nil
-                    )
-                    Divider()
-                    atlasRow(
-                        cap: "☺︎⚙",
-                        title: "长按表情键开控制台",
-                        formula: "轻点选表情 · 长按 0.45s 调高度 / 方案 / 光效",
-                        demoTitle: nil
-                    )
-                }
-
-                Card(title: "纠错、心算与日期") {
-                    atlasRow(
-                        cap: "eh↔w",
-                        title: "整句触点纠错",
-                        formula: "偏键 jintianhenrw / 漏键自动整句读准 · ↩ 还原",
-                        demoTitle: "按错了什么，改成了什么"
-                    )
-                    Divider()
-                    atlasRow(
-                        cap: "365+=",
-                        title: "四则心算与相对日期",
-                        formula: "286/4= 空格上屏连算 · 明天 / 下周一 联想日期",
-                        demoTitle: "中英混输"
-                    )
-                    Divider()
-                    atlasRow(
-                        cap: "bzd",
-                        title: "首字母简拼与自造词",
-                        formula: "bzd → 不知道 · 展开网格长按词条可忘词",
-                        demoTitle: "记住你的词"
-                    )
-                }
-
-                Card(title: "候选栏左侧 Mosto") {
-                    HStack(spacing: 12) {
-                        Image(uiImage: mostoImage("Mosto"))
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 36, height: 36)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("轻点颜文字 · 双击切光效")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(MossOttoStyle.inkPrimary)
-                            Text("200+ 颜文字分类 · 日光 / 夜灯随手切换 · 长按打哈欠")
-                                .font(.caption)
-                                .foregroundStyle(MossOttoStyle.inkSecondary)
-                        }
-                        Spacer(minLength: 0)
-                    }
-                }
-            }
-            .padding(16)
+            GestureAtlasContent(nav: nav)
+                .padding(16)
         }
         .background(MossOttoStyle.canvas.ignoresSafeArea())
         .navigationTitle("手势与效率图鉴")
         .navigationBarTitleDisplayMode(.inline)
     }
+}
 
-    private func atlasRow(cap: String, title: String, formula: String, demoTitle: String?) -> some View {
+struct GestureAtlasContent: View {
+    var nav: AppNavigation? = nil
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Card(title: "高频核心手势") {
+                atlasRow(
+                    cap: "，↑。",
+                    title: "标点上滑副符号",
+                    chips: ["，↑。", "/↑、", "¥↑$", "（↑【"],
+                    demoTitle: nil
+                )
+                Divider()
+                atlasRow(
+                    cap: "123↗",
+                    title: "滑键借层与双手和弦",
+                    chips: ["按住滑键直出", "松手自动回弹"],
+                    demoTitle: nil
+                )
+                Divider()
+                atlasRow(
+                    symbol: "arrow.left.and.right",
+                    title: "空格横向拖移光标",
+                    chips: ["左右滑动游标", "首尾琥珀止点"],
+                    demoTitle: nil
+                )
+                Divider()
+                atlasRow(
+                    symbol: "delete.left",
+                    title: "左划清空与逐词快删",
+                    chips: ["左划一键清空", "长按 >1s 删词"],
+                    demoTitle: nil
+                )
+                Divider()
+                atlasRow(
+                    symbol: "slider.horizontal.3",
+                    title: "长按表情键开控制台",
+                    chips: ["轻点选表情", "按住 0.45s 控制台"],
+                    demoTitle: nil
+                )
+            }
+
+            Card(title: "纠错、心算与日期") {
+                atlasRow(
+                    symbol: "wand.and.stars",
+                    title: "整句触点纠错",
+                    chips: ["偏键自动读准", "一键撤回还原"],
+                    demoTitle: "按错了什么，改成了什么"
+                )
+                Divider()
+                atlasRow(
+                    symbol: "plus.forwardslash.minus",
+                    title: "四则心算与相对日期",
+                    chips: ["286/4= 空格连算", "下周一 联想日期"],
+                    demoTitle: "中英混输"
+                )
+                Divider()
+                atlasRow(
+                    cap: "bzd",
+                    title: "首字母简拼与自造词",
+                    chips: ["bzd → 不知道", "长按网格词忘词"],
+                    demoTitle: "记住你的词"
+                )
+            }
+
+            Card(title: "候选栏左侧 Mosto") {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 10) {
+                        Image(uiImage: mostoImage("Mosto"))
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 34, height: 34)
+                        Text("指尖声光彩蛋")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(MossOttoStyle.inkPrimary)
+                        Spacer(minLength: 4)
+                        Text("200+ 颜文字")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(MossOttoStyle.violet)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3.5)
+                            .background(Capsule().fill(MossOttoStyle.violet.opacity(0.12)))
+                    }
+                    HStack(spacing: 6) {
+                        mostoActionTile(trigger: "轻点", effect: "颜文字")
+                        mostoActionTile(trigger: "双击", effect: "切换光效")
+                        mostoActionTile(trigger: "长按", effect: "打哈欠")
+                    }
+                }
+            }
+        }
+    }
+
+    private func mostoActionTile(trigger: String, effect: String) -> some View {
+        VStack(spacing: 2) {
+            Text(trigger)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(MossOttoStyle.violet)
+            Text(effect)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(MossOttoStyle.inkPrimary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 7)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(MossOttoStyle.surfaceMuted))
+    }
+
+    private func atlasRow(cap: String = "", symbol: String? = nil, title: String, chips: [String], demoTitle: String?) -> some View {
         HStack(alignment: .center, spacing: 12) {
-            MonolithKeycapView(label: cap, cornerRadius: 9)
+            MonolithKeycapView(label: cap, symbol: symbol, cornerRadius: 9)
                 .frame(width: 58, height: 40)
-            VStack(alignment: .leading, spacing: 2.5) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(MossOttoStyle.inkPrimary)
-                Text(formula)
-                    .font(.caption)
-                    .foregroundStyle(MossOttoStyle.inkSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                WrapLayout(spacing: 5, lineSpacing: 4) {
+                    ForEach(chips, id: \.self) { chip in
+                        Text(chip)
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(MossOttoStyle.inkSecondary)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2.5)
+                            .background(Capsule().fill(MossOttoStyle.surfaceMuted))
+                    }
+                }
             }
             Spacer(minLength: 4)
             if let demoTitle, let nav {
@@ -1039,44 +1075,50 @@ private struct GestureAtlasView: View {
 private struct PrivacyArchitectureView: View {
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                Card(title: "零联网与零共享仪表盘") {
-                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                        telemetryTile(value: "0", label: "网络请求", icon: "wifi.slash", tint: MossOttoStyle.moss)
-                        telemetryTile(value: "0", label: "剪贴板读取", icon: "doc.on.clipboard", tint: MossOttoStyle.moss)
-                        telemetryTile(value: "0", label: "跨进程共享", icon: "lock.shield.fill", tint: MossOttoStyle.violet)
-                        telemetryTile(value: "45 MB", label: "只读词库", icon: "memorychip", tint: MossOttoStyle.lampAmber)
-                    }
-                }
-
-                Card(title: "键盘扩展工程红线") {
-                    specRow(
-                        icon: "cpu",
-                        tint: MossOttoStyle.violet,
-                        title: "只读 mmap 零脏页",
-                        detail: "词库与语言模型按需映射，严守 Jetsam 上限"
-                    )
-                    Divider()
-                    specRow(
-                        icon: "bolt.horizontal.fill",
-                        tint: MossOttoStyle.lampAmber,
-                        title: "全链路 0 阻塞 XPC",
-                        detail: "零行内 markedText · 空格零等待 · 首键异步预取"
-                    )
-                    Divider()
-                    specRow(
-                        icon: "checkmark.seal.fill",
-                        tint: MossOttoStyle.moss,
-                        title: "15 条 CI 自动化门禁",
-                        detail: "每次构建静态与真机校验离线、帧率与四边防模糊"
-                    )
-                }
-            }
-            .padding(16)
+            PrivacyArchitectureContent()
+                .padding(16)
         }
         .background(MossOttoStyle.canvas.ignoresSafeArea())
         .navigationTitle("隐私与工程红线")
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct PrivacyArchitectureContent: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Card(title: "零联网与零共享仪表盘") {
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                    telemetryTile(value: "0", label: "网络请求", icon: "wifi.slash", tint: MossOttoStyle.moss)
+                    telemetryTile(value: "0", label: "剪贴板读取", icon: "doc.on.clipboard", tint: MossOttoStyle.moss)
+                    telemetryTile(value: "0", label: "跨进程共享", icon: "lock.shield.fill", tint: MossOttoStyle.violet)
+                    telemetryTile(value: "45 MB", label: "只读词库", icon: "memorychip", tint: MossOttoStyle.lampAmber)
+                }
+            }
+
+            Card(title: "键盘扩展工程红线") {
+                specRow(
+                    icon: "cpu",
+                    tint: MossOttoStyle.violet,
+                    title: "只读 mmap 零脏页",
+                    detail: "词库与语言模型按需映射，严守 Jetsam 上限"
+                )
+                Divider()
+                specRow(
+                    icon: "bolt.horizontal.fill",
+                    tint: MossOttoStyle.lampAmber,
+                    title: "全链路 0 阻塞 XPC",
+                    detail: "零行内 markedText · 空格零等待 · 首键异步预取"
+                )
+                Divider()
+                specRow(
+                    icon: "checkmark.seal.fill",
+                    tint: MossOttoStyle.moss,
+                    title: "15 条 CI 自动化门禁",
+                    detail: "每次构建静态与真机校验离线、帧率与四边防模糊"
+                )
+            }
+        }
     }
 
     private func telemetryTile(value: String, label: String, icon: String, tint: Color) -> some View {

@@ -9,63 +9,9 @@ struct EnableScreen: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 14) {
-                EnableStatusHero(added: added)
-
-                VStack(spacing: 10) {
-                    EnableStepRow(step: 1, title: "打开设置", detail: "设置 › 通用 › 键盘 › 键盘", art: .settings)
-                    EnableStepRow(step: 2, title: "添加 Mosto", detail: "添加新键盘 › 选中 Mosto键盘", art: .add)
-                    EnableStepRow(step: 3, title: "地球键切换", detail: "长按地球键切换 · 无需完全访问", art: .globe)
-                }
-
-                if let url = URL(string: UIApplication.openSettingsURLString) {
-                    Link(destination: url) {
-                        HStack(spacing: 8) {
-                            Text(added ? "前往系统设置管理键盘" : "打开系统设置去添加")
-                                .font(.subheadline.weight(.semibold))
-                            Image(systemName: "arrow.up.right")
-                                .font(.caption.weight(.bold))
-                        }
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 13)
-                        .background(RoundedRectangle(cornerRadius: 15, style: .continuous).fill(MossOttoStyle.violet))
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("真机键盘验证区")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(MossOttoStyle.inkSecondary)
-                        Spacer()
-                        if typing {
-                            Button("收起键盘") { typing = false }
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(MossOttoStyle.violet)
-                        } else {
-                            Text(added ? "点下方切换地球键验证" : "添加后可在此唤出系统键盘")
-                                .font(.caption2)
-                                .foregroundStyle(MossOttoStyle.inkSecondary)
-                        }
-                    }
-                    TextField("全拼 nihao 或小鹤 nihc → 你好", text: $text, axis: .vertical)
-                        .lineLimit(2...4)
-                        .focused($typing)
-                        .font(.subheadline)
-                }
-                .padding(14)
-                .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(MossOttoStyle.surface)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(MossOttoStyle.hairline, lineWidth: 0.7)
-                )
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
+            EnableContent(added: added, text: $text, typing: $typing)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
         }
         .background(MossOttoStyle.canvas.ignoresSafeArea().onTapGesture { typing = false })
         .navigationTitle("启用系统键盘")
@@ -77,6 +23,78 @@ struct EnableScreen: View {
             }
         }
         .onChange(of: phase) { p in if p == .active { added = KeyboardStatus.isAdded() } }
+    }
+}
+
+/// Shared non-scrolling content tree so live screen and CI snapshot renderer share one layout.
+struct EnableContent: View {
+    let added: Bool
+    @Binding var text: String
+    var typing: FocusState<Bool>.Binding
+
+    var body: some View {
+        VStack(spacing: 14) {
+            EnableStatusHero(added: added)
+
+            VStack(spacing: 10) {
+                EnableStepRow(step: 1, title: "打开设置", detail: "设置 › 通用 › 键盘 › 键盘", art: .settings)
+                EnableStepRow(step: 2, title: "添加 Mosto", detail: "添加新键盘 › 选中 Mosto键盘", art: .add)
+                EnableStepRow(step: 3, title: "地球键切换", detail: "长按地球键切换 · 无需完全访问", art: .globe)
+            }
+
+            if let url = URL(string: UIApplication.openSettingsURLString) {
+                Link(destination: url) {
+                    HStack(spacing: 8) {
+                        Text(added ? "前往系统设置管理键盘" : "打开系统设置去添加")
+                            .font(.subheadline.weight(.semibold))
+                        Image(systemName: "arrow.up.right")
+                            .font(.caption.weight(.bold))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 13)
+                    .background(RoundedRectangle(cornerRadius: 15, style: .continuous).fill(MossOttoStyle.violet))
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("真机键盘验证区")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(MossOttoStyle.inkSecondary)
+                    Spacer()
+                    if typing.wrappedValue {
+                        Button("收起键盘") { typing.wrappedValue = false }
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(MossOttoStyle.violet)
+                    } else {
+                        Text(added ? "点下方切换地球键验证" : "添加后可在此唤出系统键盘")
+                            .font(.caption2)
+                            .foregroundStyle(MossOttoStyle.inkSecondary)
+                    }
+                }
+                if SnapshotRenderer.requested {
+                    Text("全拼 nihao 或小鹤 nihc → 你好")
+                        .font(.subheadline)
+                        .foregroundStyle(MossOttoStyle.inkSecondary.opacity(0.65))
+                        .frame(maxWidth: .infinity, minHeight: 38, alignment: .topLeading)
+                } else {
+                    TextField("全拼 nihao 或小鹤 nihc → 你好", text: $text, axis: .vertical)
+                        .lineLimit(2...4)
+                        .focused(typing)
+                        .font(.subheadline)
+                }
+            }
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(MossOttoStyle.surface)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(MossOttoStyle.hairline, lineWidth: 0.7)
+            )
+        }
     }
 }
 
@@ -127,7 +145,7 @@ private struct EnableStatusHero: View {
                     .foregroundStyle(MossOttoStyle.inkPrimary)
                 HStack(spacing: 6) {
                     statusChip(icon: "lock.fill", text: "纯离线")
-                    statusChip(icon: added ? "globe" : "gearshape", text: added ? "长按地球键切换" : "按住 ☺︎ 调控制台")
+                    statusChip(icon: added ? "globe" : "gearshape", text: added ? "长按地球键切换" : "按住表情键调控制台")
                 }
             }
             Spacer(minLength: 0)

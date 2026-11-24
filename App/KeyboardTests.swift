@@ -149,6 +149,7 @@ enum KeyboardTests {
         r70GridScopeRailAndDockCraft(window)
         r71XiaoheChordLighting(window)
         r72DrawerTelemetryBracketAndBenchCraft(window)
+        r73GridPreeditClearCueAndAppCoverage(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -3081,6 +3082,44 @@ enum KeyboardTests {
         log(allCompact && jumpSwitchesToDemos && PlaygroundModel.speedTargets.count == 3,
             "r72.UnifiedTypingBench 7 compact step tags fit single-row rail and Atlas deep-links switch benchMode",
             "compact=\(allCompact) demos=\(jumpSwitchesToDemos)")
+    }
+
+    // MARK: - R73: Expanded grid live preedit dock, clear-cue separation & Companion App coverage
+
+    static func r73GridPreeditClearCueAndAppCoverage(_ window: UIWindow) {
+        // 1. Expanding candidate grid in Mosto mode reveals wide preedit dock and hides duplicate row strip
+        let bar = CandidateBarView(frame: CGRect(x: 0, y: 0, width: 402, height: 42))
+        bar.showsPreedit = false
+        bar.update(preedit: "ni hao", candidates: [
+            Candidate(text: "你好", tapCount: 4, syllables: [1, 2], corrected: false, score: 0),
+            Candidate(text: "尼好", tapCount: 4, syllables: [1, 2], corrected: false, score: 0),
+        ])
+        bar.layoutIfNeeded()
+        let beforeExpand = bar.stripVisibleForTests && !bar.preeditShownForTests
+        bar.gridExpanded = true
+        bar.layoutIfNeeded()
+        let afterExpand = !bar.stripVisibleForTests && bar.preeditShownForTests && bar.preeditDockFrameForTests.width > 200
+        log(beforeExpand && afterExpand,
+            "r73.CandidateBarView replaces duplicate grid row-1 strip with wide preedit dock in Mosto mode",
+            "before=\(beforeExpand) after=\(afterExpand) dockW=\(bar.preeditDockFrameForTests.width)")
+
+        // 2. Armed delete-left swipe cue keeps opaque pill cleanly separated from dimmed candidate stripBox
+        let clearBar = CandidateBarView(frame: CGRect(x: 0, y: 0, width: 375, height: 40))
+        clearBar.update(preedit: "nihao", candidates: [
+            Candidate(text: "你好", tapCount: 4, syllables: [1, 2], corrected: false, score: 0),
+            Candidate(text: "尼好", tapCount: 4, syllables: [1, 2], corrected: false, score: 0),
+            Candidate(text: "泥好", tapCount: 4, syllables: [1, 2], corrected: false, score: 0),
+            Candidate(text: "拟好", tapCount: 4, syllables: [1, 2], corrected: false, score: 0),
+            Candidate(text: "你", tapCount: 2, syllables: [1], corrected: false, score: 0),
+            Candidate(text: "尼", tapCount: 2, syllables: [1], corrected: false, score: 0),
+        ])
+        clearBar.setClearPreview(true)
+        clearBar.layoutIfNeeded()
+        let cueShown = clearBar.clearArmedCueShownForTests && clearBar.clearArmedOpaqueForTests
+        let noBleed = !clearBar.stripFrameForTests.intersects(clearBar.clearArmedPillFrameForTests)
+        log(cueShown && noBleed,
+            "r73.ClearArmed cue stays opaque and strictly non-overlapping with stripBox",
+            "cue=\(cueShown) noBleed=\(noBleed) strip=\(clearBar.stripFrameForTests) pill=\(clearBar.clearArmedPillFrameForTests)")
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

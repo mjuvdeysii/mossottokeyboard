@@ -288,6 +288,11 @@ enum SnapshotRenderer {
             studio.activeFixes = [Fix(typed: "tia", meant: "tian")]
             studio.applyLampMode(night ? .night : .day)
             let vol = VolumeMonitor(defaults: .standard, observeSystem: false, initialVolume: 0.42)
+            let speedModel = PlaygroundModel()
+            speedModel.benchMode = .speed
+            speedModel.before = "今天天"
+            speedModel.marked = "qi"
+            speedModel.applyLampMode(night ? .night : .day)
             let parts: [(String, AnyView)] = [
                 ("0", AnyView(page(VStack(spacing: 16) {
                     DeskLampStageCard(model: studio, volume: vol)
@@ -299,13 +304,29 @@ enum SnapshotRenderer {
                     .tint(mostoTint)
                     .environment(\.colorScheme, night ? .dark : .light))),
                 ("3", AnyView(page(HandbookContent(added: true)))),
+                ("speed", AnyView(page(UnifiedTypingBench(model: speedModel, volume: vol)))),
+                ("privacy", AnyView(page(PrivacyArchitectureContent()))),
+                ("atlas", AnyView(page(GestureAtlasContent()))),
             ]
             for (k, v) in parts {
                 let r = ImageRenderer(content: v)
                 r.scale = 2
+                let filename = k.count == 1 ? "\(night ? "night" : "day")_app_home\(k).png" : "\(night ? "night" : "day")_app_\(k).png"
                 if let img = r.uiImage, let data = img.pngData() {
-                    try? data.write(to: dir.appendingPathComponent("\(night ? "night" : "day")_app_home\(k).png"))
-                } else { print("SNAPSHOT app_home\(k): no image") }
+                    try? data.write(to: dir.appendingPathComponent(filename))
+                } else { print("SNAPSHOT app_\(k): no image") }
+            }
+            // EnableScreen visual verification snapshot
+            struct EnableSnapshotHost: View {
+                @State private var text = ""
+                @FocusState private var typing: Bool
+                var body: some View { EnableContent(added: true, text: $text, typing: $typing) }
+            }
+            let enView = page(EnableSnapshotHost())
+            let enRenderer = ImageRenderer(content: enView)
+            enRenderer.scale = 2
+            if let img = enRenderer.uiImage, let data = img.pngData() {
+                try? data.write(to: dir.appendingPathComponent("\(night ? "night" : "day")_app_enable.png"))
             }
             // the 小鹤双拼 page (explanation, learning cost, R50 monolith key chart)
             let guide = XiaoheGuideContent()

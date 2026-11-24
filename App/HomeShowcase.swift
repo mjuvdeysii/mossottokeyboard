@@ -304,6 +304,7 @@ struct LampPullCordSwitch: View {
 /// R50 Single-Layer Matte Monolith Keycap for Companion App specimens, Switch Tester & Xiaohe charts.
 struct MonolithKeycapView: View {
     let label: String
+    var symbol: String? = nil
     var secondary: String? = nil
     var initialMark: String? = nil
     var finals: [String] = []
@@ -363,13 +364,23 @@ struct MonolithKeycapView: View {
                 .padding(.top, 5)
             } else {
                 VStack(spacing: 2) {
-                    Text(label)
-                        .font(.system(size: 17, weight: .medium, design: plain ? .default : .rounded))
-                        .foregroundStyle(isNight ? Color.white : MossOttoStyle.inkPrimary)
+                    if let symbol {
+                        Image(systemName: symbol)
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(isNight ? Color.white : MossOttoStyle.inkPrimary)
+                    } else {
+                        Text(label)
+                            .font(.system(size: 17, weight: .medium, design: plain ? .default : .rounded))
+                            .foregroundStyle(isNight ? Color.white : MossOttoStyle.inkPrimary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.62)
+                    }
                     if let secondary {
                         Text(secondary)
                             .font(.system(size: 10.5, weight: .medium))
                             .foregroundStyle(MossOttoStyle.inkSecondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
                     }
                 }
                 .padding(.horizontal, 6)
