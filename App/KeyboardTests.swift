@@ -164,6 +164,7 @@ enum KeyboardTests {
         r85CommercialCompanionAndIPFamily(window)
         r86ReleaseCandidatePolish(window)
         r87WeChatTopGapElimination(window)
+        r90CleanKeycapCraftNoWhiteLine(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -3294,13 +3295,13 @@ enum KeyboardTests {
         kv.layoutIfNeeded()
 
         let aKey = kv.keyViewForTests(.char("a"))
-        let restBevel = aKey?.hasTopHighlightForTests == true
+        let noTopLineAtRest = aKey?.hasTopHighlightForTests == false && aKey?.borderWidthForTests == 0 && aKey?.shadowOpacityForTests == 1
         aKey?.pressed = true
-        let pressedHidesBevel = aKey?.hasTopHighlightForTests == false
+        let pressedHidesLip = aKey?.hasTopHighlightForTests == false && aKey?.shadowOpacityForTests == 0
         aKey?.pressed = false
-        let restoredBevel = aKey?.hasTopHighlightForTests == true
+        let restoredLip = aKey?.hasTopHighlightForTests == false && aKey?.shadowOpacityForTests == 1
         aKey?.blanked = true
-        let blankedHidesBevel = aKey?.hasTopHighlightForTests == false
+        let blankedClean = aKey?.hasTopHighlightForTests == false
         aKey?.blanked = false
 
         let emoji = EmojiPanelView(frame: CGRect(x: 0, y: 0, width: 390, height: 260))
@@ -3312,9 +3313,9 @@ enum KeyboardTests {
         emoji.perform(#selector(EmojiPanelView.kaomojiShortcutTappedForTests))
         let firedTabFeedback = feedbackEvents.contains(.candidate)
 
-        log(restBevel && pressedHidesBevel && restoredBevel && blankedHidesBevel && firedTabFeedback,
-            "r77.KeyView top-edge optical bevel responds to press/blanked and EmojiPanelView triggers tactile feedback",
-            "rest=\(restBevel) pressed=\(pressedHidesBevel) restored=\(restoredBevel) blanked=\(blankedHidesBevel) tabFeedback=\(firedTabFeedback)")
+        log(noTopLineAtRest && pressedHidesLip && restoredLip && blankedClean && firedTabFeedback,
+            "r77.KeyView uses clean borderless squircle caps with tactile bottom lip and EmojiPanelView triggers tactile feedback",
+            "rest=\(noTopLineAtRest) pressed=\(pressedHidesLip) restored=\(restoredLip) blanked=\(blankedClean) tabFeedback=\(firedTabFeedback)")
     }
 
     // MARK: - R78: Emoji dock zero-slice alignment, Mosto mood badge, Settings header back capsule & Xiaohe dual slots
@@ -3880,6 +3881,51 @@ enum KeyboardTests {
         log(wechat402Ok && wechat393Ok && wechat326Ok && zeroSettingsConstraints && afterSettingsClean && zeroPostAppearJump && notesStandardOk,
             "r87.WeChat 294/301/326pt hosts fill flush with zero top gap, pure-frame Settings returns cleanly, and 258pt Notes stays calibrated",
             "w402=\(wechat402Ok) w393=\(wechat393Ok) w326=\(wechat326Ok) zeroCon=\(zeroSettingsConstraints) ret=\(afterSettingsClean) noJump=\(zeroPostAppearJump) notes=\(notesStandardOk)")
+    }
+
+    // MARK: - R90: Clean Apple-native squircle keycaps with zero top-edge white line
+
+    static func r90CleanKeycapCraftNoWhiteLine(_ window: UIWindow) {
+        _ = window
+        let prevPlain = Theme.plain
+        defer { Theme.plain = prevPlain }
+
+        var allCapsClean = true
+        for plain in [false, true] {
+            Theme.plain = plain
+            let kv = KeyboardView(spatial: SpatialModel.standard(width: 402))
+            kv.frame = CGRect(x: 0, y: 0, width: 402, height: 212)
+            for (style, soft) in [(UIUserInterfaceStyle.light, false), (.dark, false), (.light, true)] {
+                kv.overrideUserInterfaceStyle = style
+                kv.softenedForDarkGlass = soft
+                kv.configure(LayoutContext(page: .letters, chinese: true, showGlobe: false, returnLabel: "搜索",
+                                           returnIsAccent: true, shifted: false, capsLock: false, keyBorders: true))
+                kv.layoutIfNeeded()
+                let samples: [KeyAction] = [.char("a"), .shift, .delete, .ret, .space]
+                for action in samples {
+                    guard let k = kv.keyViewForTests(action) else { allCapsClean = false; continue }
+                    if k.hasTopHighlightForTests || k.borderWidthForTests != 0 {
+                        allCapsClean = false
+                    }
+                }
+            }
+        }
+
+        Theme.plain = false
+        let smartKv = KeyboardView(spatial: SpatialModel.standard(width: 402))
+        smartKv.frame = CGRect(x: 0, y: 0, width: 402, height: 212)
+        smartKv.configure(LayoutContext(page: .letters, chinese: true, showGlobe: false, returnLabel: nil,
+                                        returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true,
+                                        spaceOverride: "跳出 》"))
+        smartKv.layoutIfNeeded()
+        let smartSpace = smartKv.keyViewForTests(.space)
+        let smartSpacePreserved = smartSpace?.isSmartSpaceShownForTests == true
+            && smartSpace?.smartSpaceRimActiveForTests == true
+            && smartSpace?.hasTopHighlightForTests == false
+
+        log(allCapsClean && smartSpacePreserved,
+            "r90.All keycaps across Mosto/简洁 and Day/Night omit top highlight line and border strokes while preserving smart-space rim",
+            "clean=\(allCapsClean) smartSpace=\(smartSpacePreserved)")
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

@@ -58,7 +58,6 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     private var isForcedDayOnDarkGlass = false
     private let kaomojiButton = UIButton(type: .system)
     private let lightToggleButton = UIButton(type: .system)
-    private let horizonHairline = CALayer()
     private static var idleSymbolCache: [String: UIImage] = [:]
     private static func idleSymbol(_ name: String) -> UIImage? {
         if let img = idleSymbolCache[name] { return img }
@@ -315,10 +314,6 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         mosto.onActivate = { [weak self] in self?.onMostoTap?() }
         mosto.onToggleLight = { [weak self] in self?.onMostoDoubleTap?() }
         mosto.isUserInteractionEnabled = false
-
-        horizonHairline.zPosition = 5
-        horizonHairline.isHidden = true
-        layer.addSublayer(horizonHairline)
 
         kaomojiButton.layer.cornerCurve = .continuous
         kaomojiButton.addAction(UIAction { [weak self] _ in self?.onMostoTap?() }, for: .touchUpInside)
@@ -845,7 +840,6 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     var idleLightTitleForTests: String? { lightToggleButton.title(for: .normal) }
     var idleKaomojiTitleForTests: String? { kaomojiButton.title(for: .normal) }
     var idleKaomojiHasImageForTests: Bool { kaomojiButton.image(for: .normal) != nil }
-    var horizonHairlineShownForTests: Bool { !horizonHairline.isHidden }
     var clearFilamentTrackShownForTests: Bool { !clearFilamentTrack.isHidden }
     var cursorCenterTickShownForTests: Bool { !cursorCenterTick.isHidden }
     var idleLightTintColorForTests: UIColor { lightToggleButton.tintColor }
@@ -978,15 +972,6 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
 
     private func layoutIdleControls(height h: CGFloat, edgeAlign: CGFloat) {
         updateIdleControlsVisibility()
-        let showHorizon = isForcedDayOnDarkGlass && forgetOverlay == nil
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        horizonHairline.isHidden = !showHorizon
-        if showHorizon {
-            horizonHairline.frame = CGRect(x: edgeAlign, y: h - 0.5, width: max(0, bounds.width - edgeAlign * 2), height: 0.5)
-            horizonHairline.backgroundColor = UIColor(white: 1, alpha: 0.12).cgColor
-        }
-        CATransaction.commit()
         guard shouldShowIdleControls else { return }
 
         let pillH = min(28, max(24, h - 12))

@@ -402,9 +402,6 @@ enum Theme {
     static var spaceNotch: UIColor { plain ? plain_spaceNotch : mosto_spaceNotch }
     private static let mosto_spaceNotch: UIColor = dyn(hex(0x22193D, 0.22), hex(0xF3EDE2, 0.26))
     private static let plain_spaceNotch: UIColor = dyn(UIColor(white: 0, alpha: 0.16), UIColor(white: 1, alpha: 0.22))
-    static var keyHighlight: UIColor { plain ? plain_keyHighlight : mosto_keyHighlight }
-    private static let mosto_keyHighlight = dyn(UIColor(white: 1, alpha: 0.80), hex(0xFFE4A8, 0.28))
-    private static let plain_keyHighlight: UIColor = dyn(UIColor(white: 1, alpha: 0.90), UIColor(white: 1, alpha: 0.20))
     /// Softened ceramic key tones when 日光 keys sit over Dark system Liquid Glass (Spotlight / dark apps).
     static var forcedDayKey: UIColor { plain ? hex(0xEAECEF) : hex(0xF1EDF6) }
     static var forcedDayKeyPressed: UIColor { plain ? hex(0xD8DCE4) : hex(0xE1DAE9) }
@@ -412,8 +409,6 @@ enum Theme {
     static var forcedDayFunctionKey: UIColor { plain ? hex(0xC6CBD6) : hex(0xDDD7EB) }
     static var forcedDayFunctionPressed: UIColor { plain ? hex(0xDDE1EA) : hex(0xCCC4E0) }
     static var forcedDayFunctionLip: UIColor { plain ? hex(0x7C828F) : hex(0x8B81A6) }
-    static var forcedDayKeyBorder: UIColor { plain ? UIColor(white: 0, alpha: 0.14) : hex(0x22193D, 0.14) }
-    static let forcedDayHighlight: UIColor = UIColor(white: 1, alpha: 0.45)
     static var bubble: UIColor { plain ? plain_bubble : mosto_bubble }
     private static let mosto_bubble: UIColor = dyn(hex(0xFFFFFF), hex(0x3A3450))
     private static let plain_bubble: UIColor = dyn(hex(0xFFFFFF), hex(0x52535A))

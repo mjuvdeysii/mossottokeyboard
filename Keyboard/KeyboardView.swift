@@ -11,10 +11,9 @@ final class KeyView: UIView {
     private var guideLabel: UILabel?
     private let icon = UIImageView()
 
-    /// Mosto studio micro-craft: hardware status indicator on 中/英 and Shift, homing bar on Space, and top-edge optical bevel.
+    /// Mosto studio micro-craft: hardware status indicator on 中/英 and Shift, homing bar on Space.
     private var statusDot: CALayer?
     private var spaceNotch: CALayer?
-    private var topHighlight: CALayer?
 
     var pressed = false {
         didSet {
@@ -39,7 +38,6 @@ final class KeyView: UIView {
             }
             statusDot?.isHidden = blanked || Theme.plain || !(spec.action == .toggleLanguage || spec.action == .shift)
             spaceNotch?.isHidden = blanked || Theme.plain || spec.action != .space || bounds.width <= 120
-            topHighlight?.isHidden = blanked || pressed || currentStyle == .accent
         }
     }
 
@@ -100,7 +98,7 @@ final class KeyView: UIView {
         isUserInteractionEnabled = false
         layer.cornerRadius = Metrics.cornerRadius
         layer.cornerCurve = .continuous
-        layer.borderWidth = 0.5
+        layer.borderWidth = 0
         layer.shadowRadius = 0
         layer.shadowOffset = CGSize(width: 0, height: 1.0)
         layer.shadowOpacity = 1
@@ -210,7 +208,6 @@ final class KeyView: UIView {
         CATransaction.begin(); CATransaction.setDisableActions(true)
         layer.backgroundColor = pressed ? pressedBg : restBg
         layer.shadowOpacity = pressed ? 0 : 1
-        topHighlight?.isHidden = blanked || pressed || currentStyle == .accent
         CATransaction.commit()
         if currentStyle == .function {
             let fg = pressed ? pressedFg : restFg
@@ -246,15 +243,10 @@ final class KeyView: UIView {
         CATransaction.begin(); CATransaction.setDisableActions(true)
         layer.shadowColor = under.resolvedColor(with: t).cgColor
         let smartSpaceRim = spec.action == .space && spec.isSmartSpace
-        layer.borderWidth = smartSpaceRim ? 1.0 : 0.5
-        let borderColor = smartSpaceRim
-            ? Theme.correctedMark.withAlphaComponent(0.50)
-            : (softDay ? Theme.forcedDayKeyBorder : Theme.keyBorder)
-        layer.borderColor = borderColor.resolvedColor(with: t).cgColor
-        if let bevel = topHighlight {
-            bevel.backgroundColor = (softDay ? Theme.forcedDayHighlight : Theme.keyHighlight).resolvedColor(with: t).cgColor
-            bevel.isHidden = blanked || pressed || currentStyle == .accent
-        }
+        layer.borderWidth = smartSpaceRim ? 1.0 : 0
+        layer.borderColor = smartSpaceRim
+            ? Theme.correctedMark.withAlphaComponent(0.50).resolvedColor(with: t).cgColor
+            : nil
         if let dot = statusDot {
             let active = (spec.action == .toggleLanguage && spec.label == "中") || (spec.action == .shift && spec.style == .normal)
             dot.backgroundColor = (spec.isSmartSpace ? Theme.correctedMark : (active ? Theme.statusLedActive : Theme.statusLedMuted)).resolvedColor(with: t).cgColor
@@ -296,7 +288,9 @@ final class KeyView: UIView {
     var hintTextForTests: String? { (hintLabel?.isHidden == false) ? hintLabel?.text : nil }
     var hintFrameForTests: CGRect { (hintLabel?.isHidden == false) ? (hintLabel?.frame ?? .zero) : .zero }
     var hintLitForTests: Bool { hintLit }
-    var hasTopHighlightForTests: Bool { topHighlight != nil && topHighlight?.isHidden == false }
+    var hasTopHighlightForTests: Bool { false }
+    var borderWidthForTests: CGFloat { layer.borderWidth }
+    var shadowOpacityForTests: Float { layer.shadowOpacity }
     var labelFontSizeForTests: CGFloat { label.font.pointSize }
     var labelFontNameForTests: String { label.font.fontName }
     var labelMinYForTests: CGFloat { label.frame.minY }
@@ -334,18 +328,6 @@ final class KeyView: UIView {
             layer.cornerRadius = cr
             layer.shadowPath = UIBezierPath(roundedRect: f, cornerRadius: cr).cgPath
         }
-        let bevel = topHighlight ?? {
-            let b = CALayer()
-            b.cornerRadius = 0.5
-            layer.insertSublayer(b, at: 0)
-            topHighlight = b
-            return b
-        }()
-        let bevelInset = max(3.0, cr * 0.55)
-        let softDay = softenedForDarkGlass && traitCollection.userInterfaceStyle != .dark
-        bevel.frame = CGRect(x: bevelInset, y: 0.75, width: max(0, f.width - bevelInset * 2), height: 1.0)
-        bevel.backgroundColor = (softDay ? Theme.forcedDayHighlight : Theme.keyHighlight).resolvedColor(with: traitCollection).cgColor
-        bevel.isHidden = blanked || pressed || currentStyle == .accent
         let wantsDot = !Theme.plain && (spec.action == .toggleLanguage || spec.action == .shift || spec.isSmartSpace)
         if wantsDot {
             let dot = statusDot ?? {
