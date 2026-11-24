@@ -375,7 +375,7 @@ struct XiaoheDrill: View {
         } label: {
             Text(title)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(active ? Color.white : MossOttoStyle.inkSecondary)
+                .foregroundStyle(active ? MossOttoStyle.onViolet : MossOttoStyle.inkSecondary)
                 .padding(.horizontal, 11)
                 .padding(.vertical, 5)
                 .background(Capsule().fill(active ? MossOttoStyle.violet : MossOttoStyle.surfaceMuted))

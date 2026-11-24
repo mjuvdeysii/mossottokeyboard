@@ -359,7 +359,7 @@ struct UnifiedTypingBench: View {
                         } label: {
                             Text(m.rawValue)
                                 .font(.caption.weight(.bold))
-                                .foregroundStyle(selected ? Color.white : MossOttoStyle.inkPrimary)
+                                .foregroundStyle(selected ? MossOttoStyle.onViolet : MossOttoStyle.inkPrimary)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 7.5)
                                 .background(
@@ -370,24 +370,12 @@ struct UnifiedTypingBench: View {
                     }
                 }
 
-                // Balanced 2-row hardware strip (Row 1: engine + guide/numberPad, Row 2: core engine toggles + feel + 4-tier height)
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 6) {
+                // Balanced 2-row hardware strip (Row 1: engine + 4-tier height gauge; Row 2: edge-to-edge toggles)
+                VStack(alignment: .leading, spacing: 6.5) {
+                    HStack(spacing: 5) {
                         schemePill(title: "全拼", tag: 0)
                         schemePill(title: "小鹤双拼", tag: 1)
                         schemePill(title: "九宫格", tag: 2)
-                        if model.layout == 1 {
-                            benchToggle(title: "键位提示", isOn: $model.guide)
-                        } else if model.layout == 2 {
-                            benchToggle(title: "数字", isOn: $model.numberPad)
-                        }
-                        Spacer(minLength: 0)
-                    }
-                    HStack(spacing: 5) {
-                        benchToggle(title: "纠错", isOn: $model.autocorrect)
-                        benchToggle(title: "中英", isOn: $model.english)
-                        benchToggle(title: "触感", isOn: $model.feedback)
-                        benchToggle(title: "声效", isOn: $model.keySound)
                         Spacer(minLength: 4)
                         HStack(spacing: 2) {
                             ForEach(KeyboardHeightPreset.allCases, id: \.rawValue) { tier in
@@ -401,13 +389,13 @@ struct UnifiedTypingBench: View {
                                 } label: {
                                     HStack(spacing: 2) {
                                         RoundedRectangle(cornerRadius: 0.9, style: .continuous)
-                                            .fill(active ? Color.white : Color(uiColor: lit ? Theme.statusLedActive : Theme.statusLedMuted))
+                                            .fill(active ? MossOttoStyle.onViolet : (lit ? MossOttoStyle.violet.opacity(0.55) : MossOttoStyle.inkSecondary.opacity(0.28)))
                                             .frame(width: 2.2, height: CGFloat(5 + tier.rawValue * 2))
                                         Text(tier.shortMark)
                                             .font(.system(size: 10.5, weight: active ? .bold : .semibold, design: .rounded))
-                                            .foregroundStyle(active ? Color.white : MossOttoStyle.inkPrimary)
+                                            .foregroundStyle(active ? MossOttoStyle.onViolet : MossOttoStyle.inkPrimary)
                                     }
-                                    .padding(.horizontal, 5.5)
+                                    .padding(.horizontal, 5)
                                     .padding(.vertical, 4.5)
                                     .background(Capsule().fill(active ? MossOttoStyle.violet : Color.clear))
                                 }
@@ -419,6 +407,17 @@ struct UnifiedTypingBench: View {
                         .padding(2.5)
                         .background(Capsule().fill(MossOttoStyle.surfaceMuted))
                         .overlay(Capsule().strokeBorder(MossOttoStyle.hairline, lineWidth: 0.6))
+                    }
+                    HStack(spacing: 5) {
+                        benchToggle(title: "纠错", isOn: $model.autocorrect)
+                        benchToggle(title: "中英", isOn: $model.english)
+                        benchToggle(title: "触感", isOn: $model.feedback)
+                        benchToggle(title: "声效", isOn: $model.keySound)
+                        if model.layout == 1 {
+                            benchToggle(title: "键位提示", isOn: $model.guide)
+                        } else if model.layout == 2 {
+                            benchToggle(title: "数字", isOn: $model.numberPad)
+                        }
                     }
                 }
             }
@@ -453,7 +452,7 @@ struct UnifiedTypingBench: View {
                             HStack(spacing: 2.5) {
                                 if done {
                                     Circle()
-                                        .fill(current ? MossOttoStyle.lampAmber : MossOttoStyle.moss)
+                                        .fill(current ? MossOttoStyle.onViolet : MossOttoStyle.moss)
                                         .frame(width: 4.5, height: 4.5)
                                 }
                                 Text(l.compactTag)
@@ -461,7 +460,7 @@ struct UnifiedTypingBench: View {
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.8)
                             }
-                            .foregroundStyle(current ? Color.white : MossOttoStyle.inkPrimary)
+                            .foregroundStyle(current ? MossOttoStyle.onViolet : MossOttoStyle.inkPrimary)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 6)
                             .background(Capsule().fill(current ? MossOttoStyle.violet : Color.clear))
@@ -497,7 +496,7 @@ struct UnifiedTypingBench: View {
             Text(title)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(on ? MossOttoStyle.violet : MossOttoStyle.inkSecondary)
-                .padding(.horizontal, 10)
+                .padding(.horizontal, 9)
                 .padding(.vertical, 5.5)
                 .background(Capsule().fill(on ? MossOttoStyle.violet.opacity(0.13) : MossOttoStyle.surfaceMuted))
                 .overlay(Capsule().strokeBorder(on ? MossOttoStyle.violet.opacity(0.35) : .clear, lineWidth: 0.8))
@@ -517,9 +516,11 @@ struct UnifiedTypingBench: View {
                 Text(title)
                     .font(.caption2.weight(.semibold))
                     .lineLimit(1)
+                    .minimumScaleFactor(0.85)
                     .foregroundStyle(isOn.wrappedValue ? MossOttoStyle.inkPrimary : MossOttoStyle.inkSecondary)
             }
-            .padding(.horizontal, 8)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 6)
             .padding(.vertical, 5.5)
             .background(Capsule().fill(MossOttoStyle.surfaceMuted))
         }
@@ -574,6 +575,28 @@ private struct SpeedArenaCard: View {
                     }
                 }
 
+                // 7-bar Optical Cadence Equalizer (zero added vertical height, zero extra prose)
+                HStack(alignment: .bottom, spacing: 2.2) {
+                    let pad = max(0, 7 - model.speedCadenceBeats.count)
+                    ForEach(0..<7, id: \.self) { idx in
+                        let activeIdx = idx - pad
+                        let level: CGFloat? = activeIdx >= 0 ? model.speedCadenceBeats[activeIdx] : nil
+                        let barH = level.map { 4 + 10 * min(1, max(0, $0)) } ?? 4
+                        let barColor: Color = {
+                            guard let l = level else { return MossOttoStyle.inkSecondary.opacity(0.24) }
+                            return l >= 0.78 ? MossOttoStyle.lampAmber : MossOttoStyle.violet
+                        }()
+                        RoundedRectangle(cornerRadius: 1.4, style: .continuous)
+                            .fill(barColor)
+                            .frame(width: 2.8, height: barH)
+                    }
+                }
+                .frame(height: 15, alignment: .bottom)
+                .animation(.spring(response: 0.22, dampingFraction: 0.78), value: model.speedCadenceBeats)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("输入节拍")
+                .accessibilityValue(model.currentCPM > 0 ? "\(model.currentCPM) 字每分" : "等待开始")
+
                 Spacer(minLength: 4)
 
                 HStack(spacing: 4) {
@@ -624,7 +647,7 @@ private struct SpeedArenaCard: View {
                     Spacer()
                     Button("再来一轮") { model.resetSpeedTest() }
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(MossOttoStyle.onViolet)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 7)
                         .background(Capsule().fill(MossOttoStyle.violet))
@@ -643,6 +666,10 @@ private struct SpeedArenaCard: View {
                                 .background(
                                     RoundedRectangle(cornerRadius: 6, style: .continuous)
                                         .fill(nextChar ? MossOttoStyle.violet.opacity(0.12) : Color.clear)
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                        .strokeBorder(nextChar ? MossOttoStyle.violet.opacity(0.35) : Color.clear, lineWidth: 0.8)
                                 )
                             Capsule()
                                 .fill(nextChar ? MossOttoStyle.violet : Color.clear)
@@ -1105,10 +1132,10 @@ struct GestureAtlasContent: View {
             VStack(spacing: 2) {
                 Text(action.rawValue)
                     .font(.caption2.weight(.bold))
-                    .foregroundStyle(active ? Color.white : MossOttoStyle.violet)
+                    .foregroundStyle(active ? MossOttoStyle.onViolet : MossOttoStyle.violet)
                 Text(effect)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(active ? Color.white : MossOttoStyle.inkPrimary)
+                    .foregroundStyle(active ? MossOttoStyle.onViolet : MossOttoStyle.inkPrimary)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 7)

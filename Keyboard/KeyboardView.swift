@@ -153,7 +153,7 @@ final class KeyView: UIView {
             label.font = Theme.font(18.5, .medium)
         case .char: label.font = Theme.font(Metrics.symbolFont, .medium)
         case .t9(let d): label.font = Theme.font(d == "'" ? Metrics.functionFont : 20, .semibold)
-        case .space: label.font = Theme.font(15, .regular)
+        case .space: label.font = spec.isSmartSpace ? Theme.font(13.5, .semibold) : Theme.font(15, .regular)
         default: label.font = Theme.font(Metrics.functionFont, Theme.plain ? .medium : .semibold)
         }
         if let name = spec.symbol {
@@ -180,7 +180,7 @@ final class KeyView: UIView {
         case .char(let s): return s
         case .shift: return "上档"
         case .delete: return "删除"
-        case .space: return "空格"
+        case .space: return spec.isSmartSpace ? "空格，\(spec.label)" : "空格"
         case .ret: return spec.label.isEmpty ? "换行" : spec.label
         case .globe: return "下一个键盘"
         case .settings: return "键盘设置"
@@ -242,16 +242,20 @@ final class KeyView: UIView {
         }
         if let dot = statusDot {
             let active = (spec.action == .toggleLanguage && spec.label == "中") || (spec.action == .shift && spec.style == .normal)
-            dot.backgroundColor = (active ? Theme.statusLedActive : Theme.statusLedMuted).resolvedColor(with: t).cgColor
-            dot.isHidden = blanked || Theme.plain || !(spec.action == .toggleLanguage || spec.action == .shift)
+            dot.backgroundColor = (spec.isSmartSpace ? Theme.correctedMark : (active ? Theme.statusLedActive : Theme.statusLedMuted)).resolvedColor(with: t).cgColor
+            dot.isHidden = blanked || Theme.plain || !(spec.action == .toggleLanguage || spec.action == .shift || spec.isSmartSpace)
         }
         if let notch = spaceNotch {
             notch.backgroundColor = Theme.spaceNotch.resolvedColor(with: t).cgColor
-            notch.isHidden = blanked || Theme.plain || spec.action != .space || bounds.width <= 120
+            notch.isHidden = blanked || Theme.plain || spec.action != .space || spec.isSmartSpace || bounds.width <= 96
         }
         CATransaction.commit()
         if currentStyle != .function {
-            label.textColor = spec.action == .space ? restFg.withAlphaComponent(0.76) : restFg
+            if spec.action == .space && spec.isSmartSpace {
+                label.textColor = Theme.correctedMark.resolvedColor(with: t)
+            } else {
+                label.textColor = spec.action == .space ? restFg.withAlphaComponent(0.76) : restFg
+            }
             icon.tintColor = restFg
         }
         if let h = hintLabel, !h.isHidden {
@@ -283,6 +287,8 @@ final class KeyView: UIView {
     var labelMinYForTests: CGFloat { label.frame.minY }
     var guideChordHintForTests: XiaoheScheme.ChordHint? { spec.guideChordHint }
     var guideTextForTests: String? { (guideLabel?.isHidden == false) ? guideLabel?.attributedText?.string : nil }
+    var isSmartSpaceShownForTests: Bool { spec.isSmartSpace && !label.isHidden }
+    var visibleLabelTextForTests: String? { label.isHidden ? nil : label.text }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
         super.traitCollectionDidChange(previous)
@@ -322,7 +328,7 @@ final class KeyView: UIView {
         bevel.frame = CGRect(x: bevelInset, y: 0.75, width: max(0, f.width - bevelInset * 2), height: 1.0)
         bevel.backgroundColor = Theme.keyHighlight.resolvedColor(with: traitCollection).cgColor
         bevel.isHidden = blanked || pressed || currentStyle == .accent
-        let wantsDot = !Theme.plain && (spec.action == .toggleLanguage || spec.action == .shift)
+        let wantsDot = !Theme.plain && (spec.action == .toggleLanguage || spec.action == .shift || spec.isSmartSpace)
         if wantsDot {
             let dot = statusDot ?? {
                 let d = CALayer()
@@ -333,12 +339,12 @@ final class KeyView: UIView {
             }()
             dot.frame = CGRect(x: f.width - 9.5, y: 5.5, width: 4.5, height: 4.5)
             let active = (spec.action == .toggleLanguage && spec.label == "中") || (spec.action == .shift && spec.style == .normal)
-            dot.backgroundColor = (active ? Theme.statusLedActive : Theme.statusLedMuted).resolvedColor(with: traitCollection).cgColor
+            dot.backgroundColor = (spec.isSmartSpace ? Theme.correctedMark : (active ? Theme.statusLedActive : Theme.statusLedMuted)).resolvedColor(with: traitCollection).cgColor
             dot.isHidden = blanked
         } else {
             statusDot?.isHidden = true
         }
-        let wantsNotch = spec.action == .space && !Theme.plain && f.width > 120
+        let wantsNotch = spec.action == .space && !spec.isSmartSpace && !Theme.plain && f.width > 96
         if wantsNotch {
             let notch = spaceNotch ?? {
                 let n = CALayer()
@@ -482,6 +488,10 @@ final class KeyView: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         layoutCap()
+    }
+
+    var spaceNotchVisibleForTests: Bool {
+        !(spaceNotch?.isHidden ?? true)
     }
 }
 
@@ -1889,6 +1899,10 @@ final class KeyboardView: UIView {
 
     var activeAltOptionsForTests: [String] {
         tracked.values.first(where: { $0.altPopup != nil })?.altOptions ?? []
+    }
+
+    var spaceNotchVisibleForTests: Bool {
+        keyViews.first(where: { $0.spec.action == .space })?.spaceNotchVisibleForTests ?? false
     }
 
     private func showAlt(_ tr: Tracked) {

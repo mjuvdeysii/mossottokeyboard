@@ -50,7 +50,7 @@ struct EnableContent: View {
                         Image(systemName: "arrow.up.right")
                             .font(.caption.weight(.bold))
                     }
-                    .foregroundStyle(.white)
+                    .foregroundStyle(MossOttoStyle.onViolet)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 13)
                     .background(RoundedRectangle(cornerRadius: 15, style: .continuous).fill(MossOttoStyle.violet))

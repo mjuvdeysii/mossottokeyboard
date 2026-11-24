@@ -95,6 +95,10 @@ final class PlaygroundModel: ObservableObject {
     @Published var speedStart: Date? = nil
     @Published var speedFinishedSeconds: Double? = nil
     @Published var speedTotalChars = 0
+    /// Normalized optical beat heights (0.24...1.0) for the last 7 committed characters in 节奏测速.
+    @Published var speedCadenceBeats: [CGFloat] = []
+    private var lastSpeedCharCount = 0
+    private var lastSpeedBeatTime: Date? = nil
     @AppStorage("mostoBestCPM") var bestCPM = 0
 
     private var firstKeys: String?
@@ -161,6 +165,9 @@ final class PlaygroundModel: ObservableObject {
         speedStart = nil
         speedFinishedSeconds = nil
         speedTotalChars = 0
+        speedCadenceBeats = []
+        lastSpeedCharCount = 0
+        lastSpeedBeatTime = nil
         clear()
         keyboardVisible = true
     }
@@ -208,24 +215,49 @@ final class PlaygroundModel: ObservableObject {
         }
     }
 
+    func recordSpeedCadence(matchedChars: Int, now: Date = Date()) {
+        guard benchMode == .speed else { return }
+        let delta = matchedChars - lastSpeedCharCount
+        guard delta > 0 else {
+            if matchedChars < lastSpeedCharCount { lastSpeedCharCount = matchedChars }
+            return
+        }
+        let ref = lastSpeedBeatTime ?? speedStart ?? now
+        let dt = max(0.08, now.timeIntervalSince(ref))
+        let charsPerSec = Double(delta) / dt
+        let level = min(1.0, max(0.24, CGFloat(charsPerSec / 3.2)))
+        speedCadenceBeats.append(level)
+        if speedCadenceBeats.count > 7 {
+            speedCadenceBeats.removeFirst(speedCadenceBeats.count - 7)
+        }
+        lastSpeedBeatTime = now
+        lastSpeedCharCount = matchedChars
+    }
+
     private func evaluateSpeedProgress() {
         guard benchMode == .speed, speedFinishedSeconds == nil else { return }
+        let now = Date()
         if speedStart == nil && (!before.isEmpty || !marked.isEmpty) {
-            speedStart = Date()
+            speedStart = now
+            lastSpeedBeatTime = now
         }
         let target = currentSpeedTarget
         if before.contains(target) {
+            recordSpeedCadence(matchedChars: target.count, now: now)
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             speedTotalChars += target.count
             if speedIndex + 1 < Self.speedTargets.count {
                 speedIndex += 1
+                lastSpeedCharCount = 0
                 clear()
             } else {
-                let sec = max(0.5, Date().timeIntervalSince(speedStart ?? Date()))
+                let sec = max(0.5, now.timeIntervalSince(speedStart ?? now))
                 speedFinishedSeconds = sec
                 let finalCPM = Int((Double(speedTotalChars) / sec * 60.0).rounded())
                 if finalCPM > bestCPM { bestCPM = finalCPM }
             }
+        } else {
+            recordSpeedCadence(matchedChars: matchedSpeedPrefixCount, now: now)
         }
     }
 

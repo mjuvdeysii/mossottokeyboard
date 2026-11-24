@@ -298,6 +298,8 @@ enum SnapshotRenderer {
             speedModel.benchMode = .speed
             speedModel.before = "今天天"
             speedModel.marked = "qi"
+            speedModel.speedStart = Date().addingTimeInterval(-3.0)
+            speedModel.speedCadenceBeats = [0.42, 0.68, 0.86, 0.58, 0.94, 0.74, 0.52]
             speedModel.applyLampMode(night ? .night : .day)
             let parts: [(String, AnyView)] = [
                 ("0", AnyView(page(VStack(spacing: 16) {

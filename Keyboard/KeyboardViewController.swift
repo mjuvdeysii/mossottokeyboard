@@ -348,7 +348,10 @@ final class KeyboardViewController: UIInputViewController {
             self.undoable = nil
             self.enUndo = nil
             self.cleared = nil
+            let hadPair = !self.pairCloseStack.isEmpty || self.justInsertedPair != nil
             self.pairCloseStack.removeAll(keepingCapacity: true)
+            self.justInsertedPair = nil
+            if hadPair { self.reconfigure() }
             self.lastCommittedContext = ""
             self.endEnglishWord()
             let before = self.host.documentContextBeforeInput
@@ -708,11 +711,11 @@ final class KeyboardViewController: UIInputViewController {
     /// word just typed is behind us — no undoing its correction, no suggestions for it, no ". " from its space.
     private func leaveWordIfMoved() {
         guard taps.isEmpty,
-              (undoable != nil || enUndo != nil || cleared != nil || !predictions.isEmpty || lastInsertedSpace || !enTaps.isEmpty) else { return }
+              (undoable != nil || enUndo != nil || cleared != nil || !predictions.isEmpty || lastInsertedSpace || !enTaps.isEmpty || !pairCloseStack.isEmpty || justInsertedPair != nil) else { return }
         if Self.inExtension && hostOverride == nil {
             let now = CACurrentMediaTime()
             if now - lastHostWriteTime < 0.18 { return }
-            if undoable == nil && enUndo == nil && cleared == nil && !lastInsertedSpace && enTaps.isEmpty {
+            if undoable == nil && enUndo == nil && cleared == nil && !lastInsertedSpace && enTaps.isEmpty && pairCloseStack.isEmpty && justInsertedPair == nil {
                 // Only predictions active and user tapped elsewhere outside our own write echo: clear without XPC.
                 clearPredictions()
                 lastCommittedContext = ""
@@ -734,7 +737,11 @@ final class KeyboardViewController: UIInputViewController {
         deletedWordsBuffer = ""
         lastInsertedSpace = false
         lastEmojiInserted = ""
+        let hadPair = !pairCloseStack.isEmpty || justInsertedPair != nil
+        pairCloseStack.removeAll(keepingCapacity: true)
+        justInsertedPair = nil
         endEnglishWord()
+        if hadPair { reconfigure() }
     }
 
     /// The host took the letters being composed out of our hands — the user tapped elsewhere in the text, sent the
@@ -1056,6 +1063,17 @@ final class KeyboardViewController: UIInputViewController {
         return ((chinese ? Self.zhReturnTitles[cachedReturnKeyType] : Self.enReturnTitles[cachedReturnKeyType]), true)
     }
 
+    private func spaceOverrideLabel() -> String? {
+        guard taps.isEmpty, enTaps.isEmpty else { return nil }
+        if showingMathPrediction, let ans = predictions.first, !ans.isEmpty {
+            return "= " + Self.abbreviated(ans, to: 10)
+        }
+        if chinese, let closing = pairCloseStack.last {
+            return "跳出 " + String(closing)
+        }
+        return nil
+    }
+
     private var lastContext: LayoutContext?
 
     private func reconfigure() {
@@ -1073,7 +1091,8 @@ final class KeyboardViewController: UIInputViewController {
                                          numberGrid: numberPadOn,   // 123: the 九宫格 pad or the full page
                                          pinyinGrid: pinyinGridOn, composing: !taps.isEmpty,
                                          xiaoheGuide: guideOn && scheme == .xiaohe,
-                                         xiaohePendingInitial: pendingInitial)
+                                         xiaohePendingInitial: pendingInitial,
+                                         spaceOverride: spaceOverrideLabel())
         // most keystrokes change nothing on the keys: skip the work entirely (it ran twice per keystroke before)
         if ctx == lastContext { return }
         lastContext = ctx
@@ -1151,6 +1170,8 @@ final class KeyboardViewController: UIInputViewController {
             reconfigure()
         case .toggleLanguage:
             if !taps.isEmpty { commitRaw() }
+            pairCloseStack.removeAll(keepingCapacity: true)
+            justInsertedPair = nil
             chinese.toggle(); userToggledModeInField = true
             switch host.keyboardType ?? .default {
             case .emailAddress, .URL, .asciiCapable, .twitter: break
@@ -1266,9 +1287,11 @@ final class KeyboardViewController: UIInputViewController {
                 host.adjustTextPosition(byCharacterOffset: out.utf16.count)
                 lastInsertedSpace = false
                 afterLastKey = contextSnapshot()
+                reconfigure()
                 return
             }
             pairCloseStack.removeAll(keepingCapacity: true)
+            reconfigure()
         }
         if let p = pairs[out] {
             host.insertText(p.full)
@@ -1280,14 +1303,21 @@ final class KeyboardViewController: UIInputViewController {
             }
             if Bundle.main.bundlePath.hasSuffix(".appex") {
                 let gen = pairAdjustGeneration
+                reconfigure()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.018) { [weak self] in
                     guard let self, self.pairAdjustGeneration == gen, self.taps.isEmpty,
-                          self.host.documentContextBeforeInput?.hasSuffix(closing) == true else { return }
+                          self.host.documentContextBeforeInput?.hasSuffix(closing) == true else {
+                        self?.pairCloseStack.removeAll(keepingCapacity: true)
+                        self?.justInsertedPair = nil
+                        self?.reconfigure()
+                        return
+                    }
                     self.host.adjustTextPosition(byCharacterOffset: -closing.utf16.count)
                     self.afterLastKey = self.contextSnapshot()
                 }
             } else {
                 host.adjustTextPosition(byCharacterOffset: -closing.utf16.count)
+                reconfigure()
             }
         } else {
             let calcInput = (out == "=" || out == "＝") ? host.documentContextBeforeInput : nil
@@ -1298,6 +1328,7 @@ final class KeyboardViewController: UIInputViewController {
                 showingMathPrediction = true
                 candidateBar.update(preedit: "", candidates: predictionCandidates(), prediction: true, mathResult: true)
                 updatePlainLightButton()
+                reconfigure()
             }
         }
         lastInsertedSpace = false
@@ -1386,6 +1417,7 @@ final class KeyboardViewController: UIInputViewController {
             host.insertText(mathAns)
             lastCommittedContext = String((lastCommittedContext + mathAns).suffix(8))
             engine.setContext(lastCommittedContext)
+            reconfigure()
             return
         }
         if !chinese, !enTaps.isEmpty {
@@ -1418,9 +1450,11 @@ final class KeyboardViewController: UIInputViewController {
             let closing = String(expectedClose)
             if let after = proxy.documentContextAfterInput, after.hasPrefix(closing) {
                 proxy.adjustTextPosition(byCharacterOffset: closing.utf16.count)
+                reconfigure()
                 return
             }
             pairCloseStack.removeAll(keepingCapacity: true)
+            reconfigure()
         }
         proxy.insertText(" ")
         lastInsertedSpace = true
@@ -1446,6 +1480,7 @@ final class KeyboardViewController: UIInputViewController {
                 host.adjustTextPosition(byCharacterOffset: pair.close.utf16.count)
                 host.deleteBackward()
                 host.deleteBackward()
+                reconfigure()
                 return
             }
         }
@@ -1948,8 +1983,9 @@ final class KeyboardViewController: UIInputViewController {
         beforeEnDelete = nil
         deletedWordsBuffer = ""
         pairCloseStack.removeAll(keepingCapacity: true)
+        justInsertedPair = nil
         endEnglishWord()
-        if !taps.isEmpty { clearComposition() }
+        if !taps.isEmpty { clearComposition() } else { reconfigure() }
         afterLastKey = contextSnapshot()
     }
 
@@ -2014,7 +2050,7 @@ final class KeyboardViewController: UIInputViewController {
             pendingSelect = (i, shown ?? Candidate(text: "", tapCount: 0, syllables: [], corrected: false, score: 0))
             if wasNil {
                 let targetGen = generation
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) { [weak self] in
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
                     guard let self, self.generation == targetGen, let p = self.pendingSelect else { return }
                     self.pendingSelect = nil
                     if let r = self.result, !r.candidates.isEmpty {
@@ -2053,11 +2089,16 @@ final class KeyboardViewController: UIInputViewController {
     /// Any key ends the suggestions (a late answer for them is dropped too).
     private func clearPredictions() {
         predictGeneration += 1
+        let wasMath = showingMathPrediction
         showingMathPrediction = false
-        guard !predictions.isEmpty else { return }
+        guard !predictions.isEmpty else {
+            if wasMath { reconfigure() }
+            return
+        }
         predictions = []
         if taps.isEmpty, enSuggestions.isEmpty { candidateBar.update(preedit: "", candidates: []) }; updatePlainLightButton()
         if let g = gridIfLoaded, !g.isHidden, taps.isEmpty { showGrid(false) }
+        if wasMath { reconfigure() }
     }
 
     // MARK: - Panels

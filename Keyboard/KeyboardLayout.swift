@@ -53,6 +53,8 @@ struct KeySpec: Equatable {
     var guideFinals: [String] = []
     var guideChordHint: XiaoheScheme.ChordHint? = nil
     var moreAlts: [String] = []      // further long-press choices after `alt`, shown as a row
+    /// Contextual smart action shown directly on the spacebar (e.g. `跳出 》` or `= 383`).
+    var isSmartSpace: Bool = false
 }
 
 struct LayoutContext: Equatable {
@@ -75,6 +77,8 @@ struct LayoutContext: Equatable {
     var xiaoheGuide: Bool = false
     /// Pending odd-beat first key when `xiaoheGuide` is active, illuminating only valid final keys.
     var xiaohePendingInitial: Character? = nil
+    /// Contextual spacebar label override (`跳出 》` for smart CJK pairs or `= 383` for trailing math).
+    var spaceOverride: String? = nil
 }
 
 /// 4 calibrated hardware-aligned keyboard height tiers (OTTOSSOM desk deck elevation).
@@ -216,6 +220,13 @@ enum Layouts {
         return KeySpec(action: .ret, label: ctx.chinese ? "换行" : "return", width: width, style: .accent)
     }
 
+    private static func spaceKey(_ ctx: LayoutContext) -> KeySpec {
+        if let label = ctx.spaceOverride {
+            return KeySpec(action: .space, label: label, width: 0, isSmartSpace: true)
+        }
+        return KeySpec(action: .space, label: ctx.chinese ? "空格" : "space", width: 0)
+    }
+
     private static func letters(_ ctx: LayoutContext) -> [[KeySpec]] {
         var rows: [[KeySpec]] = []
         for (r, row) in letterRows.enumerated() {
@@ -243,7 +254,7 @@ enum Layouts {
         }
         var bottom: [KeySpec] = [KeySpec(action: .page(ctx.numberGrid ? .numpad : .numbers), label: "123", width: 1.25, style: .function)]
         bottom += middleKeys(ctx)
-        bottom.append(KeySpec(action: .space, label: ctx.chinese ? "空格" : "space", width: 0))
+        bottom.append(spaceKey(ctx))
         bottom.append(ctx.chinese
             ? KeySpec(action: .char("，"), label: "，", width: 1, alt: "。", style: .function, hint: "。", moreAlts: ["？", "！", "、", "…", "《", "（"])
             : KeySpec(action: .char("."), label: ".", width: 1, alt: ",", style: .function, hint: ",", moreAlts: ["?", "!", "'", "\"", "-"]))
@@ -259,7 +270,7 @@ enum Layouts {
     private static func bottomRow(_ ctx: LayoutContext) -> [KeySpec] {
         var bottom: [KeySpec] = [KeySpec(action: .page(.letters), label: ctx.chinese ? "拼音" : "ABC", width: 1.25, style: .function)]
         bottom += middleKeys(ctx)
-        bottom.append(KeySpec(action: .space, label: ctx.chinese ? "空格" : "space", width: 0))
+        bottom.append(spaceKey(ctx))
         bottom.append(returnKey(ctx, width: 2.5, wide: true))
         return bottom
     }
@@ -297,7 +308,7 @@ enum Layouts {
         let row4 = [KeySpec(action: .page(ctx.numberGrid ? .numpad : .numbers), label: "123", width: side, style: .function)]
                     + gear
                     + [KeySpec(action: .page(.symbols), label: "符号", width: mid - 1 + 0.27, style: .function),
-                       KeySpec(action: .space, label: "空格", width: 0),
+                       spaceKey(ctx),
                        KeySpec(action: .toggleLanguage, label: "中", width: side, style: .function)]
         return [row1, row2, row3, row4]
     }

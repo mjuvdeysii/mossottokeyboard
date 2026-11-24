@@ -155,6 +155,8 @@ enum KeyboardTests {
         r76CursorTelemetryHudAndBracketCraft(window)
         r77KeycapBevelAndFeedbackParity(window)
         r78EmojiDockNoSliceDrawerAndXiaoheSlots(window)
+        r79SmartSpacebarPairExitAndMathCue(window)
+        r80ContrastCadenceAndBenchCraft(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -3436,6 +3438,118 @@ enum KeyboardTests {
         log(guideRendered,
             "r78.XiaoheGuideContent dual-slot watermarks & condensed comparison meter render cleanly",
             "width=\(guideSize.width)")
+    }
+
+    // MARK: - R79: Honest contextual Smart-Spacebar (pair-exit cue, math result cue, and cursor lifecycle hygiene)
+
+    static func r79SmartSpacebarPairExitAndMathCue(_ window: UIWindow) {
+        let s = KeyboardSettings.shared
+        let prevStyle = s.style
+        let prevPlain = Theme.plain
+        defer {
+            s.style = prevStyle
+            Theme.plain = prevPlain
+        }
+        s.style = 0
+        Theme.plain = false
+        guard let kb = makeKeyboard(scheme: 1, grid: false, in: window) else {
+            log(false, "r79.setup")
+            return
+        }
+        let (vc, h) = kb
+        let spaceKey = vc.keyboardViewForTests.keyViewForTests(.space)
+        let initialNormal = spaceKey?.isSmartSpaceShownForTests == false
+
+        // 1. Opening CJK pair 《》 morphs Spacebar to "跳出 》" and pressing Space jumps out & restores normal spacebar
+        vc.handle(.char("《"), tap: nil)
+        drain(0.03)
+        let pairShown = spaceKey?.isSmartSpaceShownForTests == true && spaceKey?.visibleLabelTextForTests == "跳出 》"
+        vc.handle(.space, tap: nil)
+        drain(0.03)
+        let pairExited = h.string == "《》" && h.cursor == 2 && spaceKey?.isSmartSpaceShownForTests == false
+
+        // 2. Smart pair Backspace removes both halves and clears Smart-Spacebar state
+        vc.handle(.char("（"), tap: nil)
+        drain(0.03)
+        let parenShown = spaceKey?.visibleLabelTextForTests == "跳出 ）"
+        vc.handle(.delete, tap: nil)
+        drain(0.03)
+        let pairDeleted = h.string == "《》" && spaceKey?.isSmartSpaceShownForTests == false
+
+        // 3. Moving cursor away clears stale pair state so Spacebar never lies
+        vc.handle(.char("「"), tap: nil)
+        drain(0.03)
+        let cornerShown = spaceKey?.visibleLabelTextForTests == "跳出 」"
+        h.adjustTextPosition(byCharacterOffset: -1)
+        vc.selectionDidChange(nil)
+        drain(0.03)
+        let movedCleared = spaceKey?.isSmartSpaceShownForTests == false
+
+        // 4. Trailing math expression morphs Spacebar to "= 383" and Space commits & reverts
+        h.clear()
+        vc.textDidChange(nil)
+        for ch in "365+18=" { vc.handle(.char(String(ch)), tap: nil) }
+        drain(0.03)
+        let mathShown = spaceKey?.isSmartSpaceShownForTests == true && spaceKey?.visibleLabelTextForTests == "= 383"
+        vc.handle(.space, tap: nil)
+        drain(0.03)
+        let mathCommitted = h.string == "365+18=383" && spaceKey?.isSmartSpaceShownForTests == false
+
+        log(initialNormal && pairShown && pairExited && parenShown && pairDeleted && cornerShown && movedCleared && mathShown && mathCommitted,
+            "r79.Spacebar honestly morphs for CJK smart-pair exit, clears on cursor leave, and previews trailing math",
+            "init=\(initialNormal) pair=\(pairShown) exit=\(pairExited) paren=\(parenShown) del=\(pairDeleted) corner=\(cornerShown) move=\(movedCleared) math=\(mathShown) commit=\(mathCommitted)")
+    }
+
+    static func r80ContrastCadenceAndBenchCraft(_ window: UIWindow) {
+        _ = window
+        // 1. WCAG AA+ contrast for MossOttoStyle.onViolet on MossOttoStyle.violet in both Day and Night modes
+        func relLum(_ color: UIColor, style: UIUserInterfaceStyle) -> CGFloat {
+            let resolved = color.resolvedColor(with: UITraitCollection(userInterfaceStyle: style))
+            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            resolved.getRed(&r, green: &g, blue: &b, alpha: &a)
+            func lin(_ c: CGFloat) -> CGFloat { c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4) }
+            return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+        }
+        func contrast(_ fg: UIColor, _ bg: UIColor, style: UIUserInterfaceStyle) -> CGFloat {
+            let l1 = relLum(fg, style: style), l2 = relLum(bg, style: style)
+            return (max(l1, l2) + 0.05) / (min(l1, l2) + 0.05)
+        }
+        let dayCR = contrast(UIColor(MossOttoStyle.onViolet), UIColor(MossOttoStyle.violet), style: .light)
+        let nightCR = contrast(UIColor(MossOttoStyle.onViolet), UIColor(MossOttoStyle.violet), style: .dark)
+        log(dayCR >= 4.5 && nightCR >= 4.5, "r80.violet CTA foreground passes WCAG AA in Day and Night",
+            "dayCR=\(String(format: "%.2f", dayCR)) nightCR=\(String(format: "%.2f", nightCR))")
+
+        // 2. Optical Cadence Meter tracks sliding 7-beat history and clears cleanly on reset
+        let model = PlaygroundModel()
+        model.benchMode = .speed
+        let t0 = Date()
+        model.speedStart = t0
+        for step in 1...8 {
+            model.recordSpeedCadence(matchedChars: step, now: t0.addingTimeInterval(Double(step) * 0.25))
+        }
+        let beatsOk = model.speedCadenceBeats.count == 7
+            && model.speedCadenceBeats.allSatisfy { $0 >= 0.24 && $0 <= 1.0 }
+        model.resetSpeedTest()
+        let clearedOk = model.speedCadenceBeats.isEmpty
+        log(beatsOk && clearedOk, "r80.speed cadence meter maintains 7 bounded beats and resets cleanly",
+            "beatsOk=\(beatsOk) clearedOk=\(clearedOk)")
+
+        // 3. Globe spacebar (>= 100pt) keeps homing bar while narrow numpad side-space (~73pt) retains label
+        let oldPlain = Theme.plain
+        Theme.plain = false
+        defer { Theme.plain = oldPlain }
+        let kv = KeyboardView(spatial: SpatialModel.standard())
+        kv.frame = CGRect(x: 0, y: 0, width: 393, height: 214)
+        kv.configure(LayoutContext(page: .letters, chinese: true, showGlobe: true, returnLabel: nil,
+                                   returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true))
+        kv.layoutIfNeeded()
+        let globeSpaceNotchShown = kv.spaceNotchVisibleForTests
+        kv.configure(LayoutContext(page: .numpad, chinese: true, showGlobe: true, returnLabel: nil,
+                                   returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true))
+        kv.layoutIfNeeded()
+        let numpadSpaceNoNotch = !kv.spaceNotchVisibleForTests
+        log(globeSpaceNotchShown && numpadSpaceNoNotch, "r80.globe spacebar preserves homing bar without affecting numpad space label",
+            "globeNotch=\(globeSpaceNotchShown) numpadNoNotch=\(numpadSpaceNoNotch)")
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

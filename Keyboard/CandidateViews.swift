@@ -2165,7 +2165,7 @@ private final class ElevationRailView: UIView {
             let fg: UIColor = active ? Theme.selectionText : (i <= selectedTier.rawValue ? Theme.keyText : Theme.secondaryText)
             markLabels[i].textColor = fg.resolvedColor(with: t)
             markLabels[i].font = Theme.font(11.5, active ? .bold : .semibold)
-            let barColor: UIColor = active ? Theme.selectionText : (i <= selectedTier.rawValue ? Theme.statusLedActive : Theme.statusLedMuted)
+            let barColor: UIColor = active ? Theme.selectionText : (i < selectedTier.rawValue ? Theme.selection.withAlphaComponent(0.55) : Theme.statusLedMuted)
             barLayers[i].backgroundColor = barColor.resolvedColor(with: t).cgColor
         }
         CATransaction.commit()

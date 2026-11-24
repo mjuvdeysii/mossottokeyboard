@@ -70,6 +70,8 @@ enum MossOttoStyle {
 
     /// Shared IP studio family accents: Mosto violet, lamp-bead amber, Moss sprout green, Otto indigo.
     static let violet = dynamic(hex(0x633EBF), hex(0xA78BFA))
+    /// WCAG AA+ ink on `MossOttoStyle.violet` (Day: #FFFFFF on #633EBF = 7.56:1; Night: #1A1429 on #A78BFA = 6.59:1).
+    static let onViolet = dynamic(hex(0xFFFFFF), hex(0x1A1429))
     static let lampAmber = dynamic(hex(0xD69A34), hex(0xFFC45A))
     static let correctionAccent = dynamic(hex(0x633EBF), hex(0xFFC45A))
     static let moss = dynamic(hex(0x55704A), hex(0x7EA86E))
@@ -763,7 +765,7 @@ struct VolumeCheckSheet: View {
             } label: {
                 Text("音量合适，开始体验")
                     .font(.subheadline.weight(.bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(MossOttoStyle.onViolet)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
                     .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(MossOttoStyle.violet))
@@ -829,7 +831,7 @@ struct SwitchTesterToy: View {
                         } label: {
                             Text(prof.title)
                                 .font(.caption2.weight(.semibold))
-                                .foregroundStyle(selected ? .white : MossOttoStyle.inkPrimary)
+                                .foregroundStyle(selected ? MossOttoStyle.onViolet : MossOttoStyle.inkPrimary)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 3.5)
                                 .background(
