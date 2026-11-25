@@ -14,6 +14,7 @@ final class KeyView: UIView {
     /// Mosto studio micro-craft: hardware status indicator on 中/英 and Shift, homing bar on Space.
     private var statusDot: CALayer?
     private var spaceNotch: CALayer?
+    private let surfaceLayer = CAGradientLayer()
 
     var pressed = false {
         didSet {
@@ -24,6 +25,11 @@ final class KeyView: UIView {
     var softenedForDarkGlass = false {
         didSet {
             if softenedForDarkGlass != oldValue { updateColors() }
+        }
+    }
+    var softenedForLightGlass = false {
+        didSet {
+            if softenedForLightGlass != oldValue { updateColors() }
         }
     }
     private var hasApplied = false
@@ -42,8 +48,8 @@ final class KeyView: UIView {
     }
 
     private var currentStyle: KeyStyle = .normal
-    private var restBg: CGColor = UIColor.white.cgColor
-    private var pressedBg: CGColor = UIColor.lightGray.cgColor
+    private var restColors: [CGColor] = [UIColor.white.cgColor, UIColor.white.cgColor]
+    private var pressedColors: [CGColor] = [UIColor.lightGray.cgColor, UIColor.lightGray.cgColor]
     private var restFg: UIColor = Theme.keyText
     private var pressedFg: UIColor = Theme.keyText
     private static var symbolCache: [String: UIImage] = [:]
@@ -86,7 +92,9 @@ final class KeyView: UIView {
     private static func cachedSymbol(_ name: String) -> UIImage? {
         let k = name + (Theme.plain ? "_p" : "_m")
         if let img = symbolCache[k] { return img }
-        let cfg = UIImage.SymbolConfiguration(pointSize: Metrics.iconSize, weight: Theme.plain ? .regular : .semibold)
+        let ptSize: CGFloat = name == "face.smiling" ? Metrics.emojiIconSize : Metrics.iconSize
+        let weight: UIImage.SymbolWeight = name == "face.smiling" ? .regular : (Theme.plain ? .regular : .medium)
+        let cfg = UIImage.SymbolConfiguration(pointSize: ptSize, weight: weight)
         guard let img = UIImage(systemName: name, withConfiguration: cfg)?.withRenderingMode(.alwaysTemplate) else { return nil }
         symbolCache[k] = img
         return img
@@ -96,12 +104,16 @@ final class KeyView: UIView {
         self.spec = spec
         super.init(frame: .zero)
         isUserInteractionEnabled = false
-        layer.cornerRadius = Metrics.cornerRadius
-        layer.cornerCurve = .continuous
-        layer.borderWidth = 0
-        layer.shadowRadius = 0
-        layer.shadowOffset = CGSize(width: 0, height: 1.0)
+        layer.masksToBounds = false
+        layer.shadowRadius = Metrics.shadowBlur
+        layer.shadowOffset = CGSize(width: 0, height: Metrics.lip)
         layer.shadowOpacity = 1
+        surfaceLayer.masksToBounds = true
+        surfaceLayer.cornerRadius = Metrics.cornerRadius
+        surfaceLayer.cornerCurve = .continuous
+        surfaceLayer.startPoint = CGPoint(x: 0.5, y: 0)
+        surfaceLayer.endPoint = CGPoint(x: 0.5, y: 1)
+        layer.insertSublayer(surfaceLayer, at: 0)
         label.textAlignment = .center
         label.adjustsFontSizeToFitWidth = true
         label.minimumScaleFactor = 0.5
@@ -206,7 +218,7 @@ final class KeyView: UIView {
 
     private func applyPressState() {
         CATransaction.begin(); CATransaction.setDisableActions(true)
-        layer.backgroundColor = pressed ? pressedBg : restBg
+        surfaceLayer.colors = pressed ? pressedColors : restColors
         layer.shadowOpacity = pressed ? 0 : 1
         CATransaction.commit()
         if currentStyle == .function {
@@ -219,33 +231,52 @@ final class KeyView: UIView {
     private func updateColors() {
         let t = traitCollection
         let softDay = softenedForDarkGlass && t.userInterfaceStyle != .dark
-        let rest: UIColor, down: UIColor, under: UIColor, fg: UIColor, downFg: UIColor
+        let softNight = softenedForLightGlass && t.userInterfaceStyle == .dark
+        let topColor: UIColor, bottomColor: UIColor, downColor: UIColor, under: UIColor, fg: UIColor, downFg: UIColor
         currentStyle = spec.action == .shift && spec.style == .normal ? .normal : spec.style
         switch currentStyle {
         case .normal:
-            rest = softDay ? Theme.forcedDayKey : Theme.key
-            down = softDay ? Theme.forcedDayKeyPressed : Theme.keyPressed
-            under = softDay ? Theme.forcedDayKeyLip : Theme.keyLip
+            if softDay {
+                topColor = Theme.forcedDayKeyTop; bottomColor = Theme.forcedDayKey
+                downColor = Theme.forcedDayKeyPressed; under = Theme.forcedDayKeyLip
+            } else if softNight {
+                topColor = Theme.forcedNightKeyTop; bottomColor = Theme.forcedNightKey
+                downColor = Theme.forcedNightKeyPressed; under = Theme.forcedNightKeyLip
+            } else {
+                topColor = Theme.keyTop; bottomColor = Theme.key
+                downColor = Theme.keyPressed; under = Theme.keyLip
+            }
             fg = Theme.keyText; downFg = Theme.keyText
         case .function:
-            rest = softDay ? Theme.forcedDayFunctionKey : Theme.functionKey
-            down = softDay ? Theme.forcedDayFunctionPressed : Theme.functionPressed
-            under = softDay ? Theme.forcedDayFunctionLip : Theme.functionLip
+            if softDay {
+                topColor = Theme.forcedDayFunctionTop; bottomColor = Theme.forcedDayFunctionKey
+                downColor = Theme.forcedDayFunctionPressed; under = Theme.forcedDayFunctionLip
+            } else if softNight {
+                topColor = Theme.forcedNightFunctionTop; bottomColor = Theme.forcedNightFunctionKey
+                downColor = Theme.forcedNightFunctionPressed; under = Theme.forcedNightFunctionLip
+            } else {
+                topColor = Theme.functionTop; bottomColor = Theme.functionKey
+                downColor = Theme.functionPressed; under = Theme.functionLip
+            }
             fg = Theme.functionText; downFg = Theme.keyText
         case .accent:
-            rest = Theme.accentKey; down = Theme.accentPressed; under = Theme.accentLip
+            topColor = Theme.accentTop; bottomColor = Theme.accentKey
+            downColor = Theme.accentPressed; under = Theme.accentLip
             fg = Theme.accentText; downFg = Theme.accentText
         }
-        restBg = rest.resolvedColor(with: t).cgColor
-        pressedBg = down.resolvedColor(with: t).cgColor
+        let topCG = topColor.resolvedColor(with: t).cgColor
+        let bottomCG = bottomColor.resolvedColor(with: t).cgColor
+        let downCG = downColor.resolvedColor(with: t).cgColor
+        restColors = [topCG, bottomCG]
+        pressedColors = [downCG, topCG.copy(alpha: 0.94) ?? downCG]
         restFg = fg.resolvedColor(with: t)
         pressedFg = downFg.resolvedColor(with: t)
         CATransaction.begin(); CATransaction.setDisableActions(true)
         layer.shadowColor = under.resolvedColor(with: t).cgColor
         let smartSpaceRim = spec.action == .space && spec.isSmartSpace
-        layer.borderWidth = smartSpaceRim ? 1.0 : 0
-        layer.borderColor = smartSpaceRim
-            ? Theme.correctedMark.withAlphaComponent(0.50).resolvedColor(with: t).cgColor
+        surfaceLayer.borderWidth = smartSpaceRim ? 1.0 : 0
+        surfaceLayer.borderColor = smartSpaceRim
+            ? Theme.correctedMark.withAlphaComponent(0.55).resolvedColor(with: t).cgColor
             : nil
         if let dot = statusDot {
             let active = (spec.action == .toggleLanguage && spec.label == "中") || (spec.action == .shift && spec.style == .normal)
@@ -289,17 +320,21 @@ final class KeyView: UIView {
     var hintFrameForTests: CGRect { (hintLabel?.isHidden == false) ? (hintLabel?.frame ?? .zero) : .zero }
     var hintLitForTests: Bool { hintLit }
     var hasTopHighlightForTests: Bool { false }
-    var borderWidthForTests: CGFloat { layer.borderWidth }
+    var borderWidthForTests: CGFloat { surfaceLayer.borderWidth }
     var shadowOpacityForTests: Float { layer.shadowOpacity }
+    var shadowRadiusForTests: CGFloat { layer.shadowRadius }
+    var hasSculptedGradientForTests: Bool { (surfaceLayer.colors?.count ?? 0) == 2 }
     var labelFontSizeForTests: CGFloat { label.font.pointSize }
     var labelFontNameForTests: String { label.font.fontName }
     var labelMinYForTests: CGFloat { label.frame.minY }
     var guideChordHintForTests: XiaoheScheme.ChordHint? { spec.guideChordHint }
     var guideTextForTests: String? { (guideLabel?.isHidden == false) ? guideLabel?.attributedText?.string : nil }
     var isSmartSpaceShownForTests: Bool { spec.isSmartSpace && !label.isHidden }
-    var smartSpaceRimActiveForTests: Bool { spec.isSmartSpace && layer.borderWidth >= 0.9 }
+    var smartSpaceRimActiveForTests: Bool { spec.isSmartSpace && surfaceLayer.borderWidth >= 0.9 }
     var visibleLabelTextForTests: String? { label.isHidden ? nil : label.text }
     var isSoftenedForDarkGlassForTests: Bool { softenedForDarkGlass }
+    var isSoftenedForLightGlassForTests: Bool { softenedForLightGlass }
+    var iconPointSizeForTests: CGFloat { icon.image?.size.height ?? 0 }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
         super.traitCollectionDidChange(previous)
@@ -325,8 +360,10 @@ final class KeyView: UIView {
         if sizeChanged {
             lastCapSize = f.size
             lastPlainMode = Theme.plain
-            layer.cornerRadius = cr
-            layer.shadowPath = UIBezierPath(roundedRect: f, cornerRadius: cr).cgPath
+            surfaceLayer.frame = f
+            surfaceLayer.cornerRadius = cr
+            let shadowRect = CGRect(x: 0.75, y: 0.5, width: max(0, f.width - 1.5), height: max(0, f.height - 0.5))
+            layer.shadowPath = UIBezierPath(roundedRect: shadowRect, cornerRadius: max(1, cr - 0.5)).cgPath
         }
         let wantsDot = !Theme.plain && (spec.action == .toggleLanguage || spec.action == .shift || spec.isSmartSpace)
         if wantsDot {
@@ -519,18 +556,22 @@ func cjkPunctuationOffset(_ text: String?, fontSize: CGFloat, font: UIFont? = ni
 /// Clean, horn-free, neck-free floating key pill shown above a pressed key when slow-tapped, held, or flicked.
 final class KeyPreview: UIView {
     let label = UILabel()
+    private let surfaceLayer = CAGradientLayer()
     private var lastRadiusBounds: CGRect = .zero
     private(set) var isFlicked = false
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         isUserInteractionEnabled = false
-        layer.cornerRadius = 11
-        layer.cornerCurve = .continuous
-        layer.borderWidth = 0.5
-        layer.shadowRadius = 2.0
-        layer.shadowOpacity = 0.10
-        layer.shadowOffset = CGSize(width: 0, height: 1.5)
+        backgroundColor = .clear
+        layer.shadowRadius = 5.5
+        layer.shadowOffset = CGSize(width: 0, height: 3.0)
+        surfaceLayer.masksToBounds = true
+        surfaceLayer.cornerRadius = 11
+        surfaceLayer.cornerCurve = .continuous
+        surfaceLayer.startPoint = CGPoint(x: 0.5, y: 0)
+        surfaceLayer.endPoint = CGPoint(x: 0.5, y: 1)
+        layer.insertSublayer(surfaceLayer, at: 0)
         label.textAlignment = .center
         label.adjustsFontSizeToFitWidth = true
         label.minimumScaleFactor = 0.5
@@ -541,9 +582,15 @@ final class KeyPreview: UIView {
 
     func refreshStyle() {
         let t = traitCollection
-        backgroundColor = Theme.bubble
-        layer.borderWidth = isFlicked ? 1.0 : 0.5
-        layer.borderColor = (isFlicked ? Theme.correctedMark : Theme.bubbleLip).resolvedColor(with: t).cgColor
+        let top = Theme.bubble.resolvedColor(with: t).cgColor
+        let bottom = Theme.mix(Theme.bubble, Theme.functionKey, 0.22).resolvedColor(with: t).cgColor
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        surfaceLayer.colors = [top, bottom]
+        surfaceLayer.borderWidth = isFlicked ? 1.0 : 0.5
+        surfaceLayer.borderColor = (isFlicked ? Theme.correctedMark : Theme.bubbleLip).resolvedColor(with: t).cgColor
+        CATransaction.commit()
+        layer.shadowOpacity = t.userInterfaceStyle == .dark ? 0.36 : 0.16
         layer.shadowColor = (Theme.plain ? UIColor.black : Theme.deepViolet).cgColor
         label.font = Theme.font(28, .medium)
         label.textColor = isFlicked ? Theme.correctedMark : Theme.keyText
@@ -567,6 +614,10 @@ final class KeyPreview: UIView {
         refreshStyle()
         if bounds != lastRadiusBounds {
             lastRadiusBounds = bounds
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            surfaceLayer.frame = bounds
+            CATransaction.commit()
             layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: 11).cgPath
         }
         layoutPreviewLabel()
@@ -581,6 +632,10 @@ final class KeyPreview: UIView {
         super.layoutSubviews()
         if bounds != lastRadiusBounds {
             lastRadiusBounds = bounds
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            surfaceLayer.frame = bounds
+            CATransaction.commit()
             layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: 11).cgPath
         }
         layoutPreviewLabel()
@@ -736,7 +791,14 @@ final class KeyboardView: UIView {
             keyViews.forEach { $0.softenedForDarkGlass = softenedForDarkGlass }
         }
     }
+    var softenedForLightGlass = false {
+        didSet {
+            guard softenedForLightGlass != oldValue else { return }
+            keyViews.forEach { $0.softenedForLightGlass = softenedForLightGlass }
+        }
+    }
     var softenedForDarkGlassForTests: Bool { softenedForDarkGlass }
+    var softenedForLightGlassForTests: Bool { softenedForLightGlass }
     var maxKeycapHeightForTests: CGFloat { keyViews.map(\.frame.height).max() ?? 0 }
     /// The style changed: every key redraws in it.
     func themeChanged() {
@@ -1042,7 +1104,10 @@ final class KeyboardView: UIView {
         globeButton = nil
         let borders = context?.keyBorders ?? false
         keyViews = rows.flatMap { $0 }.map { KeyView(spec: $0, borders: borders) }
-        for kv in keyViews { kv.softenedForDarkGlass = softenedForDarkGlass }
+        for kv in keyViews {
+            kv.softenedForDarkGlass = softenedForDarkGlass
+            kv.softenedForLightGlass = softenedForLightGlass
+        }
         keyViews.forEach { addSubview($0) }
         if let idx = keyViews.firstIndex(where: { $0.spec.action == .globe }), let ic = inputController {
             // The system input-mode menu needs a real UIControl wired to handleInputModeList.
@@ -1078,6 +1143,8 @@ final class KeyboardView: UIView {
         hitRects = []
         var i = 0
         var spatialKeys: [SpatialModel.Key] = []
+        let px = max(1.0, traitCollection.displayScale > 0 ? traitCollection.displayScale : UIScreen.main.scale)
+        func snap(_ v: CGFloat) -> CGFloat { (v * px).rounded() / px }
         for (r, row) in rows.enumerated() {
             let fixed = row.reduce(CGFloat(0)) { $0 + $1.width }
             let flexCount = CGFloat(row.filter { $0.width == 0 }.count)
@@ -1088,7 +1155,11 @@ final class KeyboardView: UIView {
                 let w = spec.width == 0 ? flexW : spec.width
                 let originX = sideInset + x * unit
                 let y = baseTop + CGFloat(r) * rowH
-                let frame = CGRect(x: originX + gapX / 2, y: y + gapY / 2, width: w * unit - gapX, height: rowH - gapY)
+                let x0 = snap(originX + gapX / 2)
+                let x1 = snap(originX + w * unit - gapX / 2)
+                let y0 = snap(y + gapY / 2)
+                let y1 = snap(y + rowH - gapY / 2)
+                let frame = CGRect(x: x0, y: y0, width: max(1, x1 - x0), height: max(1, y1 - y0))
                 keyViews[i].frame = frame
                 var hit = CGRect(x: originX, y: y, width: w * unit, height: rowH)
                 if r == 0 { hit = CGRect(x: hit.minX, y: 0, width: hit.width, height: baseTop + rowH) }

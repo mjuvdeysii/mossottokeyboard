@@ -859,12 +859,14 @@ final class KeyboardViewController: UIInputViewController {
         let mode = KeyboardSettings.shared.appearance
         let night = mode == 1 ? false : mode == 2 ? true : sysDark
         let forcedDay = sysDark && !night
+        let forcedNight = !sysDark && night
         let glass: UIUserInterfaceStyle = sysDark ? .dark : .light   // strip, capsules, emoji and settings always match the host glass
         let keys: UIUserInterfaceStyle = mode == 0 ? glass : (night ? .dark : .light)
         isNight = night
         root.overrideUserInterfaceStyle = glass
         keyboard.overrideUserInterfaceStyle = keys
         keyboard.softenedForDarkGlass = forcedDay
+        keyboard.softenedForLightGlass = forcedNight
         tintView.night = night
         tintView.forcedNight = false
         tintView.forcedDay = false

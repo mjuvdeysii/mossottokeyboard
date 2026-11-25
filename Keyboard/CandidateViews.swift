@@ -1938,9 +1938,9 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
             b.backgroundColor = Theme.functionKey
             b.layer.cornerRadius = Metrics.cornerRadius
             b.layer.cornerCurve = .continuous
-            // Match keycap milled lip without offscreen rasterization (explicit shadowPath set in layoutSubviews).
+            // Match keycap sculpted contact shadow without offscreen rasterization (explicit shadowPath set in layoutSubviews).
             b.layer.shadowOpacity = 1
-            b.layer.shadowRadius = 0
+            b.layer.shadowRadius = Metrics.shadowBlur
             b.layer.shadowOffset = CGSize(width: 0, height: Metrics.lip)
             b.layer.shadowColor = Theme.functionLip.resolvedColor(with: traitCollection).cgColor
             dockBar.addSubview(b)
@@ -2079,11 +2079,13 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         let bh: CGFloat = 38
         let by = (dockH - bh) / 2
         deleteButton.frame = CGRect(x: bounds.width - side + 2, y: by, width: side - 10, height: bh)
-        deleteButton.layer.shadowPath = UIBezierPath(roundedRect: deleteButton.bounds, cornerRadius: Metrics.cornerRadius).cgPath
+        let delShadow = CGRect(x: 0.75, y: 0.5, width: max(0, deleteButton.bounds.width - 1.5), height: max(0, deleteButton.bounds.height - 0.5))
+        deleteButton.layer.shadowPath = UIBezierPath(roundedRect: delShadow, cornerRadius: max(1, Metrics.cornerRadius - 0.5)).cgPath
         let closeW: CGFloat = 46
         closeButton.isHidden = false
         closeButton.frame = CGRect(x: deleteButton.frame.minX - 6 - closeW, y: by, width: closeW, height: bh)
-        closeButton.layer.shadowPath = UIBezierPath(roundedRect: closeButton.bounds, cornerRadius: Metrics.cornerRadius).cgPath
+        let closeShadow = CGRect(x: 0.75, y: 0.5, width: max(0, closeButton.bounds.width - 1.5), height: max(0, closeButton.bounds.height - 0.5))
+        closeButton.layer.shadowPath = UIBezierPath(roundedRect: closeShadow, cornerRadius: max(1, Metrics.cornerRadius - 0.5)).cgPath
 
         let rightLimit = closeButton.frame.minX - 6
         let badgeW: CGFloat = countBadge.isHidden ? 0 : min(48, max(30, ceil((countBadge.text as NSString? ?? "").size(withAttributes: [.font: countBadge.font as Any]).width) + 14))
@@ -2194,7 +2196,7 @@ private final class HardwareTileButton: UIControl {
         layer.cornerRadius = Metrics.cornerRadius
         layer.cornerCurve = .continuous
         layer.borderWidth = 0.5
-        layer.shadowRadius = 0
+        layer.shadowRadius = Metrics.shadowBlur
         layer.shadowOffset = CGSize(width: 0, height: Metrics.lip)
         layer.shadowOpacity = 1
 
@@ -2271,7 +2273,8 @@ private final class HardwareTileButton: UIControl {
         guard b.width > 0, b.height > 0 else { return }
         if b.size != lastShadowSize {
             lastShadowSize = b.size
-            layer.shadowPath = UIBezierPath(roundedRect: b, cornerRadius: Metrics.cornerRadius).cgPath
+            let sr = CGRect(x: 0.75, y: 0.5, width: max(0, b.width - 1.5), height: max(0, b.height - 0.5))
+            layer.shadowPath = UIBezierPath(roundedRect: sr, cornerRadius: max(1, Metrics.cornerRadius - 0.5)).cgPath
         }
         CATransaction.begin()
         CATransaction.setDisableActions(true)

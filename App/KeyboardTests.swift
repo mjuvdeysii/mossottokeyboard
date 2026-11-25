@@ -166,6 +166,7 @@ enum KeyboardTests {
         r87WeChatTopGapElimination(window)
         r90CleanKeycapCraftNoWhiteLine(window)
         r91AppIconAndCommercialCompanion(window)
+        r92SculptedKeycapAndOpticalIcons(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -3955,6 +3956,65 @@ enum KeyboardTests {
         log(brandOk && atlasNavOk && xiaoheNavOk && aboutNavOk && memberNavOk && capsOk && aboutRenderOk,
             "r91.Refactored BrandMark asset, Bento navigation deep-links, and commercial Companion views render cleanly",
             "brand=\(brand.size) nav=(\(atlasNavOk),\(xiaoheNavOk),\(aboutNavOk),\(memberNavOk)) caps=\(capsOk) about=\(aboutRenderOk)")
+    }
+
+    // MARK: - R92: Sculpted Gradient Keycaps, Feathered Shadows, Light-Glass Night Softening & Optical Icons
+
+    static func r92SculptedKeycapAndOpticalIcons(_ window: UIWindow) {
+        _ = window
+        let prevPlain = Theme.plain
+        defer { Theme.plain = prevPlain }
+
+        var craftOk = true
+        for plain in [false, true] {
+            Theme.plain = plain
+            let kv = KeyboardView(spatial: SpatialModel.standard(width: 393))
+            kv.frame = CGRect(x: 0, y: 0, width: 393, height: 216)
+            for (style, softDark, softLight) in [
+                (UIUserInterfaceStyle.light, false, false),
+                (.dark, false, false),
+                (.light, true, false),
+                (.dark, false, true),
+            ] {
+                kv.overrideUserInterfaceStyle = style
+                kv.softenedForDarkGlass = softDark
+                kv.softenedForLightGlass = softLight
+                kv.configure(LayoutContext(page: .letters, chinese: true, showGlobe: false, returnLabel: "搜索",
+                                           returnIsAccent: true, shifted: false, capsLock: false, keyBorders: true))
+                kv.layoutIfNeeded()
+                for action in [KeyAction.char("a"), .shift, .delete, .ret, .space] {
+                    guard let cap = kv.keyViewForTests(action) else { craftOk = false; continue }
+                    if !cap.hasSculptedGradientForTests
+                        || cap.hasTopHighlightForTests
+                        || cap.borderWidthForTests != 0
+                        || cap.shadowRadiusForTests < 1.2
+                        || cap.shadowOpacityForTests != 1 {
+                        craftOk = false
+                    }
+                    cap.pressed = true
+                    if cap.shadowOpacityForTests != 0 { craftOk = false }
+                    cap.pressed = false
+                    if cap.shadowOpacityForTests != 1 { craftOk = false }
+                }
+            }
+        }
+
+        Theme.plain = true
+        let propKv = KeyboardView(spatial: SpatialModel.standard(width: 393))
+        propKv.frame = CGRect(x: 0, y: 0, width: 393, height: 216)
+        propKv.configure(LayoutContext(page: .letters, chinese: true, showGlobe: false, returnLabel: "搜索",
+                                       returnIsAccent: true, shifted: false, capsLock: false, keyBorders: true))
+        propKv.layoutIfNeeded()
+        propKv.softenedForLightGlass = true
+        let lightGlassPropOk = propKv.softenedForLightGlassForTests
+            && (propKv.keyViewForTests(.char("q"))?.isSoftenedForLightGlassForTests == true)
+        let emojiH = propKv.keyViewForTests(.emoji)?.iconPointSizeForTests ?? 99
+        let shiftH = propKv.keyViewForTests(.shift)?.iconPointSizeForTests ?? 0
+        let opticalIconsOk = emojiH > 10 && shiftH > 10 && emojiH <= shiftH
+
+        log(craftOk && lightGlassPropOk && opticalIconsOk,
+            "r92.Sculpted gradient keycaps, feathered contact shadows, light-glass night softening, and calibrated icons work cleanly",
+            "craft=\(craftOk) prop=\(lightGlassPropOk) icons=(emoji:\(emojiH),shift:\(shiftH))")
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

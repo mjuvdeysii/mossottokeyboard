@@ -389,7 +389,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         for (b, lip) in [(backButton, Theme.functionLip), (deleteButton, Theme.functionLip), (returnButton, Theme.accentLip)] {
             b.layer.shadowColor = lip.resolvedColor(with: t).cgColor
             b.layer.shadowOpacity = 1
-            b.layer.shadowRadius = 0
+            b.layer.shadowRadius = Metrics.shadowBlur
             b.layer.shadowOffset = CGSize(width: 0, height: Metrics.lip)
             b.layer.cornerRadius = Metrics.cornerRadius
         }
@@ -781,7 +781,8 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         deleteButton.frame = CGRect(x: b.width - side - 6, y: btnY, width: side, height: btnH)
         returnButton.frame = deleteButton.frame
         for btn in [backButton, deleteButton, returnButton] {
-            btn.layer.shadowPath = UIBezierPath(roundedRect: btn.bounds, cornerRadius: Metrics.cornerRadius).cgPath
+            let sr = CGRect(x: 0.75, y: 0.5, width: max(0, btn.bounds.width - 1.5), height: max(0, btn.bounds.height - 0.5))
+            btn.layer.shadowPath = UIBezierPath(roundedRect: sr, cornerRadius: max(1, Metrics.cornerRadius - 0.5)).cgPath
         }
 
         // Scrollable horizontal category pills between backButton and deleteButton:

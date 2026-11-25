@@ -169,6 +169,12 @@ for dirpath, _dirs, files in os.walk(KEYBOARD):
                         problems.append(f"{path}: KeyView sets shadowOpacity > 0 without shadowPath (causes offscreen rasterization)")
                         break
 
+                # Rule 19: KeyView must use feathered contact shadows (never shadowRadius = 0) and zero topHighlight line
+                if re.search(r'\bshadowRadius\s*=\s*0(?:\.0+)?\b', kv):
+                    problems.append(f"{path}: KeyView sets shadowRadius = 0 (creates hard 1px black sticker cutout; use Metrics.shadowBlur)")
+                if "topHighlight" in kv:
+                    problems.append(f"{path}: KeyView contains forbidden `topHighlight` straight white line")
+
         if name == "AmbientLightView.swift":
             # Rule 12: AmbientLightView must never attach a full-screen layer.mask or spawn CABasicAnimation
             if "layer.mask" in code or "CABasicAnimation" in code:
