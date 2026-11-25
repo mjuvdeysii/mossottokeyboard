@@ -165,6 +165,7 @@ enum KeyboardTests {
         r86ReleaseCandidatePolish(window)
         r87WeChatTopGapElimination(window)
         r90CleanKeycapCraftNoWhiteLine(window)
+        r91AppIconAndCommercialCompanion(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -3926,6 +3927,34 @@ enum KeyboardTests {
         log(allCapsClean && smartSpacePreserved,
             "r90.All keycaps across Mosto/简洁 and Day/Night omit top highlight line and border strokes while preserving smart-space rim",
             "clean=\(allCapsClean) smartSpace=\(smartSpacePreserved)")
+    }
+
+    // MARK: - R91: Refactored BrandMark Icon & Commercial Companion App Suite
+
+    static func r91AppIconAndCommercialCompanion(_ window: UIWindow) {
+        _ = window
+        let brand = mostoImage("BrandMark")
+        let brandOk = brand.size.width >= 256 && brand.size.height >= 256
+
+        let nav = AppNavigation()
+        nav.openGuide(.atlas)
+        let atlasNavOk = nav.tab == .guide && nav.guideSection == .atlas
+        nav.openGuide(.xiaohe)
+        let xiaoheNavOk = nav.tab == .guide && nav.guideSection == .xiaohe
+        nav.openAbout()
+        let aboutNavOk = nav.tab == .about
+        nav.focusFamilyMember(.otto)
+        let memberNavOk = nav.tab == .companion && nav.family.activeMember == .otto
+
+        let capsSize = CompanionCapabilitiesSection.renderSnapshotSizeForTests(width: 370)
+        let capsOk = capsSize.height > 150
+
+        let aboutSize = AboutCompanionContent.renderSnapshotSizeForTests(width: 370)
+        let aboutRenderOk = aboutSize.height > 300
+
+        log(brandOk && atlasNavOk && xiaoheNavOk && aboutNavOk && memberNavOk && capsOk && aboutRenderOk,
+            "r91.Refactored BrandMark asset, Bento navigation deep-links, and commercial Companion views render cleanly",
+            "brand=\(brand.size) nav=(\(atlasNavOk),\(xiaoheNavOk),\(aboutNavOk),\(memberNavOk)) caps=\(capsOk) about=\(aboutRenderOk)")
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

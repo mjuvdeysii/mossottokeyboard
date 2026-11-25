@@ -47,7 +47,7 @@ struct XiaoheGuideContent: View {
 
             Card(title: "两键成音 · 对比全拼") {
                 VStack(alignment: .leading, spacing: 12) {
-                    WrapLayout(spacing: 8, lineSpacing: 8) {
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
                         SyllableEquation(k1: "N", k2: "I", result: "你")
                         SyllableEquation(k1: "V", sub1: "zh", k2: "S", sub2: "ong", result: "中")
                         SyllableEquation(k1: "H", k2: "C", sub2: "ao", result: "好")
@@ -145,8 +145,9 @@ private struct SyllableEquation: View {
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(MossOttoStyle.inkPrimary)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity)
         .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(MossOttoStyle.surfaceMuted))
     }
 
@@ -300,7 +301,7 @@ struct XiaoheDrill: View {
     ]
     @State private var inspectMode = false
     @State private var inspectedKey: Character = "v"
-    @State private var index = Int.random(in: 0..<XiaoheDrill.words.count)
+    @State private var index = SnapshotRenderer.requested ? 1 : Int.random(in: 0..<XiaoheDrill.words.count)
     @State private var typed: [Character] = []
     @State private var verdict: Bool?
     @State private var streak = 0

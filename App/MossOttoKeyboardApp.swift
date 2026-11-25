@@ -26,6 +26,7 @@ extension EnvironmentValues {
 @MainActor
 final class AppNavigation: ObservableObject {
     @Published var tab: AppTab = .companion
+    @Published var guideSection: GuideSection = .xiaohe
     let family: FamilyStageModel
     let volume: VolumeMonitor
 
@@ -37,6 +38,15 @@ final class AppNavigation: ObservableObject {
     func focusFamilyMember(_ member: FamilyMember) {
         family.focusFromRoster(member)
         tab = .companion
+    }
+
+    func openGuide(_ section: GuideSection) {
+        guideSection = section
+        tab = .guide
+    }
+
+    func openAbout() {
+        tab = .about
     }
 }
 
@@ -54,7 +64,7 @@ struct ContentView: View {
             .tag(AppTab.companion)
 
             NavigationStack {
-                GuideScreen(volume: nav.volume)
+                GuideScreen(nav: nav, volume: nav.volume)
                     .navigationTitle("使用指南")
                     .navigationBarTitleDisplayMode(.large)
             }
@@ -304,14 +314,24 @@ struct CompanionEnableCard: View {
     }
 }
 
-/// Concise commercial overview of what Mosto键盘 does and where real settings live.
+/// Interactive 2x2 Bento capabilities grid overview for Mosto键盘 with quick-jumps into Guide and Privacy.
 struct CompanionCapabilitiesSection: View {
+    @Environment(\.appNavigation) private var nav
+
+    @MainActor
+    static func renderSnapshotSizeForTests(width: CGFloat) -> CGSize {
+        let r = ImageRenderer(content: CompanionCapabilitiesSection().frame(width: width))
+        r.scale = 2.0
+        return r.uiImage?.size ?? .zero
+    }
+
     struct Item: Identifiable {
         let id: String
         let icon: String
         let tint: Color
         let title: String
         let detail: String
+        let linkLabel: String?
     }
 
     static let items: [Item] = [
@@ -320,62 +340,110 @@ struct CompanionCapabilitiesSection: View {
             icon: "keyboard",
             tint: MossOttoStyle.violet,
             title: "小鹤双拼与全拼",
-            detail: "支持小鹤双拼（两键一字）、标准全拼与九宫格，按偏相邻键也能自动纠正。"
+            detail: "两键一字、全拼与九宫格，偏键自动纠错。",
+            linkLabel: "看图谱"
         ),
         Item(
             id: "gestures",
             icon: "character.cursor.ibeam",
             tint: MossOttoStyle.ottoIndigo,
-            title: "中英混输与快捷手势",
-            detail: "中文模式下可直接打出常见英文词，标点轻上滑出副符号，空格左右滑移光标。"
+            title: "混输与快捷手势",
+            detail: "直出常用英文，标点上滑，空格滑移光标。",
+            linkLabel: "看手势"
         ),
         Item(
             id: "settings",
             icon: "slider.horizontal.3",
             tint: MossOttoStyle.lampAmber,
-            title: "键盘设置就在键盘内",
-            detail: "为保护隐私，本应用与系统键盘彼此独立；方案、外观与声效请在键盘内按住表情键调整。"
+            title: "设置就在键盘内",
+            detail: "与系统键盘彼此独立，请在顶栏齿轮或长按表情键调整。",
+            linkLabel: nil
         ),
         Item(
             id: "offline",
             icon: "lock.shield",
             tint: MossOttoStyle.moss,
             title: "纯本机离线",
-            detail: "不联网、不读取剪贴板，也不用登录账号，词库与个人输入习惯只留在你的手机上。"
+            detail: "不联网、不读剪贴板，词库与习惯只留在本机。",
+            linkLabel: "看承诺"
         ),
     ]
 
     var body: some View {
-        Card(title: "伴侣说明") {
-            ForEach(Array(Self.items.enumerated()), id: \.element.id) { idx, item in
-                if idx > 0 { Divider() }
-                HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: item.icon)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(item.tint)
-                        .frame(width: 32, height: 32)
-                        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(item.tint.opacity(0.12)))
-                        .accessibilityHidden(true)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(item.title)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(MossOttoStyle.inkPrimary)
-                        Text(item.detail)
-                            .font(.caption)
-                            .foregroundStyle(MossOttoStyle.inkSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+        Card(title: "核心能力") {
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                ForEach(Self.items) { item in
+                    bentoTile(item)
                 }
-                .accessibilityElement(children: .combine)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func bentoTile(_ item: Item) -> some View {
+        let action: (() -> Void)? = {
+            switch item.id {
+            case "schemes": return { UISelectionFeedbackGenerator().selectionChanged(); nav?.openGuide(.xiaohe) }
+            case "gestures": return { UISelectionFeedbackGenerator().selectionChanged(); nav?.openGuide(.atlas) }
+            case "offline": return { UISelectionFeedbackGenerator().selectionChanged(); nav?.openAbout() }
+            default: return nil
+            }
+        }()
+
+        let tileContent = VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .center) {
+                Image(systemName: item.icon)
+                    .font(.system(size: 13.5, weight: .semibold))
+                    .foregroundStyle(item.tint)
+                    .frame(width: 28, height: 28)
+                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(item.tint.opacity(0.14)))
+                Spacer(minLength: 4)
+                if let linkLabel = item.linkLabel {
+                    HStack(spacing: 2) {
+                        Text(linkLabel)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 9, weight: .bold))
+                    }
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(item.tint)
+                }
+            }
+
+            Text(item.title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(MossOttoStyle.inkPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+
+            Text(item.detail)
+                .font(.caption2)
+                .foregroundStyle(MossOttoStyle.inkSecondary)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 0)
+        }
+        .padding(11)
+        .frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)
+        .background(
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .fill(MossOttoStyle.surfaceMuted)
+        )
+
+        if let action {
+            Button(action: action) { tileContent }
+                .buttonStyle(.plain)
+                .accessibilityElement(children: .combine)
+        } else {
+            tileContent
+                .accessibilityElement(children: .combine)
         }
     }
 }
 
 // MARK: - Tab 2: Guide (指南 — 双拼图谱 & 手势图鉴)
 
-private enum GuideSection: Int, CaseIterable, Identifiable {
+enum GuideSection: Int, CaseIterable, Identifiable {
     case xiaohe
     case atlas
 
@@ -389,20 +457,20 @@ private enum GuideSection: Int, CaseIterable, Identifiable {
 }
 
 private struct GuideScreen: View {
+    @ObservedObject var nav: AppNavigation
     @ObservedObject var volume: VolumeMonitor
-    @State private var section: GuideSection = .xiaohe
 
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                Picker("指南分类", selection: $section) {
+                Picker("指南分类", selection: $nav.guideSection) {
                     ForEach(GuideSection.allCases) { sec in
                         Text(sec.title).tag(sec)
                     }
                 }
                 .pickerStyle(.segmented)
 
-                switch section {
+                switch nav.guideSection {
                 case .xiaohe:
                     XiaoheGuideContent(volume: volume)
                 case .atlas:
@@ -477,8 +545,8 @@ struct GestureAtlasContent: View {
                 Divider()
                 atlasRow(
                     symbol: "slider.horizontal.3",
-                    title: "长按表情键开控制台",
-                    chips: ["轻点选表情", "按住打开设置"]
+                    title: "打开键盘内置控制台",
+                    chips: ["顶栏齿轮直达", "长按表情键"]
                 )
             }
 
@@ -672,8 +740,62 @@ struct AboutCompanionContent: View {
         return r.uiImage?.size ?? .zero
     }
 
+    private var versionBadge: String {
+        let info = Bundle.main.infoDictionary
+        let short = info?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let build = info?["CFBundleVersion"] as? String ?? "-"
+        return "v\(short) · Build \(build)"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 14) {
+                Image("BrandMark")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 64, height: 64)
+                    .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 15, style: .continuous)
+                            .strokeBorder(MossOttoStyle.hairline, lineWidth: 0.6)
+                    )
+                    .shadow(color: Color.black.opacity(0.10), radius: 5, y: 2)
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Mosto键盘")
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(MossOttoStyle.inkPrimary)
+                    Text("OTTOSSOM 家族 · 纯离线中文输入法")
+                        .font(.caption)
+                        .foregroundStyle(MossOttoStyle.inkSecondary)
+                    HStack(spacing: 6) {
+                        Text(versionBadge)
+                            .font(.caption2.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(MossOttoStyle.violet)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2.5)
+                            .background(Capsule().fill(MossOttoStyle.violet.opacity(0.12)))
+                        Text("纯本机离线")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(MossOttoStyle.moss)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2.5)
+                            .background(Capsule().fill(MossOttoStyle.moss.opacity(0.12)))
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(MossOttoStyle.surface)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(MossOttoStyle.hairline, lineWidth: 0.5)
+            )
+
             Card(title: "OTTOSSOM 家族") {
                 ForEach(Array(FamilyMember.allCases.enumerated()), id: \.element.id) { idx, member in
                     if idx > 0 { Divider() }
@@ -818,24 +940,12 @@ struct AboutCompanionContent: View {
 }
 
 private struct StudioVersionFooter: View {
-    private var versionLine: String {
-        let info = Bundle.main.infoDictionary
-        let short = info?["CFBundleShortVersionString"] as? String ?? "1.0"
-        let build = info?["CFBundleVersion"] as? String ?? "-"
-        return "Mosto键盘 \(short)（Build \(build)）"
-    }
-
     var body: some View {
-        VStack(spacing: 3) {
-            Text(versionLine)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(MossOttoStyle.inkSecondary)
-            Text("OTTOSSOM 家族 · 纯离线中文输入法")
-                .font(.caption2)
-                .foregroundStyle(MossOttoStyle.inkSecondary.opacity(0.75))
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 6)
+        Text("OTTOSSOM Studio · 纯离线 · 无广告 · 无追踪")
+            .font(.caption2)
+            .foregroundStyle(MossOttoStyle.inkSecondary.opacity(0.75))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
     }
 }
 
@@ -902,6 +1012,27 @@ struct PrivacyCommitmentContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 12) {
+                Image(systemName: "checkmark.shield.fill")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(MossOttoStyle.moss)
+                    .frame(width: 42, height: 42)
+                    .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(MossOttoStyle.moss.opacity(0.14)))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("零数据收集 · 零网络权限")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(MossOttoStyle.inkPrimary)
+                    Text("不联网、不读取剪贴板，与 App Store 隐私声明一致")
+                        .font(.caption)
+                        .foregroundStyle(MossOttoStyle.inkSecondary)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(MossOttoStyle.surface))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(MossOttoStyle.hairline, lineWidth: 0.5))
+
             Card(title: "你的输入只属于你自己") {
                 ForEach(Array(Self.items.enumerated()), id: \.element.id) { idx, item in
                     if idx > 0 { Divider() }

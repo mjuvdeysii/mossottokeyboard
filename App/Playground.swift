@@ -88,7 +88,7 @@ final class FamilyStageModel: ObservableObject {
     @Published var secondaryReactingMember: FamilyMember? = nil
     @Published var reactionNonce: Int = 0
     @Published var soundEnabled: Bool = KeyboardSettings.shared.keySound
-    @Published var statusLine: String = "轻点 Moss、Mosto 或 Otto 打个招呼，下拉右角灯绳换光线"
+    @Published var statusLine: String = "轻点伙伴打招呼，下拉灯绳换光线"
     @Published var verificationCelebrated: Bool = false
 
     func interact(with member: FamilyMember, volume: VolumeMonitor? = nil) {
@@ -113,15 +113,15 @@ final class FamilyStageModel: ObservableObject {
 
             switch member {
             case .moss:
-                self.statusLine = "Moss 蹦了一下，头顶的薄荷叶跟着轻轻一晃"
+                self.statusLine = "Moss 蹦了一下，薄荷叶轻轻一晃"
             case .mosto:
                 self.statusLine = self.atmosphere.isNight
-                    ? "Mosto 被认出来了，尾尖亮起和灯珠一样的金光"
-                    : "Mosto 住在候选栏左角，轻点他打开颜文字"
+                    ? "Mosto 尾尖亮起了暖金小灯"
+                    : "Mosto 住在候选栏左角，轻点开颜文字"
             case .otto:
                 self.statusLine = self.atmosphere.isNight
-                    ? "Otto 点亮了暖黄灯珠，夜里陪你慢慢打字"
-                    : "Otto 收起了台灯光，换回窗边的日光"
+                    ? "Otto 点亮了暖黄灯珠陪你打字"
+                    : "Otto 收起夜灯，换回窗边日光"
             }
         }
 
@@ -204,24 +204,24 @@ struct FamilyLampStageView: View {
         return r.uiImage?.size ?? .zero
     }
 
-    var body: some View {
+        var body: some View {
         VStack(spacing: 0) {
             ZStack(alignment: .topLeading) {
                 VStack(spacing: 0) {
-                    Spacer(minLength: 36)
+                    Spacer(minLength: 32)
 
                     // 3-figure studio stage grounded softly onto a warm desk surface
                     HStack(alignment: .bottom, spacing: 6) {
                         characterFigure(
                             member: .moss,
-                            height: 86,
+                            height: 82,
                             hopOffset: -9,
                             warmBeadGlow: false
                         )
 
                         characterFigure(
                             member: .mosto,
-                            height: 102,
+                            height: 98,
                             hopOffset: -5,
                             warmBeadGlow: model.atmosphere.isNight
                         )
@@ -229,16 +229,16 @@ struct FamilyLampStageView: View {
 
                         characterFigure(
                             member: .otto,
-                            height: 112,
+                            height: 108,
                             hopOffset: -3,
                             warmBeadGlow: model.atmosphere.isNight || model.reactingMember == .otto || model.secondaryReactingMember == .otto
                         )
                     }
                     .padding(.horizontal, 14)
-                    .padding(.bottom, 10)
+                    .padding(.bottom, 8)
                 }
                 .frame(maxWidth: .infinity)
-                .frame(height: 178)
+                .frame(height: 184)
 
                 HStack(spacing: 6) {
                     Circle()
@@ -367,7 +367,7 @@ struct FamilyLampStageView: View {
                 ZStack(alignment: .bottom) {
                     if warmBeadGlow {
                         let base = Color(uiColor: MossOttoStyle.hex(0xFFC66E))
-                        let peakOpacity = member == .otto ? 0.36 : 0.24
+                        let peakOpacity = member == .otto ? 0.30 : 0.22
                         Circle()
                             .fill(
                                 RadialGradient(
@@ -379,13 +379,13 @@ struct FamilyLampStageView: View {
                                     ],
                                     center: .center,
                                     startRadius: 1,
-                                    endRadius: height * 0.45
+                                    endRadius: height * 0.42
                                 )
                             )
-                            .frame(width: height * 0.94, height: height * 0.94)
+                            .frame(width: height * 0.88, height: height * 0.88)
                             .offset(
                                 x: member == .otto ? -height * 0.18 : height * 0.22,
-                                y: member == .otto ? -height * 0.46 : -height * 0.22
+                                y: member == .otto ? -height * 0.42 : -height * 0.22
                             )
                             .allowsHitTesting(false)
                     }
@@ -405,9 +405,18 @@ struct FamilyLampStageView: View {
                 }
                 .frame(height: height + 4, alignment: .bottom)
 
-                Capsule()
-                    .fill(selected ? member.accentColor : Color.clear)
-                    .frame(width: 14, height: 2.5)
+                VStack(spacing: 3) {
+                    Text(member.displayName)
+                        .font(.system(size: 10.5, weight: selected ? .bold : .medium, design: .rounded))
+                        .foregroundStyle(
+                            selected
+                                ? (darkStage ? Color.white.opacity(0.92) : member.accentColor)
+                                : (darkStage ? Color.white.opacity(0.50) : MossOttoStyle.inkSecondary.opacity(0.75))
+                        )
+                    Capsule()
+                        .fill(selected ? member.accentColor : Color.clear)
+                        .frame(width: 14, height: 2.5)
+                }
             }
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())

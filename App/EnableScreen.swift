@@ -160,28 +160,20 @@ private struct EnableStatusHero: View {
         let stage = verified ? 3 : (added ? 2 : 0)
 
         HStack(spacing: 12) {
-            Canvas { ctx, size in
-                let w = size.width, h = size.height
+            ZStack {
                 let accent = (added || verified) ? green : violet
-                let bg = CGRect(x: w * 0.08, y: h * 0.08, width: w * 0.84, height: h * 0.84)
-                ctx.fill(Path(roundedRect: bg, cornerRadius: w * 0.26), with: .color(accent.opacity(dark ? 0.20 : 0.14)))
-                ctx.stroke(Path(roundedRect: bg, cornerRadius: w * 0.26), with: .color(accent), lineWidth: 1.5)
-                if added || verified {
-                    var check = Path()
-                    check.move(to: CGPoint(x: w * 0.30, y: h * 0.52))
-                    check.addLine(to: CGPoint(x: w * 0.45, y: h * 0.67))
-                    check.addLine(to: CGPoint(x: w * 0.72, y: h * 0.36))
-                    ctx.stroke(check, with: .color(green), style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
-                } else {
-                    let k1 = CGRect(x: w * 0.24, y: h * 0.34, width: w * 0.22, height: h * 0.18)
-                    let k2 = CGRect(x: w * 0.54, y: h * 0.34, width: w * 0.22, height: h * 0.18)
-                    let sp = CGRect(x: w * 0.28, y: h * 0.60, width: w * 0.44, height: h * 0.14)
-                    for r in [k1, k2, sp] {
-                        ctx.fill(Path(roundedRect: r, cornerRadius: 3), with: .color(violet.opacity(dark ? 0.45 : 0.32)))
-                    }
-                }
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(accent.opacity(dark ? 0.20 : 0.14))
+                    .frame(width: 44, height: 44)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(accent.opacity(0.45), lineWidth: 1)
+                    )
+                Image(systemName: (added || verified) ? "checkmark.circle.fill" : "keyboard")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(accent)
             }
-            .frame(width: 44, height: 44)
+            .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 8) {
@@ -247,33 +239,21 @@ private struct EnableStepRow: View {
         let dark = colorScheme == .dark
         let violet = Color(uiColor: EnablePalette.violet(dark: dark))
         let gold = Color(uiColor: EnablePalette.amber(dark: dark))
-        HStack(spacing: 12) {
-            Canvas { ctx, size in
-                let w = size.width, h = size.height
-                let box = CGRect(x: w * 0.08, y: h * 0.08, width: w * 0.84, height: h * 0.84)
-                ctx.fill(Path(roundedRect: box, cornerRadius: w * 0.24), with: .color(violet.opacity(dark ? 0.18 : 0.10)))
-                switch art {
-                case .settings:
-                    let track = CGRect(x: w * 0.22, y: h * 0.34, width: w * 0.56, height: h * 0.32)
-                    ctx.fill(Path(roundedRect: track, cornerRadius: h * 0.16), with: .color(violet.opacity(0.28)))
-                    let knob = CGRect(x: w * 0.50, y: h * 0.38, width: h * 0.24, height: h * 0.24)
-                    ctx.fill(Path(ellipseIn: knob), with: .color(violet))
-                case .add:
-                    var plus = Path()
-                    plus.move(to: CGPoint(x: w * 0.50, y: h * 0.28)); plus.addLine(to: CGPoint(x: w * 0.50, y: h * 0.72))
-                    plus.move(to: CGPoint(x: w * 0.28, y: h * 0.50)); plus.addLine(to: CGPoint(x: w * 0.72, y: h * 0.50))
-                    ctx.stroke(plus, with: .color(violet), style: StrokeStyle(lineWidth: 2.2, lineCap: .round))
-                case .globe:
-                    let circle = CGRect(x: w * 0.24, y: h * 0.24, width: w * 0.52, height: w * 0.52)
-                    ctx.stroke(Path(ellipseIn: circle), with: .color(gold), lineWidth: 1.6)
-                    let meridian = CGRect(x: w * 0.38, y: h * 0.24, width: w * 0.24, height: h * 0.52)
-                    ctx.stroke(Path(ellipseIn: meridian), with: .color(gold), lineWidth: 1.2)
-                    var eq = Path()
-                    eq.move(to: CGPoint(x: w * 0.25, y: h * 0.50)); eq.addLine(to: CGPoint(x: w * 0.75, y: h * 0.50))
-                    ctx.stroke(eq, with: .color(gold), lineWidth: 1.2)
-                }
+        let tint: Color = art == .globe ? gold : violet
+        let symbolName: String = {
+            switch art {
+            case .settings: return "gearshape.fill"
+            case .add: return "plus.circle.fill"
+            case .globe: return "globe"
             }
-            .frame(width: 34, height: 34)
+        }()
+        HStack(spacing: 12) {
+            Image(systemName: symbolName)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: 36, height: 36)
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(tint.opacity(dark ? 0.20 : 0.12)))
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(step). \(title)")

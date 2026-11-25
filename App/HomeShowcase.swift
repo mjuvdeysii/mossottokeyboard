@@ -49,12 +49,12 @@ enum MossOttoStyle {
     }
 
     static func keyBorder(plain: Bool, night: Bool) -> Color {
-        if plain { return Color.white.opacity(night ? 0.14 : 0.70) }
-        return night ? Color.white.opacity(0.10) : Color(uiColor: hex(0xD8D0C4))
+        if plain { return Color.white.opacity(night ? 0.08 : 0.45) }
+        return night ? Color.white.opacity(0.08) : Color(uiColor: hex(0xDDD5C8))
     }
 
     static func keyShadow(night: Bool) -> Color {
-        night ? Color.black.opacity(0.55) : Color(uiColor: hex(0xCFC7B8)).opacity(0.60)
+        night ? Color.black.opacity(0.55) : Color(uiColor: hex(0xCFC7B8)).opacity(0.52)
     }
 }
 
@@ -97,6 +97,7 @@ struct LampConeBackdrop: View {
                         endPoint: .bottom
                     )
                 )
+                .blur(radius: 14)
                 .opacity(dimmerOpacity)
             Ellipse()
                 .fill(
@@ -110,7 +111,29 @@ struct LampConeBackdrop: View {
                 .frame(width: 210, height: 64)
                 .offset(y: -26)
                 .opacity(dimmerOpacity)
+            VStack(spacing: 0) {
+                Spacer(minLength: 0)
+                Rectangle()
+                    .fill(
+                        LinearGradient(
+                            colors: plinthColors,
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .frame(height: 24)
+            }
         }
+    }
+
+    private var plinthColors: [Color] {
+        if isNight {
+            return [.clear, Color(uiColor: MossOttoStyle.hex(0x0E0B1A)).opacity(0.65)]
+        }
+        if darkLook {
+            return [.clear, Color(uiColor: MossOttoStyle.hex(0x181427)).opacity(0.45)]
+        }
+        return [.clear, Color(uiColor: MossOttoStyle.hex(0xEFE8DA)).opacity(0.65)]
     }
 
     private var stageBg: Color {
@@ -268,9 +291,9 @@ struct MonolithKeycapView: View {
                 .fill(MossOttoStyle.keyFace(plain: plain, night: isNight))
                 .overlay(
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .strokeBorder(MossOttoStyle.keyBorder(plain: plain, night: isNight), lineWidth: 0.6)
+                        .strokeBorder(MossOttoStyle.keyBorder(plain: plain, night: isNight), lineWidth: 0.5)
                 )
-                .shadow(color: pressed ? .clear : MossOttoStyle.keyShadow(night: isNight), radius: 0, x: 0, y: 1.5)
+                .shadow(color: pressed ? .clear : MossOttoStyle.keyShadow(night: isNight), radius: 0, x: 0, y: 1.2)
 
             if let ledColor {
                 VStack {
@@ -648,7 +671,8 @@ struct VolumeCheckSheet: View {
                         label: "轻敲试听",
                         secondary: "轻脆原声",
                         pressed: samplePressed,
-                        ledColor: soundEnabled ? MossOttoStyle.moss : MossOttoStyle.inkSecondary
+                        ledColor: soundEnabled ? MossOttoStyle.moss : MossOttoStyle.inkSecondary,
+                        cornerRadius: 14
                     )
                     .frame(height: 60)
                 }
