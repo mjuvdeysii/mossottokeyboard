@@ -167,6 +167,7 @@ enum KeyboardTests {
         r90CleanKeycapCraftNoWhiteLine(window)
         r91AppIconAndCommercialCompanion(window)
         r92SculptedKeycapAndOpticalIcons(window)
+        r93SculptedConsolePopupsAndBorderlessSurfaces(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -4015,6 +4016,106 @@ enum KeyboardTests {
         log(craftOk && lightGlassPropOk && opticalIconsOk,
             "r92.Sculpted gradient keycaps, feathered contact shadows, light-glass night softening, and calibrated icons work cleanly",
             "craft=\(craftOk) prop=\(lightGlassPropOk) icons=(emoji:\(emojiH),shift:\(shiftH))")
+    }
+
+    // MARK: - R93: Sculpted Console Tiles, Borderless Popups & Global Surface Alignment
+
+    static func r93SculptedConsolePopupsAndBorderlessSurfaces(_ window: UIWindow) {
+        let prevPlain = Theme.plain
+        let s = KeyboardSettings.shared
+        let savedScheme = s.scheme
+        let savedAuto = s.autocorrect
+        let savedStyle = s.style
+        let savedApp = s.appearance
+        defer {
+            Theme.plain = prevPlain
+            s.scheme = savedScheme
+            s.autocorrect = savedAuto
+            s.style = savedStyle
+            s.appearance = savedApp
+        }
+        s.scheme = 0
+        s.autocorrect = true
+        s.style = 0
+        s.appearance = 0
+
+        // 1. SettingsPanelView Hardware Console: sculpted gradient tiles, soft LED halo, borderless pills/chips, 0 constraints
+        var consoleOk = true
+        for plain in [false, true] {
+            Theme.plain = plain
+            s.style = plain ? 1 : 0
+            let sp = SettingsPanelView(frame: CGRect(x: 0, y: 0, width: 393, height: 258))
+            for uiStyle in [UIUserInterfaceStyle.light, .dark] {
+                sp.overrideUserInterfaceStyle = uiStyle
+                sp.themeChanged()
+                sp.layoutIfNeeded()
+                if !sp.allTilesSculptedBorderlessForTests
+                    || sp.activeLedHaloCountForTests < 1
+                    || !sp.chromePillsBorderlessForTests
+                    || sp.constraintCountForTests != 0 {
+                    consoleOk = false
+                }
+            }
+        }
+        Theme.plain = false
+        s.style = 0
+
+        // 2. KeyPreview: borderless sculpted resting shell, 1pt accent rim only when flicked
+        var previewOk = true
+        let preview = KeyPreview(frame: CGRect(x: 0, y: 0, width: 54, height: 54))
+        for uiStyle in [UIUserInterfaceStyle.light, .dark] {
+            preview.overrideUserInterfaceStyle = uiStyle
+            preview.setFlicked(false)
+            preview.refreshStyle()
+            if preview.surfaceBorderWidthForTests != 0 { previewOk = false }
+            preview.setFlicked(true)
+            if preview.surfaceBorderWidthForTests != 1.0 { previewOk = false }
+        }
+
+        // 3. AltPopup: sculpted borderless floating capsule with adaptive Day/Night shadow depth
+        let lightPopup = AltPopup(options: ["。", "？", "！", "、"], cell: 36, height: 42)
+        lightPopup.overrideUserInterfaceStyle = .light
+        lightPopup.layoutIfNeeded()
+        let darkPopup = AltPopup(options: ["。", "？", "！", "、"], cell: 36, height: 42)
+        darkPopup.overrideUserInterfaceStyle = .dark
+        darkPopup.layoutIfNeeded()
+        let altOk = lightPopup.hasSculptedSurfaceForTests
+            && lightPopup.borderWidthForTests == 0
+            && darkPopup.hasSculptedSurfaceForTests
+            && darkPopup.borderWidthForTests == 0
+            && darkPopup.shadowOpacityForTests > lightPopup.shadowOpacityForTests
+
+        // 4. CandidateGridView: sculpted dock gradients and borderless cells/rail/badge in Day & Night
+        var gridOk = true
+        let grid = CandidateGridView(frame: CGRect(x: 0, y: 0, width: 393, height: 216))
+        window.addSubview(grid)
+        defer { grid.removeFromSuperview() }
+        let sampleCands = ["你好", "今天", "你", "尼", "泥"].map {
+            Candidate(text: $0, tapCount: $0.count * 2, syllables: [1], corrected: false, score: 0)
+        }
+        for uiStyle in [UIUserInterfaceStyle.light, .dark] {
+            grid.overrideUserInterfaceStyle = uiStyle
+            grid.show(sampleCands)
+            grid.layoutIfNeeded()
+            if !grid.gridSurfacesSculptedAndBorderlessForTests || grid.collectionForTests.visibleCells.isEmpty {
+                gridOk = false
+            }
+        }
+
+        // 5. CandidateBarView pills & EmojiPanelView badges omit 0.5pt wireframe strokes
+        let bar = CandidateBarView(frame: CGRect(x: 0, y: 0, width: 393, height: 42))
+        bar.setIdleControls(enabled: true, night: false)
+        bar.layoutIfNeeded()
+        let barOk = bar.barPillsBorderlessForTests
+
+        let emoji = EmojiPanelView(frame: CGRect(x: 0, y: 0, width: 393, height: 242))
+        emoji.load(kaomoji: false)
+        emoji.layoutIfNeeded()
+        let emojiOk = emoji.emojiBadgesBorderlessForTests
+
+        log(consoleOk && previewOk && altOk && gridOk && barOk && emojiOk,
+            "r93.Settings Hardware Console, Popups, CandidateGrid, CandidateBar pills, and Emoji badges use borderless sculpted craft",
+            "console=\(consoleOk) preview=\(previewOk) alt=\(altOk) grid=\(gridOk) bar=\(barOk) emoji=\(emojiOk)")
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

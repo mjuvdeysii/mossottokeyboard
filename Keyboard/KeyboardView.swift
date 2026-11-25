@@ -593,14 +593,16 @@ final class KeyPreview: UIView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         surfaceLayer.colors = [top, bottom]
-        surfaceLayer.borderWidth = isFlicked ? 1.0 : 0.5
-        surfaceLayer.borderColor = (isFlicked ? Theme.correctedMark : Theme.bubbleLip).resolvedColor(with: t).cgColor
+        surfaceLayer.borderWidth = isFlicked ? 1.0 : 0
+        surfaceLayer.borderColor = isFlicked ? Theme.correctedMark.resolvedColor(with: t).cgColor : nil
         CATransaction.commit()
         layer.shadowOpacity = t.userInterfaceStyle == .dark ? 0.36 : 0.16
         layer.shadowColor = (Theme.plain ? UIColor.black : Theme.deepViolet).cgColor
         label.font = Theme.font(28, .medium)
         label.textColor = isFlicked ? Theme.correctedMark : Theme.keyText
     }
+
+    var surfaceBorderWidthForTests: CGFloat { surfaceLayer.borderWidth }
 
     func setFlicked(_ on: Bool) {
         guard isFlicked != on else { return }
@@ -656,7 +658,9 @@ final class KeyPreview: UIView {
 /// Long-press row of alternates (Gboard style): slide to choose, release to type the highlighted one.
 final class AltPopup: UIView {
     private var labels: [UILabel] = []
+    private let surfaceLayer = CAGradientLayer()
     private let activeIndicator = CALayer()
+    private var lastSurfaceBounds: CGRect = .zero
     let cell: CGFloat
     var selected = 0 { didSet { if selected != oldValue { refresh() } } }
 
@@ -668,12 +672,19 @@ final class AltPopup: UIView {
         self.reversed = reversed
         super.init(frame: CGRect(x: 0, y: 0, width: cell * CGFloat(options.count) + 8, height: height))
         isUserInteractionEnabled = false
-        layer.cornerRadius = 11
-        layer.cornerCurve = .continuous
-        layer.borderWidth = 0.5
-        layer.shadowOpacity = 0.18
-        layer.shadowRadius = 6
-        layer.shadowOffset = CGSize(width: 0, height: 2.5)
+        backgroundColor = .clear
+        layer.masksToBounds = false
+        layer.borderWidth = 0
+        layer.shadowRadius = 5.5
+        layer.shadowOffset = CGSize(width: 0, height: 3.0)
+        surfaceLayer.masksToBounds = true
+        surfaceLayer.cornerRadius = 11
+        surfaceLayer.cornerCurve = .continuous
+        surfaceLayer.startPoint = CGPoint(x: 0.5, y: 0)
+        surfaceLayer.endPoint = CGPoint(x: 0.5, y: 1)
+        surfaceLayer.frame = bounds
+        layer.insertSublayer(surfaceLayer, at: 0)
+        lastSurfaceBounds = bounds
         layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: 11).cgPath
 
         activeIndicator.cornerRadius = 1
@@ -702,15 +713,38 @@ final class AltPopup: UIView {
     }
     required init?(coder: NSCoder) { fatalError() }
 
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        if bounds != lastSurfaceBounds {
+            lastSurfaceBounds = bounds
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            surfaceLayer.frame = bounds
+            CATransaction.commit()
+            layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: 11).cgPath
+        }
+    }
+
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
         super.traitCollectionDidChange(previous)
         refresh()
     }
 
+    var hasSculptedSurfaceForTests: Bool {
+        (surfaceLayer.colors?.count ?? 0) == 2 && surfaceLayer.superlayer === layer && surfaceLayer.masksToBounds
+    }
+    var borderWidthForTests: CGFloat { layer.borderWidth + surfaceLayer.borderWidth }
+    var shadowOpacityForTests: Float { layer.shadowOpacity }
+
     private func refresh() {
         let t = traitCollection
-        backgroundColor = Theme.bubble
-        layer.borderColor = Theme.bubbleLip.resolvedColor(with: t).cgColor
+        let bubbleResolved = Theme.bubble.resolvedColor(with: t)
+        let fnResolved = Theme.functionKey.resolvedColor(with: t)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        surfaceLayer.colors = [bubbleResolved.cgColor, Theme.mix(bubbleResolved, fnResolved, 0.22).cgColor]
+        CATransaction.commit()
+        layer.shadowOpacity = t.userInterfaceStyle == .dark ? 0.36 : 0.16
         layer.shadowColor = (Theme.plain ? UIColor.black : Theme.deepViolet).cgColor
         let reduceMotion = UIAccessibility.isReduceMotionEnabled
         let indicatorColor = (Theme.plain ? Theme.selectionText : Theme.correctedMark).resolvedColor(with: t).cgColor
@@ -2002,6 +2036,10 @@ final class KeyboardView: UIView {
 
     var activeAltPopupSelectedForTests: Int? {
         tracked.values.compactMap { $0.altPopup?.selected }.first
+    }
+
+    var activeAltPopupSculptedBorderlessForTests: Bool {
+        tracked.values.compactMap(\.altPopup).first.map { $0.hasSculptedSurfaceForTests && $0.borderWidthForTests == 0 } ?? false
     }
 
     var activeAltOptionsForTests: [String] {

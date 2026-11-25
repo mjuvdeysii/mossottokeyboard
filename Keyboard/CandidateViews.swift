@@ -201,8 +201,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         super.init(frame: frame)
         backgroundColor = .clear   // root provides single uniform hit-test backing
         preeditDock.backgroundColor = Theme.preeditPillBg
-        preeditDock.layer.borderWidth = 0.5
-        preeditDock.layer.borderColor = Theme.preeditPillBorder.resolvedColor(with: traitCollection).cgColor
+        preeditDock.layer.borderWidth = 0
         preeditDock.layer.cornerCurve = .continuous
         preeditDock.clipsToBounds = true
         preeditDock.isHidden = true
@@ -272,7 +271,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         clearArmedPill.textAlignment = .center
         clearArmedPill.layer.cornerRadius = 11
         clearArmedPill.layer.cornerCurve = .continuous
-        clearArmedPill.layer.borderWidth = 0.5
+        clearArmedPill.layer.borderWidth = 0
         clearArmedPill.clipsToBounds = true
         clearArmedPill.isUserInteractionEnabled = false
         clearArmedPill.isHidden = true
@@ -282,7 +281,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         deletePreviewPill.lineBreakMode = .byTruncatingMiddle
         deletePreviewPill.layer.cornerRadius = 11
         deletePreviewPill.layer.cornerCurve = .continuous
-        deletePreviewPill.layer.borderWidth = 0.5
+        deletePreviewPill.layer.borderWidth = 0
         deletePreviewPill.clipsToBounds = true
         deletePreviewPill.isUserInteractionEnabled = false
         deletePreviewPill.isHidden = true
@@ -430,10 +429,10 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     private func updatePreeditChrome() {
         let resolvedMark = Theme.correctedMark.resolvedColor(with: traitCollection)
         if !activePinpoint.isEmpty {
-            preeditDock.layer.borderColor = resolvedMark.withAlphaComponent(0.42).cgColor
+            preeditDock.backgroundColor = Theme.correctedTint
             preeditCaret.backgroundColor = resolvedMark.withAlphaComponent(0.95).cgColor
         } else {
-            preeditDock.layer.borderColor = Theme.preeditPillBorder.resolvedColor(with: traitCollection).cgColor
+            preeditDock.backgroundColor = Theme.preeditPillBg
             preeditCaret.backgroundColor = resolvedMark.withAlphaComponent(0.78).cgColor
         }
     }
@@ -699,11 +698,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
                     )
                     : Theme.preeditPillBg
                 clearArmedPill.textColor = useAmberHighlight ? Theme.correctedMark : Theme.keyText
-                clearArmedPill.layer.borderColor = (useAmberHighlight ? Theme.correctedMark : Theme.preeditPillBorder)
-                    .withAlphaComponent(useAmberHighlight ? 0.45 : 1.0)
-                    .resolvedColor(with: traitCollection).cgColor
             } else if useAmberHighlight {
-                let goldAccent = Theme.dyn(Theme.gold, Theme.goldGlow)
                 clearArmedPill.backgroundColor = Theme.dyn(
                     UIColor(red: 0.96, green: 0.91, blue: 0.78, alpha: 1),
                     UIColor(red: 0.28, green: 0.22, blue: 0.13, alpha: 1)
@@ -712,14 +707,12 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
                     UIColor(red: 0.45, green: 0.28, blue: 0.04, alpha: 1),
                     Theme.goldGlow
                 )
-                clearArmedPill.layer.borderColor = goldAccent.withAlphaComponent(0.55).resolvedColor(with: traitCollection).cgColor
             } else {
                 clearArmedPill.backgroundColor = Theme.dyn(
                     UIColor(red: 0.92, green: 0.95, blue: 0.91, alpha: 1),
                     UIColor(red: 0.16, green: 0.21, blue: 0.17, alpha: 1)
                 )
                 clearArmedPill.textColor = Theme.keyText
-                clearArmedPill.layer.borderColor = Theme.statusLedActive.withAlphaComponent(0.55).resolvedColor(with: traitCollection).cgColor
             }
             bringSubviewToFront(clearArmedPill)
         }
@@ -758,7 +751,6 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             deletePreviewPill.layer.cornerRadius = pillH / 2
             deletePreviewPill.backgroundColor = Theme.preeditPillBg
             deletePreviewPill.textColor = showCursorHud ? Theme.secondaryText : Theme.keyText
-            deletePreviewPill.layer.borderColor = Theme.preeditPillBorder.resolvedColor(with: traitCollection).cgColor
             bringSubviewToFront(deletePreviewPill)
         }
 
@@ -843,6 +835,13 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     var clearFilamentTrackShownForTests: Bool { !clearFilamentTrack.isHidden }
     var cursorCenterTickShownForTests: Bool { !cursorCenterTick.isHidden }
     var idleLightTintColorForTests: UIColor { lightToggleButton.tintColor }
+    var barPillsBorderlessForTests: Bool {
+        preeditDock.layer.borderWidth == 0
+            && clearArmedPill.layer.borderWidth == 0
+            && deletePreviewPill.layer.borderWidth == 0
+            && kaomojiButton.layer.borderWidth == 0
+            && lightToggleButton.layer.borderWidth == 0
+    }
 
     // MARK: VoiceOver: each laid-out candidate is a button (the strip draws plain labels and reads raw touches)
 
@@ -977,7 +976,6 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         let pillH = min(28, max(24, h - 12))
         let pillY = floor((h - pillH) / 2)
         let fg = Theme.secondaryText.resolvedColor(with: traitCollection)
-        let borderCG = Theme.preeditPillBorder.resolvedColor(with: traitCollection).cgColor
 
         if Theme.plain {
             kaomojiButton.configuration = nil
@@ -987,8 +985,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             kaomojiButton.setTitleColor(fg, for: .normal)
             kaomojiButton.backgroundColor = Theme.preeditPillBg
             kaomojiButton.layer.cornerRadius = pillH / 2
-            kaomojiButton.layer.borderWidth = 0.5
-            kaomojiButton.layer.borderColor = borderCG
+            kaomojiButton.layer.borderWidth = 0
             kaomojiButton.frame = CGRect(x: edgeAlign + 2, y: pillY, width: 40, height: pillH)
             kaomojiButton.accessibilityLabel = "颜文字"
             kaomojiButton.accessibilityHint = "轻点打开颜文字"
@@ -1018,8 +1015,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         }
         lightToggleButton.backgroundColor = Theme.preeditPillBg
         lightToggleButton.layer.cornerRadius = pillH / 2
-        lightToggleButton.layer.borderWidth = 0.5
-        lightToggleButton.layer.borderColor = borderCG
+        lightToggleButton.layer.borderWidth = 0
         lightToggleButton.frame = CGRect(x: lightX, y: pillY, width: lightW, height: pillH)
         lightToggleButton.accessibilityLabel = "切换日光与夜灯"
         lightToggleButton.accessibilityValue = isNightLight ? "当前夜灯" : "当前日光"
@@ -1773,6 +1769,8 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
     private let dockHairline = CALayer()
     private let closeButton = UIButton(type: .system)
     private let deleteButton = UIButton(type: .system)
+    private let closeSurface = CAGradientLayer()
+    private let deleteSurface = CAGradientLayer()
     private let filterRail = UIView()
     private var filterButtons: [UIButton] = []
     private let countBadge = UILabel()
@@ -1781,7 +1779,6 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
     private func updateFilterRailStyle() {
         let t = traitCollection
         filterRail.backgroundColor = Theme.settingsGroup.resolvedColor(with: t)
-        filterRail.layer.borderColor = Theme.keyBorder.resolvedColor(with: t).cgColor
         for (i, b) in filterButtons.enumerated() {
             let active = i == filterMode.rawValue
             b.backgroundColor = (active ? Theme.selection : .clear).resolvedColor(with: t)
@@ -1790,7 +1787,6 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
             b.accessibilityTraits = active ? [.button, .selected] : .button
         }
         countBadge.backgroundColor = Theme.settingsGroup.resolvedColor(with: t)
-        countBadge.layer.borderColor = Theme.keyBorder.resolvedColor(with: t).cgColor
         countBadge.textColor = Theme.secondaryText.resolvedColor(with: t)
     }
 
@@ -1840,15 +1836,28 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         if scrollView === collection { updateCollectionBottomFade() }
     }
 
+    private func applyDockGradients() {
+        let t = traitCollection
+        let colors = [Theme.functionTop.resolvedColor(with: t).cgColor, Theme.functionKey.resolvedColor(with: t).cgColor]
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for surface in [closeSurface, deleteSurface] {
+            surface.colors = colors
+            surface.cornerRadius = Metrics.cornerRadius
+        }
+        CATransaction.commit()
+    }
+
     func themeChanged() {
         dockHairline.backgroundColor = Theme.separator.resolvedColor(with: traitCollection).cgColor
         for b in [closeButton, deleteButton] {
             b.tintColor = Theme.functionText
-            b.backgroundColor = Theme.functionKey
+            b.backgroundColor = .clear
             b.layer.cornerRadius = Metrics.cornerRadius
             b.layer.shadowOffset = CGSize(width: 0, height: Metrics.lip)
             b.layer.shadowColor = Theme.functionLip.resolvedColor(with: traitCollection).cgColor
         }
+        applyDockGradients()
         updateFilterRailStyle()
         collection.reloadData()
         setNeedsLayout()
@@ -1857,7 +1866,6 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         let label = UILabel()
         let correctionBar = CALayer()
         var baseBackground: UIColor = .clear
-        var baseBorderColor: UIColor = .clear
         override init(frame: CGRect) {
             super.init(frame: frame)
             label.font = CandidateBarView.font
@@ -1870,8 +1878,7 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
             contentView.backgroundColor = .clear
             contentView.layer.cornerRadius = 10
             contentView.layer.cornerCurve = .continuous
-            contentView.layer.borderWidth = 0.5
-            contentView.layer.borderColor = UIColor.clear.cgColor
+            contentView.layer.borderWidth = 0
             isAccessibilityElement = true
             accessibilityTraits = .button
         }
@@ -1879,7 +1886,6 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         override var accessibilityLabel: String? { get { label.text } set { } }
         override func traitCollectionDidChange(_ previous: UITraitCollection?) {
             super.traitCollectionDidChange(previous)
-            contentView.layer.borderColor = baseBorderColor.resolvedColor(with: traitCollection).cgColor
             correctionBar.backgroundColor = Theme.correctedMark.resolvedColor(with: traitCollection).cgColor
         }
         override func layoutSubviews() {
@@ -1933,11 +1939,19 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         let cfg = UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
         closeButton.setImage(UIImage(systemName: "chevron.up", withConfiguration: cfg), for: .normal)
         deleteButton.setImage(UIImage(systemName: "delete.left", withConfiguration: cfg), for: .normal)
-        for b in [closeButton, deleteButton] {
+        for (b, surface) in [(closeButton, closeSurface), (deleteButton, deleteSurface)] {
             b.tintColor = Theme.functionText
-            b.backgroundColor = Theme.functionKey
+            b.backgroundColor = .clear
+            b.layer.masksToBounds = false
             b.layer.cornerRadius = Metrics.cornerRadius
             b.layer.cornerCurve = .continuous
+            surface.masksToBounds = true
+            surface.cornerRadius = Metrics.cornerRadius
+            surface.cornerCurve = .continuous
+            surface.startPoint = CGPoint(x: 0.5, y: 0)
+            surface.endPoint = CGPoint(x: 0.5, y: 1)
+            surface.zPosition = -1
+            b.layer.insertSublayer(surface, at: 0)
             // Match keycap sculpted contact shadow without offscreen rasterization (explicit shadowPath set in layoutSubviews).
             b.layer.shadowOpacity = 1
             b.layer.shadowRadius = Metrics.shadowBlur
@@ -1945,10 +1959,11 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
             b.layer.shadowColor = Theme.functionLip.resolvedColor(with: traitCollection).cgColor
             dockBar.addSubview(b)
         }
+        applyDockGradients()
 
         filterRail.layer.cornerRadius = 15
         filterRail.layer.cornerCurve = .continuous
-        filterRail.layer.borderWidth = 0.5
+        filterRail.layer.borderWidth = 0
         filterRail.clipsToBounds = true
         for mode in FilterMode.allCases {
             let b = UIButton(type: .custom)
@@ -1968,7 +1983,7 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         countBadge.textAlignment = .center
         countBadge.layer.cornerRadius = 11
         countBadge.layer.cornerCurve = .continuous
-        countBadge.layer.borderWidth = 0.5
+        countBadge.layer.borderWidth = 0
         countBadge.clipsToBounds = true
         countBadge.isAccessibilityElement = false
         countBadge.isHidden = true
@@ -1997,6 +2012,7 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         super.traitCollectionDidChange(previous)
         dockHairline.backgroundColor = Theme.separator.resolvedColor(with: traitCollection).cgColor
         for b in [closeButton, deleteButton] { b.layer.shadowColor = Theme.functionLip.resolvedColor(with: traitCollection).cgColor }
+        applyDockGradients()
         updateFilterRailStyle()
     }
 
@@ -2086,6 +2102,13 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         closeButton.frame = CGRect(x: deleteButton.frame.minX - 6 - closeW, y: by, width: closeW, height: bh)
         let closeShadow = CGRect(x: 0.75, y: 0.5, width: max(0, closeButton.bounds.width - 1.5), height: max(0, closeButton.bounds.height - 0.5))
         closeButton.layer.shadowPath = UIBezierPath(roundedRect: closeShadow, cornerRadius: max(1, Metrics.cornerRadius - 0.5)).cgPath
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        deleteSurface.frame = deleteButton.bounds
+        deleteSurface.cornerRadius = Metrics.cornerRadius
+        closeSurface.frame = closeButton.bounds
+        closeSurface.cornerRadius = Metrics.cornerRadius
+        CATransaction.commit()
 
         let rightLimit = closeButton.frame.minX - 6
         let badgeW: CGFloat = countBadge.isHidden ? 0 : min(48, max(30, ceil((countBadge.text as NSString? ?? "").size(withAttributes: [.font: countBadge.font as Any]).width) + 14))
@@ -2127,14 +2150,11 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         let c = allCandidates[realIndex]
         let isFirst = realIndex == 0
         let bg: UIColor = isFirst ? (c.corrected ? Theme.correctedTint : Theme.firstCandidateTint) : .clear
-        let border: UIColor = isFirst ? Theme.preeditPillBorder : .clear
         cell.label.text = c.text
         cell.label.font = isFirst ? CandidateBarView.firstFont : CandidateBarView.font
         cell.label.textColor = isFirst && c.corrected ? Theme.correctedMark : Theme.candidateText
         cell.baseBackground = bg
-        cell.baseBorderColor = border
         cell.contentView.backgroundColor = bg
-        cell.contentView.layer.borderColor = border.resolvedColor(with: traitCollection).cgColor
         cell.correctionBar.backgroundColor = Theme.correctedMark.resolvedColor(with: traitCollection).cgColor
         cell.correctionBar.isHidden = !(isFirst && c.corrected)
         return cell
@@ -2160,6 +2180,16 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
     func selectFilterForTests(_ mode: Int) { setFilterMode(FilterMode(rawValue: mode) ?? .all) }
     var countBadgeTextForTests: String { countBadge.text ?? "" }
     var collectionBottomFadeActiveForTests: Bool { collectionBox.layer.mask === collectionFade }
+    var gridSurfacesSculptedAndBorderlessForTests: Bool {
+        let cellsBorderless = collection.visibleCells.allSatisfy { $0.contentView.layer.borderWidth == 0 }
+        return filterRail.layer.borderWidth == 0
+            && countBadge.layer.borderWidth == 0
+            && (closeSurface.colors?.count ?? 0) == 2
+            && (deleteSurface.colors?.count ?? 0) == 2
+            && closeButton.layer.shadowRadius >= 1.2
+            && deleteButton.layer.shadowRadius >= 1.2
+            && cellsBorderless
+    }
     var dockControlsNonOverlappingForTests: Bool {
         let railOk = filterRail.isHidden || (!filterRail.frame.intersects(closeButton.frame) && !filterRail.frame.intersects(deleteButton.frame) && filterRail.frame.minX >= 0)
         let badgeOk = countBadge.isHidden || (!countBadge.frame.intersects(filterRail.frame) && !countBadge.frame.intersects(closeButton.frame))
@@ -2172,15 +2202,18 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
     func deleteTapForTests() { onDelete?() }
 }
 
-/// R50/R69 single-layer OTTOSSOM physical toggle tile with micro-pictograph icon, 4.5pt hardware LED & grounded shadowPath.
+/// R93 sculpted OTTOSSOM physical toggle tile with vertical keycap shading, glowing hardware LED halo & feathered shadowPath.
 private final class HardwareTileButton: UIControl {
+    private let surfaceLayer = CAGradientLayer()
     private let iconView = UIImageView()
     private let eyebrowLabel = UILabel()
     private let valueLabel = UILabel()
+    private let ledHalo = CALayer()
     private let ledDot = CALayer()
     private var activeTint: Bool = false
     private var locked: Bool = false
     private var lastShadowSize: CGSize = .zero
+    private var lastShadowCornerRadius: CGFloat = -1
     private static var symbolCache: [String: UIImage] = [:]
 
     private static func cachedSymbol(_ name: String) -> UIImage? {
@@ -2193,12 +2226,21 @@ private final class HardwareTileButton: UIControl {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        layer.masksToBounds = false
         layer.cornerRadius = Metrics.cornerRadius
         layer.cornerCurve = .continuous
-        layer.borderWidth = 0.5
+        layer.borderWidth = 0
+        layer.backgroundColor = nil
         layer.shadowRadius = Metrics.shadowBlur
         layer.shadowOffset = CGSize(width: 0, height: Metrics.lip)
         layer.shadowOpacity = 1
+
+        surfaceLayer.masksToBounds = true
+        surfaceLayer.cornerRadius = Metrics.cornerRadius
+        surfaceLayer.cornerCurve = .continuous
+        surfaceLayer.startPoint = CGPoint(x: 0.5, y: 0)
+        surfaceLayer.endPoint = CGPoint(x: 0.5, y: 1)
+        layer.insertSublayer(surfaceLayer, at: 0)
 
         iconView.contentMode = .scaleAspectFit
         iconView.isUserInteractionEnabled = false
@@ -2214,6 +2256,10 @@ private final class HardwareTileButton: UIControl {
         valueLabel.isUserInteractionEnabled = false
         addSubview(valueLabel)
 
+        ledHalo.cornerRadius = 5.25
+        ledHalo.isHidden = true
+        layer.addSublayer(ledHalo)
+
         ledDot.cornerRadius = 2.25
         layer.addSublayer(ledDot)
 
@@ -2225,6 +2271,12 @@ private final class HardwareTileButton: UIControl {
     required init?(coder: NSCoder) { fatalError() }
 
     var hasSymbolForTests: Bool { iconView.image != nil }
+    var hasSculptedSurfaceForTests: Bool {
+        (surfaceLayer.colors?.count ?? 0) == 2 && surfaceLayer.superlayer === layer && surfaceLayer.masksToBounds
+    }
+    var borderWidthForTests: CGFloat { layer.borderWidth + surfaceLayer.borderWidth }
+    var shadowRadiusForTests: CGFloat { layer.shadowRadius }
+    var activeLedHaloVisibleForTests: Bool { !ledHalo.isHidden }
 
     func configure(icon: String, eyebrow: String, value: String, active: Bool, locked: Bool = false, spoken: String? = nil) {
         iconView.image = Self.cachedSymbol(icon)
@@ -2238,17 +2290,28 @@ private final class HardwareTileButton: UIControl {
 
     func refreshAppearance() {
         let t = traitCollection
+        let dark = t.userInterfaceStyle == .dark
         let pressed = isHighlighted && !locked
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        layer.backgroundColor = (pressed ? Theme.keyPressed : Theme.key).resolvedColor(with: t).cgColor
-        layer.borderColor = Theme.keyBorder.resolvedColor(with: t).cgColor
-        layer.shadowColor = Theme.keyLip.resolvedColor(with: t).cgColor
-        layer.shadowOpacity = pressed ? 0 : 1
+        let topColor = Theme.keyTop.resolvedColor(with: t)
+        let botColor = Theme.key.resolvedColor(with: t)
+        let down = Theme.keyPressed.resolvedColor(with: t)
+        let downWell = Theme.mix(down, dark ? .black : Theme.deepViolet, dark ? 0.14 : 0.06)
+        let surfaceColors = pressed ? [downWell.cgColor, down.cgColor] : [topColor.cgColor, botColor.cgColor]
         let ledColor: UIColor = locked
             ? Theme.statusLedMuted.withAlphaComponent(0.35)
             : (activeTint ? Theme.statusLedActive : Theme.statusLedMuted)
+        let showHalo = activeTint && !locked
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        surfaceLayer.colors = surfaceColors
+        surfaceLayer.cornerRadius = Metrics.cornerRadius
+        layer.backgroundColor = nil
+        layer.borderWidth = 0
+        layer.shadowColor = Theme.keyLip.resolvedColor(with: t).cgColor
+        layer.shadowOpacity = pressed ? 0 : 1
         ledDot.backgroundColor = ledColor.resolvedColor(with: t).cgColor
+        ledHalo.isHidden = !showHalo
+        ledHalo.backgroundColor = Theme.statusLedActive.resolvedColor(with: t).withAlphaComponent(dark ? 0.34 : 0.24).cgColor
         CATransaction.commit()
         let tint: UIColor = locked ? Theme.secondaryText.withAlphaComponent(0.6) : (activeTint ? Theme.selection : Theme.secondaryText)
         iconView.tintColor = tint.resolvedColor(with: t)
@@ -2271,14 +2334,18 @@ private final class HardwareTileButton: UIControl {
         super.layoutSubviews()
         let b = bounds
         guard b.width > 0, b.height > 0 else { return }
-        if b.size != lastShadowSize {
+        if b.size != lastShadowSize || Metrics.cornerRadius != lastShadowCornerRadius {
             lastShadowSize = b.size
+            lastShadowCornerRadius = Metrics.cornerRadius
             let sr = CGRect(x: 0.75, y: 0.5, width: max(0, b.width - 1.5), height: max(0, b.height - 0.5))
             layer.shadowPath = UIBezierPath(roundedRect: sr, cornerRadius: max(1, Metrics.cornerRadius - 0.5)).cgPath
         }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
+        surfaceLayer.frame = b
+        surfaceLayer.cornerRadius = Metrics.cornerRadius
         ledDot.frame = CGRect(x: b.width - 12, y: 8.5, width: 4.5, height: 4.5)
+        ledHalo.frame = CGRect(x: b.width - 15, y: 5.5, width: 10.5, height: 10.5)
         CATransaction.commit()
         let compact = b.height < 52
         let padX: CGFloat = 9.5
@@ -2300,7 +2367,7 @@ private final class TelemetryChipView: UIView {
         super.init(frame: frame)
         layer.cornerRadius = 10
         layer.cornerCurve = .continuous
-        layer.borderWidth = 0.5
+        layer.borderWidth = 0
         valueLabel.font = Theme.font(14.5, .bold)
         valueLabel.textAlignment = .center
         valueLabel.adjustsFontSizeToFitWidth = true
@@ -2329,6 +2396,7 @@ private final class TelemetryChipView: UIView {
     }
 
     var valueTextForTests: String { valueLabel.text ?? "" }
+    var borderWidthForTests: CGFloat { layer.borderWidth }
 
     func configure(value: String, caption: String) {
         valueLabel.text = value
@@ -2340,7 +2408,6 @@ private final class TelemetryChipView: UIView {
     func refreshAppearance() {
         let t = traitCollection
         backgroundColor = Theme.functionKey.resolvedColor(with: t)
-        layer.borderColor = Theme.keyBorder.resolvedColor(with: t).cgColor
         valueLabel.textColor = Theme.keyText.resolvedColor(with: t)
         captionLabel.textColor = Theme.secondaryText.resolvedColor(with: t)
     }
@@ -2440,7 +2507,7 @@ final class SettingsPanelView: UIView {
         backDeckButton.titleLabel?.font = Theme.font(12, .semibold)
         backDeckButton.layer.cornerRadius = 14
         backDeckButton.layer.cornerCurve = .continuous
-        backDeckButton.layer.borderWidth = 0.5
+        backDeckButton.layer.borderWidth = 0
         backDeckButton.accessibilityLabel = "返回控制台概览"
         backDeckButton.isHidden = true
         backDeckButton.addTarget(self, action: #selector(closeMore), for: .touchUpInside)
@@ -2495,7 +2562,7 @@ final class SettingsPanelView: UIView {
         guidePill.titleLabel?.minimumScaleFactor = 0.85
         guidePill.layer.cornerRadius = 15
         guidePill.layer.cornerCurve = .continuous
-        guidePill.layer.borderWidth = 0.5
+        guidePill.layer.borderWidth = 0
         guideLed.cornerRadius = 2.25
         guidePill.layer.addSublayer(guideLed)
         guidePill.addTarget(self, action: #selector(toggleGuide), for: .touchUpInside)
@@ -2612,7 +2679,6 @@ final class SettingsPanelView: UIView {
         backDeckButton.backgroundColor = Theme.functionKey
         backDeckButton.setTitleColor(Theme.keyText, for: .normal)
         backDeckButton.tintColor = Theme.keyText
-        backDeckButton.layer.borderColor = Theme.keyBorder.resolvedColor(with: t).cgColor
         doneButton.backgroundColor = Theme.plain ? Theme.selection : Theme.accentKey
         doneButton.setTitleColor(Theme.plain ? Theme.selectionText : Theme.accentText, for: .normal)
         moreButton.backgroundColor = Theme.functionKey
@@ -2659,7 +2725,6 @@ final class SettingsPanelView: UIView {
         offlineStatusLabel.isHidden = !guidePill.isHidden
         guidePill.backgroundColor = (on ? Theme.key : Theme.functionKey)
         guidePill.setTitleColor(on ? Theme.keyText : Theme.functionText, for: .normal)
-        guidePill.layer.borderColor = Theme.keyBorder.resolvedColor(with: t).cgColor
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         guideLed.backgroundColor = (on ? Theme.statusLedActive : Theme.statusLedMuted).resolvedColor(with: t).cgColor
@@ -3135,6 +3200,13 @@ final class SettingsPanelView: UIView {
 
     var hardwareTileCountForTests: Int { hardwareTiles.count }
     var showingMoreForTests: Bool { !moreScroll.isHidden }
+    var allTilesSculptedBorderlessForTests: Bool {
+        hardwareTiles.allSatisfy { $0.hasSculptedSurfaceForTests && $0.borderWidthForTests == 0 && $0.shadowRadiusForTests >= 1.2 }
+    }
+    var activeLedHaloCountForTests: Int { hardwareTiles.filter(\.activeLedHaloVisibleForTests).count }
+    var chromePillsBorderlessForTests: Bool {
+        backDeckButton.layer.borderWidth == 0 && guidePill.layer.borderWidth == 0 && telemetryChips.allSatisfy { $0.borderWidthForTests == 0 }
+    }
     var backDeckButtonInHeaderForTests: Bool { backDeckButton.isDescendant(of: header) && !backDeckButton.isHidden && mostoImage.isHidden }
     func toggleMoreForTests() { if moreScroll.isHidden { openMore() } else { closeMore() } }
     func tapSchemeTileForTests() { toggleScheme() }

@@ -152,6 +152,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     var backButtonUsesFunctionStyleForTests: Bool { backButton.backgroundColor == Theme.functionKey }
     var dockTabWidthForTests: CGFloat { tabButtons.first?.frame.width ?? 0 }
     var landscapeDockAllInsideForTests: Bool { gear.frame.maxX <= tabScrollBox.bounds.width + 0.5 }
+    var emojiBadgesBorderlessForTests: Bool { kaomojiShortcutButton.layer.borderWidth == 0 && moodMostoBadge.layer.borderWidth == 0 }
 
     final class Cell: UICollectionViewCell {
         let label = UILabel()
@@ -246,7 +247,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         collectionBox.addSubview(collection)
         addSubview(collectionBox)
 
-        kaomojiShortcutButton.layer.borderWidth = 0.5
+        kaomojiShortcutButton.layer.borderWidth = 0
         kaomojiShortcutButton.accessibilityLabel = "打开 Mosto 颜文字"
         kaomojiShortcutButton.addTarget(self, action: #selector(kaomojiShortcutTapped), for: .touchUpInside)
         addSubview(kaomojiShortcutButton)
@@ -255,7 +256,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         moodHeader.isHidden = true
         moodMostoBadge.layer.cornerRadius = 14
         moodMostoBadge.layer.cornerCurve = .continuous
-        moodMostoBadge.layer.borderWidth = 0.5
+        moodMostoBadge.layer.borderWidth = 0
         moodMostoBadge.isUserInteractionEnabled = false
         moodHeader.addSubview(moodMostoBadge)
 
@@ -383,7 +384,6 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         dockHairline.backgroundColor = Theme.separator.resolvedColor(with: t).cgColor
         moodHairline.backgroundColor = Theme.separator.resolvedColor(with: t).cgColor
         moodMostoBadge.backgroundColor = Theme.preeditPillBg
-        moodMostoBadge.layer.borderColor = Theme.preeditPillBorder.resolvedColor(with: t).cgColor
         for (b, lip) in [(backButton, Theme.functionLip), (deleteButton, Theme.functionLip), (returnButton, Theme.accentLip)] {
             b.layer.shadowColor = lip.resolvedColor(with: t).cgColor
             b.layer.shadowOpacity = 1
@@ -446,7 +446,6 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             cfg.title = "颜文字"
         }
         kaomojiShortcutButton.configuration = cfg
-        kaomojiShortcutButton.layer.borderColor = Theme.preeditPillBorder.resolvedColor(with: t).cgColor
         kaomojiShortcutButton.layer.cornerCurve = .continuous
     }
 
