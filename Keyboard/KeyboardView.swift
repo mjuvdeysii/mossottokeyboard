@@ -264,11 +264,15 @@ final class KeyView: UIView {
             downColor = Theme.accentPressed; under = Theme.accentLip
             fg = Theme.accentText; downFg = Theme.accentText
         }
-        let topCG = topColor.resolvedColor(with: t).cgColor
-        let bottomCG = bottomColor.resolvedColor(with: t).cgColor
-        let downCG = downColor.resolvedColor(with: t).cgColor
+        let topResolved = topColor.resolvedColor(with: t)
+        let bottomResolved = bottomColor.resolvedColor(with: t)
+        let downResolved = downColor.resolvedColor(with: t)
+        let downWellResolved = Theme.mix(downResolved, .black, t.userInterfaceStyle == .dark ? 0.14 : 0.05)
+        let topCG = topResolved.cgColor
+        let bottomCG = bottomResolved.cgColor
+        let downCG = downResolved.cgColor
         restColors = [topCG, bottomCG]
-        pressedColors = [downCG, topCG.copy(alpha: 0.94) ?? downCG]
+        pressedColors = [downWellResolved.cgColor, downCG]
         restFg = fg.resolvedColor(with: t)
         pressedFg = downFg.resolvedColor(with: t)
         CATransaction.begin(); CATransaction.setDisableActions(true)
@@ -582,8 +586,10 @@ final class KeyPreview: UIView {
 
     func refreshStyle() {
         let t = traitCollection
-        let top = Theme.bubble.resolvedColor(with: t).cgColor
-        let bottom = Theme.mix(Theme.bubble, Theme.functionKey, 0.22).resolvedColor(with: t).cgColor
+        let bubbleResolved = Theme.bubble.resolvedColor(with: t)
+        let fnResolved = Theme.functionKey.resolvedColor(with: t)
+        let top = bubbleResolved.cgColor
+        let bottom = Theme.mix(bubbleResolved, fnResolved, 0.22).cgColor
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         surfaceLayer.colors = [top, bottom]
@@ -1158,8 +1164,8 @@ final class KeyboardView: UIView {
                 let x0 = snap(originX + gapX / 2)
                 let x1 = snap(originX + w * unit - gapX / 2)
                 let y0 = snap(y + gapY / 2)
-                let y1 = snap(y + rowH - gapY / 2)
-                let frame = CGRect(x: x0, y: y0, width: max(1, x1 - x0), height: max(1, y1 - y0))
+                let capH = max(1, min(rowH - gapY, snap(rowH - gapY)))
+                let frame = CGRect(x: x0, y: y0, width: max(1, x1 - x0), height: capH)
                 keyViews[i].frame = frame
                 var hit = CGRect(x: originX, y: y, width: w * unit, height: rowH)
                 if r == 0 { hit = CGRect(x: hit.minX, y: 0, width: hit.width, height: baseTop + rowH) }

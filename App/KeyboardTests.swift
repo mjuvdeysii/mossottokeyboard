@@ -1379,8 +1379,8 @@ enum KeyboardTests {
             let gradCount = keySubviews.reduce(0) { acc, kv in
                 acc + (kv.layer.sublayers?.filter { $0 is CAGradientLayer }.count ?? 0)
             }
-            log(!keySubviews.isEmpty && gradCount == 0,
-                "r50.single-layer monolith KeyViews have zero CAGradientLayer sublayers",
+            log(!keySubviews.isEmpty && gradCount == keySubviews.count,
+                "r50.sculpted KeyViews each hold a single CAGradientLayer surface",
                 "keys=\(keySubviews.count) gradients=\(gradCount)")
 
             if let rn = kview.keyRectsForTests(.char("n")), let ri = kview.keyRectsForTests(.char("i")) {

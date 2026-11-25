@@ -150,6 +150,7 @@ enum SnapshotRenderer {
                 kb.frame = CGRect(x: inset, y: barH, width: width, height: 4 * pitch)
                 kb.overrideUserInterfaceStyle = night ? .dark : .light
                 kb.softenedForDarkGlass = forced && !night
+                kb.softenedForLightGlass = forced && night
                 root.addSubview(kb)
                 let isGuideShot = shot.name == "letters_guide" || shot.name == "letters_guide_chord"
                 let chordInitial: Character? = shot.name == "letters_guide_chord" ? "q" : nil

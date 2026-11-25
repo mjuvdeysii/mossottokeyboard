@@ -163,8 +163,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             label.minimumScaleFactor = 0.6
             label.layer.cornerRadius = 9
             label.layer.cornerCurve = .continuous
-            label.layer.borderWidth = 0.5
-            label.layer.borderColor = UIColor.clear.cgColor
+            label.layer.borderWidth = 0
             label.clipsToBounds = true
             contentView.addSubview(label)
             contentView.layer.cornerRadius = 9
@@ -176,8 +175,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         override func traitCollectionDidChange(_ previous: UITraitCollection?) {
             super.traitCollectionDidChange(previous)
             if tag == 1 {
-                label.layer.borderColor = Theme.keyBorder.resolvedColor(with: traitCollection).cgColor
-                label.backgroundColor = Theme.key
+                label.backgroundColor = Theme.keyTop
                 label.textColor = Theme.keyText
             }
         }
@@ -189,7 +187,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             didSet {
                 contentView.backgroundColor = .clear
                 if tag == 1 {
-                    label.backgroundColor = isHighlighted ? Theme.keyPressed : Theme.key
+                    label.backgroundColor = isHighlighted ? Theme.keyPressed : Theme.keyTop
                 } else {
                     label.backgroundColor = isHighlighted ? Theme.functionKey : .clear
                 }
@@ -527,7 +525,6 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             b.tag = idx
             b.layer.cornerRadius = 12
             b.layer.cornerCurve = .continuous
-            b.layer.borderWidth = 0.5
             b.addTarget(self, action: #selector(moodTapped(_:)), for: .touchUpInside)
             moodScroll.addSubview(b)
             return b
@@ -537,12 +534,10 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     }
 
     private func refreshMoodRibbonStyle() {
-        let t = traitCollection
         for (i, b) in moodButtons.enumerated() {
             let active = i == selectedMood
             b.backgroundColor = active ? Theme.selection : Theme.preeditPillBg
             b.setTitleColor(active ? Theme.selectionText : Theme.keyText, for: .normal)
-            b.layer.borderColor = (active ? UIColor.clear : Theme.keyBorder).resolvedColor(with: t).cgColor
             b.accessibilityTraits = active ? [.button, .selected] : .button
         }
     }
@@ -858,8 +853,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         }
         c.label.text = e
         c.tag = kao ? 1 : 0
-        c.label.backgroundColor = kao ? Theme.key : .clear
-        c.label.layer.borderColor = kao ? Theme.keyBorder.resolvedColor(with: traitCollection).cgColor : UIColor.clear.cgColor
+        c.label.backgroundColor = kao ? Theme.keyTop : .clear
         c.label.font = kao ? .systemFont(ofSize: 14.5, weight: .medium) : .systemFont(ofSize: 30)
         c.label.minimumScaleFactor = kao ? 0.58 : 0.6
         c.label.textColor = Theme.keyText

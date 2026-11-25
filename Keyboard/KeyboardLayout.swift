@@ -106,7 +106,7 @@ enum Metrics {
     static let functionFont: CGFloat = 15.5
     static let hintFont: CGFloat = 11
     static let iconSize: CGFloat = 18.5
-    static let emojiIconSize: CGFloat = 17.5
+    static let emojiIconSize: CGFloat = 16.0
 
     static func toolbarHeight(landscape: Bool) -> CGFloat {
         landscape ? toolbarHeightLandscape : toolbarHeight
