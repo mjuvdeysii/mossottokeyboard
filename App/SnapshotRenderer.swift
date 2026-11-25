@@ -288,12 +288,11 @@ enum SnapshotRenderer {
         // the companion app's live OTTOSSOM screens (rendered off-screen for CI verification)
         struct CompanionHomeSnapshotHost: View {
             @ObservedObject var family: FamilyStageModel
-            @ObservedObject var volume: VolumeMonitor
             @State private var verifyText = ""
             @FocusState private var typing: Bool
             var body: some View {
                 VStack(spacing: 18) {
-                    FamilyLampStageView(model: family, volume: volume)
+                    FamilyLampStageView(model: family)
                     CompanionEnableCard(added: true, verifyText: $verifyText, typing: $typing)
                 }
             }
@@ -310,14 +309,9 @@ enum SnapshotRenderer {
             let family = FamilyStageModel()
             family.atmosphere = night ? .night : .day
             if night { family.activeMember = .otto }
-            let vol = VolumeMonitor(defaults: .standard, observeSystem: false, initialVolume: 0.42)
             let parts: [(String, AnyView)] = [
-                ("0", AnyView(page(CompanionHomeSnapshotHost(family: family, volume: vol)))),
+                ("0", AnyView(page(CompanionHomeSnapshotHost(family: family)))),
                 ("1", AnyView(page(CompanionCapabilitiesSection()))),
-                ("2", AnyView(VolumeCheckSheet(monitor: vol)
-                    .frame(width: width)
-                    .tint(mostoTint)
-                    .environment(\.colorScheme, night ? .dark : .light))),
                 ("3", AnyView(page(AboutCompanionContent(added: true)))),
                 ("privacy", AnyView(page(PrivacyCommitmentContent()))),
                 ("atlas", AnyView(page(GestureAtlasContent()))),

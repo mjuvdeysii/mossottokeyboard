@@ -28,11 +28,9 @@ final class AppNavigation: ObservableObject {
     @Published var tab: AppTab = .companion
     @Published var guideSection: GuideSection = .xiaohe
     let family: FamilyStageModel
-    let volume: VolumeMonitor
 
     init() {
         self.family = FamilyStageModel()
-        self.volume = VolumeMonitor()
     }
 
     func focusFamilyMember(_ member: FamilyMember) {
@@ -56,7 +54,7 @@ struct ContentView: View {
     var body: some View {
         TabView(selection: $nav.tab) {
             NavigationStack {
-                CompanionHomeScreen(family: nav.family, volume: nav.volume)
+                CompanionHomeScreen(family: nav.family)
                     .navigationTitle("Mosto键盘")
                     .navigationBarTitleDisplayMode(.large)
             }
@@ -64,7 +62,7 @@ struct ContentView: View {
             .tag(AppTab.companion)
 
             NavigationStack {
-                GuideScreen(nav: nav, volume: nav.volume)
+                GuideScreen(nav: nav)
                     .navigationTitle("使用指南")
                     .navigationBarTitleDisplayMode(.large)
             }
@@ -81,8 +79,7 @@ struct ContentView: View {
         }
         .environment(\.appNavigation, nav)
         .tint(mostoTint)
-        .onAppear { nav.volume.startObserving() }
-        .modifier(VolumeSheetPresenter(volume: nav.volume, family: nav.family))
+
         .task {
             if SnapshotRenderer.requested,
                let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first {
@@ -92,26 +89,10 @@ struct ContentView: View {
     }
 }
 
-private struct VolumeSheetPresenter: ViewModifier {
-    @ObservedObject var volume: VolumeMonitor
-    @ObservedObject var family: FamilyStageModel
-
-    func body(content: Content) -> some View {
-        content.sheet(isPresented: $volume.showSheet) {
-            VolumeCheckSheet(monitor: volume) {
-                family.syncSoundFromSettings()
-            }
-            .presentationDetents([.fraction(0.58), .large])
-            .presentationDragIndicator(.visible)
-        }
-    }
-}
-
 // MARK: - Tab 1: Companion Home (伴侣)
 
 private struct CompanionHomeScreen: View {
     @ObservedObject var family: FamilyStageModel
-    @ObservedObject var volume: VolumeMonitor
     @Environment(\.scenePhase) private var phase
     @State private var added = KeyboardStatus.isAdded()
     @State private var verifyText = ""
@@ -120,16 +101,7 @@ private struct CompanionHomeScreen: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                if volume.showHighBanner && family.soundEnabled {
-                    VolumeHighBanner(monitor: volume) {
-                        family.soundEnabled = false
-                        KeyboardSettings.shared.keySound = false
-                        volume.dismissHighBanner()
-                    }
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                }
-
-                FamilyLampStageView(model: family, volume: volume)
+                FamilyLampStageView(model: family)
 
                 CompanionEnableCard(
                     added: added,
@@ -150,9 +122,6 @@ private struct CompanionHomeScreen: View {
                 .onTapGesture { typing = false }
         )
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                VolumeBadgePill(monitor: volume, soundEnabled: family.soundEnabled)
-            }
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
                 Button("收起") { typing = false }
@@ -164,7 +133,6 @@ private struct CompanionHomeScreen: View {
                 added = KeyboardStatus.isAdded()
             }
         }
-        .animation(.easeOut(duration: 0.2), value: volume.showHighBanner)
     }
 }
 
@@ -458,7 +426,6 @@ enum GuideSection: Int, CaseIterable, Identifiable {
 
 private struct GuideScreen: View {
     @ObservedObject var nav: AppNavigation
-    @ObservedObject var volume: VolumeMonitor
 
     var body: some View {
         ScrollView {
@@ -472,7 +439,7 @@ private struct GuideScreen: View {
 
                 switch nav.guideSection {
                 case .xiaohe:
-                    XiaoheGuideContent(volume: volume)
+                    XiaoheGuideContent()
                 case .atlas:
                     GestureAtlasContent()
                 }

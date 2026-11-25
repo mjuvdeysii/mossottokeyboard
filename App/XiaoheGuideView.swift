@@ -3,11 +3,9 @@ import AudioToolbox
 
 /// 小鹤双拼 reference chart & interactive tactile drill aligned with R50 monolith keycaps and OTTOSSOM styling.
 struct XiaoheGuideView: View {
-    var volume: VolumeMonitor? = nil
-
     var body: some View {
         ScrollView {
-            XiaoheGuideContent(volume: volume)
+            XiaoheGuideContent()
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
         }
@@ -19,7 +17,6 @@ struct XiaoheGuideView: View {
 
 /// The page's content (shared with the CI snapshot).
 struct XiaoheGuideContent: View {
-    var volume: VolumeMonitor? = nil
     @State private var showCostNotice = false
 
     @MainActor
@@ -32,7 +29,7 @@ struct XiaoheGuideContent: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             Card(title: "声感指法与键位图谱") {
-                XiaoheDrill(volume: volume)
+                XiaoheDrill()
                 Divider()
                 HStack(spacing: 12) {
                     Legend(color: MossOttoStyle.violet, text: "zh / ch / sh")
@@ -283,9 +280,8 @@ private struct Legend: View {
     }
 }
 
-/// Interactive tactile + acoustic Xiaohe rhythm drill and live 26-key inspector, volume-gated on first audible tap.
+/// Interactive tactile + acoustic Xiaohe rhythm drill and live 26-key inspector.
 struct XiaoheDrill: View {
-    var volume: VolumeMonitor? = nil
     static let slotRoleMarks = ["声", "韵"]
 
     private static let words: [(String, String)] = [
@@ -539,11 +535,7 @@ struct XiaoheDrill: View {
             }
             if ok { DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { next() } }
         }
-        if let volume {
-            volume.gateSoundInteraction(soundEnabled: soundOn, action: proceed)
-        } else {
-            proceed()
-        }
+        proceed()
     }
 
     private func next() {

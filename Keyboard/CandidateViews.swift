@@ -977,6 +977,9 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         let pillY = floor((h - pillH) / 2)
         let fg = Theme.secondaryText.resolvedColor(with: traitCollection)
 
+        let kaomojiSlotW: CGFloat = 38
+        let kaomojiSlotX = expandButton.frame.minX - 6 - kaomojiSlotW
+
         if Theme.plain {
             kaomojiButton.configuration = nil
             kaomojiButton.setImage(nil, for: .normal)
@@ -986,7 +989,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             kaomojiButton.backgroundColor = Theme.preeditPillBg
             kaomojiButton.layer.cornerRadius = pillH / 2
             kaomojiButton.layer.borderWidth = 0
-            kaomojiButton.frame = CGRect(x: edgeAlign + 2, y: pillY, width: 40, height: pillH)
+            kaomojiButton.frame = CGRect(x: kaomojiSlotX, y: pillY, width: kaomojiSlotW, height: pillH)
             kaomojiButton.accessibilityLabel = "颜文字"
             kaomojiButton.accessibilityHint = "轻点打开颜文字"
             bringSubviewToFront(kaomojiButton)
@@ -996,7 +999,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             kaomojiButton.setImage(nil, for: .normal)
             kaomojiButton.backgroundColor = .clear
             kaomojiButton.layer.borderWidth = 0
-            kaomojiButton.frame = CGRect(x: max(2, mosto.frame.midX - 22), y: 0, width: 44, height: h)
+            kaomojiButton.frame = CGRect(x: kaomojiSlotX, y: 0, width: kaomojiSlotW, height: h)
             kaomojiButton.accessibilityLabel = "Mosto 颜文字"
             kaomojiButton.accessibilityHint = "轻点选颜文字，按住让 Mosto 打哈欠"
             bringSubviewToFront(mosto)
@@ -1004,7 +1007,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         }
 
         let lightW: CGFloat = 34
-        let lightX = expandButton.frame.minX - 6 - lightW
+        let lightX = kaomojiSlotX - 6 - lightW
         lightToggleButton.configuration = nil
         lightToggleButton.setTitle(nil, for: .normal)
         lightToggleButton.setImage(Self.idleSymbol(isNightLight ? "moon.fill" : "sun.max.fill"), for: .normal)
@@ -1164,10 +1167,12 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         undoChip.isHidden = undoText == nil || hideChromeForHud
         preeditDock.isHidden = !preeditDockWanted || !undoChip.isHidden || hideChromeForHud
         mosto.isHidden = !mostoWanted || hideChromeForHud
-        let mSize = min(28, max(24, h - 12))
-        mosto.frame = CGRect(x: edgeAlign + 4, y: floor((h - mSize) / 2), width: mSize, height: mSize)
         let expandW: CGFloat = 34
         expandButton.frame = CGRect(x: bounds.width - edgeAlign - expandW + 3, y: 0, width: expandW, height: h)
+        let mSize = min(28, max(24, h - 12))
+        let mostoSlotW: CGFloat = 38
+        let mostoSlotX = expandButton.frame.minX - 6 - mostoSlotW
+        mosto.frame = CGRect(x: floor(mostoSlotX + (mostoSlotW - mSize) / 2), y: floor((h - mSize) / 2), width: mSize, height: mSize)
         layoutIdleControls(height: h, edgeAlign: edgeAlign)
         // Start at 10pt so the first element cleanly clears iOS 26/27 Liquid Glass top-left corner radius.
         var lead: CGFloat = 10

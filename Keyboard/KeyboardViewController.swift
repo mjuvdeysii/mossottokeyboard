@@ -1593,15 +1593,20 @@ final class KeyboardViewController: UIInputViewController {
 
     private func shiftTapped() {
         let now = Date()
+        let withinDoubleTap = now.timeIntervalSince(lastShiftTap) < 0.35
         if capsLock {
             capsLock = false
             shifted = false
-        } else if shifted && now.timeIntervalSince(lastShiftTap) < 0.35 {
+            lastShiftTap = .distantPast
+        } else if withinDoubleTap {
+            // Match native iOS: double-tapping Shift locks Caps Lock even when starting from auto-capitalization.
             capsLock = true
+            shifted = true
+            lastShiftTap = .distantPast
         } else {
             shifted.toggle()
+            lastShiftTap = now
         }
-        lastShiftTap = now
         reconfigure()
     }
 
@@ -1669,7 +1674,7 @@ final class KeyboardViewController: UIInputViewController {
         let isT9 = taps.contains(where: { $0.group })
         let displayPreedit: String
         if isT9 {
-            let py = r.preedit.replacingOccurrences(of: " ", with: "")
+            let py = r.preedit.trimmingCharacters(in: .whitespaces)
             if !hasMarkedText || py != markedString { setMarked(py) }
             displayPreedit = py
         } else {

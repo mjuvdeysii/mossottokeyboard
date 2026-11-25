@@ -1168,7 +1168,9 @@ final class KeyboardView: UIView {
             for id in preservedIDs {
                 guard let tr = tracked[id], let newIdx = keyIndex(at: tr.location), newIdx < keyViews.count else { continue }
                 tr.keyIndex = newIdx
-                keyViews[newIdx].pressed = true
+                if case .page = keyViews[newIdx].spec.action {
+                    keyViews[newIdx].pressed = true
+                }
             }
         }
     }
@@ -1856,6 +1858,13 @@ final class KeyboardView: UIView {
             clearSwipes += 1
             onFeedback?(.key(.clearInput), tr.location)
             onClearSwipe?()
+            return
+        }
+        // A touch that started on a page-switch key (123 / 符号 / #+=) already switched pages on touch-down.
+        // If it never glided onto a character/space key, releasing it must NEVER fire whatever unrelated key
+        // (such as .toggleLanguage or .ret) now occupies the same coordinate on the newly built page.
+        if tr.pageGlideReturn != nil && !tr.pageGlideVisitedChar {
+            if tr.pageGlideChordUsed { springBackIfNeeded() }
             return
         }
         switch kv.spec.action {

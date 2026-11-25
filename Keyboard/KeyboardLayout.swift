@@ -145,14 +145,15 @@ enum Layouts {
     /// The emoji key: 表情 on a tap, the keyboard settings on a long press (as on Gboard).
     static let emojiKey = KeySpec(action: .emoji, label: "", symbol: "face.smiling", width: 1, style: .function)
 
-    /// Second and third keys of every bottom row: 表情 (or the system globe when the device needs it) and the 中/英
-    /// switch, where the iOS and Gboard keyboards have them.
-    /// On a device that needs the globe (Home button), the globe comes first and 表情 stays beside it: emoji and the
-    /// settings (long press) are never lost to the system key.
-    private static func middleKeys(_ ctx: LayoutContext) -> [KeySpec] {
+    /// Left utility keys after 123 / 拼音: 表情 (preceded by the system globe on Home-button devices).
+    private static func leftUtilityKeys(_ ctx: LayoutContext) -> [KeySpec] {
         let globe = KeySpec(action: .globe, label: "", symbol: "globe", width: 1, style: .function)
-        let lang = KeySpec(action: .toggleLanguage, label: ctx.chinese ? "中" : "英", width: 1, style: .function)
-        return ctx.showGlobe ? [globe, emojiKey, lang] : [emojiKey, lang]
+        return ctx.showGlobe ? [globe, emojiKey] : [emojiKey]
+    }
+
+    /// Unified right-thumb language toggle anchored directly left of Return across T9, QWERTY, and symbol pages.
+    private static func languageKey(_ ctx: LayoutContext, width: CGFloat) -> KeySpec {
+        KeySpec(action: .toggleLanguage, label: ctx.chinese ? "中" : "英", width: width, style: .function)
     }
 
     /// As on the system keyboard: 换行 / return, the host's action (搜索, 发送…) in blue, 确认 while composing.
@@ -196,13 +197,17 @@ enum Layouts {
             }
             rows.append(specs)
         }
-        var bottom: [KeySpec] = [KeySpec(action: .page(ctx.numberGrid ? .numpad : .numbers), label: "123", width: 1.25, style: .function)]
-        bottom += middleKeys(ctx)
+        let leftW: CGFloat = ctx.showGlobe ? 1.2 : 1.25
+        let langW: CGFloat = ctx.showGlobe ? 1.1 : 1.2
+        let retW: CGFloat = ctx.showGlobe ? 1.7 : 1.8
+        var bottom: [KeySpec] = [KeySpec(action: .page(ctx.numberGrid ? .numpad : .numbers), label: "123", width: leftW, style: .function)]
+        bottom += leftUtilityKeys(ctx)
         bottom.append(spaceKey(ctx))
         bottom.append(ctx.chinese
             ? KeySpec(action: .char("，"), label: "，", width: 1, alt: "。", style: .function, hint: "。", moreAlts: ["？", "！", "、", "…", "《", "（"])
             : KeySpec(action: .char("."), label: ".", width: 1, alt: ",", style: .function, hint: ",", moreAlts: ["?", "!", "'", "\"", "-"]))
-        bottom.append(returnKey(ctx, width: ctx.showGlobe ? 1.75 : 2, wide: false))
+        bottom.append(languageKey(ctx, width: langW))
+        bottom.append(returnKey(ctx, width: retW, wide: false))
         rows.append(bottom)
         return rows
     }
@@ -212,10 +217,11 @@ enum Layouts {
     }
 
     private static func bottomRow(_ ctx: LayoutContext) -> [KeySpec] {
-        var bottom: [KeySpec] = [KeySpec(action: .page(.letters), label: ctx.chinese ? "拼音" : "ABC", width: 1.25, style: .function)]
-        bottom += middleKeys(ctx)
+        var bottom: [KeySpec] = [KeySpec(action: .page(.letters), label: ctx.chinese ? "拼音" : "ABC", width: ctx.showGlobe ? 1.25 : 1.4, style: .function)]
+        bottom += leftUtilityKeys(ctx)
         bottom.append(spaceKey(ctx))
-        bottom.append(returnKey(ctx, width: 2.5, wide: true))
+        bottom.append(languageKey(ctx, width: 1.4))
+        bottom.append(returnKey(ctx, width: 1.8, wide: true))
         return bottom
     }
 
@@ -232,8 +238,8 @@ enum Layouts {
         return [row1, row2, row3, bottomRow(ctx)]
     }
 
-    /// 九宫格 pinyin keypad, as on the system keyboard: the phone keypad (1 分词, 2 ABC … 9 WXYZ) in the middle,
-    /// ， 。 ？ on the left, delete / 重输 / return on the right; 123, settings, 符号, space and 中/英 below.
+    /// 九宫格 pinyin keypad aligned with QWERTY's four-corner & right-thumb spine:
+    /// ， 。 ？ on the left; ⌫ / 重输(idle: ！) / 符号 on the right; 123, 表情, space, 中/英 and Return below.
     /// Each key stands for all its letters; the decoder sorts out which were meant (小鹤双拼 and 全拼 alike).
     private static func pinyinPad(_ ctx: LayoutContext) -> [[KeySpec]] {
         let side: CGFloat = 1.6, mid: CGFloat = 6.8 / 3
@@ -243,17 +249,18 @@ enum Layouts {
         }
         let row1 = [p("，", "、", more: ["：", "；", "（", "《", "“"]), k("'", "分词"), k("2", "ABC"), k("3", "DEF"),
                     KeySpec(action: .delete, label: "", symbol: "delete.left", width: side, style: .function)]
-        let row2 = [p("。", "…", more: ["·", "—", "）", "》", "”"]), k("4", "GHI"), k("5", "JKL"), k("6", "MNO"),
-                    KeySpec(action: .clearInput, label: "重输", width: side, style: .function)]
-        let row3 = [p("？", "！", more: ["～", "【", "】", "「", "」"]), k("7", "PQRS"), k("8", "TUV"), k("9", "WXYZ"), returnKey(ctx, width: side, wide: true)]
-        let gear: [KeySpec] = ctx.showGlobe
-            ? [KeySpec(action: .globe, label: "", symbol: "globe", width: 1, style: .function), emojiKey]
-            : [emojiKey]
-        let row4 = [KeySpec(action: .page(ctx.numberGrid ? .numpad : .numbers), label: "123", width: side, style: .function)]
-                    + gear
-                    + [KeySpec(action: .page(.symbols), label: "符号", width: mid - 1 + 0.27, style: .function),
-                       spaceKey(ctx),
-                       KeySpec(action: .toggleLanguage, label: "中", width: side, style: .function)]
+        let row2Right: KeySpec = ctx.composing
+            ? KeySpec(action: .clearInput, label: "重输", width: side, style: .function)
+            : p("！", "～", more: ["：", "；", "—", "…"])
+        let row2 = [p("。", "…", more: ["·", "—", "）", "》", "”"]), k("4", "GHI"), k("5", "JKL"), k("6", "MNO"), row2Right]
+        let row3 = [p("？", "！", more: ["～", "【", "】", "「", "」"]), k("7", "PQRS"), k("8", "TUV"), k("9", "WXYZ"),
+                    KeySpec(action: .page(.numbers), label: "符号", width: side, style: .function)]
+        let leftW: CGFloat = ctx.showGlobe ? 1.4 : side
+        let row4 = [KeySpec(action: .page(ctx.numberGrid ? .numpad : .numbers), label: "123", width: leftW, style: .function)]
+                    + leftUtilityKeys(ctx)
+                    + [spaceKey(ctx),
+                       languageKey(ctx, width: 1.4),
+                       returnKey(ctx, width: 1.8, wide: true)]
         return [row1, row2, row3, row4]
     }
 
@@ -268,16 +275,17 @@ enum Layouts {
                     KeySpec(action: .delete, label: "", symbol: "delete.left", width: side, style: .function)]
         let row2 = [p("-", "_"), d("4"), d("5"), d("6"),
                     KeySpec(action: .space, label: ctx.chinese ? "空格" : "space", width: side)]
-        let row3 = [p("/", "*"), d("7"), d("8"), d("9"), returnKey(ctx, width: side, wide: true)]
+        let row3 = [p("/", "*"), d("7"), d("8"), d("9"),
+                    KeySpec(action: .page(.numbers), label: ctx.chinese ? "符号" : "#+=", width: side, style: .function)]
         // the way back keeps its full width (and the same name as on every other page); with the globe key the two
-        // punctuation keys give it the room
+        // punctuation keys give it the room while 0 stays aligned under 2 / 5 / 8 and Return stays bottom-right
         let back = KeySpec(action: .page(.letters), label: ctx.chinese ? "拼音" : "ABC", width: ctx.showGlobe ? 1.5 : side, style: .function)
         var row4: [KeySpec] = ctx.showGlobe ? [back, KeySpec(action: .globe, label: "", symbol: "globe", width: 1.2, style: .function)] : [back]
         let dotW: CGFloat = ctx.showGlobe ? 1.3 : side
         let colonW: CGFloat = side
         row4 += [KeySpec(action: .char("."), label: ".", width: dotW, alt: ",", style: .function, hint: ","), d("0"),
                  KeySpec(action: .char(":"), label: ":", width: colonW, alt: "%", style: .function, hint: "%"),
-                 KeySpec(action: .page(.numbers), label: ctx.chinese ? "符号" : "#+=", width: side, style: .function)]
+                 returnKey(ctx, width: side, wide: true)]
         return [row1, row2, row3, row4]
     }
 

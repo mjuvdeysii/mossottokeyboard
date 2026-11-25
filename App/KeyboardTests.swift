@@ -168,6 +168,7 @@ enum KeyboardTests {
         r91AppIconAndCommercialCompanion(window)
         r92SculptedKeycapAndOpticalIcons(window)
         r93SculptedConsolePopupsAndBorderlessSurfaces(window)
+        r94T9UnifiedLayoutAndStateMachines(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -1410,31 +1411,6 @@ enum KeyboardTests {
     }
 
     static func r51CompanionAndFluency(_ window: UIWindow) {
-        // 1. Hardware volume zone thresholds & non-nagging first-time gate
-        log(VolumeMonitor.zone(for: 0.0) == .muted
-            && VolumeMonitor.zone(for: 0.42) == .comfortable
-            && VolumeMonitor.zone(for: 0.78) == .loud,
-            "r51.VolumeMonitor classifies muted/comfortable/loud thresholds cleanly")
-
-        let suite = "mosto.r51.voltest.\(UUID().uuidString)"
-        if let ud = UserDefaults(suiteName: suite) {
-            defer { UserDefaults.standard.removePersistentDomain(forName: suite) }
-            let mon = VolumeMonitor(defaults: ud, observeSystem: false, initialVolume: 0.42)
-            var ran = 0
-            mon.gateSoundInteraction(soundEnabled: true) { ran += 1 }
-            let openedOnFirst = mon.showSheet && ran == 0 && !mon.hasConfirmedOnce
-            mon.confirmAndProceed()
-            let ranOnConfirm = !mon.showSheet && mon.hasConfirmedOnce && ran == 1
-            mon.gateSoundInteraction(soundEnabled: true) { ran += 1 }
-            let silentPassOnSecond = !mon.showSheet && ran == 2
-            let loudMon = VolumeMonitor(defaults: ud, observeSystem: false, initialVolume: 0.78)
-            loudMon.gateSoundInteraction(soundEnabled: true) { ran += 1 }
-            let highBannerShown = loudMon.hasConfirmedOnce && loudMon.showHighBanner && ran == 3
-            loudMon.dismissHighBanner()
-            log(openedOnFirst && ranOnConfirm && silentPassOnSecond && highBannerShown && !loudMon.showHighBanner,
-                "r51.VolumeMonitor shows interactive gate once, persists confirmation, and whispers only when >70%",
-                "opened=\(openedOnFirst) confirmed=\(ranOnConfirm) second=\(silentPassOnSecond) high=\(highBannerShown)")
-        }
 
         // 2. KeySpec Equatable diff-skipping inside KeyView.apply
         let specA = KeySpec(action: .char("a"), label: "a", isLetter: true)
@@ -3619,9 +3595,10 @@ enum KeyboardTests {
         vc.view.layoutIfNeeded()
         let bar = vc.candidateBarForTests
         let mostoShown = !vc.mostoHintHiddenForTests && !vc.plainLightHiddenForTests && bar.mosto.frame.width >= 26
+        let mostoRightAligned = bar.mosto.frame.minX > 290 && bar.mosto.frame.maxX < bar.expandButtonFrameForTests.minX
         let mostoTextFree = bar.idleKaomojiTitleForTests == nil && bar.idleLightTitleForTests == nil
         let mostoLightFrame = bar.idleLightFrameForTests
-        let mostoLightRightAligned = mostoLightFrame.minX > 260 && mostoLightFrame.maxX < bar.expandButtonFrameForTests.minX
+        let mostoLightRightAligned = mostoLightFrame.minX > 250 && mostoLightFrame.maxX < bar.mosto.frame.minX && mostoRightAligned
 
         s.style = 1
         vc.applySettings()
@@ -3630,7 +3607,8 @@ enum KeyboardTests {
         let plainMostoHidden = bar.mosto.isHidden && !vc.mostoHintHiddenForTests && !vc.plainLightHiddenForTests
         let plainKaomojiClean = bar.idleKaomojiTitleForTests == "^_^"
             && !bar.idleKaomojiHasImageForTests
-            && bar.idleKaomojiFrameForTests.minX < 25
+            && bar.idleKaomojiFrameForTests.minX > 290
+            && bar.idleKaomojiFrameForTests.maxX < bar.expandButtonFrameForTests.minX
         let plainLightFrame = bar.idleLightFrameForTests
         let plainLightConsistent = bar.idleLightTitleForTests == nil
             && abs(plainLightFrame.minX - mostoLightFrame.minX) < 1.0
@@ -3712,25 +3690,17 @@ enum KeyboardTests {
             "r84.CandidateBarView shows recessed rangefinder track and center home tick during cursor scrub",
             "idle=\(idleTrackHidden) cursor=\(cursorTrackAndTickShown) restored=\(cursorRestored) swipe=\(swipeTrackNoCenterTick) end=\(swipeRestored)")
 
-        // 3. Volume-gated IP family interaction & synced GestureAtlas idle preview actions
-        let udName = "test.r84.volumegate"
-        let soundGateOk: Bool = {
-            guard let ud = UserDefaults(suiteName: udName) else { return false }
-            defer { ud.removePersistentDomain(forName: udName) }
-            let vm = VolumeMonitor(defaults: ud, observeSystem: false, initialVolume: 0.42)
+        // 3. Direct un-gated IP family interaction & synced GestureAtlas idle preview actions
+        let directInteractOk: Bool = {
             let family = FamilyStageModel()
             family.soundEnabled = true
-            var reactedBeforeConfirm = false
-            family.interact(with: .moss, volume: vm)
-            reactedBeforeConfirm = family.activeMember == .moss
-            let sheetOpened = vm.showSheet && !reactedBeforeConfirm
-            vm.confirmAndProceed()
-            return sheetOpened && family.activeMember == .moss
+            family.interact(with: .moss)
+            return family.activeMember == .moss
         }()
         let atlasEffectsOk = GestureAtlasContent.MostoPreviewAction.allCases.map(\.shortEffect) == ["颜文字", "换光效", "打哈欠"]
-        log(soundGateOk && atlasEffectsOk,
-            "r84.IP family sound interaction is gated by VolumeMonitor and GestureAtlas mirrors live idle bar",
-            "soundGate=\(soundGateOk) atlas=\(atlasEffectsOk)")
+        log(directInteractOk && atlasEffectsOk,
+            "r84.IP family sound interaction triggers directly without volume gate and GestureAtlas mirrors live idle bar",
+            "direct=\(directInteractOk) atlas=\(atlasEffectsOk)")
     }
 
     // MARK: - R85: Commercial Companion App & OTTOSSOM IP Family Stage
@@ -4127,6 +4097,96 @@ enum KeyboardTests {
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key
+
+
+    // MARK: - R94: Unified T9 + QWERTY Layout, Right-Side Mosto, Page-Glide Safety & Shift Double-Tap Caps Lock
+
+    static func r94T9UnifiedLayoutAndStateMachines(_ window: UIWindow) {
+        // 1. Four-corner alignment: Return at Row 4 Right across all 4 layouts; 中/英 at Row 4 next-to-right across T9/QWERTY/symbols
+        let t9Idle = Layouts.rows(LayoutContext(page: .letters, chinese: true, showGlobe: false, returnLabel: nil, returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true, numberGrid: true, pinyinGrid: true, composing: false))
+        let t9Comp = Layouts.rows(LayoutContext(page: .letters, chinese: true, showGlobe: false, returnLabel: nil, returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true, numberGrid: true, pinyinGrid: true, composing: true))
+        let qwerty = Layouts.rows(LayoutContext(page: .letters, chinese: false, showGlobe: false, returnLabel: nil, returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true, numberGrid: true, pinyinGrid: true))
+        let numpad = Layouts.rows(LayoutContext(page: .numpad, chinese: true, showGlobe: false, returnLabel: nil, returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true, numberGrid: true, pinyinGrid: true))
+        let numbers = Layouts.rows(LayoutContext(page: .numbers, chinese: true, showGlobe: false, returnLabel: nil, returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true, numberGrid: true, pinyinGrid: true))
+        let returnAligned = t9Idle[3].last?.action == .ret
+            && qwerty[3].last?.action == .ret
+            && numpad[3].last?.action == .ret
+            && numbers[3].last?.action == .ret
+        let langAligned = t9Idle[3][t9Idle[3].count - 2].action == .toggleLanguage
+            && qwerty[3][qwerty[3].count - 2].action == .toggleLanguage
+            && numbers[3][numbers[3].count - 2].action == .toggleLanguage
+        let t9DynamicRight = t9Idle[1].last?.action == .char("！")
+            && t9Comp[1].last?.action == .clearInput
+            && t9Idle[2].last?.action == .page(.numbers)
+            && numpad[2].last?.action == .page(.numbers)
+        log(returnAligned && langAligned && t9DynamicRight,
+            "r94.Four-corner alignment locks Return bottom-right, 中/英 next-to-right, and T9 idle ！ / composing 重输",
+            "ret=\(returnAligned) lang=\(langAligned) t9Right=\(t9DynamicRight)")
+
+        // 2. T9 符号 tap enters .numbers WITHOUT flipping chinese to English (Bug #5)
+        if let pair = makeKeyboard(scheme: 1, grid: true, in: window) {
+            let (vc, h) = pair
+            let kb = vc.keyboardViewForTests
+            kb.layoutIfNeeded()
+            if let symRect = kb.keyRectsForTests(.page(.numbers))?.cap {
+                let pt = CGPoint(x: symRect.midX, y: symRect.midY)
+                kb.feedForTests([
+                    TouchSample(id: 941, phase: .began, point: pt, time: 1.0),
+                    TouchSample(id: 941, phase: .ended, point: pt, time: 1.06),
+                ])
+                let stayedChinese = !vc.testState.english && vc.testState.page == .numbers && h.string.isEmpty
+                // Returning via 拼音 restores T9 Chinese
+                if let backRect = kb.keyRectsForTests(.page(.letters))?.cap {
+                    let bpt = CGPoint(x: backRect.midX, y: backRect.midY)
+                    kb.feedForTests([
+                        TouchSample(id: 942, phase: .began, point: bpt, time: 1.2),
+                        TouchSample(id: 942, phase: .ended, point: bpt, time: 1.26),
+                    ])
+                }
+                let backToT9 = !vc.testState.english && vc.testState.page == .letters
+                log(stayedChinese && backToT9,
+                    "r94.T9 符号 tap stays in Chinese .numbers and returns cleanly to T9 Chinese",
+                    "stayed=\(stayedChinese) back=\(backToT9) en=\(vc.testState.english) page=\(vc.testState.page) text=\(h.string)")
+            } else {
+                log(false, "r94.T9 符号 rect lookup")
+            }
+        }
+
+        // 3. Numpad 符号 tap enters .numbers WITHOUT firing Return/newline (Bug #7)
+        if let pair = makeKeyboard(scheme: 1, grid: true, in: window) {
+            let (vc, h) = pair
+            vc.handle(.page(.numpad), tap: nil)
+            let kb = vc.keyboardViewForTests
+            kb.layoutIfNeeded()
+            if let symRect = kb.keyRectsForTests(.page(.numbers))?.cap {
+                let pt = CGPoint(x: symRect.midX, y: symRect.midY)
+                kb.feedForTests([
+                    TouchSample(id: 943, phase: .began, point: pt, time: 2.0),
+                    TouchSample(id: 943, phase: .ended, point: pt, time: 2.06),
+                ])
+                log(vc.testState.page == .numbers && h.string.isEmpty,
+                    "r94.Numpad 符号 tap opens .numbers without firing Return or inserting newline",
+                    "page=\(vc.testState.page) text=\(h.string.debugDescription)")
+            } else {
+                log(false, "r94.Numpad 符号 rect lookup")
+            }
+        }
+
+        // 4. English auto-capitalization + double-tap Shift locks Caps Lock in 2 taps (Bug #6)
+        if let pair = makeKeyboard(scheme: 1, in: window) {
+            let (vc, _) = pair
+            vc.handle(.toggleLanguage, tap: nil)
+            let autoStarted = vc.keyboardViewForTests.context?.shifted == true && vc.keyboardViewForTests.context?.capsLock == false
+            vc.handle(.shift, tap: nil)
+            vc.handle(.shift, tap: nil)
+            let lockedFromAuto = vc.keyboardViewForTests.context?.capsLock == true && vc.keyboardViewForTests.context?.shifted == true
+            vc.handle(.shift, tap: nil)
+            let unlockedClean = vc.keyboardViewForTests.context?.capsLock == false && vc.keyboardViewForTests.context?.shifted == false
+            log(autoStarted && lockedFromAuto && unlockedClean,
+                "r94.English auto-shifted double-tap Shift engages Caps Lock directly in 2 taps",
+                "auto=\(autoStarted) locked=\(lockedFromAuto) unlocked=\(unlockedClean)")
+        }
+    }
 
     static func fuzz(_ window: UIWindow) {
         var rng = SeededRandom(seed: fuzzSeed)

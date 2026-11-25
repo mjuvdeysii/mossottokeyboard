@@ -53,7 +53,7 @@ enum FamilyMember: String, CaseIterable, Identifiable {
     var bio: String {
         switch self {
         case .moss: return "顶着薄荷嫩芽的绒绿小鹅卵石，像刚学会打字时的那点好奇与轻快。"
-        case .mosto: return "Moss 和 Otto 共同的淘气一面，住在系统键盘的候选栏左角，停下输入就会探头。"
+        case .mosto: return "Moss 和 Otto 共同的淘气一面，住在系统键盘的候选栏右侧，停下输入就会探头。"
         case .otto: return "头顶弯灯珠的深蓝台灯大人，话不多，夜里会把光调暖陪你慢慢打完一句话。"
         }
     }
@@ -79,7 +79,7 @@ enum FamilyMember: String, CaseIterable, Identifiable {
     }
 }
 
-/// Interactive state and volume-gated sensory responses for the OTTOSSOM IP family room.
+/// Interactive state and sensory responses for the OTTOSSOM IP family room.
 @MainActor
 final class FamilyStageModel: ObservableObject {
     @Published var atmosphere: FamilyAtmosphere = .day
@@ -91,67 +91,49 @@ final class FamilyStageModel: ObservableObject {
     @Published var statusLine: String = "轻点伙伴打招呼，下拉灯绳换光线"
     @Published var verificationCelebrated: Bool = false
 
-    func interact(with member: FamilyMember, volume: VolumeMonitor? = nil) {
-        let perform = { [weak self] in
-            guard let self else { return }
-            self.activeMember = member
-            if member == .otto {
-                self.atmosphere = self.atmosphere.toggled
-            }
-            let secondary: FamilyMember = member == .moss ? .mosto : (member == .mosto ? .otto : .mosto)
-            self.triggerReaction(member: member, secondary: secondary)
+    func interact(with member: FamilyMember) {
+        activeMember = member
+        if member == .otto {
+            atmosphere = atmosphere.toggled
+        }
+        let secondary: FamilyMember = member == .moss ? .mosto : (member == .mosto ? .otto : .mosto)
+        triggerReaction(member: member, secondary: secondary)
 
-            if KeyboardSettings.shared.feedback {
-                let style: UIImpactFeedbackGenerator.FeedbackStyle = member == .moss ? .light : (member == .mosto ? .soft : .medium)
-                let intensity: CGFloat = member == .moss ? 0.66 : (member == .mosto ? 0.82 : 0.72)
-                UIImpactFeedbackGenerator(style: style).impactOccurred(intensity: intensity)
-            }
-            if self.soundEnabled {
-                let soundID: SystemSoundID = member == .mosto ? 1156 : 1104
-                AudioServicesPlaySystemSound(soundID)
-            }
-
-            switch member {
-            case .moss:
-                self.statusLine = "Moss 蹦了一下，薄荷叶轻轻一晃"
-            case .mosto:
-                self.statusLine = self.atmosphere.isNight
-                    ? "Mosto 尾尖亮起了暖金小灯"
-                    : "Mosto 住在候选栏左角，轻点开颜文字"
-            case .otto:
-                self.statusLine = self.atmosphere.isNight
-                    ? "Otto 点亮了暖黄灯珠陪你打字"
-                    : "Otto 收起夜灯，换回窗边日光"
-            }
+        if KeyboardSettings.shared.feedback {
+            let style: UIImpactFeedbackGenerator.FeedbackStyle = member == .moss ? .light : (member == .mosto ? .soft : .medium)
+            let intensity: CGFloat = member == .moss ? 0.66 : (member == .mosto ? 0.82 : 0.72)
+            UIImpactFeedbackGenerator(style: style).impactOccurred(intensity: intensity)
+        }
+        if soundEnabled {
+            let soundID: SystemSoundID = member == .mosto ? 1156 : 1104
+            AudioServicesPlaySystemSound(soundID)
         }
 
-        if let volume {
-            volume.gateSoundInteraction(soundEnabled: soundEnabled, action: perform)
-        } else {
-            perform()
+        switch member {
+        case .moss:
+            statusLine = "Moss 蹦了一下，薄荷叶轻轻一晃"
+        case .mosto:
+            statusLine = atmosphere.isNight
+                ? "Mosto 尾尖亮起了暖金小灯"
+                : "Mosto 住在候选栏右侧，轻点开颜文字"
+        case .otto:
+            statusLine = atmosphere.isNight
+                ? "Otto 点亮了暖黄灯珠陪你打字"
+                : "Otto 收起夜灯，换回窗边日光"
         }
     }
 
-    func toggleAtmosphere(volume: VolumeMonitor? = nil) {
-        let perform = { [weak self] in
-            guard let self else { return }
-            self.atmosphere = self.atmosphere.toggled
-            self.activeMember = self.atmosphere.isNight ? .otto : .mosto
-            self.triggerReaction(member: self.atmosphere.isNight ? .otto : .moss, secondary: .mosto)
-            if KeyboardSettings.shared.feedback {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred(intensity: 0.72)
-            }
-            if self.soundEnabled {
-                AudioServicesPlaySystemSound(1104)
-            }
-            self.statusLine = self.atmosphere.stageCaption
+    func toggleAtmosphere() {
+        atmosphere = atmosphere.toggled
+        activeMember = atmosphere.isNight ? .otto : .mosto
+        triggerReaction(member: atmosphere.isNight ? .otto : .moss, secondary: .mosto)
+        if KeyboardSettings.shared.feedback {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred(intensity: 0.72)
         }
-
-        if let volume {
-            volume.gateSoundInteraction(soundEnabled: soundEnabled, action: perform)
-        } else {
-            perform()
+        if soundEnabled {
+            AudioServicesPlaySystemSound(1104)
         }
+        statusLine = atmosphere.stageCaption
     }
 
     func focusFromRoster(_ member: FamilyMember) {
@@ -187,7 +169,6 @@ final class FamilyStageModel: ObservableObject {
 /// Interactive OTTOSSOM IP family desk-lamp room showcasing Moss, Mosto, and Otto side by side.
 struct FamilyLampStageView: View {
     @ObservedObject var model: FamilyStageModel
-    @ObservedObject var volume: VolumeMonitor
 
     @State private var pullFraction: CGFloat = 0
     @Environment(\.colorScheme) private var scheme
@@ -198,8 +179,7 @@ struct FamilyLampStageView: View {
     @MainActor
     static func renderSnapshotSizeForTests(width: CGFloat) -> CGSize {
         let model = FamilyStageModel()
-        let vol = VolumeMonitor(defaults: .standard, observeSystem: false, initialVolume: 0.42)
-        let r = ImageRenderer(content: FamilyLampStageView(model: model, volume: vol).frame(width: width))
+        let r = ImageRenderer(content: FamilyLampStageView(model: model).frame(width: width))
         r.scale = 2.0
         return r.uiImage?.size ?? .zero
     }
@@ -259,7 +239,7 @@ struct FamilyLampStageView: View {
                     pullFraction: $pullFraction
                 ) {
                     withAnimation(reduceMotion ? .none : .easeInOut(duration: 0.26)) {
-                        model.toggleAtmosphere(volume: volume)
+                        model.toggleAtmosphere()
                     }
                 }
                 .padding(.trailing, 8)
@@ -314,7 +294,7 @@ struct FamilyLampStageView: View {
     private var footerLampButton: some View {
         Button {
             withAnimation(reduceMotion ? .none : .easeInOut(duration: 0.26)) {
-                model.toggleAtmosphere(volume: volume)
+                model.toggleAtmosphere()
             }
         } label: {
             HStack(spacing: 4) {
@@ -360,7 +340,7 @@ struct FamilyLampStageView: View {
 
         Button {
             withAnimation(reduceMotion ? .none : .spring(response: 0.30, dampingFraction: 0.64)) {
-                model.interact(with: member, volume: volume)
+                model.interact(with: member)
             }
         } label: {
             VStack(spacing: 4) {
