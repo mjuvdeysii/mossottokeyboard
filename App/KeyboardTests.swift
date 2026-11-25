@@ -4074,10 +4074,18 @@ enum KeyboardTests {
 
         // 3. AltPopup: sculpted borderless floating capsule with adaptive Day/Night shadow depth
         let lightPopup = AltPopup(options: ["。", "？", "！", "、"], cell: 36, height: 42)
-        lightPopup.overrideUserInterfaceStyle = .light
-        lightPopup.layoutIfNeeded()
         let darkPopup = AltPopup(options: ["。", "？", "！", "、"], cell: 36, height: 42)
+        window.addSubview(lightPopup)
+        window.addSubview(darkPopup)
+        defer {
+            lightPopup.removeFromSuperview()
+            darkPopup.removeFromSuperview()
+        }
+        lightPopup.overrideUserInterfaceStyle = .light
         darkPopup.overrideUserInterfaceStyle = .dark
+        lightPopup.refresh()
+        darkPopup.refresh()
+        lightPopup.layoutIfNeeded()
         darkPopup.layoutIfNeeded()
         let altOk = lightPopup.hasSculptedSurfaceForTests
             && lightPopup.borderWidthForTests == 0
@@ -4115,7 +4123,7 @@ enum KeyboardTests {
 
         log(consoleOk && previewOk && altOk && gridOk && barOk && emojiOk,
             "r93.Settings Hardware Console, Popups, CandidateGrid, CandidateBar pills, and Emoji badges use borderless sculpted craft",
-            "console=\(consoleOk) preview=\(previewOk) alt=\(altOk) grid=\(gridOk) bar=\(barOk) emoji=\(emojiOk)")
+            "console=\(consoleOk) preview=\(previewOk) alt=\(altOk) shadow=(\(lightPopup.shadowOpacityForTests),\(darkPopup.shadowOpacityForTests)) grid=\(gridOk) bar=\(barOk) emoji=\(emojiOk)")
     }
 
     // MARK: - Fuzz: random people, the composition rules after every key

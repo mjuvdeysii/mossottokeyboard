@@ -725,6 +725,11 @@ final class AltPopup: UIView {
         }
     }
 
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window != nil { refresh() }
+    }
+
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
         super.traitCollectionDidChange(previous)
         refresh()
@@ -736,7 +741,7 @@ final class AltPopup: UIView {
     var borderWidthForTests: CGFloat { layer.borderWidth + surfaceLayer.borderWidth }
     var shadowOpacityForTests: Float { layer.shadowOpacity }
 
-    private func refresh() {
+    func refresh() {
         let t = traitCollection
         let bubbleResolved = Theme.bubble.resolvedColor(with: t)
         let fnResolved = Theme.functionKey.resolvedColor(with: t)
