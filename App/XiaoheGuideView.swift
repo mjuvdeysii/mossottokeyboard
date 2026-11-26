@@ -27,7 +27,7 @@ struct XiaoheGuideContent: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 16) {
             Card(title: "声感指法与键位图谱") {
                 XiaoheDrill()
                 Divider()
@@ -85,7 +85,7 @@ struct XiaoheGuideContent: View {
                         }
                     }
                     Divider()
-                    Text("“小鹤双拼”“小鹤音形”是小鹤（flypy.cc）发布的输入方案名称，相关名称、标识及商标等权利归其权利人所有。Mosto键盘与小鹤及其权利人没有隶属、合作、授权或背书关系。")
+                    Text("“小鹤双拼”“小鹤音形”是小鹤官方发布的输入方案名称，相关名称、标识及商标等权利归其权利人所有。Mosto键盘与小鹤及其权利人没有隶属、合作、授权或背书关系。")
                         .font(.caption2)
                         .foregroundStyle(MossOttoStyle.inkSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -100,13 +100,13 @@ struct XiaoheGuideContent: View {
                     Image(systemName: "info.circle")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(MossOttoStyle.violet)
-                    Text("学习成本与名称权利声明（flypy.cc · 雾凇拼音）")
+                    Text("学习成本与名称权利声明（小鹤方案 · 雾凇拼音）")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(MossOttoStyle.inkPrimary)
                     Spacer()
                 }
             }
-            .padding(14)
+            .padding(16)
             .background(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .fill(MossOttoStyle.surface)

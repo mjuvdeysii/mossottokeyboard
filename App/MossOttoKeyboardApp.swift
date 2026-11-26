@@ -28,7 +28,7 @@ extension EnvironmentValues {
 @MainActor
 final class AppNavigation: ObservableObject {
     @Published var tab: AppTab = .companion
-    @Published var guideSection: GuideSection = .xiaohe
+    @Published var guideSection: GuideSection = .atlas
     let family: FamilyStageModel
 
     init() {
@@ -104,7 +104,7 @@ private struct CompanionHomeScreen: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 16) {
                 FamilyLampStageView(model: family)
 
                 CompanionEnableCard(
@@ -190,7 +190,7 @@ struct CompanionEnableCard: View {
                     Text(verified ? "系统键盘已验通" : (added ? "已添加到系统键盘" : "三步启用 Mosto键盘"))
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(MossOttoStyle.inkPrimary)
-                    Text(added ? "在任意输入框长按地球键即可切换" : "设置 › 通用 › 键盘 › 添加新键盘")
+                    Text(added ? "在任意输入框长按地球键即可切换" : "全拼与九宫格开箱即用 · 设置 › 通用 › 键盘")
                         .font(.caption)
                         .foregroundStyle(MossOttoStyle.inkSecondary)
                 }
@@ -216,7 +216,7 @@ struct CompanionEnableCard: View {
                 VStack(alignment: .leading, spacing: 6) {
                     stepRow(index: "1", text: "打开 系统设置 › 通用 › 键盘 › 键盘")
                     stepRow(index: "2", text: "轻点 添加新键盘，选择 Mosto键盘")
-                    stepRow(index: "3", text: "不开启“允许完全访问”也能正常打字；开启后仅用于按键震动与声效")
+                    stepRow(index: "3", text: "不开启“允许完全访问”也能完整打字；开启后仅用于按键震动与声效")
                 }
             }
 
@@ -253,13 +253,13 @@ struct CompanionEnableCard: View {
 
                 Group {
                     if SnapshotRenderer.requested {
-                        Text("切换到 Mosto 系统键盘，打一句“你好”试试")
+                        Text("切换到 Mosto 键盘，全拼打 nihao 或用九宫格输入“你好”")
                             .font(.subheadline)
                             .foregroundStyle(MossOttoStyle.inkSecondary.opacity(0.68))
                             .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
                     } else {
                         HStack(spacing: 8) {
-                            TextField("切换到 Mosto 系统键盘，打一句“你好”试试", text: $verifyText)
+                            TextField("切换到 Mosto 键盘，全拼打 nihao 或用九宫格输入“你好”", text: $verifyText)
                                 .focused(typing)
                                 .font(.subheadline)
                                 .frame(minHeight: 34)
@@ -334,32 +334,32 @@ struct CompanionCapabilitiesSection: View {
             id: "schemes",
             icon: "keyboard",
             tint: MossOttoStyle.violet,
-            title: "小鹤双拼与全拼",
-            detail: "两键一字、全拼与九宫格，偏键自动纠错。",
-            linkLabel: "看图谱"
+            title: "全拼与九宫格",
+            detail: "全键盘整句顺打与九宫格单手速输，兼顾小鹤双拼。",
+            linkLabel: "看技巧"
         ),
         Item(
             id: "gestures",
-            icon: "character.cursor.ibeam",
+            icon: "wand.and.stars",
             tint: MossOttoStyle.ottoIndigo,
-            title: "混输与快捷手势",
-            detail: "直出常用英文，标点上滑，空格滑移光标。",
+            title: "偏键纠错与手势",
+            detail: "误触漏键自动读准，标点上滑、空格游标与行内心算。",
             linkLabel: "看手势"
         ),
         Item(
-            id: "settings",
+            id: "xiaohe",
             icon: "slider.horizontal.3",
             tint: MossOttoStyle.lampAmber,
-            title: "设置就在键盘内",
-            detail: "与系统键盘彼此独立，请在顶栏齿轮或长按表情键调整。",
-            linkLabel: nil
+            title: "键盘内即时定制",
+            detail: "轻点齿轮或长按 Mosto，随手切换九宫格、双拼与夜灯。",
+            linkLabel: "探双拼"
         ),
         Item(
             id: "offline",
             icon: "lock.shield",
             tint: MossOttoStyle.moss,
-            title: "纯本机离线",
-            detail: "不联网、不读剪贴板，词库与习惯只留在本机。",
+            title: "纯本机离线守护",
+            detail: "不联网、不读剪贴板，词库、纠错与习惯只留手机内。",
             linkLabel: "看承诺"
         ),
     ]
@@ -378,20 +378,21 @@ struct CompanionCapabilitiesSection: View {
     private func bentoTile(_ item: Item) -> some View {
         let action: (() -> Void)? = {
             switch item.id {
-            case "schemes": return { UISelectionFeedbackGenerator().selectionChanged(); nav?.openGuide(.xiaohe) }
+            case "schemes": return { UISelectionFeedbackGenerator().selectionChanged(); nav?.openGuide(.atlas) }
             case "gestures": return { UISelectionFeedbackGenerator().selectionChanged(); nav?.openGuide(.atlas) }
+            case "xiaohe": return { UISelectionFeedbackGenerator().selectionChanged(); nav?.openGuide(.xiaohe) }
             case "offline": return { UISelectionFeedbackGenerator().selectionChanged(); nav?.openAbout() }
             default: return nil
             }
         }()
 
-        let tileContent = VStack(alignment: .leading, spacing: 7) {
+        let tileContent = VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .center) {
                 Image(systemName: item.icon)
-                    .font(.system(size: 13.5, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(item.tint)
-                    .frame(width: 28, height: 28)
-                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(item.tint.opacity(0.14)))
+                    .frame(width: 32, height: 32)
+                    .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(item.tint.opacity(0.14)))
                 Spacer(minLength: 4)
                 if let linkLabel = item.linkLabel {
                     HStack(spacing: 2) {
@@ -436,17 +437,17 @@ struct CompanionCapabilitiesSection: View {
     }
 }
 
-// MARK: - Tab 2: Guide (指南 — 双拼图谱 & 手势图鉴)
+// MARK: - Tab 2: Guide (指南 — 输入与手势 & 小鹤双拼)
 
 enum GuideSection: Int, CaseIterable, Identifiable {
-    case xiaohe
     case atlas
+    case xiaohe
 
     var id: Int { rawValue }
     var title: String {
         switch self {
-        case .xiaohe: return "双拼图谱"
-        case .atlas: return "手势图鉴"
+        case .atlas: return "输入与手势"
+        case .xiaohe: return "小鹤双拼"
         }
     }
 }
@@ -465,10 +466,10 @@ private struct GuideScreen: View {
                 .pickerStyle(.segmented)
 
                 switch nav.guideSection {
-                case .xiaohe:
-                    XiaoheGuideContent()
                 case .atlas:
                     GestureAtlasContent()
+                case .xiaohe:
+                    XiaoheGuideContent()
                 }
             }
             .padding(.horizontal, 16)
@@ -511,7 +512,21 @@ struct GestureAtlasContent: View {
     private var previewNight: Bool { nightOverride ?? (colorScheme == .dark) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 16) {
+            Card(title: "全拼与九宫格上手") {
+                atlasRow(
+                    cap: "ni",
+                    title: "全拼整句与简拼",
+                    chips: ["nihao → 你好", "nh / bzd 简拼", "中英自然混输"]
+                )
+                Divider()
+                atlasRow(
+                    cap: "9键",
+                    title: "九宫格全拼单手速打",
+                    chips: ["选 9 键即刻上手", "左侧实时拼音微调", "右侧符号同位返回"]
+                )
+            }
+
             Card(title: "高频核心手势") {
                 atlasRow(
                     cap: "，↑。",
@@ -728,6 +743,7 @@ struct AboutCompanionContent: View {
     var nav: AppNavigation? = nil
     @State private var showMosslingWebsite = false
     @State private var showMosslingStore = false
+    @State private var showSupportWebsite = false
 
     @MainActor
     static func renderSnapshotSizeForTests(width: CGFloat) -> CGSize {
@@ -744,42 +760,49 @@ struct AboutCompanionContent: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(spacing: 14) {
-                Image("BrandMark")
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 64, height: 64)
-                    .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 15, style: .continuous)
-                            .strokeBorder(MossOttoStyle.hairline, lineWidth: 0.6)
-                    )
-                    .shadow(color: Color.black.opacity(0.10), radius: 5, y: 2)
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 14) {
+                    Image("BrandMark")
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 64, height: 64)
+                        .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                                .strokeBorder(MossOttoStyle.hairline, lineWidth: 0.6)
+                        )
+                        .shadow(color: Color.black.opacity(0.10), radius: 5, y: 2)
 
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("Mosto键盘")
-                        .font(.title3.weight(.bold))
-                        .foregroundStyle(MossOttoStyle.inkPrimary)
-                    Text("OTTOSSOM 家族 · 纯离线中文输入法")
-                        .font(.caption)
-                        .foregroundStyle(MossOttoStyle.inkSecondary)
-                    HStack(spacing: 6) {
-                        Text(versionBadge)
-                            .font(.caption2.weight(.semibold).monospacedDigit())
-                            .foregroundStyle(MossOttoStyle.violet)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 2.5)
-                            .background(Capsule().fill(MossOttoStyle.violet.opacity(0.12)))
-                        Text("纯本机离线")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(MossOttoStyle.moss)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 2.5)
-                            .background(Capsule().fill(MossOttoStyle.moss.opacity(0.12)))
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Mosto键盘")
+                            .font(.title3.weight(.bold))
+                            .foregroundStyle(MossOttoStyle.inkPrimary)
+                        Text("OTTOSSOM Studio · 纯离线精准中文键盘")
+                            .font(.caption)
+                            .foregroundStyle(MossOttoStyle.inkSecondary)
+                        HStack(spacing: 6) {
+                            Text(versionBadge)
+                                .font(.caption2.weight(.semibold).monospacedDigit())
+                                .foregroundStyle(MossOttoStyle.violet)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 2.5)
+                                .background(Capsule().fill(MossOttoStyle.violet.opacity(0.12)))
+                            Text("纯本机离线")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(MossOttoStyle.moss)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 2.5)
+                                .background(Capsule().fill(MossOttoStyle.moss.opacity(0.12)))
+                        }
                     }
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: 0)
+
+                Text("每天被触碰最多次的交互面，值得与硬件同等级的准度、手势节奏与隐私边界。")
+                    .font(.caption)
+                    .foregroundStyle(MossOttoStyle.inkSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -870,7 +893,7 @@ struct AboutCompanionContent: View {
                 }
             }
 
-            Card(title: "合规、来源与许可") {
+            Card(title: "法务与合规") {
                 ForEach(Array(LegalText.docs.enumerated()), id: \.element.id) { idx, doc in
                     if idx > 0 { Divider() }
                     cardLink {
@@ -878,12 +901,30 @@ struct AboutCompanionContent: View {
                     } label: {
                         aboutRow(
                             icon: aboutIcon(doc.id),
-                            iconColor: doc.id == "regulatory" ? MossOttoStyle.moss : MossOttoStyle.inkSecondary,
+                            iconColor: doc.id == "notices" ? MossOttoStyle.moss : MossOttoStyle.inkSecondary,
                             title: doc.title,
                             subtitle: aboutSubtitle(doc.id)
                         )
                     }
                 }
+
+                Divider()
+
+                Button {
+                    showSupportWebsite = true
+                } label: {
+                    aboutRow(
+                        icon: "questionmark.circle",
+                        iconColor: MossOttoStyle.violet,
+                        title: "官方支持与反馈",
+                        subtitle: "启用帮助、常见问题与问题反馈"
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+            .sheet(isPresented: $showSupportWebsite) {
+                MosslingWebsiteSheet(url: URL(string: LegalText.supportURL) ?? MosslingLink.websiteURL)
+                    .ignoresSafeArea()
             }
 
             StudioVersionFooter()
@@ -951,8 +992,7 @@ struct AboutCompanionContent: View {
 private struct StudioVersionFooter: View {
     private var versionLine: String {
         let short = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
-        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
-        return "Mosto键盘 v\(short) (Build \(build)) · GPL-3.0"
+        return "Mosto键盘 v\(short) · OTTOSSOM Studio 原创作品 · 纯离线零追踪"
     }
 
     var body: some View {
@@ -960,9 +1000,6 @@ private struct StudioVersionFooter: View {
             Text(versionLine)
                 .font(.caption2.weight(.medium).monospacedDigit())
                 .foregroundStyle(MossOttoStyle.inkSecondary.opacity(0.85))
-            Text("OTTOSSOM Studio · 键盘扩展 100% 离线 · 无广告 · 无追踪")
-                .font(.caption2)
-                .foregroundStyle(MossOttoStyle.inkSecondary.opacity(0.72))
             Text("© 2026 OTTOSSOM Studio")
                 .font(.caption2)
                 .foregroundStyle(MossOttoStyle.inkSecondary.opacity(0.6))
@@ -1015,14 +1052,14 @@ struct PrivacyCommitmentContent: View {
             icon: "lock.shield",
             tint: MossOttoStyle.moss,
             title: "键盘与伴侣应用彼此独立",
-            detail: "系统键盘的学习记录与输入设置只存放在键盘扩展自己的本机空间，不会跨应用读写。"
+            detail: "系统键盘的学习记录与偏好仅存放在键盘扩展自己的本机空间，伴侣应用仅保存彩蛋最高分等轻量记录，彼此独立、绝不跨应用读取输入内容。"
         ),
         RowItem(
             id: "full-access",
             icon: "hand.raised",
             tint: MossOttoStyle.lampAmber,
             title: "“允许完全访问”只用于声效与震动",
-            detail: "不开启也能使用全部输入、双拼、全拼与自动纠错功能；开启后也绝不联网或读取剪贴板。"
+            detail: "不开启也能使用全部全拼、九宫格、双拼与自动纠错功能；开启后也绝不联网或读取剪贴板。"
         ),
         RowItem(
             id: "clear-anytime",
@@ -1034,7 +1071,7 @@ struct PrivacyCommitmentContent: View {
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 12) {
                 Image(systemName: "checkmark.shield.fill")
                     .font(.system(size: 20, weight: .semibold))
@@ -1051,7 +1088,7 @@ struct PrivacyCommitmentContent: View {
                 }
                 Spacer(minLength: 0)
             }
-            .padding(14)
+            .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(MossOttoStyle.surface))
             .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(MossOttoStyle.hairline, lineWidth: 0.5))
@@ -1063,8 +1100,8 @@ struct PrivacyCommitmentContent: View {
                         Image(systemName: item.icon)
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(item.tint)
-                            .frame(width: 30, height: 30)
-                            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(item.tint.opacity(0.12)))
+                            .frame(width: 32, height: 32)
+                            .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(item.tint.opacity(0.12)))
                         VStack(alignment: .leading, spacing: 2) {
                             Text(item.title)
                                 .font(.subheadline.weight(.semibold))
@@ -1087,24 +1124,32 @@ struct LegalView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 16) {
                 Text("生效日期：\(LegalText.effective)")
-                    .font(.footnote)
+                    .font(.footnote.monospacedDigit())
                     .foregroundStyle(MossOttoStyle.inkSecondary)
+                    .padding(.leading, 4)
+
                 ForEach(Array(doc.sections.enumerated()), id: \.offset) { _, section in
                     Card(title: section.0) {
                         ForEach(Array(section.1.enumerated()), id: \.offset) { _, item in
                             switch item {
                             case .text(let t):
-                                Text(linked(t))
+                                Text(t)
+                                    .font(.subheadline)
+                                    .lineSpacing(3)
                                     .foregroundStyle(MossOttoStyle.inkPrimary)
                                     .fixedSize(horizontal: false, vertical: true)
                             case .bullets(let list):
-                                VStack(alignment: .leading, spacing: 6) {
+                                VStack(alignment: .leading, spacing: 8) {
                                     ForEach(Array(list.enumerated()), id: \.offset) { _, b in
-                                        HStack(alignment: .firstTextBaseline, spacing: 6) {
-                                            Text("•").foregroundStyle(MossOttoStyle.inkSecondary)
-                                            Text(linked(b))
+                                        HStack(alignment: .firstTextBaseline, spacing: 7) {
+                                            Text("·")
+                                                .font(.subheadline.weight(.bold))
+                                                .foregroundStyle(MossOttoStyle.violet)
+                                            Text(b)
+                                                .font(.subheadline)
+                                                .lineSpacing(3)
                                                 .foregroundStyle(MossOttoStyle.inkPrimary)
                                                 .fixedSize(horizontal: false, vertical: true)
                                         }
@@ -1114,9 +1159,38 @@ struct LegalView: View {
                         }
                     }
                 }
-                if let u = URL(string: LegalText.site + "/" + doc.id + ".html") {
-                    Link("网页版：" + u.absoluteString, destination: u)
-                        .font(.footnote)
+
+                if !doc.actions.isEmpty {
+                    Card(title: "相关链接与支持") {
+                        ForEach(Array(doc.actions.enumerated()), id: \.offset) { idx, action in
+                            if idx > 0 { Divider() }
+                            if let url = URL(string: action.url) {
+                                Link(destination: url) {
+                                    HStack(spacing: 12) {
+                                        Image(systemName: action.url.contains("apps.apple.com") ? "arrow.up.right.square" : "safari")
+                                            .font(.system(size: 14, weight: .semibold))
+                                            .foregroundStyle(MossOttoStyle.violet)
+                                            .frame(width: 32, height: 32)
+                                            .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(MossOttoStyle.violet.opacity(0.12)))
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(action.title)
+                                                .font(.subheadline.weight(.semibold))
+                                                .foregroundStyle(MossOttoStyle.inkPrimary)
+                                            Text(action.subtitle)
+                                                .font(.caption)
+                                                .foregroundStyle(MossOttoStyle.inkSecondary)
+                                        }
+                                        Spacer(minLength: 4)
+                                        Image(systemName: "arrow.up.right")
+                                            .font(.caption.weight(.bold))
+                                            .foregroundStyle(MossOttoStyle.violet)
+                                    }
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
                 }
             }
             .padding(16)
@@ -1124,16 +1198,6 @@ struct LegalView: View {
         .background(MossOttoStyle.canvas.ignoresSafeArea())
         .navigationTitle(doc.title)
         .navigationBarTitleDisplayMode(.inline)
-    }
-
-    private func linked(_ s: String) -> AttributedString {
-        var a = AttributedString(s)
-        guard let det = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else { return a }
-        for m in det.matches(in: s, range: NSRange(s.startIndex..., in: s)) {
-            guard let url = m.url, let r = Range(m.range, in: s), let ar = Range(r, in: a) else { continue }
-            a[ar].link = url
-        }
-        return a
     }
 }
 
@@ -1172,7 +1236,7 @@ struct MosslingSisterAppCard: View {
                     Text("孩子摸索，大人点灯")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(MossOttoStyle.inkPrimary)
-                    Text("0–3 岁亲子共玩、床头夜灯与成长手账，Mosto 的两位伙伴住在那里。")
+                    Text("每天被触碰最多次的交互面，值得与硬件同等级的准度与隐私边界。把这份安静带回书桌，在《摸索台灯》里遇见 0–3 岁亲子共玩与床头夜灯。")
                         .font(.caption)
                         .foregroundStyle(MossOttoStyle.inkSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1215,12 +1279,14 @@ struct MosslingSisterAppCard: View {
     }
 }
 
-/// Native in-app Safari sheet presenting the official 摸索台灯 website (https://mossotto.pages.dev/).
+/// Native in-app Safari sheet presenting the official OTTOSSOM / 摸索台灯 website.
 struct MosslingWebsiteSheet: UIViewControllerRepresentable {
+    var url: URL = MosslingLink.websiteURL
+
     func makeUIViewController(context: Context) -> SFSafariViewController {
         let cfg = SFSafariViewController.Configuration()
         cfg.entersReaderIfAvailable = false
-        let vc = SFSafariViewController(url: MosslingLink.websiteURL, configuration: cfg)
+        let vc = SFSafariViewController(url: url, configuration: cfg)
         vc.preferredControlTintColor = UIColor(MossOttoStyle.violet)
         vc.dismissButtonStyle = .close
         return vc

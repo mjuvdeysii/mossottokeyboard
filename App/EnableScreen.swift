@@ -55,13 +55,13 @@ struct EnableContent: View {
     }
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 16) {
             EnableStatusHero(added: added, verified: verified)
 
             VStack(spacing: 10) {
                 EnableStepRow(step: 1, title: "打开设置", detail: "设置 › 通用 › 键盘 › 键盘", art: .settings)
                 EnableStepRow(step: 2, title: "添加 Mosto", detail: "添加新键盘 › 选中 Mosto键盘", art: .add)
-                EnableStepRow(step: 3, title: "地球键切换", detail: "长按地球键切换 · 无需完全访问", art: .globe)
+                EnableStepRow(step: 3, title: "地球键切换", detail: "长按地球键切换 · 全拼与九宫格即开即用，无需完全访问", art: .globe)
             }
 
             if let url = URL(string: UIApplication.openSettingsURLString) {
@@ -110,18 +110,18 @@ struct EnableContent: View {
                     }
                 }
                 if SnapshotRenderer.requested {
-                    Text("全拼 nihao 或小鹤 nihc → 你好")
+                    Text("全拼输入 nihao 或切换九宫格打一句“你好”试试")
                         .font(.subheadline)
                         .foregroundStyle(MossOttoStyle.inkSecondary.opacity(0.65))
                         .frame(maxWidth: .infinity, minHeight: 38, alignment: .topLeading)
                 } else {
-                    TextField("全拼 nihao 或小鹤 nihc → 你好", text: $text, axis: .vertical)
+                    TextField("全拼输入 nihao 或切换九宫格打一句“你好”试试", text: $text, axis: .vertical)
                         .lineLimit(2...4)
                         .focused(typing)
                         .font(.subheadline)
                 }
             }
-            .padding(14)
+            .padding(16)
             .background(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(MossOttoStyle.surface)
@@ -249,25 +249,25 @@ private struct EnableStepRow: View {
         }()
         HStack(spacing: 12) {
             Image(systemName: symbolName)
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(tint)
-                .frame(width: 36, height: 36)
-                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(tint.opacity(dark ? 0.20 : 0.12)))
+                .frame(width: 32, height: 32)
+                .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(tint.opacity(dark ? 0.20 : 0.12)))
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(step). \(title)")
-                    .font(.subheadline.weight(.semibold))
+                    .font(.subheadline.weight(.semibold).monospacedDigit())
                     .foregroundStyle(MossOttoStyle.inkPrimary)
                 Text(detail)
                     .font(.caption)
                     .foregroundStyle(MossOttoStyle.inkSecondary)
-                    .lineLimit(1)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
         .background(
             RoundedRectangle(cornerRadius: 15, style: .continuous)
                 .fill(MossOttoStyle.surface)

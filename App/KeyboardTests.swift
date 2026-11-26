@@ -173,6 +173,7 @@ enum KeyboardTests {
         r96HiddenBugFixesAndCompanionEcosystem(window)
         r99LocalBigramAndAdaptiveBeam(window)
         r100DistilledDualSectionGrammar(window)
+        r100_5CommercialPolishEmojiSwipeAndMostoRun(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -4402,6 +4403,126 @@ enum KeyboardTests {
         log(bundleGramOk && directPredOk && sec1ScoreOk && directDecodeOk && vcPhrase1 && vcPhrase2 && vcPredOk,
             "r100.Dual-section grammar.gram decodes distilled phrases and serves Section 2 context continuations",
             "gram=\(bundleGramOk) sec2=\(directPredOk) sec1=\(sec1ScoreOk) direct=\(directDecodeOk) p1=\(vcPhrase1) p2=\(vcPhrase2) vcPred=\(vcPredOk)")
+    }
+
+    /// R100.5: Horizontal Emoji/Kaomoji swipe, adaptive kaomoji widths, Mosto Run v2 mechanics, and commercial legal/app defaults.
+    static func r100_5CommercialPolishEmojiSwipeAndMostoRun(_ window: UIWindow) {
+        _ = window
+        // 1. Emoji horizontal category swipe + 8..9 col x 4 full-row geometry + entering Kaomoji
+        for e in ["👍", "😭", "❤️", "🙏", "😂"] { EmojiPanelView.remember(e) }
+        let ep = EmojiPanelView(frame: CGRect(x: 0, y: 0, width: 402, height: 258))
+        ep.layoutIfNeeded()
+        ep.load(kaomoji: false)
+        ep.layoutIfNeeded()
+        var feedbackEvents: [FeedbackEvent] = []
+        ep.onFeedback = { feedbackEvents.append($0) }
+
+        let gridOk = (8...9).contains(ep.emojiColumnsForTests)
+            && ep.emojiCellSizeForTests.height * 4 <= (258 - 48 - 2 - 24)
+        let startSec = ep.selectedSectionForTests
+        ep.swipeCategoryForTests(delta: 1)
+        let stepped1 = ep.selectedSectionForTests == startSec + 1 && feedbackEvents.contains(.candidate)
+        for _ in 0..<4 { ep.swipeCategoryForTests(delta: 1) }
+        let stepped5 = ep.selectedSectionForTests == startSec + 5 && ep.tabScrollOffsetXForTests > 0
+        for _ in 0..<8 {
+            if ep.kaomojiModeForTests { break }
+            ep.swipeCategoryForTests(delta: 1)
+        }
+        let enteredKaomoji = ep.kaomojiModeForTests
+
+        // 2. Kaomoji horizontal mood swipe, pose sync, and width-tiered adaptive flow grid
+        ep.load(kaomoji: true)
+        ep.layoutIfNeeded()
+        feedbackEvents.removeAll()
+        let shortW = ep.kaomojiItemWidthForTests("QAQ")
+        let wideW = ep.kaomojiItemWidthForTests("(╯°□°）╯︵ ┻━┻")
+        let adaptiveOk = ep.kaomojiUsesAdaptiveWidthsForTests && shortW > 50 && wideW >= 180 && shortW < wideW
+
+        let mood0 = ep.activeMoodIndexForTests
+        ep.swipeMoodForTests(delta: 1)
+        let moodForward = ep.activeMoodIndexForTests == mood0 + 1 && feedbackEvents.contains(.candidate)
+        ep.swipeMoodForTests(delta: -1)
+        let moodBack = ep.activeMoodIndexForTests == mood0
+
+        if let yawnIdx = ep.moodTitlesForTests.firstIndex(of: "摸鱼") {
+            while ep.activeMoodIndexForTests < yawnIdx { ep.swipeMoodForTests(delta: 1) }
+        }
+        let yawnPoseOk = ep.moodMostoPoseNameForTests == "mosto_yawn"
+        if let nightIdx = ep.moodTitlesForTests.firstIndex(of: "晚安") {
+            while ep.activeMoodIndexForTests < nightIdx { ep.swipeMoodForTests(delta: 1) }
+        }
+        let nightPoseOk = ep.moodMostoPoseNameForTests == "mosto_night"
+
+        log(gridOk && stepped1 && stepped5 && enteredKaomoji && adaptiveOk && moodForward && moodBack && yawnPoseOk && nightPoseOk,
+            "r100_5.EmojiPanelView supports bidirectional horizontal swipe, adaptive kaomoji widths, and 4-row grid density",
+            "grid=\(gridOk) s1=\(stepped1) s5=\(stepped5) kao=\(enteredKaomoji) adapt=\(adaptiveOk) fwd=\(moodForward) back=\(moodBack) yawn=\(yawnPoseOk) night=\(nightPoseOk)")
+
+        // 3. MostoRunEngine v2: variable jump clamp, double jump, combo multiplier, shield pickup/block & paper plane
+        var r1 = MostoRunEngine()
+        r1.start()
+        let groundJump = r1.jump()
+        let vBeforeClamp = r1.velocityY
+        r1.releaseJump()
+        let releaseClamped = vBeforeClamp > 240 && r1.velocityY == 240
+        _ = r1.step(dt: 0.04)
+        let doubleJump = r1.jump() && r1.isDoubleJumping && r1.jumpsRemaining == 0
+        let thirdRejected = !r1.jump()
+
+        var r2 = MostoRunEngine()
+        r2.start()
+        r2.beads = [
+            MostoRunEngine.Bead(id: 1, x: 64, y: 14),
+            MostoRunEngine.Bead(id: 2, x: 65, y: 14),
+            MostoRunEngine.Bead(id: 3, x: 66, y: 14),
+        ]
+        _ = r2.step(dt: 0.005)
+        let comboOk = r2.combo == 3 && r2.maxCombo == 3 && r2.bonusScore == 45
+
+        var r3 = MostoRunEngine()
+        r3.start()
+        r3.shieldPickups = [MostoRunEngine.ShieldPickup(id: 90, x: 64, y: 14)]
+        r3.obstacles = [MostoRunEngine.Obstacle(id: 91, x: 62, y: 0, width: 16, height: 34, kind: 0)]
+        let shieldStep = r3.step(dt: 0.005)
+        let shieldOk = shieldStep.shieldPicked && shieldStep.shieldBlocked && !shieldStep.died && !r3.hasShield && !r3.gameOver && r3.obstacles.isEmpty
+
+        var r4 = MostoRunEngine()
+        r4.start()
+        r4.bonusScore = 220
+        r4.hasShield = true
+        var sawPaperPlane = false
+        for _ in 0..<220 {
+            if r4.playerY <= 1.5 { r4.jump() }
+            _ = r4.step(dt: 0.04)
+            if r4.obstacles.contains(where: { $0.kind == 3 && $0.y > 0 }) {
+                sawPaperPlane = true
+                break
+            }
+        }
+        log(groundJump && releaseClamped && doubleJump && thirdRejected && comboOk && shieldOk && r4.reached200 && sawPaperPlane,
+            "r100_5.MostoRunEngine v2 handles variable jump, double jump, combo multiplier, mint shield, and paper airplanes",
+            "g=\(groundJump) clamp=\(releaseClamped) dj=\(doubleJump) rj=\(thirdRejected) combo=\(comboOk) shield=\(shieldOk) plane=\(sawPaperPlane)")
+
+        // 4. Mainstream Pinyin companion defaults & commercial legal convergence (zero bare URLs or personal handle)
+        let nav = AppNavigation()
+        let guideDefaultOk = nav.guideSection == .atlas && GuideSection.allCases.first == .atlas
+        let legalIdsOk = LegalText.docs.map(\.id) == ["privacy", "terms", "notices"]
+        let handleNeedle = ["mjuv", "deysii"].joined()
+        let legalClean = !LegalText.site.contains(handleNeedle)
+            && !LegalText.site.contains("github.io")
+            && LegalText.supportURL == "https://mossotto.pages.dev/#support"
+            && LegalText.docs.allSatisfy { doc in
+                !doc.actions.isEmpty && doc.sections.allSatisfy { sec in
+                    sec.1.allSatisfy { item in
+                        switch item {
+                        case .text(let s): return !s.contains(handleNeedle) && !s.contains("github.com") && !s.contains("https://")
+                        case .bullets(let bs): return bs.allSatisfy { !$0.contains(handleNeedle) && !$0.contains("github.com") && !$0.contains("https://") }
+                        }
+                    }
+                }
+            }
+        log(guideDefaultOk && legalIdsOk && legalClean,
+            "r100_5.Companion defaults to Pinyin/T9 guide and converged commercial LegalText has zero bare URLs or personal handle",
+            "guide=\(guideDefaultOk) ids=\(legalIdsOk) clean=\(legalClean)")
     }
 
     static func fuzz(_ window: UIWindow) {

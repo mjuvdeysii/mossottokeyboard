@@ -1,7 +1,7 @@
 import UIKit
 
 /// 表情与颜文字面板: Emoji categories + OTTOSSOM Mood-Tape Kaomoji deck + comfortable scrollable bottom dock.
-final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionViewDelegateFlowLayout {
+final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionViewDelegateFlowLayout, UIGestureRecognizerDelegate {
     var onEmoji: ((String) -> Void)?
     var onDelete: (() -> Void)?
     var onBack: (() -> Void)?
@@ -48,7 +48,14 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     private let gear = UIButton(type: .system)
     private var selected = -1
     private var pendingScrollToSelectedTab = false
+    private var suppressScrollSelection = false
     private var deleteTimer: Timer?
+    private lazy var horizontalPan = UIPanGestureRecognizer(target: self, action: #selector(handleHorizontalPan(_:)))
+    private var cachedKaomojiLayoutKey = ""
+    private var cachedKaomojiWidths: [CGFloat] = []
+    private var cachedInlineKaomojiWidth: CGFloat = 0
+    private var cachedInlineKaomojiWidths: [CGFloat] = []
+    private static var kaomojiTextWidthCache: [String: CGFloat] = [:]
     var tabScrollOffsetXForTests: CGFloat { tabScroll.contentOffset.x }
 
     static let categoryNames: [(String, String)] = [
@@ -162,6 +169,25 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     var mostoReturnFrameInSelfForTests: CGRect { dockBar.convert(mostoReturnButton.frame, to: self) }
     var returnButtonVisibleForTests: Bool { !returnButton.isHidden && returnButton.frame.width >= 48 }
     var emojiBadgesBorderlessForTests: Bool { kaomojiShortcutButton.layer.borderWidth == 0 && moodMostoBadge.layer.borderWidth == 0 }
+    var selectedSectionForTests: Int { selected }
+    var emojiColumnsForTests: Int { emojiColumns }
+    var emojiCellSizeForTests: CGSize { emojiCellSize }
+    func swipeCategoryForTests(delta: Int) { stepCategory(by: delta, animated: false) }
+    func swipeMoodForTests(delta: Int) { stepMood(by: delta, animated: false) }
+    func kaomojiItemWidthForTests(_ text: String) -> CGFloat {
+        let availW = max(120, floor(collection.bounds.width - 12))
+        if kaomojiMode, displayedMoods.indices.contains(selectedMood),
+           let idx = displayedMoods[selectedMood].items.firstIndex(of: text) {
+            ensureKaomojiWidths()
+            if idx < cachedKaomojiWidths.count { return cachedKaomojiWidths[idx] }
+        }
+        return Self.adaptiveKaomojiTierWidth(for: text, availW: availW, landscape: bounds.height < 210 && availW > 500)
+    }
+    var kaomojiUsesAdaptiveWidthsForTests: Bool {
+        guard kaomojiMode else { return false }
+        ensureKaomojiWidths()
+        return Set(cachedKaomojiWidths).count > 1
+    }
 
     final class Cell: UICollectionViewCell {
         let label = UILabel()
@@ -254,6 +280,10 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         collection.register(Cell.self, forCellWithReuseIdentifier: "e")
         collection.register(Header.self, forSupplementaryViewOfKind: UICollectionView.elementKindSectionHeader, withReuseIdentifier: "h")
         collectionBox.addSubview(collection)
+        horizontalPan.delegate = self
+        horizontalPan.maximumNumberOfTouches = 1
+        collectionBox.addGestureRecognizer(horizontalPan)
+        collection.panGestureRecognizer.require(toFail: horizontalPan)
         addSubview(collectionBox)
 
         kaomojiShortcutButton.layer.borderWidth = 0
@@ -561,16 +591,17 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         }
     }
 
-    private func selectMood(_ index: Int) {
+    private func selectMood(_ index: Int, animated: Bool = true) {
         guard displayedMoods.indices.contains(index) else { return }
         selectedMood = index
         refreshMoodRibbonStyle()
         updateMoodMostoPose(animated: true)
         layoutMoodPills()
         if index < moodButtons.count {
-            moodScroll.scrollRectToVisible(moodButtons[index].frame.insetBy(dx: -16, dy: 0), animated: true)
+            moodScroll.scrollRectToVisible(moodButtons[index].frame.insetBy(dx: -16, dy: 0), animated: animated && !UIAccessibility.isReduceMotionEnabled)
         }
         if kaomojiMode {
+            invalidateKaomojiWidths()
             collection.reloadData()
             collection.setContentOffset(.zero, animated: false)
         }
@@ -681,12 +712,116 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
 
     // MARK: - Layout
 
-    private var cellSide: CGFloat {
-        let w = collection.bounds.width - 8
-        guard w > 100 else { return 40 }
+    private var emojiColumns: Int {
+        let w = collection.bounds.width - 12
+        guard w > 100 else { return 8 }
         let compactLand = bounds.height < 210 && w > 500
-        let across = compactLand ? max(12, Int(w / 40)) : max(8, Int(w / 46))
-        return floor(w / CGFloat(across))
+        if compactLand { return max(13, Int(w / 44)) }
+        return w >= 376 ? 9 : 8
+    }
+
+    private var emojiCellSize: CGSize {
+        let w = collection.bounds.width - 12
+        guard w > 100 else { return CGSize(width: 40, height: 40) }
+        let cols = emojiColumns
+        let cellW = floor(w / CGFloat(cols))
+        let headerH: CGFloat = bounds.height < 210 ? 22 : 24
+        let insetV: CGFloat = bounds.height < 210 ? 4 : 6
+        let gridH = max(80, collection.bounds.height - headerH - insetV)
+        let rows: CGFloat = bounds.height < 210 ? 3 : 4
+        let cellH = min(46, max(36, floor(gridH / rows)))
+        return CGSize(width: cellW, height: cellH)
+    }
+
+    private func invalidateKaomojiWidths() {
+        cachedKaomojiLayoutKey = ""
+        cachedKaomojiWidths = []
+    }
+
+    private static func kaomojiTextWidth(_ text: String) -> CGFloat {
+        if let w = kaomojiTextWidthCache[text] { return w }
+        let w = ceil((text as NSString).size(withAttributes: [.font: UIFont.systemFont(ofSize: 14.0, weight: .medium)]).width)
+        kaomojiTextWidthCache[text] = w
+        return w
+    }
+
+    private static func adaptiveKaomojiUnits(for text: String, availW: CGFloat, landscape: Bool) -> Int {
+        let neededW = kaomojiTextWidth(text) + 22
+        let tiers = landscape ? [2, 3, 4, 6, 12] : [3, 4, 6, 8, 12]
+        for u in tiers {
+            if availW * CGFloat(u) / 12.0 >= neededW { return u }
+        }
+        return 12
+    }
+
+    private static func adaptiveKaomojiTierWidth(for text: String, availW: CGFloat, landscape: Bool) -> CGFloat {
+        let u = adaptiveKaomojiUnits(for: text, availW: availW, landscape: landscape)
+        return max(60, floor(availW * CGFloat(u) / 12.0))
+    }
+
+    private static func packKaomojiWidths(items: [String], availW: CGFloat, landscape: Bool) -> [CGFloat] {
+        guard !items.isEmpty, availW > 80 else { return items.map { _ in max(60, floor(availW / 3)) } }
+        let rawUnits = items.map { adaptiveKaomojiUnits(for: $0, availW: availW, landscape: landscape) }
+        var rows: [[(idx: Int, units: Int)]] = []
+        var cur: [(idx: Int, units: Int)] = []
+        var curSum = 0
+        for (i, u) in rawUnits.enumerated() {
+            if !cur.isEmpty, curSum + u > 12 {
+                rows.append(cur)
+                cur = [(i, u)]
+                curSum = u
+            } else {
+                cur.append((i, u))
+                curSum += u
+            }
+        }
+        if !cur.isEmpty { rows.append(cur) }
+
+        var widths = [CGFloat](repeating: 0, count: items.count)
+        let safeAvail = floor(availW) - 1
+        for rIdx in rows.indices {
+            var row = rows[rIdx]
+            let isLastRow = rIdx == rows.count - 1
+            let sumU = row.reduce(0) { $0 + $1.units }
+            if sumU < 12 && (!isLastRow || row.count >= 2) {
+                var rem = 12 - sumU
+                var k = 0
+                while rem > 0 {
+                    row[k % row.count].units += 1
+                    rem -= 1
+                    k += 1
+                }
+            } else if isLastRow && row.count == 1 && row[0].units <= 4 {
+                row[0].units = min(12, max(row[0].units, 6))
+            }
+            var rowPx = row.map { max(54, floor(safeAvail * CGFloat($0.units) / 12.0)) }
+            let pxSum = rowPx.reduce(0, +)
+            if pxSum > safeAvail && !rowPx.isEmpty {
+                rowPx[0] -= (pxSum - safeAvail)
+            }
+            for (slot, entry) in row.enumerated() {
+                widths[entry.idx] = rowPx[slot]
+            }
+        }
+        return widths
+    }
+
+    private func ensureKaomojiWidths() {
+        let availW = max(120, floor(collection.bounds.width - 12))
+        let moodTitle = displayedMoods.indices.contains(selectedMood) ? displayedMoods[selectedMood].title : ""
+        let count = displayedMoods.indices.contains(selectedMood) ? displayedMoods[selectedMood].items.count : 0
+        let key = "\(selectedMood):\(moodTitle):\(count):\(Int(availW)):\(bounds.height < 210 ? 1 : 0)"
+        guard key != cachedKaomojiLayoutKey else { return }
+        cachedKaomojiLayoutKey = key
+        let items = displayedMoods.indices.contains(selectedMood) ? displayedMoods[selectedMood].items : []
+        cachedKaomojiWidths = Self.packKaomojiWidths(items: items, availW: availW, landscape: bounds.height < 210 && availW > 500)
+    }
+
+    private func ensureInlineKaomojiWidths(for items: [String]) {
+        let availW = max(120, floor(collection.bounds.width - 12))
+        if abs(cachedInlineKaomojiWidth - availW) < 0.5 && cachedInlineKaomojiWidths.count == items.count { return }
+        cachedInlineKaomojiWidth = availW
+        cachedInlineKaomojiWidths = Self.packKaomojiWidths(items: items, availW: availW, landscape: bounds.height < 210 && availW > 500)
     }
 
     private func updateEdgeFade(box: UIView, scroll: UIScrollView, fade: CAGradientLayer, edge: CGFloat = 12) {
@@ -770,11 +905,11 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         collectionBox.frame = CGRect(x: 0, y: topH, width: b.width, height: max(0, b.height - topH - barH))
         collection.frame = collectionBox.bounds
         if let flow = collection.collectionViewLayout as? UICollectionViewFlowLayout {
-            flow.sectionInset = UIEdgeInsets(top: 2, left: 4, bottom: b.height < 210 ? 2 : 4, right: 4)
+            flow.sectionInset = UIEdgeInsets(top: 2, left: 6, bottom: b.height < 210 ? 2 : 4, right: 6)
         }
         kaomojiShortcutButton.isHidden = kaomojiMode
         if !kaomojiMode {
-            let headerH: CGFloat = b.height < 210 ? 22 : 26
+            let headerH: CGFloat = b.height < 210 ? 22 : 24
             let pillH: CGFloat = b.height < 210 ? 20 : 22
             let fitW = ceil(kaomojiShortcutButton.sizeThatFits(CGSize(width: 140, height: pillH)).width)
             let pillW = max(Theme.plain ? 62 : 76, fitW)
@@ -892,8 +1027,15 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         c.label.text = e
         c.tag = kao ? 1 : 0
         c.label.backgroundColor = kao ? Theme.keyTop : .clear
-        c.label.font = kao ? .systemFont(ofSize: 14.5, weight: .medium) : .systemFont(ofSize: 30)
-        c.label.minimumScaleFactor = kao ? 0.58 : 0.6
+        if kao {
+            c.label.font = .systemFont(ofSize: 14.0, weight: .medium)
+            c.label.minimumScaleFactor = 0.80
+        } else {
+            let cell = emojiCellSize
+            let pt = min(29, max(24, floor(min(cell.width, cell.height) * 0.66)))
+            c.label.font = .systemFont(ofSize: pt)
+            c.label.minimumScaleFactor = 0.68
+        }
         c.label.textColor = Theme.keyText
         c.accessibilityLabel = e
         return c
@@ -927,15 +1069,27 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     }
 
     func collectionView(_ collectionView: UICollectionView, layout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
-        if kaomojiMode || isKaomoji(indexPath.section) {
-            return CGSize(width: max(60, floor((collectionView.bounds.width - 8) / 3)), height: kaomojiRowHeight)
+        if kaomojiMode {
+            ensureKaomojiWidths()
+            let w = indexPath.item < cachedKaomojiWidths.count
+                ? cachedKaomojiWidths[indexPath.item]
+                : max(60, floor((collectionView.bounds.width - 12) / 3))
+            return CGSize(width: w, height: kaomojiRowHeight)
         }
-        return CGSize(width: cellSide, height: cellSide)
+        if isKaomoji(indexPath.section) {
+            let items = sections[indexPath.section].items
+            ensureInlineKaomojiWidths(for: items)
+            let w = indexPath.item < cachedInlineKaomojiWidths.count
+                ? cachedInlineKaomojiWidths[indexPath.item]
+                : max(60, floor((collectionView.bounds.width - 12) / 3))
+            return CGSize(width: w, height: kaomojiRowHeight)
+        }
+        return emojiCellSize
     }
 
     func collectionView(_ collectionView: UICollectionView, layout: UICollectionViewLayout, referenceSizeForHeaderInSection section: Int) -> CGSize {
         if kaomojiMode { return .zero }
-        return sections[section].items.isEmpty ? .zero : CGSize(width: collectionView.bounds.width, height: bounds.height < 210 ? 22 : 26)
+        return sections[section].items.isEmpty ? .zero : CGSize(width: collectionView.bounds.width, height: bounds.height < 210 ? 22 : 24)
     }
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
@@ -971,14 +1125,120 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             return
         }
         guard scrollView === collection, !kaomojiMode else { return }
-        updateSelection()
+        if !suppressScrollSelection { updateSelection() }
         updateCollectionBottomFade()
+    }
+
+    // MARK: - Horizontal Page Swipe (Emoji Categories & Kaomoji Moods)
+
+    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        if gestureRecognizer === horizontalPan {
+            let v = horizontalPan.velocity(in: collectionBox)
+            return abs(v.x) > abs(v.y) * 1.25 && abs(v.x) > 40
+        }
+        return super.gestureRecognizerShouldBegin(gestureRecognizer)
+    }
+
+    @objc private func handleHorizontalPan(_ pan: UIPanGestureRecognizer) {
+        switch pan.state {
+        case .began:
+            collection.isScrollEnabled = false
+            collection.isScrollEnabled = true
+        case .changed:
+            let dx = pan.translation(in: collectionBox).x
+            let clamped = max(-68, min(68, dx * 0.42))
+            collection.transform = CGAffineTransform(translationX: clamped, y: 0)
+        case .ended:
+            let dx = pan.translation(in: collectionBox).x
+            let vx = pan.velocity(in: collectionBox).x
+            if abs(dx) >= 42 || abs(vx) >= 340 {
+                let delta = (dx < 0 || (abs(dx) < 18 && vx < 0)) ? 1 : -1
+                if kaomojiMode {
+                    stepMood(by: delta, animated: true)
+                } else {
+                    stepCategory(by: delta, animated: true)
+                }
+            } else {
+                bounceCollectionBack(animated: true)
+            }
+        case .cancelled, .failed:
+            bounceCollectionBack(animated: true)
+        default:
+            break
+        }
+    }
+
+    private func bounceCollectionBack(animated: Bool) {
+        guard animated && !UIAccessibility.isReduceMotionEnabled else {
+            collection.transform = .identity
+            collection.alpha = 1
+            return
+        }
+        UIView.animate(withDuration: 0.22, delay: 0, usingSpringWithDamping: 0.85, initialSpringVelocity: 0.4, options: [.allowUserInteraction, .beginFromCurrentState]) {
+            self.collection.transform = .identity
+            self.collection.alpha = 1
+        }
+    }
+
+    private func animatePageSlide(delta: Int, animated: Bool) {
+        guard animated && !UIAccessibility.isReduceMotionEnabled else {
+            collection.transform = .identity
+            collection.alpha = 1
+            return
+        }
+        collection.transform = CGAffineTransform(translationX: delta > 0 ? 34 : -34, y: 0)
+        collection.alpha = 0.72
+        UIView.animate(withDuration: 0.20, delay: 0, usingSpringWithDamping: 0.88, initialSpringVelocity: 0.4, options: [.allowUserInteraction, .beginFromCurrentState]) {
+            self.collection.transform = .identity
+            self.collection.alpha = 1
+        }
+    }
+
+    private func stepMood(by delta: Int, animated: Bool) {
+        guard kaomojiMode, !displayedMoods.isEmpty else { bounceCollectionBack(animated: animated); return }
+        let next = selectedMood + delta
+        guard displayedMoods.indices.contains(next) else {
+            bounceCollectionBack(animated: animated)
+            return
+        }
+        onFeedback?(.candidate)
+        selectMood(next, animated: animated)
+        animatePageSlide(delta: delta, animated: animated)
+    }
+
+    private func stepCategory(by delta: Int, animated: Bool) {
+        let valid = sections.indices.filter { !sections[$0].items.isEmpty }
+        guard !valid.isEmpty else { bounceCollectionBack(animated: animated); return }
+        let current = valid.firstIndex(of: selected) ?? 0
+        let nextPos = current + delta
+        guard valid.indices.contains(nextPos) else {
+            bounceCollectionBack(animated: animated)
+            return
+        }
+        let targetSection = valid[nextPos]
+        onFeedback?(.candidate)
+        if targetSection == Self.categoryNames.count + 1 {
+            kaomojiMode = true
+            applyLips()
+            invalidateKaomojiWidths()
+            collection.reloadData()
+            setNeedsLayout()
+            layoutIfNeeded()
+            setSelected(targetSection, animated: animated)
+            collection.setContentOffset(.zero, animated: false)
+            updateCollectionBottomFade()
+        } else {
+            scrollTo(targetSection, animated: false)
+            updateCollectionBottomFade()
+        }
+        animatePageSlide(delta: delta, animated: animated)
     }
 
     // MARK: - Categories
 
     private func scrollTo(_ section: Int, animated: Bool) {
         guard section < sections.count, !sections[section].items.isEmpty else { return }
+        suppressScrollSelection = true
         if section == 0 {
             collection.setContentOffset(.zero, animated: animated)
         } else if section < collection.numberOfSections,
@@ -989,6 +1249,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             let maxY = max(0, collection.contentSize.height - collection.bounds.height)
             collection.setContentOffset(CGPoint(x: 0, y: min(attr.frame.minY, maxY)), animated: animated)
         }
+        suppressScrollSelection = false
         setSelected(section, animated: animated)
     }
 
@@ -1052,12 +1313,13 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         if tapKaomoji != kaomojiMode {
             kaomojiMode = tapKaomoji
             applyLips()
+            invalidateKaomojiWidths()
             collection.reloadData()
             setNeedsLayout()
             layoutIfNeeded()
         }
         if kaomojiMode {
-            setSelected(b.tag)
+            setSelected(b.tag, animated: true)
             collection.setContentOffset(.zero, animated: false)
         } else {
             scrollTo(b.tag, animated: false)

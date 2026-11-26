@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第三方致谢与合规声明 · Mosto键盘</title>
+<style>
+:root{
+  --bg:#F7F4EE;
+  --surface:#FFFFFF;
+  --surface-muted:#EFEAE0;
+  --ink:#1E192B;
+  --sub:#6A6478;
+  --line:#E4DDD0;
+  --violet:#633EBF;
+  --on-violet:#FFFFFF;
+  --amber:#D69A34;
+  --moss:#55704A;
+  --otto:#203872;
+  --shadow:0 12px 32px rgba(30,25,43,.06);
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#14121D;
+    --surface:#1F1B2E;
+    --surface-muted:#28233B;
+    --ink:#F4F1FA;
+    --sub:#A7A1B8;
+    --line:rgba(255,255,255,.11);
+    --violet:#A78BFA;
+    --on-violet:#1A1429;
+    --amber:#FFC45A;
+    --moss:#7EA86E;
+    --otto:#7FA6E8;
+    --shadow:0 14px 36px rgba(0,0,0,.35);
+  }
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--ink);
+  font:16px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC","SF Pro Text",system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+a{color:var(--violet);text-decoration:none}
+a:hover{text-decoration:underline}
+.topbar{
+  position:sticky;
+  top:0;
+  z-index:20;
+  backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
+  background:color-mix(in srgb,var(--bg) 86%,transparent);
+  border-bottom:1px solid var(--line);
+}
+.topbar-inner{
+  max-width:1040px;
+  margin:0 auto;
+  padding:14px 20px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  flex-wrap:wrap;
+}
+.brand{
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+  font-weight:700;
+  color:var(--ink);
+  letter-spacing:-.01em;
+}
+.brand-dot{
+  width:10px;
+  height:10px;
+  border-radius:999px;
+  background:linear-gradient(135deg,var(--violet),var(--amber));
+  box-shadow:0 0 12px color-mix(in srgb,var(--amber) 55%,transparent);
+}
+nav{
+  display:flex;
+  align-items:center;
+  gap:16px;
+  flex-wrap:wrap;
+  font-size:14px;
+  font-weight:500;
+}
+nav a{color:var(--sub)}
+nav a:hover,nav a[aria-current="page"]{color:var(--ink);text-decoration:none}
+.wrap{max-width:1040px;margin:0 auto;padding:32px 20px 64px}
+.narrow{max-width:780px}
+.card{
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:22px;
+  padding:22px 24px;
+  box-shadow:var(--shadow);
+}
+.btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  padding:12px 20px;
+  border-radius:14px;
+  font-size:15px;
+  font-weight:600;
+  transition:transform .15s ease,opacity .15s ease;
+}
+.btn:hover{text-decoration:none;transform:translateY(-1px)}
+.btn-primary{background:var(--violet);color:var(--on-violet)}
+.btn-secondary{background:var(--surface-muted);color:var(--ink);border:1px solid var(--line)}
+.pill{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:5px 12px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:600;
+  background:color-mix(in srgb,var(--violet) 12%,transparent);
+  color:var(--violet);
+}
+.pill-moss{background:color-mix(in srgb,var(--moss) 14%,transparent);color:var(--moss)}
+.pill-amber{background:color-mix(in srgb,var(--amber) 16%,transparent);color:var(--amber)}
+footer{
+  margin-top:48px;
+  padding-top:24px;
+  border-top:1px solid var(--line);
+  color:var(--sub);
+  font-size:13px;
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:wrap;
+}
+.footer-links{display:flex;gap:16px;flex-wrap:wrap}
+.footer-links a{color:var(--sub)}
+
+.doc-head{margin-bottom:20px}
+.doc-head h1{font-size:30px;line-height:1.25;margin:8px 0 6px;letter-spacing:-.02em}
+.doc-meta{color:var(--sub);font-size:14px}
+.doc-section{margin:14px 0}
+.doc-section h2{font-size:17px;margin:0 0 10px;letter-spacing:-.01em}
+.doc-section p,.doc-section li{margin:8px 0;color:var(--ink)}
+.doc-section ul{margin:8px 0;padding-left:20px}
+.actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-top:18px}
+.action-card{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:14px 18px;
+  border-radius:16px;
+  background:var(--surface);
+  border:1px solid var(--line);
+  color:var(--ink);
+}
+.action-card:hover{text-decoration:none;border-color:var(--violet)}
+.action-title{font-weight:600;font-size:15px}
+.action-sub{font-size:13px;color:var(--sub)}
+</style>
+</head>
+<body>
+<header class="topbar"><div class="topbar-inner"><a class="brand" href="index.html"><span class="brand-dot"></span><span>OTTOSSOM · Mosto键盘</span></a><nav><a href="index.html">首页</a><a href="index.html#features">核心能力</a><a href="index.html#family">摸索台灯</a><a href="index.html#support">官方支持</a><a href="privacy.html">隐私政策</a><a href="terms.html">用户协议</a><a href="notices.html" aria-current="page">致谢与合规</a></nav></div></header>
+<main class="wrap narrow">
+  <div class="doc-head">
+    <span class="pill">OTTOSSOM Studio 官方文档</span>
+    <h1>第三方致谢与合规声明</h1>
+    <div class="doc-meta">生效日期：2026 年 11 月 24 日</div>
+  </div>
+  <section class="card doc-section"><h2>一、第三方开放数据与构建组件致谢</h2><p>Mosto键盘坚持完全本机计算、不依赖云端词库。本应用的核心解码器、触点纠错模型与交互视觉为 OTTOSSOM Studio 原创作品；部分词库语料与构建期工具基于以下公开项目合规整理与署名致谢：</p><ul><li>雾凇拼音（rime-ice）：提供基础中文单字与常用词库语料（GPL-3.0-only）</li><li>八股文（rime-octagram-data）：提供上下文搭配与词语联想语言模型语料（LGPL-3.0-only）</li><li>万象语法模型（rime-wanxiang-data）：提供离线整句 N-gram 蒸馏语料参考（CC-BY-4.0）</li><li>wordfreq：提供公开英文词频统计表，用于中英混输候选排序（CC-BY-SA-4.0）</li><li>Emojibase：提供标准 Unicode Emoji 列表、分组与版本元数据（MIT）</li><li>Unicode CLDR：提供标准中文表情名称与检索词，用于本机表情联想（Unicode-3.0）</li><li>darts-clone：Double-Array Trie 离线索引构建库，仅于构建期使用（BSD-2-Clause）</li><li>pypinyin：词库构建期汉语拼音注音映射工具，仅于构建期使用（MIT）</li></ul><p>上述公开数据、标准与开源项目的所有权及商标权归原机构或原作者所有，本应用仅作合规署名致谢，不代表原机构或原作者对本应用的背书或合作关系。</p></section>
+  <section class="card doc-section"><h2>二、离线合规、无生成式 AI 与平台规范</h2><ul><li>纯本地单机工具：Mosto键盘扩展全程离线运行，伴侣应用亦不设后台服务器、账号系统或信息流发布服务；如未来版本新增任何联网服务，将在上线前依法完成对应地区的合规备案与公示。</li><li>中国个人信息保护合规：遵循《中华人民共和国个人信息保护法》（PIPL）及《常见类型移动互联网应用程序必要个人信息范围规定》，零采集、零上传、零画像。</li><li>App Store 隐私声明一致：隐私营养标签申报为“不收集数据（Data Not Collected）”，应用包内不含任何跨应用追踪接口或 IDFA 请求。</li><li>无生成式 AI 声明：本应用不接入任何大语言模型或生成式人工智能服务，亦不包含个性化广告或信息流推荐算法；所有候选均基于本机确定性词库与静态语言统计生成。</li></ul></section>
+  <section class="card doc-section"><h2>三、同门产品与官方支持</h2><p>同门系列作品：《摸索台灯》（Mossling）是一款面向 0–3 岁亲子共玩与床头夜灯陪伴的 iOS 应用，Moss、Otto 与 Mosto 同属于 OTTOSSOM 设计宇宙。</p><p>如需获取使用帮助、查阅最新说明或提交意见反馈，请通过下方官方支持中心联系我们。</p></section>
+  <div class="actions"><a class="action-card" href="https://mossotto.pages.dev/#support"><div><div class="action-title">访问 OTTOSSOM 官网与支持</div><div class="action-sub">查看《摸索台灯》与官方帮助</div></div><span aria-hidden="true">↗</span></a><a class="action-card" href="https://apps.apple.com/app/id6825856138"><div><div class="action-title">在 App Store 查看《摸索台灯》</div><div class="action-sub">OTTOSSOM 同门床头夜灯应用</div></div><span aria-hidden="true">↗</span></a></div>
+  <footer><div>Mosto键盘 · OTTOSSOM Studio 原创作品 · 纯离线零追踪 · © 2026 OTTOSSOM Studio</div><div class="footer-links"><a href="privacy.html">隐私政策</a><a href="terms.html">用户协议</a><a href="notices.html">第三方致谢与合规声明</a><a href="index.html#support">官方支持</a></div></footer>
+</main>
+</body>
+</html>

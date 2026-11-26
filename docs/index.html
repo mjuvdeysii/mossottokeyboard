@@ -1,22 +1,385 @@
 <!doctype html>
-<html lang="zh-Hans"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mosto键盘 · Mosto键盘</title>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mosto键盘 · 全拼九宫格离线精准中文输入法 · OTTOSSOM</title>
+<meta name="description" content="Mosto键盘是 OTTOSSOM Studio 出品的纯离线 iOS 中文输入法，原生支持全拼全键盘、九宫格全拼与小鹤双拼，以触点几何纠错与零联网隐私守护每天的高频输入。">
 <style>
-:root{--bg:#FBF8F2;--card:#fff;--ink:#2B1961;--sub:#6A5C96;--line:#E6DEF5;--accent:#633EBF}
-@media (prefers-color-scheme:dark){:root{--bg:#16112F;--card:#221A45;--ink:#F4EEFF;--sub:#B4A8DC;--line:#3A2E70;--accent:#FFC45A}}
-body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.7 -apple-system,"PingFang SC",system-ui,sans-serif}
-main{max-width:720px;margin:0 auto;padding:28px 16px 48px}
-h1{font-size:26px;margin:0 0 4px} h2{font-size:17px;margin:26px 0 6px}
-.meta{color:var(--sub);font-size:14px;margin-bottom:18px}
-section{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:6px 18px 12px;margin:12px 0}
-p,li{margin:8px 0} ul{padding-left:20px} a{color:var(--accent);word-break:break-all}
-nav a{margin-right:14px;font-size:14px;display:inline-block;margin-bottom:4px}
-</style></head><body><main>
-<nav><a href="index.html">Mosto键盘</a><a href="privacy.html">隐私政策</a><a href="terms.html">用户协议</a><a href="sources.html">内容与词库来源</a><a href="licenses.html">开源许可</a><a href="regulatory.html">法规与合规</a></nav>
-<h1>Mosto键盘</h1><div class="meta">生效日期：2026 年 11 月 24 日</div>
-<section><h2>纯离线小鹤双拼与全拼 iOS 键盘</h2>
-<p>小鹤双拼 · 全拼 · 九宫格，按触点位置自动纠错，支持中英混输。OTTOSSOM 家族的 Moss、Otto 与 Mosto 陪你安静打字。</p>
-<p>键盘扩展全程零联网，不读取剪贴板，不收集任何个人数据；你学过的词和触点习惯只留在你的设备上。</p></section>
-<section><h2>启用方式</h2><p>安装后打开伴侣应用首页，或前往 设置 › 通用 › 键盘 › 键盘 › 添加新键盘 选择 Mosto键盘，长按地球键切换即可打字；不开启“允许完全访问”也能使用全部核心功能。</p></section>
-<section><h2>支持与反馈</h2><p>欢迎在使用中反馈建议与问题：<a href="https://github.com/mjuvdeysii/mossottokeyboard/issues">https://github.com/mjuvdeysii/mossottokeyboard/issues</a></p></section>
-</main></body></html>
+:root{
+  --bg:#F7F4EE;
+  --surface:#FFFFFF;
+  --surface-muted:#EFEAE0;
+  --ink:#1E192B;
+  --sub:#6A6478;
+  --line:#E4DDD0;
+  --violet:#633EBF;
+  --on-violet:#FFFFFF;
+  --amber:#D69A34;
+  --moss:#55704A;
+  --otto:#203872;
+  --shadow:0 12px 32px rgba(30,25,43,.06);
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#14121D;
+    --surface:#1F1B2E;
+    --surface-muted:#28233B;
+    --ink:#F4F1FA;
+    --sub:#A7A1B8;
+    --line:rgba(255,255,255,.11);
+    --violet:#A78BFA;
+    --on-violet:#1A1429;
+    --amber:#FFC45A;
+    --moss:#7EA86E;
+    --otto:#7FA6E8;
+    --shadow:0 14px 36px rgba(0,0,0,.35);
+  }
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--ink);
+  font:16px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC","SF Pro Text",system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+a{color:var(--violet);text-decoration:none}
+a:hover{text-decoration:underline}
+.topbar{
+  position:sticky;
+  top:0;
+  z-index:20;
+  backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
+  background:color-mix(in srgb,var(--bg) 86%,transparent);
+  border-bottom:1px solid var(--line);
+}
+.topbar-inner{
+  max-width:1040px;
+  margin:0 auto;
+  padding:14px 20px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  flex-wrap:wrap;
+}
+.brand{
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+  font-weight:700;
+  color:var(--ink);
+  letter-spacing:-.01em;
+}
+.brand-dot{
+  width:10px;
+  height:10px;
+  border-radius:999px;
+  background:linear-gradient(135deg,var(--violet),var(--amber));
+  box-shadow:0 0 12px color-mix(in srgb,var(--amber) 55%,transparent);
+}
+nav{
+  display:flex;
+  align-items:center;
+  gap:16px;
+  flex-wrap:wrap;
+  font-size:14px;
+  font-weight:500;
+}
+nav a{color:var(--sub)}
+nav a:hover,nav a[aria-current="page"]{color:var(--ink);text-decoration:none}
+.wrap{max-width:1040px;margin:0 auto;padding:32px 20px 64px}
+.narrow{max-width:780px}
+.card{
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:22px;
+  padding:22px 24px;
+  box-shadow:var(--shadow);
+}
+.btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  padding:12px 20px;
+  border-radius:14px;
+  font-size:15px;
+  font-weight:600;
+  transition:transform .15s ease,opacity .15s ease;
+}
+.btn:hover{text-decoration:none;transform:translateY(-1px)}
+.btn-primary{background:var(--violet);color:var(--on-violet)}
+.btn-secondary{background:var(--surface-muted);color:var(--ink);border:1px solid var(--line)}
+.pill{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:5px 12px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:600;
+  background:color-mix(in srgb,var(--violet) 12%,transparent);
+  color:var(--violet);
+}
+.pill-moss{background:color-mix(in srgb,var(--moss) 14%,transparent);color:var(--moss)}
+.pill-amber{background:color-mix(in srgb,var(--amber) 16%,transparent);color:var(--amber)}
+footer{
+  margin-top:48px;
+  padding-top:24px;
+  border-top:1px solid var(--line);
+  color:var(--sub);
+  font-size:13px;
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:wrap;
+}
+.footer-links{display:flex;gap:16px;flex-wrap:wrap}
+.footer-links a{color:var(--sub)}
+
+.hero{
+  position:relative;
+  overflow:hidden;
+  border-radius:28px;
+  padding:36px 32px;
+  background:radial-gradient(circle at 82% 12%,color-mix(in srgb,var(--amber) 22%,transparent),transparent 46%),
+             radial-gradient(circle at 14% 85%,color-mix(in srgb,var(--violet) 16%,transparent),transparent 52%),
+             var(--surface);
+  border:1px solid var(--line);
+  box-shadow:var(--shadow);
+  display:grid;
+  grid-template-columns:1.25fr .95fr;
+  gap:28px;
+  align-items:center;
+}
+@media (max-width:780px){.hero{grid-template-columns:1fr;padding:26px 20px}}
+.hero-badges{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.hero h1{font-size:38px;line-height:1.18;margin:0 0 14px;letter-spacing:-.025em}
+@media (max-width:600px){.hero h1{font-size:30px}}
+.hero p{margin:0 0 22px;color:var(--sub);font-size:16.5px;max-width:54ch}
+.hero-cta{display:flex;gap:12px;flex-wrap:wrap}
+.hero-stage{
+  background:var(--surface-muted);
+  border:1px solid var(--line);
+  border-radius:22px;
+  padding:20px;
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+}
+.preview-bar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:8px 12px;
+  font-size:13px;
+}
+.preview-cands{display:flex;gap:10px;font-weight:600;color:var(--ink)}
+.preview-fix{color:var(--violet);font-size:12px;font-weight:600}
+.key-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}
+.kcap{
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:10px;
+  height:38px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight:600;
+  font-size:14px;
+  box-shadow:0 2px 0 color-mix(in srgb,var(--ink) 8%,transparent);
+}
+.kcap.accent{background:var(--violet);color:var(--on-violet);border-color:transparent}
+.kcap.amber{background:color-mix(in srgb,var(--amber) 24%,var(--surface));color:var(--ink)}
+.section-head{margin:48px 0 18px}
+.section-head h2{font-size:26px;margin:6px 0 4px;letter-spacing:-.02em}
+.section-head p{margin:0;color:var(--sub)}
+.bento{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+@media (max-width:860px){.bento{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:580px){.bento{grid-template-columns:1fr}}
+.bento .card{padding:20px 22px;display:flex;flex-direction:column;gap:8px}
+.bento h3{margin:4px 0 2px;font-size:17px}
+.bento p{margin:0;color:var(--sub);font-size:14.5px}
+.icon-box{
+  width:36px;height:36px;border-radius:10px;
+  display:inline-flex;align-items:center;justify-content:center;
+  font-weight:700;font-size:14px;
+  background:color-mix(in srgb,var(--violet) 14%,transparent);
+  color:var(--violet);
+}
+.icon-box.moss{background:color-mix(in srgb,var(--moss) 15%,transparent);color:var(--moss)}
+.icon-box.amber{background:color-mix(in srgb,var(--amber) 18%,transparent);color:var(--amber)}
+.icon-box.otto{background:color-mix(in srgb,var(--otto) 15%,transparent);color:var(--otto)}
+.family-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px}
+@media (max-width:760px){.family-grid{grid-template-columns:1fr}}
+.member-tag{font-size:12px;font-weight:600;color:var(--sub)}
+.sister-banner{
+  display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;
+  background:linear-gradient(135deg,color-mix(in srgb,var(--otto) 8%,var(--surface)),color-mix(in srgb,var(--amber) 10%,var(--surface)));
+}
+.support-grid{display:grid;grid-template-columns:1fr 1.15fr;gap:16px}
+@media (max-width:780px){.support-grid{grid-template-columns:1fr}}
+.steps{margin:0;padding-left:20px}
+.steps li{margin:10px 0}
+details{border-bottom:1px solid var(--line);padding:12px 0}
+details:last-of-type{border-bottom:none}
+summary{cursor:pointer;font-weight:600;list-style:none;display:flex;justify-content:space-between;align-items:center}
+summary::-webkit-details-marker{display:none}
+details p{margin:8px 0 0;color:var(--sub);font-size:14.5px}
+</style>
+</head>
+<body>
+<header class="topbar"><div class="topbar-inner"><a class="brand" href="index.html"><span class="brand-dot"></span><span>OTTOSSOM · Mosto键盘</span></a><nav><a href="index.html" aria-current="page">首页</a><a href="index.html#features">核心能力</a><a href="index.html#family">摸索台灯</a><a href="index.html#support">官方支持</a><a href="privacy.html">隐私政策</a><a href="terms.html">用户协议</a><a href="notices.html">致谢与合规</a></nav></div></header>
+<main class="wrap">
+  <section class="hero">
+    <div>
+      <div class="hero-badges">
+        <span class="pill">全拼 · 九宫格 · 小鹤双拼</span>
+        <span class="pill pill-moss">100% 本机离线 · 零联网</span>
+      </div>
+      <h1>把每天触碰最多次的屏幕，打磨到硬件级准度</h1>
+      <p>Mosto键盘是 OTTOSSOM 推出的纯离线中文 iOS 键盘。开箱即用全拼全键盘与九宫格全拼，融合触点几何纠错、47.9 MB 本机双段离线引擎与零“完全访问”隐私边界——由手机里的 Mosto，引出你书桌上的 Moss 与 Otto《摸索台灯》。</p>
+      <div class="hero-cta">
+        <a class="btn btn-primary" href="#support">App Store 即将上架 · 启用指引</a>
+        <a class="btn btn-secondary" href="#family">探索《摸索台灯》家族</a>
+      </div>
+    </div>
+    <div class="hero-stage" aria-label="Mosto键盘触点纠错示意">
+      <div class="preview-bar">
+        <div class="preview-cands"><span>你好</span><span style="color:var(--sub);font-weight:500">尼好</span><span style="color:var(--sub);font-weight:500">拟好</span></div>
+        <span class="preview-fix">nihap → nihao</span>
+      </div>
+      <div class="key-grid">
+        <div class="kcap">Q</div><div class="kcap">W</div><div class="kcap">E</div><div class="kcap">R</div><div class="kcap">T</div><div class="kcap">Y</div>
+        <div class="kcap">A</div><div class="kcap">S</div><div class="kcap">D</div><div class="kcap">F</div><div class="kcap amber">G</div><div class="kcap">H</div>
+        <div class="kcap">123</div><div class="kcap">，↑。</div><div class="kcap" style="grid-column:span 2">空格游标</div><div class="kcap">中/英</div><div class="kcap accent">换行</div>
+      </div>
+      <div style="font-size:12.5px;color:var(--sub);display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap">
+        <span>日间暖瓷 / 夜间台灯双外观</span>
+        <span>不开启完全访问亦可完整打字</span>
+      </div>
+    </div>
+  </section>
+
+  <div id="features" class="section-head">
+    <span class="pill">六大核心能力</span>
+    <h2>为大众高频中文输入而设的精准引擎</h2>
+    <p>没有云端猜测、没有广告推送，把每一分计算留在本机输入手感上。</p>
+  </div>
+  <section class="bento">
+    <article class="card">
+      <div class="icon-box">全</div>
+      <h3>全拼全键盘，整句直接顺打</h3>
+      <p>针对日常全拼习惯优化整句解码、简拼（如 bzd）与中英混输，长句首词精准命中，无需逐词确认。</p>
+    </article>
+    <article class="card">
+      <div class="icon-box otto">九</div>
+      <h3>九宫格全拼，单手顺滑跟手</h3>
+      <p>2–9 键单手快速拼词，左侧动态拼音微调栏随打随选，右侧独立符号面板保持底栏零漂移。</p>
+    </article>
+    <article class="card">
+      <div class="icon-box amber">纠</div>
+      <h3>触点几何纠错，顺手就读准</h3>
+      <p>结合真实手指落点概率与语言统计，自动修正偏邻键、多按、漏按与相邻换位；空格后支持一键撤回原键。</p>
+    </article>
+    <article class="card">
+      <div class="icon-box">语</div>
+      <h3>47.9 MB 本机双段离线引擎</h3>
+      <p>单文件双段内存映射架构，同时承担 567 万条 2–4 元整句解码与 62.9 万条上下文联想，毫秒响应零卡顿。</p>
+    </article>
+    <article class="card">
+      <div class="icon-box moss">隐</div>
+      <h3>无需“完全访问”的隐私证明</h3>
+      <p>键盘扩展全程零联网、零剪贴板读取。个人词频、双词习惯与触点偏移只留在设备本地，随删随清。</p>
+    </article>
+    <article class="card">
+      <div class="icon-box">双</div>
+      <h3>高效手势与小鹤双拼支持</h3>
+      <p>自带标点轻上滑、空格游标微调、行内四则心算与横滑表情/颜文字面板，并为双拼用户内置完整小鹤键位方案。</p>
+    </article>
+  </section>
+
+  <div id="family" class="section-head">
+    <span class="pill pill-amber">OTTOSSOM IP 宇宙</span>
+    <h2>认识住在键盘与书桌上的三位伙伴</h2>
+    <p>Mosto键盘是《摸索台灯》的日常高频入口先锋，在同一套日光暖瓷与夜间微光设计语言下陪伴左右。</p>
+  </div>
+  <section class="family-grid">
+    <article class="card">
+      <div class="member-tag">Moss · 摸索与好奇心</div>
+      <h3>Moss</h3>
+      <p style="color:var(--sub);margin:6px 0 0;font-size:14.5px">顶着薄荷嫩芽的绒绿小鹅卵石，象征每一次下意识按键时的好奇、轻快与克制护持。</p>
+    </article>
+    <article class="card">
+      <div class="member-tag">Mosto · 键盘里的伙伴</div>
+      <h3>Mosto</h3>
+      <p style="color:var(--sub);margin:6px 0 0;font-size:14.5px">住在键盘底栏的紫色小魔王：单击切表情、双击呼出自适应颜文字面板、长按直达键盘控制台。</p>
+    </article>
+    <article class="card">
+      <div class="member-tag">Otto · 台灯与柔和陪伴</div>
+      <h3>Otto</h3>
+      <p style="color:var(--sub);margin:6px 0 0;font-size:14.5px">头顶暖金灯珠的深蓝台灯大人，在深夜里为键盘与书桌调亮一束柔和而不刺眼的微光。</p>
+    </article>
+  </section>
+
+  <section class="card sister-banner">
+    <div style="max-width:58ch">
+      <span class="pill pill-amber" style="margin-bottom:8px">同门作品 · 《摸索台灯》</span>
+      <h3 style="margin:4px 0 6px;font-size:21px">孩子摸索，大人点灯</h3>
+      <p style="margin:0;color:var(--sub);font-size:15px">《摸索台灯》（Mossling）是一款 0–3 岁亲子共玩、床头夜灯与成长手账 iOS 应用。把键盘上的安静手感带回书桌，和 Moss、Otto 一起度过温柔的夜晚。</p>
+    </div>
+    <div class="hero-cta">
+      <a class="btn btn-primary" href="https://apps.apple.com/app/id6825856138">前往 App Store 了解《摸索台灯》</a>
+    </div>
+  </section>
+
+  <div id="support" class="section-head">
+    <span class="pill pill-moss">官方支持中心</span>
+    <h2>启用指南与常见问题</h2>
+    <p>三步开启 Mosto键盘；如在使用中需要协助，欢迎查阅下方常见问题或通过 App Store 商品页联系开发者。</p>
+  </div>
+  <section class="support-grid">
+    <div class="card">
+      <h3 style="margin:0 0 10px">三步启用 Mosto键盘</h3>
+      <ol class="steps">
+        <li>打开 iPhone 的 <strong>设置 › 通用 › 键盘 › 键盘</strong>；</li>
+        <li>轻点 <strong>添加新键盘</strong>，在列表中选中 <strong>Mosto键盘</strong>；</li>
+        <li>在任意输入框长按地球键切换至 Mosto键盘即可使用（不开启“允许完全访问”也可正常完成全部输入与纠错）。</li>
+      </ol>
+      <div style="margin-top:16px;padding:12px 14px;border-radius:14px;background:var(--surface-muted);font-size:14px;color:var(--sub)">
+        反馈与协助：请通过 <strong>App Store 商品页支持入口</strong> 或 <strong>TestFlight 反馈功能</strong> 与 OTTOSSOM Studio 取得联系，我们会在第一时间跟进处理。
+      </div>
+    </div>
+    <div class="card">
+      <h3 style="margin:0 0 6px">常见问答</h3>
+      <details open>
+        <summary>不开启“允许完全访问”也能使用吗？</summary>
+        <p>可以。全拼、九宫格、小鹤双拼、触点纠错、词库联想与表情/颜文字面板均 100% 本地运行，无需“允许完全访问”。该系统开关仅用于开启按键震动与系统声效。</p>
+      </details>
+      <details>
+        <summary>如何在全拼、九宫格和小鹤双拼之间切换？</summary>
+        <p>在 Mosto键盘中轻点顶栏右侧齿轮图标，或长按底栏 Mosto 图标打开控制台，即可直接切换全拼 / 小鹤双拼、九宫格 / 全键盘以及日光 / 夜灯外观。</p>
+      </details>
+      <details>
+        <summary>如何清除我学过的词和触点习惯？</summary>
+        <p>在键盘内打开控制台 › 学习，轻点“清空已学习的词语与触点习惯”即可立即清空；卸载应用后所有本地记录也会随系统容器彻底删除。</p>
+      </details>
+      <details>
+        <summary>键盘内为什么不支持联网云同步？</summary>
+        <p>我们希望键盘扩展成为绝对可信的纯离线输入工具：不发起网络请求、不读写剪贴板、不采集任何个人输入习惯，彻底消除隐忧。</p>
+      </details>
+    </div>
+  </section>
+
+  <footer><div>Mosto键盘 · OTTOSSOM Studio 原创作品 · 纯离线零追踪 · © 2026 OTTOSSOM Studio</div><div class="footer-links"><a href="privacy.html">隐私政策</a><a href="terms.html">用户协议</a><a href="notices.html">第三方致谢与合规声明</a><a href="index.html#support">官方支持</a></div></footer>
+</main>
+</body>
+</html>
