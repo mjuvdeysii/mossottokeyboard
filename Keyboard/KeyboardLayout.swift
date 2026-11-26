@@ -19,8 +19,10 @@ enum KeyAction: Equatable {
     case clearInput
     /// Held delete, after a while: a word at a time (two Chinese characters, or a Latin word with its space).
     case deleteWord
-    /// 表情: the emoji page. Held, it opens the keyboard settings instead (as Gboard's emoji key).
+    /// Mosto 超级键: tap opens/closes emoji, double-tap upgrades to kaomoji, hold opens settings.
     case emoji
+    /// 九宫格/数字键盘专属分类符号面板（右侧第3行同位返回，不跳全键盘符号页）.
+    case symbolPanel
 }
 
 extension KeyAction {
@@ -29,7 +31,7 @@ extension KeyAction {
     /// 不该让一条刚出现的联想凭空空掉（Krug：别让我想；Norman：状态变化要可归因）。
     var endsSuggestions: Bool {
         switch self {
-        case .char, .delete, .space, .ret, .t9, .clearInput, .deleteWord, .emoji, .toggleLanguage, .page, .settings:
+        case .char, .delete, .space, .ret, .t9, .clearInput, .deleteWord, .emoji, .symbolPanel, .toggleLanguage, .page, .settings:
             return true
         case .shift, .globe:
             return false
@@ -197,7 +199,7 @@ enum Layouts {
             }
             rows.append(specs)
         }
-        let leftW: CGFloat = ctx.showGlobe ? 1.2 : 1.25
+        let leftW: CGFloat = ctx.showGlobe ? 1.2 : 1.4
         let langW: CGFloat = ctx.showGlobe ? 1.1 : 1.2
         let retW: CGFloat = ctx.showGlobe ? 1.7 : 1.8
         var bottom: [KeySpec] = [KeySpec(action: .page(ctx.numberGrid ? .numpad : .numbers), label: "123", width: leftW, style: .function)]
@@ -217,7 +219,7 @@ enum Layouts {
     }
 
     private static func bottomRow(_ ctx: LayoutContext) -> [KeySpec] {
-        var bottom: [KeySpec] = [KeySpec(action: .page(.letters), label: ctx.chinese ? "拼音" : "ABC", width: ctx.showGlobe ? 1.25 : 1.4, style: .function)]
+        var bottom: [KeySpec] = [KeySpec(action: .page(.letters), label: ctx.chinese ? "拼音" : "ABC", width: ctx.showGlobe ? 1.2 : 1.4, style: .function)]
         bottom += leftUtilityKeys(ctx)
         bottom.append(spaceKey(ctx))
         bottom.append(languageKey(ctx, width: 1.4))
@@ -247,15 +249,18 @@ enum Layouts {
         func p(_ s: String, _ alt: String?, more: [String] = []) -> KeySpec {
             KeySpec(action: .char(s), label: s, width: side, alt: alt, style: .function, hint: alt, moreAlts: more)
         }
-        let row1 = [p("，", "、", more: ["：", "；", "（", "《", "“"]), k("'", "分词"), k("2", "ABC"), k("3", "DEF"),
+        let row1Key1: KeySpec = ctx.composing
+            ? k("'", "分词")
+            : KeySpec(action: .char("、"), label: "、", width: mid, alt: "@", style: .normal, hint: "@", moreAlts: ["：", "；", "·", "—"])
+        let row1 = [p("，", "、", more: ["：", "；", "（", "《", "“"]), row1Key1, k("2", "ABC"), k("3", "DEF"),
                     KeySpec(action: .delete, label: "", symbol: "delete.left", width: side, style: .function)]
         let row2Right: KeySpec = ctx.composing
             ? KeySpec(action: .clearInput, label: "重输", width: side, style: .function)
             : p("！", "～", more: ["：", "；", "—", "…"])
         let row2 = [p("。", "…", more: ["·", "—", "）", "》", "”"]), k("4", "GHI"), k("5", "JKL"), k("6", "MNO"), row2Right]
         let row3 = [p("？", "！", more: ["～", "【", "】", "「", "」"]), k("7", "PQRS"), k("8", "TUV"), k("9", "WXYZ"),
-                    KeySpec(action: .page(.numbers), label: "符号", width: side, style: .function)]
-        let leftW: CGFloat = ctx.showGlobe ? 1.4 : side
+                    KeySpec(action: .symbolPanel, label: "符号", width: side, style: .function)]
+        let leftW: CGFloat = ctx.showGlobe ? 1.2 : 1.4
         let row4 = [KeySpec(action: .page(ctx.numberGrid ? .numpad : .numbers), label: "123", width: leftW, style: .function)]
                     + leftUtilityKeys(ctx)
                     + [spaceKey(ctx),
@@ -276,7 +281,7 @@ enum Layouts {
         let row2 = [p("-", "_"), d("4"), d("5"), d("6"),
                     KeySpec(action: .space, label: ctx.chinese ? "空格" : "space", width: side)]
         let row3 = [p("/", "*"), d("7"), d("8"), d("9"),
-                    KeySpec(action: .page(.numbers), label: ctx.chinese ? "符号" : "#+=", width: side, style: .function)]
+                    KeySpec(action: .symbolPanel, label: ctx.chinese ? "符号" : "#+=", width: side, style: .function)]
         // the way back keeps its full width (and the same name as on every other page); with the globe key the two
         // punctuation keys give it the room while 0 stays aligned under 2 / 5 / 8 and Return stays bottom-right
         let back = KeySpec(action: .page(.letters), label: ctx.chinese ? "拼音" : "ABC", width: ctx.showGlobe ? 1.5 : side, style: .function)

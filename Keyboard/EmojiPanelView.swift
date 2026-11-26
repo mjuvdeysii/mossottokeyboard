@@ -5,8 +5,13 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     var onEmoji: ((String) -> Void)?
     var onDelete: (() -> Void)?
     var onBack: (() -> Void)?
+    var onNumbers: (() -> Void)?
+    var onReturn: (() -> Void)?
     var onSettings: (() -> Void)?
     var onFeedback: ((FeedbackEvent) -> Void)?
+    /// Exact X origin & width of the main keyboard's bottom-row Mosto key for 0pt-drift toggle.
+    var mostoAnchorX: CGFloat?
+    var mostoAnchorWidth: CGFloat?
 
     struct Category { let name: String; let symbol: String; var items: [String] }
     struct MoodGroup { let title: String; let items: [String] }
@@ -37,6 +42,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     private let tabScroll = UIScrollView()
     private var tabButtons: [UIButton] = []
     private let backButton = UIButton(type: .custom)
+    private let mostoReturnButton = UIButton(type: .custom)
     private let deleteButton = UIButton(type: .system)
     private let returnButton = UIButton(type: .system)
     private let gear = UIButton(type: .system)
@@ -135,13 +141,14 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         tabButtons.count > 6 && tabButtons[6].frame.maxX <= tabScrollBox.bounds.width
     }
     var kaomojiDockGearFullyVisibleForTests: Bool {
-        let f = tabScroll.convert(gear.frame, to: tabScrollBox)
+        guard let last = tabButtons.last else { return false }
+        let f = tabScroll.convert(last.frame, to: tabScrollBox)
         return f.width > 0 && f.minX >= -0.5 && f.maxX <= tabScrollBox.bounds.width + 0.5
     }
     var dockNoTrailingHalfSliceForTests: Bool {
         let boxW = tabScrollBox.bounds.width
         guard boxW > 0 else { return false }
-        let items = tabButtons + [gear]
+        let items = tabButtons
         if tabScroll.contentSize.width <= boxW + 0.5 { return true }
         return !items.contains {
             let f = tabScroll.convert($0.frame, to: tabScrollBox)
@@ -151,7 +158,9 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     var moodMostoBadgeShownForTests: Bool { !moodMostoBadge.isHidden && moodMostoBadge.bounds.width >= 28 }
     var backButtonUsesFunctionStyleForTests: Bool { backButton.backgroundColor == Theme.functionKey }
     var dockTabWidthForTests: CGFloat { tabButtons.first?.frame.width ?? 0 }
-    var landscapeDockAllInsideForTests: Bool { gear.frame.maxX <= tabScrollBox.bounds.width + 0.5 }
+    var landscapeDockAllInsideForTests: Bool { (tabButtons.last?.frame.maxX ?? 0) <= tabScrollBox.bounds.width + 0.5 }
+    var mostoReturnFrameInSelfForTests: CGRect { dockBar.convert(mostoReturnButton.frame, to: self) }
+    var returnButtonVisibleForTests: Bool { !returnButton.isHidden && returnButton.frame.width >= 48 }
     var emojiBadgesBorderlessForTests: Bool { kaomojiShortcutButton.layer.borderWidth == 0 && moodMostoBadge.layer.borderWidth == 0 }
 
     final class Cell: UICollectionViewCell {
@@ -302,24 +311,27 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         dockBar.addSubview(tabScrollBox)
 
         let cfg = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
-        backButton.setTitle("ABC", for: .normal)
-        backButton.titleLabel?.font = Theme.font(16, .semibold)
+        backButton.setTitle("123", for: .normal)
+        backButton.titleLabel?.font = Theme.font(15.5, .semibold)
         backButton.setTitleColor(Theme.keyText, for: .normal)
         backButton.setTitleColor(Theme.secondaryText, for: .highlighted)
-        backButton.accessibilityLabel = "返回键盘"
-        backButton.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
+        backButton.accessibilityLabel = "数字键盘"
+        backButton.addTarget(self, action: #selector(numbersTapped), for: .touchUpInside)
+
+        mostoReturnButton.accessibilityLabel = "关闭表情返回键盘"
+        mostoReturnButton.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
 
         deleteButton.setImage(UIImage(systemName: "delete.left", withConfiguration: cfg), for: .normal)
         deleteButton.addTarget(self, action: #selector(deleteDown), for: .touchDown)
         deleteButton.addTarget(self, action: #selector(deleteUp), for: [.touchUpInside, .touchUpOutside, .touchCancel])
 
-        returnButton.setTitle("返回", for: .normal)
-        returnButton.titleLabel?.font = Theme.font(16, .bold)
-        returnButton.accessibilityLabel = "返回键盘"
-        returnButton.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
-        returnButton.isHidden = true
+        returnButton.setTitle("换行", for: .normal)
+        returnButton.titleLabel?.font = Theme.font(15.5, .semibold)
+        returnButton.accessibilityLabel = "发送或换行"
+        returnButton.addTarget(self, action: #selector(returnTapped), for: .touchUpInside)
+        returnButton.isHidden = false
 
-        for b in [backButton, deleteButton, returnButton] {
+        for b in [backButton, mostoReturnButton, deleteButton, returnButton] {
             b.tintColor = Theme.keyText
             b.setTitleColor(Theme.keyText, for: .normal)
             b.backgroundColor = Theme.functionKey
@@ -357,13 +369,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         tabScroll.addSubview(mosto)
         tabButtons.append(mosto)
 
-        gear.setImage(UIImage(systemName: "gearshape", withConfiguration: tabCfg), for: .normal)
-        gear.tintColor = Theme.secondaryText
-        gear.accessibilityLabel = "设置"
-        gear.layer.cornerRadius = 8
-        gear.layer.cornerCurve = .continuous
-        gear.addTarget(self, action: #selector(settingsTapped), for: .touchUpInside)
-        tabScroll.addSubview(gear)
+        gear.isHidden = true
 
         load()
     }
@@ -393,6 +399,20 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         }
         backButton.backgroundColor = Theme.functionKey
         backButton.setTitleColor(Theme.keyText, for: .normal)
+        mostoReturnButton.backgroundColor = Theme.selection.withAlphaComponent(0.18)
+        if Theme.plain {
+            let mCfg = UIImage.SymbolConfiguration(pointSize: 16, weight: .semibold)
+            mostoReturnButton.setImage(UIImage(systemName: "face.smiling", withConfiguration: mCfg)?.withRenderingMode(.alwaysTemplate), for: .normal)
+            mostoReturnButton.tintColor = Theme.selection
+        } else {
+            let night = KeyboardSettings.shared.appearance == 2 || (KeyboardSettings.shared.appearance == 0 && t.userInterfaceStyle == .dark)
+            let imgName = night ? "mosto_night" : "mosto_day"
+            if let face = UIImage(named: imgName, in: Bundle(for: EmojiPanelView.self), with: nil) {
+                mostoReturnButton.setImage(Self.resizedFace(face, side: 22).withRenderingMode(.alwaysOriginal), for: .normal)
+            }
+        }
+        returnButton.backgroundColor = Theme.accentKey
+        returnButton.setTitleColor(Theme.accentText, for: .normal)
         if let kaomojiTab = tabButtons.last {
             if Theme.plain {
                 let cfg = UIImage.SymbolConfiguration(pointSize: 16, weight: .medium)
@@ -649,8 +669,14 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     }
 
     func setChinese(_ chinese: Bool) {
-        backButton.setTitle(chinese ? "拼音" : "ABC", for: .normal)
+        backButton.setTitle("123", for: .normal)
         backButton.setNeedsLayout()
+    }
+
+    func setReturnLabel(_ title: String?, chinese: Bool) {
+        let label = title ?? (chinese ? "换行" : "return")
+        returnButton.setTitle(label, for: .normal)
+        returnButton.accessibilityLabel = label
     }
 
     // MARK: - Layout
@@ -768,24 +794,38 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         dockHairline.frame = CGRect(x: 8, y: 0, width: max(0, b.width - 16), height: 1 / UIScreen.main.scale)
         CATransaction.commit()
 
-        let side: CGFloat = 54
+        let sideInset: CGFloat = b.width > 500 ? Metrics.sideInsetLandscape : Metrics.sideInset
+        let contentW = max(1, b.width - sideInset * 2)
+        let unit = contentW / 10
+        let gapX = Metrics.gapX
         let btnH: CGFloat = barH - 8
         let btnY: CGFloat = 4
-        backButton.frame = CGRect(x: 6, y: btnY, width: side, height: btnH)
-        deleteButton.frame = CGRect(x: b.width - side - 6, y: btnY, width: side, height: btnH)
-        returnButton.frame = deleteButton.frame
-        for btn in [backButton, deleteButton, returnButton] {
+        let leftW = floor(1.4 * unit - gapX)
+        let leftX = floor(sideInset + gapX / 2)
+        backButton.frame = CGRect(x: leftX, y: btnY, width: max(40, leftW), height: btnH)
+
+        let mrW = mostoAnchorWidth ?? max(32, floor(1.0 * unit - gapX))
+        let mrX = mostoAnchorX ?? (backButton.frame.maxX + gapX)
+        mostoReturnButton.frame = CGRect(x: mrX, y: btnY, width: mrW, height: btnH)
+
+        let retW = max(52, floor(1.8 * unit - gapX))
+        let retX = floor(b.width - sideInset - gapX / 2 - retW)
+        returnButton.frame = CGRect(x: retX, y: btnY, width: retW, height: btnH)
+
+        let delW: CGFloat = max(36, floor(1.05 * unit - gapX))
+        deleteButton.frame = CGRect(x: returnButton.frame.minX - gapX - delW, y: btnY, width: delW, height: btnH)
+
+        for btn in [backButton, mostoReturnButton, deleteButton, returnButton] {
             let sr = CGRect(x: 0.75, y: 0.5, width: max(0, btn.bounds.width - 1.5), height: max(0, btn.bounds.height - 0.5))
             btn.layer.shadowPath = UIBezierPath(roundedRect: sr, cornerRadius: max(1, Metrics.cornerRadius - 0.5)).cgPath
         }
 
-        // Scrollable horizontal category pills between backButton and deleteButton:
-        // snap visible slots cleanly inside boxW so no trailing icon gets sliced halfway at rest.
-        let tabLeft = backButton.frame.maxX + 6
-        let tabRight = deleteButton.frame.minX - 6
+        // Scrollable horizontal category pills between mostoReturnButton and deleteButton.
+        let tabLeft = mostoReturnButton.frame.maxX + 4
+        let tabRight = deleteButton.frame.minX - 4
         tabScrollBox.frame = CGRect(x: tabLeft, y: 0, width: max(0, tabRight - tabLeft), height: barH)
         tabScroll.frame = tabScrollBox.bounds
-        let dockItems = tabButtons + [gear]
+        let dockItems = tabButtons
         let boxW = tabScrollBox.bounds.width
         let itemH: CGFloat = 34
         let ty = (barH - itemH) / 2
@@ -1027,7 +1067,268 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     }
 
     @objc private func backTapped() { onBack?() }
+    @objc private func numbersTapped() { onNumbers?() }
+    @objc private func returnTapped() { onReturn?() }
     @objc private func settingsTapped() { onSettings?() }
+
+    @objc private func deleteDown() {
+        onDelete?()
+        deleteTimer?.invalidate()
+        let t = Timer(timeInterval: 0.45, repeats: false) { [weak self] _ in
+            let r = Timer(timeInterval: 0.09, repeats: true) { [weak self] _ in self?.onDelete?() }
+            RunLoop.main.add(r, forMode: .common)
+            self?.deleteTimer = r
+        }
+        RunLoop.main.add(t, forMode: .common)
+        deleteTimer = t
+    }
+
+    override var isHidden: Bool { didSet { if isHidden { deleteUp() } } }
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil { deleteUp() }
+    }
+
+    @objc private func deleteUp() {
+        deleteTimer?.invalidate()
+        deleteTimer = nil
+    }
+}
+
+
+// MARK: - R95: T9 / Numpad Classified Symbol Panel (0pt-drift Row 3 Right Return)
+
+/// 九宫格/数字键盘专属分类符号面板：左列分类、中区网格、右列四行与九宫格严格对齐（⌫ / 空格 / 返回 / 发送）。
+final class SymbolPanelView: UIView, UICollectionViewDataSource, UICollectionViewDelegateFlowLayout {
+    var onSymbol: ((String) -> Void)?
+    var onDelete: (() -> Void)?
+    var onSpace: (() -> Void)?
+    var onReturn: (() -> Void)?
+    var onClose: (() -> Void)?
+    var onFeedback: ((FeedbackEvent) -> Void)?
+
+    struct Category { let title: String; let items: [String] }
+    static let categories: [Category] = [
+        Category(title: "常用", items: ["，", "。", "？", "！", "、", "：", "；", "“", "（", "《", "【", "—", "…", "～", "·", "@", "#", "%", "¥", "$", "+", "-", "×", "÷"]),
+        Category(title: "中文", items: ["，", "。", "、", "；", "：", "？", "！", "…", "—", "·", "～", "￥", "「", "『", "《", "（", "【", "“", "’", "°", "℃", "‰", "※", "§"]),
+        Category(title: "英文", items: [".", ",", "?", "!", ":", ";", "'", "\"", "@", "#", "$", "%", "&", "*", "_", "-", "/", "\\", "|", "~", "`", "^", "<", ">"]),
+        Category(title: "括号", items: ["（", "）", "【", "】", "《", "》", "「", "」", "『", "』", "“", "”", "(", ")", "[", "]", "{", "}", "<", ">", "〈", "〉", "〔", "〕"]),
+        Category(title: "数学", items: ["+", "-", "×", "÷", "=", "≠", "≈", "±", "<", ">", "≤", "≥", "%", "‰", "°", "℃", "√", "∞", "π", "∑", "∠", "⊥", "∥", "△"]),
+        Category(title: "序号", items: ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩", "⑴", "⑵", "⑶", "⑷", "⑸", "一", "二", "三", "Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ", "Ⅵ"]),
+    ]
+
+    private var selectedCategory = 0
+    private var categoryButtons: [UIButton] = []
+    private let categoryScroll = UIScrollView()
+    private let collection: UICollectionView
+    private let deleteButton = UIButton(type: .system)
+    private let spaceButton = UIButton(type: .system)
+    private let closeButton = UIButton(type: .system)
+    private let returnButton = UIButton(type: .system)
+    private var deleteTimer: Timer?
+
+    var closeButtonFrameForTests: CGRect { closeButton.frame }
+    var returnButtonFrameForTests: CGRect { returnButton.frame }
+
+    final class SymCell: UICollectionViewCell {
+        let label = UILabel()
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            label.font = Theme.font(20, .medium)
+            label.textAlignment = .center
+            label.textColor = Theme.keyText
+            label.layer.cornerRadius = 8
+            label.layer.cornerCurve = .continuous
+            label.clipsToBounds = true
+            contentView.addSubview(label)
+            isAccessibilityElement = true
+            accessibilityTraits = .keyboardKey
+        }
+        required init?(coder: NSCoder) { fatalError() }
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            label.frame = contentView.bounds.insetBy(dx: 3, dy: 3)
+        }
+        override var isHighlighted: Bool {
+            didSet {
+                label.backgroundColor = isHighlighted ? Theme.keyPressed : Theme.keyTop
+            }
+        }
+    }
+
+    override init(frame: CGRect) {
+        let layout = UICollectionViewFlowLayout()
+        layout.scrollDirection = .vertical
+        layout.minimumInteritemSpacing = 0
+        layout.minimumLineSpacing = 0
+        collection = UICollectionView(frame: .zero, collectionViewLayout: layout)
+        super.init(frame: frame)
+        backgroundColor = Theme.touchable
+
+        categoryScroll.showsVerticalScrollIndicator = false
+        categoryScroll.showsHorizontalScrollIndicator = false
+        categoryScroll.alwaysBounceHorizontal = false
+        categoryScroll.disableAllEdgeEffects()
+        addSubview(categoryScroll)
+
+        for (i, cat) in Self.categories.enumerated() {
+            let b = UIButton(type: .system)
+            b.setTitle(cat.title, for: .normal)
+            b.titleLabel?.font = Theme.font(14, .semibold)
+            b.tag = i
+            b.layer.cornerRadius = Metrics.cornerRadius
+            b.layer.cornerCurve = .continuous
+            b.addTarget(self, action: #selector(categoryTapped(_:)), for: .touchUpInside)
+            categoryScroll.addSubview(b)
+            categoryButtons.append(b)
+        }
+
+        collection.backgroundColor = .clear
+        collection.showsVerticalScrollIndicator = false
+        collection.alwaysBounceHorizontal = false
+        collection.delaysContentTouches = false
+        collection.disableAllEdgeEffects()
+        collection.dataSource = self
+        collection.delegate = self
+        collection.register(SymCell.self, forCellWithReuseIdentifier: "s")
+        addSubview(collection)
+
+        let cfg = UIImage.SymbolConfiguration(pointSize: 18, weight: .medium)
+        deleteButton.setImage(UIImage(systemName: "delete.left", withConfiguration: cfg), for: .normal)
+        deleteButton.accessibilityLabel = "删除"
+        deleteButton.addTarget(self, action: #selector(deleteDown), for: .touchDown)
+        deleteButton.addTarget(self, action: #selector(deleteUp), for: [.touchUpInside, .touchUpOutside, .touchCancel])
+
+        spaceButton.setTitle("空格", for: .normal)
+        spaceButton.titleLabel?.font = Theme.font(15, .medium)
+        spaceButton.accessibilityLabel = "空格"
+        spaceButton.addTarget(self, action: #selector(spaceTapped), for: .touchUpInside)
+
+        closeButton.setTitle("返回", for: .normal)
+        closeButton.titleLabel?.font = Theme.font(15.5, .semibold)
+        closeButton.accessibilityLabel = "返回键盘"
+        closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
+
+        returnButton.setTitle("换行", for: .normal)
+        returnButton.titleLabel?.font = Theme.font(15.5, .semibold)
+        returnButton.accessibilityLabel = "发送或换行"
+        returnButton.addTarget(self, action: #selector(returnTapped), for: .touchUpInside)
+
+        for b in [deleteButton, spaceButton, closeButton, returnButton] {
+            b.layer.cornerRadius = Metrics.cornerRadius
+            b.layer.cornerCurve = .continuous
+            addSubview(b)
+        }
+        themeChanged()
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func setReturnLabel(_ title: String?, chinese: Bool) {
+        let label = title ?? (chinese ? "换行" : "return")
+        returnButton.setTitle(label, for: .normal)
+        returnButton.accessibilityLabel = label
+        spaceButton.setTitle(chinese ? "空格" : "space", for: .normal)
+    }
+
+    func themeChanged() {
+        for (i, b) in categoryButtons.enumerated() {
+            let active = i == selectedCategory
+            b.backgroundColor = active ? Theme.selection : Theme.functionKey
+            b.setTitleColor(active ? Theme.selectionText : Theme.keyText, for: .normal)
+        }
+        deleteButton.backgroundColor = Theme.functionKey
+        deleteButton.tintColor = Theme.keyText
+        spaceButton.backgroundColor = Theme.key
+        spaceButton.setTitleColor(Theme.keyText, for: .normal)
+        closeButton.backgroundColor = Theme.selection.withAlphaComponent(0.18)
+        closeButton.setTitleColor(Theme.selection, for: .normal)
+        returnButton.backgroundColor = Theme.accentKey
+        returnButton.setTitleColor(Theme.accentText, for: .normal)
+        collection.reloadData()
+    }
+
+    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+        super.traitCollectionDidChange(previous)
+        if previous?.userInterfaceStyle != traitCollection.userInterfaceStyle {
+            themeChanged()
+        }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let b = bounds
+        guard b.width > 100, b.height > 80 else { return }
+        let sideInset: CGFloat = b.width > 500 ? Metrics.sideInsetLandscape : Metrics.sideInset
+        let contentW = max(1, b.width - sideInset * 2)
+        let unit = contentW / 10
+        let gapX = Metrics.gapX
+        let rowH = b.height / 4
+        let gapY: CGFloat = rowH <= 60 ? min(12, max(8, (rowH * 0.20).rounded())) : 12
+        let capH = max(1, rowH - gapY)
+
+        let leftW = floor(1.6 * unit - gapX)
+        let leftX = floor(sideInset + gapX / 2)
+        categoryScroll.frame = CGRect(x: leftX, y: floor(gapY / 2), width: leftW, height: max(1, b.height - gapY))
+        let catBtnH: CGFloat = max(32, floor((b.height - gapY - 5 * 6) / 6))
+        var cy: CGFloat = 0
+        for btn in categoryButtons {
+            btn.frame = CGRect(x: 0, y: cy, width: leftW, height: catBtnH)
+            cy += catBtnH + 6
+        }
+        categoryScroll.contentSize = CGSize(width: leftW, height: max(categoryScroll.bounds.height, cy))
+
+        let rightW = floor(1.6 * unit - gapX)
+        let rightX = floor(b.width - sideInset - gapX / 2 - rightW)
+        let rightButtons = [deleteButton, spaceButton, closeButton, returnButton]
+        for (r, btn) in rightButtons.enumerated() {
+            let y0 = floor(CGFloat(r) * rowH + gapY / 2)
+            btn.frame = CGRect(x: rightX, y: y0, width: rightW, height: capH)
+        }
+
+        let gridX = leftX + leftW + gapX
+        let gridW = max(40, rightX - gapX - gridX)
+        collection.frame = CGRect(x: gridX, y: floor(gapY / 2), width: gridW, height: max(1, b.height - gapY))
+        collection.collectionViewLayout.invalidateLayout()
+    }
+
+    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
+        Self.categories[selectedCategory].items.count
+    }
+
+    func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
+        let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "s", for: indexPath) as! SymCell
+        let sym = Self.categories[selectedCategory].items[indexPath.item]
+        cell.label.text = sym
+        cell.label.textColor = Theme.keyText
+        cell.label.backgroundColor = Theme.keyTop
+        cell.accessibilityLabel = sym
+        return cell
+    }
+
+    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
+        let cols: CGFloat = 4
+        let w = floor(collectionView.bounds.width / cols)
+        let h = floor(collectionView.bounds.height / 4)
+        return CGSize(width: max(30, w), height: max(34, h))
+    }
+
+    func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+        let sym = Self.categories[selectedCategory].items[indexPath.item]
+        onFeedback?(.key(.char(sym)))
+        onSymbol?(sym)
+    }
+
+    @objc private func categoryTapped(_ b: UIButton) {
+        selectedCategory = b.tag
+        onFeedback?(.candidate)
+        themeChanged()
+        collection.setContentOffset(.zero, animated: false)
+    }
+
+    @objc private func spaceTapped() { onSpace?() }
+    @objc private func closeTapped() { onClose?() }
+    @objc private func returnTapped() { onReturn?() }
 
     @objc private func deleteDown() {
         onDelete?()

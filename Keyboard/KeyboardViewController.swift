@@ -43,6 +43,15 @@ final class KeyboardViewController: UIInputViewController {
         emojiPanelIfLoaded = p
         return p
     }
+    private var symbolPanelIfLoaded: SymbolPanelView?
+    private var symbolPanel: SymbolPanelView {
+        if let p = symbolPanelIfLoaded { return p }
+        let p = makeSymbolPanel()
+        symbolPanelIfLoaded = p
+        return p
+    }
+    private var symbolPanelShown = false
+    private var lastEmojiOpenTime: CFTimeInterval = 0
     private let syllablePicker = SyllablePickerView()
     private var syllableChoices: (start: Int, choices: [(text: String, keys: [Character])]) = (0, [])
     private var heightConstraint: NSLayoutConstraint?
@@ -261,6 +270,10 @@ final class KeyboardViewController: UIInputViewController {
     var candidateBarForTests: CandidateBarView { candidateBar }
     var gridIfLoadedForTests: CandidateGridView? { gridIfLoaded }
     var emojiPanelIfLoadedForTests: EmojiPanelView? { emojiPanelIfLoaded }
+    var symbolPanelIfLoadedForTests: SymbolPanelView? { symbolPanelIfLoaded }
+    var symbolPanelShownForTests: Bool { symbolPanelShown }
+    var settingsPanelIfLoadedForTests: SettingsPanelView? { settingsPanelIfLoaded }
+    var emojiShownForTests: Bool { emojiShown }
     var preferredHeightForTests: CGFloat { preferredHeight() }
     func heightForTests(landscape: Bool) -> CGFloat { preferredHeight(landscape: landscape) }
     var heightConstraintConstantForTests: CGFloat? { heightConstraint?.constant }
@@ -513,6 +526,7 @@ final class KeyboardViewController: UIInputViewController {
         if let sp = settingsPanelIfLoaded, !sp.isHidden { showSettings(false) }
         if let g = gridIfLoaded, !g.isHidden { showGrid(false) }
         if emojiShown { showEmoji(false) }
+        if symbolPanelShown { showSymbolPanel(false) }
         if !safeMode, english == nil, let en = engine.englishLexicon { english = EnglishDecoder(lexicon: en) }
         adaptToField()
         applyAppearance()
@@ -545,6 +559,10 @@ final class KeyboardViewController: UIInputViewController {
         if !emojiShown, let p = emojiPanelIfLoaded {
             p.removeFromSuperview()
             emojiPanelIfLoaded = nil
+        }
+        if !symbolPanelShown, let p = symbolPanelIfLoaded {
+            p.removeFromSuperview()
+            symbolPanelIfLoaded = nil
         }
         if let g = gridIfLoaded, g.isHidden {
             g.removeFromSuperview()
@@ -637,6 +655,8 @@ final class KeyboardViewController: UIInputViewController {
         gridIfLoaded?.frame = CGRect(x: insetL, y: originY + baseBarH, width: w, height: max(0, contentH - baseBarH))
         settingsPanelIfLoaded?.frame = panelRect
         if emojiShown { emojiPanel.frame = panelRect }
+        if symbolPanelShown { symbolPanel.frame = CGRect(x: insetL, y: originY + baseBarH, width: w, height: max(0, contentH - baseBarH)) }
+        syncMostoAnchors()
         CATransaction.commit()
         if vb.width > 100 && vb.height > 100 && actualLand != lastResolvedLandscape {
             lastResolvedLandscape = actualLand
@@ -815,6 +835,10 @@ final class KeyboardViewController: UIInputViewController {
             p.removeFromSuperview()
             emojiPanelIfLoaded = nil
         }
+        if !symbolPanelShown, let p = symbolPanelIfLoaded {
+            p.removeFromSuperview()
+            symbolPanelIfLoaded = nil
+        }
         if let g = gridIfLoaded, g.isHidden {
             g.removeFromSuperview()
             gridIfLoaded = nil
@@ -883,6 +907,7 @@ final class KeyboardViewController: UIInputViewController {
             && predictions.isEmpty
             && enSuggestions.isEmpty
             && !emojiShown
+            && !symbolPanelShown
             && (settingsPanelIfLoaded?.isHidden ?? true)
             && (gridIfLoaded?.isHidden ?? true)
         candidateBar.setIdleControls(enabled: allowed, night: isNight, forcedDayOnDarkGlass: systemIsDark && !isNight)
@@ -1150,7 +1175,11 @@ final class KeyboardViewController: UIInputViewController {
             deleteWord()
         case .emoji:
             if !taps.isEmpty { commitAll() }
+            lastEmojiOpenTime = CACurrentMediaTime()
             showEmoji(true)
+        case .symbolPanel:
+            if !taps.isEmpty { commitAll() }
+            showSymbolPanel(true)
         }
     }
 
@@ -1612,16 +1641,11 @@ final class KeyboardViewController: UIInputViewController {
 
     private func updateAutoShift() {
         guard !capsLock else { return }
-        let proxy = host
-        let type = proxy.autocapitalizationType ?? .sentences
-        guard type != .none else { shifted = false; return }
-        let before = proxy.documentContextBeforeInput ?? ""
-        if type == .allCharacters { shifted = true; return }
-        if type == .words { shifted = before.isEmpty || before.last == " " || before.last == "\n"; return }
-        let trimmed = before.trimmingCharacters(in: .whitespaces)
-        shifted = before.isEmpty || trimmed.hasSuffix(".") && before.hasSuffix(" ")
-            || trimmed.hasSuffix("!") && before.hasSuffix(" ") || trimmed.hasSuffix("?") && before.hasSuffix(" ")
-            || before.hasSuffix("\n")
+        // R95: In Chinese-primary keyboards (especially WeChat whose MMGrowTextView defaults to .sentences
+        // and fires async textDidChange), English mode starts cleanly in lowercase unless the host explicitly
+        // requires .allCharacters (e.g. code/plate inputs). Single-tap Shift = 1 uppercase; double-tap = Caps Lock.
+        let type = host.autocapitalizationType ?? .none
+        shifted = (type == .allCharacters)
     }
 
     // MARK: - Composition
@@ -2100,13 +2124,23 @@ final class KeyboardViewController: UIInputViewController {
             gridIfLoaded?.isHidden = true
         }
         candidateBar.gridExpanded = on; updatePlainLightButton()
-        keyboard.isHidden = on || !(settingsPanelIfLoaded?.isHidden ?? true) || emojiShown
+        keyboard.isHidden = on || !(settingsPanelIfLoaded?.isHidden ?? true) || emojiShown || symbolPanelShown
+    }
+
+    private func syncMostoAnchors() {
+        guard let cap = keyboard.keyRectsForTests(.emoji)?.cap, cap.width > 10 else { return }
+        emojiPanelIfLoaded?.mostoAnchorX = cap.minX
+        emojiPanelIfLoaded?.mostoAnchorWidth = cap.width
+        settingsPanelIfLoaded?.mostoAnchorX = cap.minX
+        settingsPanelIfLoaded?.mostoAnchorWidth = cap.width
     }
 
     private func showSettings(_ on: Bool) {
         if on {
             showEmoji(false)
+            showSymbolPanel(false)
             let sp = settingsPanel
+            syncMostoAnchors()
             let insetL = view.safeAreaInsets.left, insetR = view.safeAreaInsets.right
             let cb = currentContentBounds()
             sp.frame = CGRect(x: insetL, y: cb.minY, width: max(0, cb.width - insetL - insetR), height: cb.height)
@@ -2121,7 +2155,7 @@ final class KeyboardViewController: UIInputViewController {
             settingsPanelIfLoaded = nil
         }
         candidateBar.isHidden = on
-        keyboard.isHidden = on || !(gridIfLoaded?.isHidden ?? true)
+        keyboard.isHidden = on || !(gridIfLoaded?.isHidden ?? true) || emojiShown || symbolPanelShown
         updatePlainLightButton()
         if !on {
             candidateBar.setNeedsLayout()
@@ -2149,7 +2183,29 @@ final class KeyboardViewController: UIInputViewController {
             self.feel(.key(.delete))
             if !self.lastEmojiInserted.isEmpty, (self.host.documentContextBeforeInput ?? "").hasSuffix(self.lastEmojiInserted) { for _ in self.lastEmojiInserted { self.host.deleteBackward() }; self.lastEmojiInserted = "" } else { self.lastEmojiInserted = ""; self.host.deleteBackward() }
         }
-        p.onBack = { [weak self] in self?.feel(.key(.page(.letters))); self?.showEmoji(false) }
+        // R95 0ms instant-open + 350ms double-tap upgrade to Kaomoji + same-spot close
+        p.onBack = { [weak self] in
+            guard let self else { return }
+            let dt = CACurrentMediaTime() - self.lastEmojiOpenTime
+            if !p.kaomojiModeForTests && dt < 0.35 {
+                self.feel(.mosto)
+                p.load(kaomoji: true)
+            } else {
+                self.feel(.key(.page(.letters)))
+                self.showEmoji(false)
+            }
+        }
+        p.onNumbers = { [weak self] in
+            guard let self else { return }
+            self.feel(.key(.page(self.numberPadOn ? .numpad : .numbers)))
+            self.showEmoji(false)
+            self.handle(.page(self.numberPadOn ? .numpad : .numbers), tap: nil)
+        }
+        p.onReturn = { [weak self] in
+            guard let self else { return }
+            self.feel(.key(.ret))
+            self.handle(.ret, tap: nil)
+        }
         p.onSettings = { [weak self] in self?.showSettings(true) }
         p.onFeedback = { [weak self] ev in self?.feel(ev) }
         return p
@@ -2161,8 +2217,11 @@ final class KeyboardViewController: UIInputViewController {
         emojiShown = on
         if on {
             showGrid(false)
+            showSymbolPanel(false)
             endEnglishWord()
+            syncMostoAnchors()
             emojiPanel.setChinese(chinese)
+            emojiPanel.setReturnLabel(returnLabel().0, chinese: chinese)
             let cb = currentContentBounds()
             emojiPanel.frame = CGRect(x: view.safeAreaInsets.left, y: cb.minY, width: max(0, cb.width - view.safeAreaInsets.left - view.safeAreaInsets.right), height: cb.height)
             emojiPanel.load(kaomoji: kaomoji)
@@ -2174,6 +2233,59 @@ final class KeyboardViewController: UIInputViewController {
         }
         if on { emojiPanel.isHidden = false } else { emojiPanelIfLoaded?.isHidden = true }
         candidateBar.isHidden = on || !(settingsPanelIfLoaded?.isHidden ?? true); updatePlainLightButton()
-        keyboard.isHidden = on || !(gridIfLoaded?.isHidden ?? true) || !(settingsPanelIfLoaded?.isHidden ?? true)
+        keyboard.isHidden = on || symbolPanelShown || !(gridIfLoaded?.isHidden ?? true) || !(settingsPanelIfLoaded?.isHidden ?? true)
+    }
+
+    // MARK: - 九宫格分类符号面板
+
+    private func makeSymbolPanel() -> SymbolPanelView {
+        let p = SymbolPanelView()
+        p.isHidden = true
+        root.addSubview(p)
+        p.onSymbol = { [weak self] s in self?.symbol(s) }
+        p.onDelete = { [weak self] in
+            guard let self else { return }
+            self.feel(.key(.delete))
+            self.handle(.delete, tap: nil)
+        }
+        p.onSpace = { [weak self] in
+            guard let self else { return }
+            self.feel(.key(.space))
+            self.handle(.space, tap: nil)
+        }
+        p.onReturn = { [weak self] in
+            guard let self else { return }
+            self.feel(.key(.ret))
+            self.handle(.ret, tap: nil)
+        }
+        p.onClose = { [weak self] in
+            guard let self else { return }
+            self.feel(.key(.page(.letters)))
+            self.showSymbolPanel(false)
+        }
+        p.onFeedback = { [weak self] ev in self?.feel(ev) }
+        return p
+    }
+
+    private func showSymbolPanel(_ on: Bool) {
+        guard on != symbolPanelShown else { return }
+        symbolPanelShown = on
+        if on {
+            showGrid(false)
+            showEmoji(false)
+            endEnglishWord()
+            symbolPanel.setReturnLabel(returnLabel().0, chinese: chinese)
+            let insetL = view.safeAreaInsets.left, insetR = view.safeAreaInsets.right
+            let cb = currentContentBounds()
+            let topBarH = candidateBar.bounds.height > 0 ? candidateBar.bounds.height : barHeight
+            symbolPanel.frame = CGRect(x: insetL, y: cb.minY + topBarH, width: max(0, cb.width - insetL - insetR), height: max(0, cb.height - topBarH))
+            symbolPanel.themeChanged()
+            symbolPanel.isHidden = false
+            root.bringSubviewToFront(symbolPanel)
+        } else {
+            symbolPanelIfLoaded?.isHidden = true
+        }
+        updatePlainLightButton()
+        keyboard.isHidden = on || emojiShown || !(gridIfLoaded?.isHidden ?? true) || !(settingsPanelIfLoaded?.isHidden ?? true)
     }
 }

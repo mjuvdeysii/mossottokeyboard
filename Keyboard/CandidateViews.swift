@@ -287,10 +287,13 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         deletePreviewPill.isHidden = true
         addSubview(deletePreviewPill)
         let cfg = UIImage.SymbolConfiguration(pointSize: 16, weight: .regular)
-        expandButton.setImage(UIImage(systemName: "chevron.down", withConfiguration: cfg), for: .normal)
+        expandButton.setImage(UIImage(systemName: "gearshape", withConfiguration: cfg), for: .normal)
         expandButton.tintColor = Theme.secondaryText
         addSubview(expandButton)
         expandButton.addTarget(self, action: #selector(expandTapped), for: .touchUpInside)
+        let gearLP = UILongPressGestureRecognizer(target: self, action: #selector(expandHeld(_:)))
+        gearLP.minimumPressDuration = 0.40
+        expandButton.addGestureRecognizer(gearLP)
         var uc = UIButton.Configuration.filled()
         uc.cornerStyle = .capsule
         uc.baseBackgroundColor = Theme.correctedTint
@@ -337,6 +340,10 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     }
 
     @objc private func expandTapped() { if gridExpanded || !candidates.isEmpty { onExpand?() } else { onSettings?() } }
+    @objc private func expandHeld(_ g: UILongPressGestureRecognizer) {
+        guard g.state == .began, candidates.isEmpty, !gridExpanded else { return }
+        onLightToggle?()
+    }
 
     /// Exact character indices in the raw typed preedit string highlighted by active autocorrection `fixes`.
     struct CorrectionPinpoint: Equatable {
@@ -950,16 +957,9 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         if changed { setNeedsLayout() }
     }
 
-    private var shouldShowIdleControls: Bool {
-        idleControlsEnabled
-            && candidates.isEmpty
-            && !typing
-            && undoText == nil
-            && !gridExpanded
-            && forgetOverlay == nil
-            && !isTelemetryOverlayActive
-            && (Theme.plain || mostoWanted || showsMosto)
-    }
+    /// R95 minimalist top bar: idle bar stays pure glass with only the far-right classic gear (`expandButton`).
+    /// Mosto lives on the bottom row as the unified Emoji / Kaomoji / Settings super-key.
+    private var shouldShowIdleControls: Bool { false }
 
     private func updateIdleControlsVisibility() {
         let show = shouldShowIdleControls
@@ -1096,22 +1096,15 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     }
 
     private func setMosto(_ on: Bool) {
-        // put away even when he was never asked for (a new strip starts with him hidden, 简洁 never shows him)
-        if !on, !mostoWanted {
-            mosto.isHidden = true
-            updateIdleControlsVisibility()
-            return
-        }
-        guard on != mostoWanted else { return }
-        mostoWanted = on
-        if !on { onMostoShown?(false) }
+        // R95: Mosto moved to the bottom-row super-key; top bar stays clean and never shows a duplicate Mosto icon.
+        mostoWanted = false
         mostoTimer?.invalidate(); mostoTimer = nil
-        guard on else {
-            mosto.layer.removeAllAnimations()
-            mosto.isHidden = true
-            updateIdleControlsVisibility()
-            return
-        }
+        mosto.layer.removeAllAnimations()
+        mosto.isHidden = true
+        updateIdleControlsVisibility()
+        onMostoShown?(on)
+        return
+        if false {
         mosto.isHidden = false
         mosto.transform = .identity
         updateIdleControlsVisibility()
@@ -1128,6 +1121,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         mostoTimer = Timer.scheduledTimer(withTimeInterval: 0.26, repeats: false) { [weak self] _ in
             guard let self, self.mostoWanted else { return }
             self.mosto.greet()
+        }
         }
     }
 
@@ -1459,7 +1453,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         if strip.contentSize != size { strip.contentSize = size }
         // ⌄: there are candidates past the edge (the full grid shows them all)
         let idleGear = candidates.isEmpty && !typing && undoText == nil && !gridExpanded && window != nil
-        let sym = idleGear ? "slider.horizontal.3" : (gridExpanded ? "chevron.up" : "chevron.down")
+        let sym = idleGear ? "gearshape" : (gridExpanded ? "chevron.up" : "chevron.down")
         let symKey = "\(sym)_\(idleGear ? 1 : 0)_\(gridExpanded ? 1 : 0)"
         if symKey != lastExpandSym {
             lastExpandSym = symKey
@@ -2462,10 +2456,14 @@ final class SettingsPanelView: UIView {
 
     private let accessBanner = UILabel()
     private let utilityRow = UIView()
+    private let mostoReturnButton = UIButton(type: .custom)
     private let guidePill = UIButton(type: .custom)
     private let guideLed = CALayer()
     private let offlineStatusLabel = UILabel()
     private let moreButton = UIButton(type: .system)
+    /// Exact X origin & width of the main keyboard's bottom-row Mosto key (for 0pt-drift return).
+    var mostoAnchorX: CGFloat?
+    var mostoAnchorWidth: CGFloat?
 
     // Secondary low-frequency preferences drawer (pure frame layout — 0 Auto Layout constraints)
     private let moreScroll = UIScrollView()
@@ -2527,8 +2525,10 @@ final class SettingsPanelView: UIView {
         statusLabel.textColor = Theme.secondaryText
         statusLabel.tag = Self.tagSecondary
 
-        doneButton.setTitle("完成", for: .normal)
-        doneButton.titleLabel?.font = Theme.font(14, .bold)
+        let gearCfg = UIImage.SymbolConfiguration(pointSize: 16, weight: .semibold)
+        doneButton.setImage(UIImage(systemName: "gearshape.fill", withConfiguration: gearCfg), for: .normal)
+        doneButton.setTitle(nil, for: .normal)
+        doneButton.accessibilityLabel = "关闭设置返回键盘"
         doneButton.layer.cornerRadius = 14
         doneButton.layer.cornerCurve = .continuous
         doneButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
@@ -2561,6 +2561,11 @@ final class SettingsPanelView: UIView {
         deckContainer.addSubview(accessBanner)
 
         deckContainer.addSubview(utilityRow)
+        mostoReturnButton.layer.cornerRadius = Metrics.cornerRadius
+        mostoReturnButton.layer.cornerCurve = .continuous
+        mostoReturnButton.accessibilityLabel = "返回键盘输入"
+        mostoReturnButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
+        utilityRow.addSubview(mostoReturnButton)
         guidePill.setTitle("   键位提示", for: .normal)
         guidePill.titleLabel?.font = Theme.font(11.5, .semibold)
         guidePill.titleLabel?.adjustsFontSizeToFitWidth = true
@@ -2897,8 +2902,25 @@ final class SettingsPanelView: UIView {
     }
 
     func setNight(_ night: Bool) {
-        mostoImage.image = UIImage(named: night ? "mosto_night" : "mosto_day", in: Bundle(for: SettingsPanelView.self), with: nil)
+        let name = night ? "mosto_night" : "mosto_day"
+        mostoImage.image = UIImage(named: name, in: Bundle(for: SettingsPanelView.self), with: nil)
+        updateMostoReturnArtwork(night: night)
         updateStatus(night: night)
+    }
+
+    private func updateMostoReturnArtwork(night: Bool? = nil) {
+        let isDark = night ?? (traitCollection.userInterfaceStyle == .dark)
+        mostoReturnButton.backgroundColor = Theme.selection.withAlphaComponent(0.18)
+        if Theme.plain {
+            let cfg = UIImage.SymbolConfiguration(pointSize: 15, weight: .semibold)
+            mostoReturnButton.setImage(UIImage(systemName: "keyboard.chevron.compact.down", withConfiguration: cfg), for: .normal)
+            mostoReturnButton.tintColor = Theme.selection
+        } else if let raw = UIImage(named: isDark ? "mosto_night" : "mosto_day", in: Bundle(for: SettingsPanelView.self), with: nil) {
+            let side: CGFloat = 20
+            let r = UIGraphicsImageRenderer(size: CGSize(width: side, height: side))
+            let scaled = r.image { _ in raw.draw(in: CGRect(x: 0, y: 0, width: side, height: side)) }.withRenderingMode(.alwaysOriginal)
+            mostoReturnButton.setImage(scaled, for: .normal)
+        }
     }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
@@ -2914,6 +2936,7 @@ final class SettingsPanelView: UIView {
 
     func load() {
         let s = KeyboardSettings.shared
+        updateMostoReturnArtwork()
         updateStatus()
 
         schemeTile.configure(
@@ -3217,6 +3240,8 @@ final class SettingsPanelView: UIView {
     func tapSchemeTileForTests() { toggleScheme() }
     func tapHapticTileForTests() { toggleHaptic() }
     var maxTileHeightForTests: CGFloat { hardwareTiles.map(\.frame.height).max() ?? 0 }
+    var doneButtonUsesGearForTests: Bool { doneButton.image(for: .normal) != nil && doneButton.title(for: .normal) == nil }
+    var mostoReturnFrameInSelfForTests: CGRect { utilityRow.convert(mostoReturnButton.frame, to: self) }
     var utilityRowNonOverlappingForTests: Bool {
         let guideOk = guidePill.isHidden || (!guidePill.frame.intersects(moreButton.frame) && guidePill.frame.minX >= 0 && guidePill.frame.maxX <= utilityRow.bounds.width + 0.5)
         let offlineOk = offlineStatusLabel.isHidden || (!offlineStatusLabel.frame.intersects(moreButton.frame) && offlineStatusLabel.frame.minX >= 0 && offlineStatusLabel.frame.maxX <= utilityRow.bounds.width + 0.5)
@@ -3234,8 +3259,10 @@ final class SettingsPanelView: UIView {
         guard w > 60, h > 60 else { return }
         let headH: CGFloat = h < 205 ? 36 : 42
         header.frame = CGRect(x: 0, y: 0, width: w, height: headH)
-        let doneW: CGFloat = 56, doneH: CGFloat = 28
-        doneButton.frame = CGRect(x: w - 12 - doneW, y: floor((headH - doneH) / 2), width: doneW, height: doneH)
+        let sidePad: CGFloat = w > 500 ? Metrics.sideInsetLandscape : Metrics.sideInset
+        let edgeAlign = sidePad + Metrics.gapX / 2
+        let doneW: CGFloat = 34, doneH: CGFloat = 28
+        doneButton.frame = CGRect(x: w - edgeAlign - doneW + 3, y: floor((headH - doneH) / 2), width: doneW, height: doneH)
         var textLeadX: CGFloat = 12
         if !backDeckButton.isHidden {
             let backW: CGFloat = 64, backH: CGFloat = 28
@@ -3291,14 +3318,19 @@ final class SettingsPanelView: UIView {
         let gapUtil: CGFloat = 6
         let moreW = min(76, max(64, (uw * 0.20).rounded()))
         moreButton.frame = CGRect(x: uw - moreW, y: 0, width: moreW, height: utilH)
-        let leftAvail = max(40, uw - moreW - gapUtil)
-        let guideW = min(104, max(84, (uw * 0.28).rounded()))
-        guidePill.frame = CGRect(x: 0, y: 0, width: min(guideW, leftAvail), height: utilH)
+        let mrW = max(34, min(44, mostoAnchorWidth ?? 36))
+        let desiredMrX = (mostoAnchorX ?? (padX + 48)) - padX
+        let mrX = max(0, min(desiredMrX, max(0, uw - moreW - gapUtil - mrW)))
+        mostoReturnButton.frame = CGRect(x: mrX, y: 0, width: mrW, height: utilH)
+        let afterMostoX = mostoReturnButton.frame.maxX + gapUtil
+        let midAvail = max(40, moreButton.frame.minX - gapUtil - afterMostoX)
+        let guideW = min(100, max(80, (uw * 0.26).rounded()))
+        guidePill.frame = CGRect(x: afterMostoX, y: 0, width: min(guideW, midAvail), height: utilH)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         guideLed.frame = CGRect(x: 9, y: (utilH - 4.5) / 2, width: 4.5, height: 4.5)
         CATransaction.commit()
-        offlineStatusLabel.frame = CGRect(x: 2, y: 0, width: leftAvail, height: utilH)
+        offlineStatusLabel.frame = CGRect(x: afterMostoX, y: 0, width: midAvail, height: utilH)
 
         // Layout secondary `moreScroll` purely with frames
         let drawerH = layoutMoreDrawer(width: w, apply: true)

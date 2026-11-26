@@ -169,6 +169,7 @@ enum KeyboardTests {
         r92SculptedKeycapAndOpticalIcons(window)
         r93SculptedConsolePopupsAndBorderlessSurfaces(window)
         r94T9UnifiedLayoutAndStateMachines(window)
+        r95ZeroDriftToggleAndMostoSuperKey(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -3202,7 +3203,7 @@ enum KeyboardTests {
         let boundaryShown = bar.cursorTelemetryBoundaryForTests && bar.cursorTelemetryTextForTests == "已到文首"
         bar.setCursorTelemetry(active: false, delta: 0, endStop: 0, crossedNewline: false)
         bar.layoutIfNeeded()
-        let cleanRestore = !bar.cursorTelemetryShownForTests && !bar.deletePreviewShownForTests && !bar.mosto.isHidden
+        let cleanRestore = !bar.cursorTelemetryShownForTests && !bar.deletePreviewShownForTests && bar.mosto.isHidden
         log(hudShown && noOverlap && clearFlagSeparated && boundaryShown && cleanRestore,
             "r76.CandidateBarView renders non-overlapping cursor scrub HUD, boundary stop, and cleanly restores idle state",
             "hudShown=\(hudShown) noOverlap=\(noOverlap) boundary=\(boundaryShown) restore=\(cleanRestore)")
@@ -3238,8 +3239,8 @@ enum KeyboardTests {
         let liveRestored = !kb.trackpadRulerVisibleForTests
             && !vcBar.cursorTelemetryShownForTests
             && vcBar.expandShownForTests
-            && !vc.plainLightHiddenForTests
-            && !vc.mostoHintHiddenForTests
+            && vc.plainLightHiddenForTests
+            && vc.mostoHintHiddenForTests
         log(liveActive && liveHitStart && liveRestored,
             "r76.Live spacebar trackpad scrubbing drives cursor telemetry HUD, suppresses idle chrome, and restores on finger up",
             "active=\(liveActive) hitStart=\(liveHitStart) restored=\(liveRestored)")
@@ -3594,28 +3595,16 @@ enum KeyboardTests {
         vc.view.setNeedsLayout()
         vc.view.layoutIfNeeded()
         let bar = vc.candidateBarForTests
-        let mostoShown = !vc.mostoHintHiddenForTests && !vc.plainLightHiddenForTests && bar.mosto.frame.width >= 26
-        let mostoRightAligned = bar.mosto.frame.minX > 290 && bar.mosto.frame.maxX < bar.expandButtonFrameForTests.minX
-        let mostoTextFree = bar.idleKaomojiTitleForTests == nil && bar.idleLightTitleForTests == nil
-        let mostoLightFrame = bar.idleLightFrameForTests
-        let mostoLightRightAligned = mostoLightFrame.minX > 250 && mostoLightFrame.maxX < bar.mosto.frame.minX && mostoRightAligned
-
+        // R95 minimalist top bar: single classic gear on far right; old top-bar Mosto & light pill stay hidden across styles.
+        let topBarCleanMosto = bar.mosto.isHidden && vc.mostoHintHiddenForTests && vc.plainLightHiddenForTests && bar.expandButtonFrameForTests.minX > 330
         s.style = 1
         vc.applySettings()
         vc.view.setNeedsLayout()
         vc.view.layoutIfNeeded()
-        let plainMostoHidden = bar.mosto.isHidden && !vc.mostoHintHiddenForTests && !vc.plainLightHiddenForTests
-        let plainKaomojiClean = bar.idleKaomojiTitleForTests == "^_^"
-            && !bar.idleKaomojiHasImageForTests
-            && bar.idleKaomojiFrameForTests.minX > 290
-            && bar.idleKaomojiFrameForTests.maxX < bar.expandButtonFrameForTests.minX
-        let plainLightFrame = bar.idleLightFrameForTests
-        let plainLightConsistent = bar.idleLightTitleForTests == nil
-            && abs(plainLightFrame.minX - mostoLightFrame.minX) < 1.0
-
-        log(mostoShown && mostoTextFree && mostoLightRightAligned && plainMostoHidden && plainKaomojiClean && plainLightConsistent,
-            "r83.CandidateBarView unifies icon-only right light toggle, free-standing Mosto, and ^_^ monogram across styles",
-            "mosto=(\(mostoShown),\(mostoTextFree),\(mostoLightRightAligned)) plain=(\(plainMostoHidden),\(plainKaomojiClean),\(plainLightConsistent))")
+        let topBarCleanPlain = bar.mosto.isHidden && vc.mostoHintHiddenForTests && vc.plainLightHiddenForTests && bar.expandButtonFrameForTests.minX > 330
+        log(topBarCleanMosto && topBarCleanPlain,
+            "r83.CandidateBarView keeps minimalist single-gear idle top bar across Mosto and 简洁 styles",
+            "mosto=\(topBarCleanMosto) plain=\(topBarCleanPlain)")
 
         // 3. P1 Liquid Glass side breathing margins (full-width outer hit zones) & forced-day softened keycap state
         let kv = KeyboardView(spatial: SpatialModel.standard(width: 393))
@@ -4117,74 +4106,123 @@ enum KeyboardTests {
             && numbers[3][numbers[3].count - 2].action == .toggleLanguage
         let t9DynamicRight = t9Idle[1].last?.action == .char("！")
             && t9Comp[1].last?.action == .clearInput
-            && t9Idle[2].last?.action == .page(.numbers)
-            && numpad[2].last?.action == .page(.numbers)
+            && t9Idle[0][1].action == .char("、")
+            && t9Comp[0][1].action == .t9("'")
+            && t9Idle[2].last?.action == .symbolPanel
+            && numpad[2].last?.action == .symbolPanel
         log(returnAligned && langAligned && t9DynamicRight,
             "r94.Four-corner alignment locks Return bottom-right, 中/英 next-to-right, and T9 idle ！ / composing 重输",
             "ret=\(returnAligned) lang=\(langAligned) t9Right=\(t9DynamicRight)")
 
-        // 2. T9 符号 tap enters .numbers WITHOUT flipping chinese to English (Bug #5)
+        // 2. T9 符号 tap opens SymbolPanelView WITHOUT flipping chinese to English (Bug #5 + R95 same-spot Return)
         if let pair = makeKeyboard(scheme: 1, grid: true, in: window) {
             let (vc, h) = pair
             let kb = vc.keyboardViewForTests
             kb.layoutIfNeeded()
-            if let symRect = kb.keyRectsForTests(.page(.numbers))?.cap {
+            if let symRect = kb.keyRectsForTests(.symbolPanel)?.cap {
                 let pt = CGPoint(x: symRect.midX, y: symRect.midY)
                 kb.feedForTests([
                     TouchSample(id: 941, phase: .began, point: pt, time: 1.0),
                     TouchSample(id: 941, phase: .ended, point: pt, time: 1.06),
                 ])
-                let stayedChinese = !vc.testState.english && vc.testState.page == .numbers && h.string.isEmpty
-                // Returning via 拼音 restores T9 Chinese
-                if let backRect = kb.keyRectsForTests(.page(.letters))?.cap {
-                    let bpt = CGPoint(x: backRect.midX, y: backRect.midY)
-                    kb.feedForTests([
-                        TouchSample(id: 942, phase: .began, point: bpt, time: 1.2),
-                        TouchSample(id: 942, phase: .ended, point: bpt, time: 1.26),
-                    ])
-                }
-                let backToT9 = !vc.testState.english && vc.testState.page == .letters
+                let stayedChinese = !vc.testState.english && vc.symbolPanelShownForTests && h.string.isEmpty
+                vc.symbolPanelIfLoadedForTests?.onClose?()
+                let backToT9 = !vc.testState.english && !vc.symbolPanelShownForTests && vc.testState.page == .letters
                 log(stayedChinese && backToT9,
-                    "r94.T9 符号 tap stays in Chinese .numbers and returns cleanly to T9 Chinese",
-                    "stayed=\(stayedChinese) back=\(backToT9) en=\(vc.testState.english) page=\(vc.testState.page) text=\(h.string)")
+                    "r94.T9 符号 tap opens SymbolPanelView in Chinese and closes cleanly back to T9",
+                    "stayed=\(stayedChinese) back=\(backToT9) en=\(vc.testState.english) text=\(h.string)")
             } else {
                 log(false, "r94.T9 符号 rect lookup")
             }
         }
 
-        // 3. Numpad 符号 tap enters .numbers WITHOUT firing Return/newline (Bug #7)
+        // 3. Numpad 符号 tap opens SymbolPanelView WITHOUT firing Return/newline (Bug #7)
         if let pair = makeKeyboard(scheme: 1, grid: true, in: window) {
             let (vc, h) = pair
             vc.handle(.page(.numpad), tap: nil)
             let kb = vc.keyboardViewForTests
             kb.layoutIfNeeded()
-            if let symRect = kb.keyRectsForTests(.page(.numbers))?.cap {
+            if let symRect = kb.keyRectsForTests(.symbolPanel)?.cap {
                 let pt = CGPoint(x: symRect.midX, y: symRect.midY)
                 kb.feedForTests([
                     TouchSample(id: 943, phase: .began, point: pt, time: 2.0),
                     TouchSample(id: 943, phase: .ended, point: pt, time: 2.06),
                 ])
-                log(vc.testState.page == .numbers && h.string.isEmpty,
-                    "r94.Numpad 符号 tap opens .numbers without firing Return or inserting newline",
-                    "page=\(vc.testState.page) text=\(h.string.debugDescription)")
+                log(vc.symbolPanelShownForTests && h.string.isEmpty,
+                    "r94.Numpad 符号 tap opens SymbolPanelView without firing Return or inserting newline",
+                    "sym=\(vc.symbolPanelShownForTests) text=\(h.string.debugDescription)")
             } else {
                 log(false, "r94.Numpad 符号 rect lookup")
             }
         }
 
-        // 4. English auto-capitalization + double-tap Shift locks Caps Lock in 2 taps (Bug #6)
+        // 4. English defaults to lowercase (WeChat fix) and double-tap Shift locks Caps Lock in 2 taps (Bug #6)
         if let pair = makeKeyboard(scheme: 1, in: window) {
             let (vc, _) = pair
             vc.handle(.toggleLanguage, tap: nil)
-            let autoStarted = vc.keyboardViewForTests.context?.shifted == true && vc.keyboardViewForTests.context?.capsLock == false
+            let startsLower = vc.keyboardViewForTests.context?.shifted == false && vc.keyboardViewForTests.context?.capsLock == false
             vc.handle(.shift, tap: nil)
             vc.handle(.shift, tap: nil)
-            let lockedFromAuto = vc.keyboardViewForTests.context?.capsLock == true && vc.keyboardViewForTests.context?.shifted == true
+            let lockedInTwo = vc.keyboardViewForTests.context?.capsLock == true && vc.keyboardViewForTests.context?.shifted == true
             vc.handle(.shift, tap: nil)
             let unlockedClean = vc.keyboardViewForTests.context?.capsLock == false && vc.keyboardViewForTests.context?.shifted == false
-            log(autoStarted && lockedFromAuto && unlockedClean,
-                "r94.English auto-shifted double-tap Shift engages Caps Lock directly in 2 taps",
-                "auto=\(autoStarted) locked=\(lockedFromAuto) unlocked=\(unlockedClean)")
+            log(startsLower && lockedInTwo && unlockedClean,
+                "r94.English starts lowercase cleanly and double-tap Shift locks Caps Lock in 2 taps",
+                "lower=\(startsLower) locked=\(lockedInTwo) unlocked=\(unlockedClean)")
+        }
+    }
+
+
+    // MARK: - R95: Zero-Drift Toggle Law, Mosto Super-Key & Minimalist Single-Gear Top Bar
+
+    static func r95ZeroDriftToggleAndMostoSuperKey(_ window: UIWindow) {
+        // 1. Mosto bottom-row key has 0pt horizontal drift across T9, QWERTY, and Symbol pages
+        let kv = KeyboardView(spatial: SpatialModel.standard(width: 393))
+        kv.frame = CGRect(x: 0, y: 0, width: 393, height: 216)
+        kv.configure(LayoutContext(page: .letters, chinese: true, showGlobe: false, returnLabel: nil, returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true, numberGrid: true, pinyinGrid: true))
+        kv.layoutIfNeeded()
+        let xT9 = kv.keyRectsForTests(.emoji)?.cap.minX ?? -1
+        kv.configure(LayoutContext(page: .letters, chinese: false, showGlobe: false, returnLabel: nil, returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true, numberGrid: true, pinyinGrid: true))
+        kv.layoutIfNeeded()
+        let xEn = kv.keyRectsForTests(.emoji)?.cap.minX ?? -100
+        kv.configure(LayoutContext(page: .numbers, chinese: true, showGlobe: false, returnLabel: nil, returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true, numberGrid: true, pinyinGrid: true))
+        kv.layoutIfNeeded()
+        let xNum = kv.keyRectsForTests(.emoji)?.cap.minX ?? -200
+        log(xT9 > 40 && abs(xT9 - xEn) < 1.0 && abs(xT9 - xNum) < 1.0,
+            "r95.Bottom-row Mosto super-key stays locked to identical X coordinate across T9, QWERTY, and Symbols",
+            "t9=\(xT9) en=\(xEn) num=\(xNum)")
+
+        // 2. Mosto 0ms instant-open + <350ms second tap upgrades to Kaomoji + same-spot close + Send button visible
+        if let pair = makeKeyboard(scheme: 1, grid: true, in: window) {
+            let (vc, _) = pair
+            vc.view.layoutIfNeeded()
+            let keyX = vc.keyboardViewForTests.keyRectsForTests(.emoji)?.cap.minX ?? -1
+            vc.handle(.emoji, tap: nil)
+            vc.view.layoutIfNeeded()
+            let openedEmoji = vc.emojiShownForTests && (vc.emojiPanelIfLoadedForTests?.kaomojiModeForTests == false)
+            let returnBtnVisible = vc.emojiPanelIfLoadedForTests?.returnButtonVisibleForTests == true
+            let panelMostoX = vc.emojiPanelIfLoadedForTests?.mostoReturnFrameInSelfForTests.minX ?? -99
+            let emojiAligned = abs(panelMostoX - keyX) < 1.5
+            // Immediate second tap (<350ms) upgrades to Kaomoji instead of closing
+            vc.emojiPanelIfLoadedForTests?.onBack?()
+            let upgradedToKaomoji = vc.emojiShownForTests && (vc.emojiPanelIfLoadedForTests?.kaomojiModeForTests == true)
+            // Next tap in Kaomoji closes back to keyboard
+            vc.emojiPanelIfLoadedForTests?.onBack?()
+            let closedClean = !vc.emojiShownForTests
+            log(openedEmoji && returnBtnVisible && emojiAligned && upgradedToKaomoji && closedClean,
+                "r95.Mosto super-key 0ms opens Emoji, <350ms double-tap upgrades to Kaomoji, and same-spot closes with Send visible",
+                "open=\(openedEmoji) send=\(returnBtnVisible) aligned=\(emojiAligned) kaomoji=\(upgradedToKaomoji) close=\(closedClean)")
+
+            // 3. Settings panel has classic gearshape.fill top-right AND bottom Mosto return aligned with main Mosto key
+            vc.handle(.settings, tap: nil)
+            vc.view.layoutIfNeeded()
+            let sp = vc.settingsPanelIfLoadedForTests
+            let gearTopRight = sp?.doneButtonUsesGearForTests == true
+            let spMostoX = sp?.mostoReturnFrameInSelfForTests.minX ?? -99
+            let settingsAligned = abs(spMostoX - keyX) < 2.0
+            log(gearTopRight && settingsAligned,
+                "r95.SettingsPanelView uses top-right gearshape.fill and 0pt-drift bottom Mosto return anchor",
+                "gear=\(gearTopRight) spX=\(spMostoX) keyX=\(keyX)")
         }
     }
 

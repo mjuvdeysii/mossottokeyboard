@@ -100,6 +100,17 @@ final class KeyView: UIView {
         return img
     }
 
+    private static func cachedMostoCap(_ imgName: String) -> UIImage? {
+        let k = "cap_" + imgName
+        if let img = symbolCache[k] { return img }
+        guard let raw = UIImage(named: imgName, in: Bundle(for: KeyView.self), with: nil) else { return nil }
+        let side: CGFloat = 22
+        let r = UIGraphicsImageRenderer(size: CGSize(width: side, height: side))
+        let scaled = r.image { _ in raw.draw(in: CGRect(x: 0, y: 0, width: side, height: side)) }.withRenderingMode(.alwaysOriginal)
+        symbolCache[k] = scaled
+        return scaled
+    }
+
     init(spec: KeySpec, borders: Bool) {
         self.spec = spec
         super.init(frame: .zero)
@@ -171,7 +182,17 @@ final class KeyView: UIView {
         case .space: label.font = spec.isSmartSpace ? Theme.font(13.5, .semibold) : Theme.font(15, .regular)
         default: label.font = Theme.font(Metrics.functionFont, Theme.plain ? .medium : .semibold)
         }
-        if let name = spec.symbol {
+        if spec.action == .emoji && !Theme.plain {
+            icon.overrideUserInterfaceStyle = .unspecified
+            let night = traitCollection.userInterfaceStyle == .dark
+            let imgName = night ? "mosto_night" : "mosto_day"
+            if let img = Self.cachedMostoCap(imgName) {
+                icon.image = img
+            } else if let name = spec.symbol {
+                icon.image = Self.cachedSymbol(name)
+            }
+            icon.isHidden = false
+        } else if let name = spec.symbol {
             // Keep face.smiling in its crisp outline variant in dark mode so it harmonizes with shift & delete.
             icon.overrideUserInterfaceStyle = (name == "face.smiling") ? .light : .unspecified
             icon.image = Self.cachedSymbol(name)
@@ -199,7 +220,8 @@ final class KeyView: UIView {
         case .ret: return spec.label.isEmpty ? "换行" : spec.label
         case .globe: return "下一个键盘"
         case .settings: return "键盘设置"
-        case .emoji: return "表情，按住打开键盘设置"
+        case .emoji: return "Mosto 表情，双击颜文字，按住打开设置"
+        case .symbolPanel: return "符号"
         case .toggleLanguage: return spec.label == "中" ? "中文，轻点切换到英文" : "英文，轻点切换到中文"
         case .t9(let d): return d == "'" ? "分词" : "\(d)，\(spec.label)"
         case .deleteWord: return "删除词"
@@ -338,10 +360,14 @@ final class KeyView: UIView {
     var visibleLabelTextForTests: String? { label.isHidden ? nil : label.text }
     var isSoftenedForDarkGlassForTests: Bool { softenedForDarkGlass }
     var isSoftenedForLightGlassForTests: Bool { softenedForLightGlass }
-    var iconPointSizeForTests: CGFloat { icon.image?.size.height ?? 0 }
+    var iconPointSizeForTests: CGFloat {
+        if spec.action == .emoji { return Metrics.emojiIconSize }
+        return icon.image?.size.height ?? 0
+    }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
         super.traitCollectionDidChange(previous)
+        if spec.action == .emoji && !Theme.plain { apply(spec, borders: borders, force: true) }
         updateColors()
     }
 
