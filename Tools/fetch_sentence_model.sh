@@ -5,7 +5,7 @@
 set -euo pipefail
 OUT="${1:-Keyboard/Resources/sentence.gram}"
 URL="https://github.com/amzxyz/rime-wanxiang-data/releases/download/LTS/wanxiang-lts-zh-hans.gram"
-SHA="e34500ab44626dc039a0641792ecba98ab63307646eb3d29186be56608ffe094"
+SHA="e9ddd501b7d536bc5ea1346f8f900ae49a719a05be349e0a17cb27e717143ca5"
 if [ -f "$OUT" ] && echo "$SHA  $OUT" | shasum -a 256 -c - >/dev/null 2>&1; then echo "sentence model present"; exit 0; fi
 curl -fsSL --retry 3 -o "$OUT.part" "$URL"
 echo "$SHA  $OUT.part" | shasum -a 256 -c -

@@ -56,7 +56,7 @@ public final class Decoder {
     public var correctionEnabled = true
     public var spatialWeight = 1.8
     public var correctionPenalty = 1.5
-    public var wordPenalty = 23.0   // R99b recalibrated for 39 MB grammar.gram (each word also pays its non-collocation cost)
+    public var wordPenalty = 26.0   // R100 recalibrated for dual-section Wanxiang+Octagram grammar.gram (each word also pays its non-collocation cost)
     /// What learning adds. A word the lexicon has gets its own frequency plus  userWeight·ln(1 + times picked),
     /// at most `userCap` (a single character at most a quarter of it) — so picking 得 once in 过得 lifts 得 a little
     /// without pushing 的 out of every other sentence. A phrase of the user's own (not in the lexicon) starts from
@@ -77,12 +77,12 @@ public final class Decoder {
     public var grammar: Grammar?
     /// 联想 reads its own model when set (the sentence model's scores are not counts of what follows a context).
     public var predictionGrammar: Grammar?
-    public var grammarWeight = 0.7
+    public var grammarWeight = 0.75
     /// The language model weighs less on a word whose keys were corrected: it chooses between words the keys spell,
     /// it does not talk the keyboard into changing keys to make a likelier phrase. R4 grid (×correctionPenalty 1.5 /
     /// 2.5 / 3.5): 0.6 with 1.5 — 0.7 and above lose two 中英混输 sentences (小鹤), 1.0 also sentences typed with
     /// touch noise (88.85 → 87.54).
-    public var grammarCorrectedFactor = 0.55
+    public var grammarCorrectedFactor = 0.45
     /// The text just before the cursor (a few characters), so the first word is also read in context.
     public var leftContext: [Character] = []
     /// Cost of reading the letters as English in Chinese mode (English is the less likely intent there).
@@ -157,10 +157,10 @@ public final class Decoder {
     public var t9PrefixExtra = 3.0
     /// How much of a word's own frequency the language model takes back when it scores the word in context.
     public var unigramDiscount = 0.5
-    public var unigramCenter = 12.0
+    public var unigramCenter = 11.0
     /// The model's counts are read against how much it has seen after the context (P(word | context) rather than
     /// a joint count): a common context no longer lends its own frequency to whatever follows it.
-    public var contextNormalisation = 0.45
+    public var contextNormalisation = 0.35
 
     public init(lexicon: Lexicon, user: UserDictionary? = nil) {
         self.lexicon = lexicon

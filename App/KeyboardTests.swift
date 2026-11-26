@@ -172,6 +172,7 @@ enum KeyboardTests {
         r95ZeroDriftToggleAndMostoSuperKey(window)
         r96HiddenBugFixesAndCompanionEcosystem(window)
         r99LocalBigramAndAdaptiveBeam(window)
+        r100DistilledDualSectionGrammar(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -4346,6 +4347,61 @@ enum KeyboardTests {
         log(boosted && predicted && persistOk && clearedOk && beamOk && decodeOk,
             "r99.Local word-pair bigram persists, boosts continuations/lattice, resets cleanly, and adaptive longBeam decodes long sequences",
             "boosted=\(boosted) pred=\(predicted) persist=\(persistOk) clear=\(clearedOk) beam=\(beamOk) decode=\(decodeOk)")
+    }
+
+    /// R100: Distilled Wanxiang+Octagram dual-section grammar.gram loads offline, serves 2..4-gram decoding and Section 2 continuations.
+    static func r100DistilledDualSectionGrammar(_ window: UIWindow) {
+        guard let kb = makeKeyboard(scheme: 0, in: window) else {
+            log(false, "r100.setup")
+            return
+        }
+        let (vc, h) = kb
+
+        // 1. Direct Grammar + Decoder verification on the bundled dual-section grammar.gram
+        var bundleGramOk = false
+        var directPredOk = false
+        var sec1ScoreOk = false
+        var directDecodeOk = false
+        if let gp = KeyboardViewController.resourceBundle.path(forResource: "grammar", ofType: "gram"),
+           let lp = KeyboardViewController.resourceBundle.path(forResource: "lexicon", ofType: "bin"),
+           let lex = try? Lexicon(path: lp),
+           let gram = try? Grammar(path: gp) {
+            bundleGramOk = true
+            directPredOk = gram.continuations(after: Array("我们"), limit: 8).contains { $0.text == "在" }
+            sec1ScoreOk = gram.query(context: Array("卖得"), word: Array("很好")) > 0
+                && gram.query(context: Array("信号"), word: Array("不好")) > 0
+            let dec = Decoder(lexicon: lex)
+            dec.grammar = gram
+            let r1 = dec.decode(Array("mddehfhc").map { Tap.exact($0) }).candidates.first?.text == "卖得很好"
+            let r2 = dec.decode(Array("xbhcbuhc").map { Tap.exact($0) }).candidates.first?.text == "信号不好"
+            let r3 = dec.predictions(after: Array("我们")).contains("在")
+            directDecodeOk = r1 && r2 && r3
+        }
+
+        // 2. End-to-end KeyboardViewController decode & context prediction on verified Xiaohe codes
+        type(vc, "mddehfhc")
+        settle(vc)
+        let vcPhrase1 = vc.testState.candidates.first == "卖得很好"
+        vc.handle(.clearInput, tap: nil)
+        drain(0.02)
+
+        type(vc, "xbhcbuhc")
+        settle(vc)
+        let vcPhrase2 = vc.testState.candidates.first == "信号不好"
+        vc.handle(.clearInput, tap: nil)
+        h.clear()
+        drain(0.02)
+
+        type(vc, "womf")
+        settle(vc)
+        vc.handle(.space, tap: nil)
+        let deadline = Date().addingTimeInterval(2.0)
+        while vc.testState.predictions.isEmpty && Date() < deadline { drain(0.02) }
+        let vcPredOk = !vc.testState.english && h.string == "我们" && vc.testState.predictions.contains("在")
+
+        log(bundleGramOk && directPredOk && sec1ScoreOk && directDecodeOk && vcPhrase1 && vcPhrase2 && vcPredOk,
+            "r100.Dual-section grammar.gram decodes distilled phrases and serves Section 2 context continuations",
+            "gram=\(bundleGramOk) sec2=\(directPredOk) sec1=\(sec1ScoreOk) direct=\(directDecodeOk) p1=\(vcPhrase1) p2=\(vcPhrase2) vcPred=\(vcPredOk)")
     }
 
     static func fuzz(_ window: UIWindow) {

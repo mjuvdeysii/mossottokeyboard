@@ -88,7 +88,8 @@ DOCS = [
         ]),
         ("二、中文词库与语言模型", [
             ["雾凇拼音 rime-ice：提供基础中文单字与常用词库（含经其收录整理的腾讯 AI Lab 公开中文词向量词表），并由 pypinyin 生成注音映射 — https://github.com/iDvel/rime-ice",
-             "八股文 rime-octagram-data：提供词语搭配、整句读法与 N-gram 统计模型，用于本机上下文联想与整句排序 — https://github.com/lotem/rime-octagram-data"],
+             "八股文 rime-octagram-data：提供词语搭配、短语直连与上下文联想语言模型 — https://github.com/lotem/rime-octagram-data",
+             "万象语法模型 rime-wanxiang-data：提供离线整句 N-gram 蒸馏教师模型（与八股文双段合成单文件，全程本机 mmap 零网络）— https://github.com/amzxyz/rime-wanxiang-data"],
         ]),
         ("三、英文词频与表情数据", [
             ["wordfreq：提供公开英文词频统计表，用于中英混输时的英文候选排序 — https://github.com/rspeer/wordfreq",
@@ -109,6 +110,8 @@ DOCS = [
             ["雾凇拼音 rime-ice — GPL-3.0-only — https://github.com/iDvel/rime-ice",
              "pypinyin（词库构建期注音工具）— MIT — https://github.com/mozillazg/python-pinyin",
              "八股文 rime-octagram-data — LGPL-3.0-only — https://github.com/lotem/rime-octagram-data",
+             "万象语法模型 rime-wanxiang-data — CC-BY-4.0 — https://github.com/amzxyz/rime-wanxiang-data",
+             "darts-clone（Double-Array Trie 构建库，仅构建期工具使用）— BSD-2-Clause — https://github.com/s-yata/darts-clone",
              "wordfreq（英文词频数据）— CC-BY-SA-4.0 — https://github.com/rspeer/wordfreq",
              "Emojibase — MIT — https://github.com/milesj/emojibase",
              "Unicode CLDR — Unicode-3.0 — https://github.com/unicode-org/cldr"],

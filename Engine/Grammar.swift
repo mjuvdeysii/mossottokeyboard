@@ -17,10 +17,14 @@ public final class Grammar {
     private let length: Int
     private let array: UnsafePointer<UInt32>
     private let size: Int
+    /// Appended Octagram sub-trie used exclusively for context continuations (`continuations(after:limit:)`),
+    /// defaulting to the main decoding trie when a `.gram` file has only one section.
+    private let predArray: UnsafePointer<UInt32>
+    private let predSize: Int
 
-    public var collocationPenalty = -12.0
+    public var collocationPenalty = -13.0
     public var nonCollocationPenalty = -12.0
-    public var weakCollocationPenalty = -20.0
+    public var weakCollocationPenalty = -24.0
     public var collocationMinLength = 3
 
     public init(path: String) throws {
@@ -37,34 +41,52 @@ public final class Grammar {
         let magic = String(decoding: UnsafeRawBufferPointer(start: b, count: 14), as: UTF8.self)
         let n = Int(b.loadUnaligned(fromByteOffset: 36, as: UInt32.self))
         let off = Int(b.loadUnaligned(fromByteOffset: 40, as: Int32.self))
-        guard magic == "Rime::Grammar/", 40 + off + n * 4 <= fsize, (40 + off) % 4 == 0 else {
+        let sec1End = 40 + off + n * 4
+        guard magic == "Rime::Grammar/", off >= 4, n >= 0, sec1End <= fsize, (40 + off) % 4 == 0 else {
             munmap(p, fsize); throw LoadError.format
         }
         base = b
         length = fsize
-        array = (b + 40 + off).assumingMemoryBound(to: UInt32.self)
+        let mainArr = (b + 40 + off).assumingMemoryBound(to: UInt32.self)
+        array = mainArr
         size = n
+        var pArr = mainArr
+        var pSize = n
+        if sec1End + 44 <= fsize,
+           String(decoding: UnsafeRawBufferPointer(start: b + sec1End, count: 14), as: UTF8.self) == "Rime::Grammar/" {
+            let pn = Int(b.loadUnaligned(fromByteOffset: sec1End + 36, as: UInt32.self))
+            let poff = Int(b.loadUnaligned(fromByteOffset: sec1End + 40, as: Int32.self))
+            let predByteOff = sec1End + 40 + poff
+            if poff >= 4, pn >= 0, predByteOff % 4 == 0, predByteOff + pn * 4 <= fsize {
+                pArr = (b + predByteOff).assumingMemoryBound(to: UInt32.self)
+                pSize = pn
+            }
+        }
+        predArray = pArr
+        predSize = pSize
     }
 
     deinit { munmap(UnsafeMutableRawPointer(mutating: base), length) }
 
     // darts-clone units
     @inline(__always) private func unit(_ i: Int) -> UInt32 { i < size ? array[i] : 0 }
+    @inline(__always) private func unit(_ i: Int, in arr: UnsafePointer<UInt32>, count n: Int) -> UInt32 { i < n ? arr[i] : 0 }
     @inline(__always) private func offset(_ u: UInt32) -> Int { Int((u >> 10) << ((u & (1 << 9)) >> 6)) }
     @inline(__always) private func label(_ u: UInt32) -> UInt32 { u & ((1 << 31) | 0xFF) }
     @inline(__always) private func hasLeaf(_ u: UInt32) -> Bool { (u >> 8) & 1 == 1 }
 
-    /// The node reached by `key` from the root, or nil.
-    private func traverse(_ key: ArraySlice<UInt8>) -> Int? {
+    /// The node reached by `key` from the root in `(arr, n)`, or nil.
+    private func traverse(_ key: ArraySlice<UInt8>, in arr: UnsafePointer<UInt32>, count n: Int) -> Int? {
         var id = 0
-        var u = unit(0)
+        var u = unit(0, in: arr, count: n)
         for c in key {
             id ^= offset(u) ^ Int(c)
-            u = unit(id)
+            u = unit(id, in: arr, count: n)
             if label(u) != UInt32(c) { return nil }
         }
         return id
     }
+    private func traverse(_ key: ArraySlice<UInt8>) -> Int? { traverse(key, in: array, count: size) }
 
     /// Keys continuing from `node` that are prefixes of `key`: (bytes matched, value).
     private func prefixes(from node: Int, _ key: [UInt8], into out: inout [(Int, Int)]) {
@@ -99,17 +121,17 @@ public final class Grammar {
         var out: [String: Double] = [:]
         // longest context first: a three-character context that the model knows says more than its last character
         for n in stride(from: min(3, context.count), through: 1, by: -1) {
-            guard let node = traverse(Grammar.encode(context.suffix(n))[...]) else { continue }
+            guard let node = traverse(Grammar.encode(context.suffix(n))[...], in: predArray, count: predSize) else { continue }
             // the commonest first characters only are followed a level further: each costs a scan of its node
             // (a context like 的 has thousands of continuations — all of them took seconds)
-            let firsts = children(of: node).sorted { ($0.2 ?? -1) > ($1.2 ?? -1) }
+            let firsts = children(of: node, in: predArray, count: predSize).sorted { ($0.2 ?? -1) > ($1.2 ?? -1) }
             for (rank, (bytes1, node1, v1)) in firsts.enumerated() {
                 let c1 = Grammar.decode(bytes1)
                 guard let ch1 = c1, Grammar.isHan(ch1) else { continue }
                 if let v1 { out[String(ch1)] = max(out[String(ch1)] ?? -.infinity, Double(v1) / 10_000 + Double(n) * contextBonus) }
                 // two characters only after a context of one or two (the model holds four characters at most)
-                guard n <= 2, rank < 24 else { continue }
-                for (bytes2, _, v2) in children(of: node1) {
+                guard n <= 2, rank < 24, v1 != nil else { continue }
+                for (bytes2, _, v2) in children(of: node1, in: predArray, count: predSize) {
                     guard let v2, let ch2 = Grammar.decode(bytes2), Grammar.isHan(ch2) else { continue }
                     let t = String([ch1, ch2])
                     out[t] = max(out[t] ?? -.infinity, Double(v2) / 10_000 + Double(n) * contextBonus)
@@ -121,28 +143,29 @@ public final class Grammar {
     }
 
     /// The nodes one character below `node`: (its bytes, the node, the count stored there if a key ends there).
-    private func children(of node: Int) -> [([UInt8], Int, Int?)] {
+    private func children(of node: Int, in arr: UnsafePointer<UInt32>, count n: Int) -> [([UInt8], Int, Int?)] {
         var out: [([UInt8], Int, Int?)] = []
         // CJK characters are two bytes: a lead byte 0x80…0xDF (or the 0xE1 escape), then any byte
         for b1 in 0x80...0xE1 {
-            guard let n1 = child(node, UInt8(b1)) else { continue }
+            guard let n1 = child(node, UInt8(b1), in: arr, count: n) else { continue }
             for b2 in 0...255 {
-                guard let n2 = child(n1, UInt8(b2)) else { continue }
-                out.append(([UInt8(b1), UInt8(b2)], n2, leafValue(n2)))
+                guard let n2 = child(n1, UInt8(b2), in: arr, count: n) else { continue }
+                out.append(([UInt8(b1), UInt8(b2)], n2, leafValue(n2, in: arr, count: n)))
             }
         }
         return out
     }
+    private func children(of node: Int) -> [([UInt8], Int, Int?)] { children(of: node, in: array, count: size) }
 
-    @inline(__always) private func child(_ node: Int, _ c: UInt8) -> Int? {
-        let id = node ^ offset(unit(node)) ^ Int(c)
-        return label(unit(id)) == UInt32(c) ? id : nil
+    @inline(__always) private func child(_ node: Int, _ c: UInt8, in arr: UnsafePointer<UInt32>, count n: Int) -> Int? {
+        let id = node ^ offset(unit(node, in: arr, count: n)) ^ Int(c)
+        return label(unit(id, in: arr, count: n)) == UInt32(c) ? id : nil
     }
 
-    @inline(__always) private func leafValue(_ node: Int) -> Int? {
-        let u = unit(node)
+    @inline(__always) private func leafValue(_ node: Int, in arr: UnsafePointer<UInt32>, count n: Int) -> Int? {
+        let u = unit(node, in: arr, count: n)
         guard hasLeaf(u) else { return nil }
-        return Int(unit(node ^ offset(u)) & 0x7FFF_FFFF)
+        return Int(unit(node ^ offset(u), in: arr, count: n) & 0x7FFF_FFFF)
     }
 
     static func isHan(_ c: Character) -> Bool {
