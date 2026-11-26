@@ -170,6 +170,7 @@ enum KeyboardTests {
         r93SculptedConsolePopupsAndBorderlessSurfaces(window)
         r94T9UnifiedLayoutAndStateMachines(window)
         r95ZeroDriftToggleAndMostoSuperKey(window)
+        r96HiddenBugFixesAndCompanionEcosystem(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -4106,7 +4107,7 @@ enum KeyboardTests {
             && numbers[3][numbers[3].count - 2].action == .toggleLanguage
         let t9DynamicRight = t9Idle[1].last?.action == .char("！")
             && t9Comp[1].last?.action == .clearInput
-            && t9Idle[0][1].action == .char("、")
+            && t9Idle[0][1].action == .char("：")
             && t9Comp[0][1].action == .t9("'")
             && t9Idle[2].last?.action == .symbolPanel
             && numpad[2].last?.action == .symbolPanel
@@ -4224,6 +4225,63 @@ enum KeyboardTests {
                 "r95.SettingsPanelView uses top-right gearshape.fill and 0pt-drift bottom Mosto return anchor",
                 "gear=\(gearTopRight) spX=\(spMostoX) keyX=\(keyX)")
         }
+    }
+
+
+    // MARK: - R96: R95 Hidden-Bug Hardening, Offline Mosto Run Easter Egg & Mossling Sister-App Card
+
+    static func r96HiddenBugFixesAndCompanionEcosystem(_ window: UIWindow) {
+        // 1. H5: Closing Emoji and tapping Mosto within <350ms reopens directly into Kaomoji
+        if let pair = makeKeyboard(scheme: 1, grid: true, in: window) {
+            let (vc, _) = pair
+            vc.view.layoutIfNeeded()
+            vc.handle(.emoji, tap: nil)
+            vc.emojiPanelIfLoadedForTests?.load(kaomoji: true)
+            vc.emojiPanelIfLoadedForTests?.onBack?() // closes Emoji & records lastEmojiCloseTime
+            let closed = !vc.emojiShownForTests
+            vc.handle(.emoji, tap: nil)              // immediate tap (<350ms) upgrades to Kaomoji
+            let reopenedKaomoji = vc.emojiShownForTests && (vc.emojiPanelIfLoadedForTests?.kaomojiModeForTests == true)
+            log(closed && reopenedKaomoji,
+                "r96.Quick reopen after closing Emoji upgrades directly into Mosto Kaomoji",
+                "closed=\(closed) kaomoji=\(reopenedKaomoji)")
+        }
+
+        // 2. Offline MostoRunEngine physics, jump arc, 100-pt Day/Night cycle & high-score persistence
+        var run = MostoRunEngine()
+        run.start()
+        let jumped = run.jump()
+        _ = run.step(dt: 0.05)
+        let roseAboveGround = run.playerY > 10
+        run.bonusScore = 100
+        let nightFlipped = run.isNight
+        let suite = "mosto.r96.runtest.\(UUID().uuidString)"
+        var bestPersisted = false
+        if let ud = UserDefaults(suiteName: suite) {
+            defer { UserDefaults.standard.removePersistentDomain(forName: suite) }
+            bestPersisted = MostoRunEngine.recordHighScore(128, defaults: ud) == 128
+                && MostoRunEngine.loadHighScore(defaults: ud) == 128
+        }
+        log(jumped && roseAboveGround && nightFlipped && bestPersisted,
+            "r96.Offline MostoRunEngine jumps, flips Day/Night every 100 pts, and persists local high score",
+            "jump=\(jumped) y=\(run.playerY) night=\(nightFlipped) best=\(bestPersisted)")
+
+        // 3. 3-tap Mosto on FamilyStageModel wakes Mosto Run easter egg
+        let family = FamilyStageModel()
+        family.soundEnabled = false
+        family.interact(with: .mosto)
+        family.interact(with: .mosto)
+        let notYet = !family.showMostoRun
+        family.interact(with: .mosto)
+        let wokeOnThird = family.showMostoRun
+        log(notYet && wokeOnThird,
+            "r96.Triple-tapping Mosto on FamilyStageModel wakes offline Mosto Run easter egg",
+            "notYet=\(notYet) woke=\(wokeOnThird)")
+
+        // 4. Mossling sister-app link metadata & card render verification
+        let cardSize = MosslingSisterAppCard.renderSnapshotSizeForTests(width: 360)
+        log(MosslingLink.appleID == 6825856138 && cardSize.width > 200 && cardSize.height > 80,
+            "r96.Mossling sister-app card binds Apple ID 6825856138 and renders cleanly",
+            "id=\(MosslingLink.appleID) size=\(cardSize)")
     }
 
     static func fuzz(_ window: UIWindow) {

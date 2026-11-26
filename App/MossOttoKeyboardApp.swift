@@ -1,4 +1,5 @@
 import SwiftUI
+import StoreKit
 import UIKit
 
 @main
@@ -96,6 +97,7 @@ private struct CompanionHomeScreen: View {
     @Environment(\.scenePhase) private var phase
     @State private var added = KeyboardStatus.isAdded()
     @State private var verifyText = ""
+    @State private var showMosslingStore = false
     @FocusState private var typing: Bool
 
     var body: some View {
@@ -111,6 +113,10 @@ private struct CompanionHomeScreen: View {
                 )
 
                 CompanionCapabilitiesSection()
+
+                MosslingSisterAppCard {
+                    showMosslingStore = true
+                }
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
@@ -132,6 +138,20 @@ private struct CompanionHomeScreen: View {
             if nextPhase == .active {
                 added = KeyboardStatus.isAdded()
             }
+        }
+        .sheet(isPresented: $family.showMostoRun) {
+            MostoRunEasterEggView {
+                family.showMostoRun = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    showMosslingStore = true
+                }
+            }
+            .presentationDetents([.fraction(0.62), .large])
+            .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showMosslingStore) {
+            MosslingAppStoreSheet()
+                .ignoresSafeArea()
         }
     }
 }
@@ -511,9 +531,9 @@ struct GestureAtlasContent: View {
                 )
                 Divider()
                 atlasRow(
-                    symbol: "slider.horizontal.3",
-                    title: "打开键盘内置控制台",
-                    chips: ["顶栏齿轮直达", "长按表情键"]
+                    symbol: "gearshape",
+                    title: "顶栏经典齿轮与同位开关",
+                    chips: ["单击开/关设置", "长按秒切日光夜灯"]
                 )
             }
 
@@ -537,7 +557,7 @@ struct GestureAtlasContent: View {
                 )
             }
 
-            Card(title: "空闲顶栏与声光彩蛋") {
+            Card(title: "底栏 Mosto 超级键与顶栏齿轮") {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 8) {
                         Image(uiImage: mostoImage(activePreviewSprite))
@@ -548,9 +568,9 @@ struct GestureAtlasContent: View {
                             .onTapGesture { triggerMostoPreview(.kaomoji) }
                             .onLongPressGesture(minimumDuration: 0.4) { triggerMostoPreview(.yawn) }
                             .accessibilityAddTraits(.isButton)
-                            .accessibilityLabel("迷你顶栏 Mosto，轻点颜文字，长按打哈欠")
+                            .accessibilityLabel("底栏 Mosto 超级键，单击表情，双击颜文字，长按设置")
 
-                        Text(selectedMosto?.badge ?? "轻点左侧 Mosto 或右侧日月图标试玩")
+                        Text(selectedMosto?.badge ?? "底栏 Mosto 单击表情 · 双击颜文字 · 长按设置")
                             .font(.caption2.weight(.medium))
                             .foregroundStyle(previewNight ? Color.white.opacity(0.74) : MossOttoStyle.inkSecondary)
                             .lineLimit(1)
@@ -580,7 +600,7 @@ struct GestureAtlasContent: View {
                         .buttonStyle(.plain)
                         .accessibilityLabel("迷你顶栏切换日光与夜灯")
 
-                        Image(systemName: "slider.horizontal.3")
+                        Image(systemName: "gearshape")
                             .font(.system(size: 14.5, weight: .regular))
                             .foregroundStyle(previewNight ? Color.white.opacity(0.68) : MossOttoStyle.inkSecondary)
                             .frame(width: 26, height: 28)
@@ -699,6 +719,7 @@ private struct AboutScreen: View {
 struct AboutCompanionContent: View {
     let added: Bool
     var nav: AppNavigation? = nil
+    @State private var showMosslingStore = false
 
     @MainActor
     static func renderSnapshotSizeForTests(width: CGFloat) -> CGSize {
@@ -762,6 +783,14 @@ struct AboutCompanionContent: View {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .strokeBorder(MossOttoStyle.hairline, lineWidth: 0.5)
             )
+
+            MosslingSisterAppCard {
+                showMosslingStore = true
+            }
+            .sheet(isPresented: $showMosslingStore) {
+                MosslingAppStoreSheet()
+                    .ignoresSafeArea()
+            }
 
             Card(title: "OTTOSSOM 家族") {
                 ForEach(Array(FamilyMember.allCases.enumerated()), id: \.element.id) { idx, member in
@@ -1078,5 +1107,102 @@ struct LegalView: View {
             a[ar].link = url
         }
         return a
+    }
+}
+
+
+// MARK: - R96: Sister App Cross-Promotion — 摸索台灯 (Mossling, Apple ID 6825856138)
+
+enum MosslingLink {
+    static let appleID: Int = 6825856138
+    static let bundleID: String = "app.mossling"
+    static let appStoreURL = URL(string: "https://apps.apple.com/app/id6825856138")!
+    static let websiteURL = URL(string: "https://mossotto.pages.dev/")!
+}
+
+/// Restrained, editorial sister-app card for 摸索台灯 (Moss & Otto 0-3y parenting companion).
+struct MosslingSisterAppCard: View {
+    var onOpenStore: () -> Void = {}
+
+    @MainActor
+    static func renderSnapshotSizeForTests(width: CGFloat) -> CGSize {
+        let r = ImageRenderer(content: MosslingSisterAppCard().frame(width: width))
+        r.scale = 2.0
+        return r.uiImage?.size ?? .zero
+    }
+
+    var body: some View {
+        Card(title: "来自同一盏灯 · 摸索台灯") {
+            HStack(spacing: 12) {
+                ZStack(alignment: .bottomTrailing) {
+                    Image(uiImage: mostoImage("OttoLit"))
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 48, height: 48)
+                    Image(uiImage: mostoImage("Moss"))
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 26, height: 26)
+                        .offset(x: 4, y: 2)
+                }
+                .frame(width: 54, height: 52)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("孩子摸索，大人点灯")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(MossOttoStyle.inkPrimary)
+                    Text("0–3 岁亲子共玩、床头夜灯与成长手账，Mosto 的两位伙伴住在那里。")
+                        .font(.caption)
+                        .foregroundStyle(MossOttoStyle.inkSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 4)
+            }
+
+            Button(action: onOpenStore) {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.up.right.square")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text("在 App Store 看看《摸索台灯》")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .foregroundStyle(MossOttoStyle.onViolet)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 11)
+                .background(RoundedRectangle(cornerRadius: 13, style: .continuous).fill(MossOttoStyle.violet))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("在 App Store 打开摸索台灯")
+        }
+    }
+}
+
+/// Native in-app App Store product card (`SKStoreProductViewController`) for 摸索台灯 (Apple ID 6825856138).
+struct MosslingAppStoreSheet: UIViewControllerRepresentable {
+    @Environment(\.dismiss) private var dismiss
+
+    func makeCoordinator() -> Coordinator { Coordinator(dismiss: dismiss) }
+
+    func makeUIViewController(context: Context) -> SKStoreProductViewController {
+        let vc = SKStoreProductViewController()
+        vc.delegate = context.coordinator
+        vc.loadProduct(withParameters: [SKStoreProductParameterITunesItemIdentifier: NSNumber(value: MosslingLink.appleID)]) { ok, _ in
+            if !ok {
+                DispatchQueue.main.async {
+                    UIApplication.shared.open(MosslingLink.appStoreURL)
+                }
+            }
+        }
+        return vc
+    }
+
+    func updateUIViewController(_ uiViewController: SKStoreProductViewController, context: Context) {}
+
+    final class Coordinator: NSObject, SKStoreProductViewControllerDelegate {
+        let dismiss: DismissAction
+        init(dismiss: DismissAction) { self.dismiss = dismiss }
+        func productViewControllerDidFinish(_ viewController: SKStoreProductViewController) {
+            dismiss()
+        }
     }
 }

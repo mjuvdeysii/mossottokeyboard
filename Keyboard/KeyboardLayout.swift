@@ -251,7 +251,7 @@ enum Layouts {
         }
         let row1Key1: KeySpec = ctx.composing
             ? k("'", "分词")
-            : KeySpec(action: .char("、"), label: "、", width: mid, alt: "@", style: .normal, hint: "@", moreAlts: ["：", "；", "·", "—"])
+            : KeySpec(action: .char("："), label: "：", width: mid, alt: "@", style: .normal, hint: "@", moreAlts: ["；", "、", "·", "—"])
         let row1 = [p("，", "、", more: ["：", "；", "（", "《", "“"]), row1Key1, k("2", "ABC"), k("3", "DEF"),
                     KeySpec(action: .delete, label: "", symbol: "delete.left", width: side, style: .function)]
         let row2Right: KeySpec = ctx.composing

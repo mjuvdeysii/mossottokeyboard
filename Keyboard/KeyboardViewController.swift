@@ -52,6 +52,7 @@ final class KeyboardViewController: UIInputViewController {
     }
     private var symbolPanelShown = false
     private var lastEmojiOpenTime: CFTimeInterval = 0
+    private var lastEmojiCloseTime: CFTimeInterval = 0
     private let syllablePicker = SyllablePickerView()
     private var syllableChoices: (start: Int, choices: [(text: String, keys: [Character])]) = (0, [])
     private var heightConstraint: NSLayoutConstraint?
@@ -878,6 +879,7 @@ final class KeyboardViewController: UIInputViewController {
             settingsPanelIfLoaded?.themeChanged()
             gridIfLoaded?.themeChanged()
             emojiPanelIfLoaded?.themeChanged()
+            symbolPanelIfLoaded?.themeChanged()
         }
         let sysDark = systemIsDark
         let mode = KeyboardSettings.shared.appearance
@@ -1036,6 +1038,8 @@ final class KeyboardViewController: UIInputViewController {
         candidateBar.xiaoheRhythm = chinese && scheme == .xiaohe && !pinyinGridOn && !taps.contains(where: { $0.group })
         updatePlainLightButton()
         let (label, accent) = returnLabel()
+        emojiPanelIfLoaded?.setReturnLabel(label, chinese: chinese)
+        symbolPanelIfLoaded?.setReturnLabel(label, chinese: chinese)
         let pendingInitial: Character? = (guideOn && scheme == .xiaohe && chinese && !pinyinGridOn && page == .letters && taps.count % 2 == 1)
             ? taps.last?.key
             : nil
@@ -1175,8 +1179,10 @@ final class KeyboardViewController: UIInputViewController {
             deleteWord()
         case .emoji:
             if !taps.isEmpty { commitAll() }
-            lastEmojiOpenTime = CACurrentMediaTime()
-            showEmoji(true)
+            let now = CACurrentMediaTime()
+            let reopenAsKaomoji = (now - lastEmojiCloseTime) < 0.35
+            lastEmojiOpenTime = now
+            showEmoji(true, kaomoji: reopenAsKaomoji)
         case .symbolPanel:
             if !taps.isEmpty { commitAll() }
             showSymbolPanel(true)
@@ -2128,7 +2134,18 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func syncMostoAnchors() {
-        guard let cap = keyboard.keyRectsForTests(.emoji)?.cap, cap.width > 10 else { return }
+        let cap: CGRect
+        if !keyboard.isHidden, let live = keyboard.keyRectsForTests(.emoji)?.cap, live.width > 10 {
+            cap = live
+        } else {
+            let w = max(1, view.bounds.width - view.safeAreaInsets.left - view.safeAreaInsets.right)
+            let sideInset: CGFloat = w > 500 ? Metrics.sideInsetLandscape : Metrics.sideInset
+            let unit = max(1, w - sideInset * 2) / 10
+            let leftUnits: CGFloat = cachedShowGlobe ? 2.2 : 1.4
+            let x0 = sideInset + leftUnits * unit + Metrics.gapX / 2
+            let width = max(32, unit - Metrics.gapX)
+            cap = CGRect(x: x0, y: 0, width: width, height: 40)
+        }
         emojiPanelIfLoaded?.mostoAnchorX = cap.minX
         emojiPanelIfLoaded?.mostoAnchorWidth = cap.width
         settingsPanelIfLoaded?.mostoAnchorX = cap.minX
@@ -2191,6 +2208,7 @@ final class KeyboardViewController: UIInputViewController {
                 self.feel(.mosto)
                 p.load(kaomoji: true)
             } else {
+                self.lastEmojiCloseTime = CACurrentMediaTime()
                 self.feel(.key(.page(.letters)))
                 self.showEmoji(false)
             }

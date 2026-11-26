@@ -2675,8 +2675,9 @@ final class SettingsPanelView: UIView {
         backDeckButton.backgroundColor = Theme.functionKey
         backDeckButton.setTitleColor(Theme.keyText, for: .normal)
         backDeckButton.tintColor = Theme.keyText
-        doneButton.backgroundColor = Theme.plain ? Theme.selection : Theme.accentKey
-        doneButton.setTitleColor(Theme.plain ? Theme.selectionText : Theme.accentText, for: .normal)
+        doneButton.backgroundColor = Theme.selection.withAlphaComponent(0.18)
+        doneButton.tintColor = Theme.selection
+        doneButton.setTitleColor(Theme.selection, for: .normal)
         moreButton.backgroundColor = Theme.functionKey
         moreButton.setTitleColor(Theme.functionText, for: .normal)
         accessBanner.textColor = Theme.correctedMark
@@ -2897,6 +2898,10 @@ final class SettingsPanelView: UIView {
     private func updateMostoReturnArtwork(night: Bool? = nil) {
         let isDark = night ?? (traitCollection.userInterfaceStyle == .dark)
         mostoReturnButton.backgroundColor = Theme.selection.withAlphaComponent(0.18)
+        mostoReturnButton.layer.shadowColor = Theme.functionLip.resolvedColor(with: traitCollection).cgColor
+        mostoReturnButton.layer.shadowOpacity = 1
+        mostoReturnButton.layer.shadowRadius = Metrics.shadowBlur
+        mostoReturnButton.layer.shadowOffset = CGSize(width: 0, height: Metrics.lip)
         if Theme.plain {
             let cfg = UIImage.SymbolConfiguration(pointSize: 15, weight: .semibold)
             mostoReturnButton.setImage(UIImage(systemName: "keyboard.chevron.compact.down", withConfiguration: cfg), for: .normal)
@@ -3279,7 +3284,7 @@ final class SettingsPanelView: UIView {
         let gapX: CGFloat = 8
         let gapY: CGFloat = compactH ? 4 : 8
         let bannerH: CGFloat = accessBanner.isHidden ? 0 : (compactH ? 16 : 18)
-        let utilH: CGFloat = compactH ? 28 : 30
+        let utilH: CGFloat = compactH ? 28 : 34
         let padTop: CGFloat = compactH ? 4 : 10
         let padBot: CGFloat = compactH ? 4 : 10
         let availH = bodyFrame.height - padTop - padBot - utilH - bannerH - gapY * (accessBanner.isHidden ? 2 : 3)
