@@ -953,6 +953,12 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         idleControlsEnabled = enabled
         isNightLight = night
         isForcedDayOnDarkGlass = forcedDayOnDarkGlass
+        let fg = Theme.secondaryText.resolvedColor(with: traitCollection)
+        if isNightLight {
+            lightToggleButton.tintColor = Theme.plain ? fg : Theme.dyn(Theme.hex(0x784F0A), Theme.hex(0xE0BE74))
+        } else {
+            lightToggleButton.tintColor = isForcedDayOnDarkGlass ? Theme.hex(0xEFECE6, 0.92) : fg
+        }
         updateIdleControlsVisibility()
         if changed { setNeedsLayout() }
     }

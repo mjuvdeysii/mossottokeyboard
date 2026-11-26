@@ -1,0 +1,1310 @@
+diff --git a/App/KeyboardTests.swift b/App/KeyboardTests.swift
+index 17631f3..df02328 100644
+--- a/App/KeyboardTests.swift
++++ b/App/KeyboardTests.swift
+@@ -169,6 +169,7 @@ enum KeyboardTests {
+         r92SculptedKeycapAndOpticalIcons(window)
+         r93SculptedConsolePopupsAndBorderlessSurfaces(window)
+         r94T9UnifiedLayoutAndStateMachines(window)
++        r95ZeroDriftToggleAndMostoSuperKey(window)
+         fuzz(window)
+         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
+         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
+@@ -3202,7 +3203,7 @@ enum KeyboardTests {
+         let boundaryShown = bar.cursorTelemetryBoundaryForTests && bar.cursorTelemetryTextForTests == "已到文首"
+         bar.setCursorTelemetry(active: false, delta: 0, endStop: 0, crossedNewline: false)
+         bar.layoutIfNeeded()
+-        let cleanRestore = !bar.cursorTelemetryShownForTests && !bar.deletePreviewShownForTests && !bar.mosto.isHidden
++        let cleanRestore = !bar.cursorTelemetryShownForTests && !bar.deletePreviewShownForTests && bar.mosto.isHidden
+         log(hudShown && noOverlap && clearFlagSeparated && boundaryShown && cleanRestore,
+             "r76.CandidateBarView renders non-overlapping cursor scrub HUD, boundary stop, and cleanly restores idle state",
+             "hudShown=\(hudShown) noOverlap=\(noOverlap) boundary=\(boundaryShown) restore=\(cleanRestore)")
+@@ -3238,8 +3239,8 @@ enum KeyboardTests {
+         let liveRestored = !kb.trackpadRulerVisibleForTests
+             && !vcBar.cursorTelemetryShownForTests
+             && vcBar.expandShownForTests
+-            && !vc.plainLightHiddenForTests
+-            && !vc.mostoHintHiddenForTests
++            && vc.plainLightHiddenForTests
++            && vc.mostoHintHiddenForTests
+         log(liveActive && liveHitStart && liveRestored,
+             "r76.Live spacebar trackpad scrubbing drives cursor telemetry HUD, suppresses idle chrome, and restores on finger up",
+             "active=\(liveActive) hitStart=\(liveHitStart) restored=\(liveRestored)")
+@@ -3594,28 +3595,16 @@ enum KeyboardTests {
+         vc.view.setNeedsLayout()
+         vc.view.layoutIfNeeded()
+         let bar = vc.candidateBarForTests
+-        let mostoShown = !vc.mostoHintHiddenForTests && !vc.plainLightHiddenForTests && bar.mosto.frame.width >= 26
+-        let mostoRightAligned = bar.mosto.frame.minX > 290 && bar.mosto.frame.maxX < bar.expandButtonFrameForTests.minX
+-        let mostoTextFree = bar.idleKaomojiTitleForTests == nil && bar.idleLightTitleForTests == nil
+-        let mostoLightFrame = bar.idleLightFrameForTests
+-        let mostoLightRightAligned = mostoLightFrame.minX > 250 && mostoLightFrame.maxX < bar.mosto.frame.minX && mostoRightAligned
+-
++        // R95 minimalist top bar: single classic gear on far right; old top-bar Mosto & light pill stay hidden across styles.
++        let topBarCleanMosto = bar.mosto.isHidden && vc.mostoHintHiddenForTests && vc.plainLightHiddenForTests && bar.expandButtonFrameForTests.minX > 330
+         s.style = 1
+         vc.applySettings()
+         vc.view.setNeedsLayout()
+         vc.view.layoutIfNeeded()
+-        let plainMostoHidden = bar.mosto.isHidden && !vc.mostoHintHiddenForTests && !vc.plainLightHiddenForTests
+-        let plainKaomojiClean = bar.idleKaomojiTitleForTests == "^_^"
+-            && !bar.idleKaomojiHasImageForTests
+-            && bar.idleKaomojiFrameForTests.minX > 290
+-            && bar.idleKaomojiFrameForTests.maxX < bar.expandButtonFrameForTests.minX
+-        let plainLightFrame = bar.idleLightFrameForTests
+-        let plainLightConsistent = bar.idleLightTitleForTests == nil
+-            && abs(plainLightFrame.minX - mostoLightFrame.minX) < 1.0
+-
+-        log(mostoShown && mostoTextFree && mostoLightRightAligned && plainMostoHidden && plainKaomojiClean && plainLightConsistent,
+-            "r83.CandidateBarView unifies icon-only right light toggle, free-standing Mosto, and ^_^ monogram across styles",
+-            "mosto=(\(mostoShown),\(mostoTextFree),\(mostoLightRightAligned)) plain=(\(plainMostoHidden),\(plainKaomojiClean),\(plainLightConsistent))")
++        let topBarCleanPlain = bar.mosto.isHidden && vc.mostoHintHiddenForTests && vc.plainLightHiddenForTests && bar.expandButtonFrameForTests.minX > 330
++        log(topBarCleanMosto && topBarCleanPlain,
++            "r83.CandidateBarView keeps minimalist single-gear idle top bar across Mosto and 简洁 styles",
++            "mosto=\(topBarCleanMosto) plain=\(topBarCleanPlain)")
+ 
+         // 3. P1 Liquid Glass side breathing margins (full-width outer hit zones) & forced-day softened keycap state
+         let kv = KeyboardView(spatial: SpatialModel.standard(width: 393))
+@@ -4117,74 +4106,123 @@ enum KeyboardTests {
+             && numbers[3][numbers[3].count - 2].action == .toggleLanguage
+         let t9DynamicRight = t9Idle[1].last?.action == .char("！")
+             && t9Comp[1].last?.action == .clearInput
+-            && t9Idle[2].last?.action == .page(.numbers)
+-            && numpad[2].last?.action == .page(.numbers)
++            && t9Idle[0][1].action == .char("、")
++            && t9Comp[0][1].action == .t9("'")
++            && t9Idle[2].last?.action == .symbolPanel
++            && numpad[2].last?.action == .symbolPanel
+         log(returnAligned && langAligned && t9DynamicRight,
+             "r94.Four-corner alignment locks Return bottom-right, 中/英 next-to-right, and T9 idle ！ / composing 重输",
+             "ret=\(returnAligned) lang=\(langAligned) t9Right=\(t9DynamicRight)")
+ 
+-        // 2. T9 符号 tap enters .numbers WITHOUT flipping chinese to English (Bug #5)
++        // 2. T9 符号 tap opens SymbolPanelView WITHOUT flipping chinese to English (Bug #5 + R95 same-spot Return)
+         if let pair = makeKeyboard(scheme: 1, grid: true, in: window) {
+             let (vc, h) = pair
+             let kb = vc.keyboardViewForTests
+             kb.layoutIfNeeded()
+-            if let symRect = kb.keyRectsForTests(.page(.numbers))?.cap {
++            if let symRect = kb.keyRectsForTests(.symbolPanel)?.cap {
+                 let pt = CGPoint(x: symRect.midX, y: symRect.midY)
+                 kb.feedForTests([
+                     TouchSample(id: 941, phase: .began, point: pt, time: 1.0),
+                     TouchSample(id: 941, phase: .ended, point: pt, time: 1.06),
+                 ])
+-                let stayedChinese = !vc.testState.english && vc.testState.page == .numbers && h.string.isEmpty
+-                // Returning via 拼音 restores T9 Chinese
+-                if let backRect = kb.keyRectsForTests(.page(.letters))?.cap {
+-                    let bpt = CGPoint(x: backRect.midX, y: backRect.midY)
+-                    kb.feedForTests([
+-                        TouchSample(id: 942, phase: .began, point: bpt, time: 1.2),
+-                        TouchSample(id: 942, phase: .ended, point: bpt, time: 1.26),
+-                    ])
+-                }
+-                let backToT9 = !vc.testState.english && vc.testState.page == .letters
++                let stayedChinese = !vc.testState.english && vc.symbolPanelShownForTests && h.string.isEmpty
++                vc.symbolPanelIfLoadedForTests?.onClose?()
++                let backToT9 = !vc.testState.english && !vc.symbolPanelShownForTests && vc.testState.page == .letters
+                 log(stayedChinese && backToT9,
+-                    "r94.T9 符号 tap stays in Chinese .numbers and returns cleanly to T9 Chinese",
+-                    "stayed=\(stayedChinese) back=\(backToT9) en=\(vc.testState.english) page=\(vc.testState.page) text=\(h.string)")
++                    "r94.T9 符号 tap opens SymbolPanelView in Chinese and closes cleanly back to T9",
++                    "stayed=\(stayedChinese) back=\(backToT9) en=\(vc.testState.english) text=\(h.string)")
+             } else {
+                 log(false, "r94.T9 符号 rect lookup")
+             }
+         }
+ 
+-        // 3. Numpad 符号 tap enters .numbers WITHOUT firing Return/newline (Bug #7)
++        // 3. Numpad 符号 tap opens SymbolPanelView WITHOUT firing Return/newline (Bug #7)
+         if let pair = makeKeyboard(scheme: 1, grid: true, in: window) {
+             let (vc, h) = pair
+             vc.handle(.page(.numpad), tap: nil)
+             let kb = vc.keyboardViewForTests
+             kb.layoutIfNeeded()
+-            if let symRect = kb.keyRectsForTests(.page(.numbers))?.cap {
++            if let symRect = kb.keyRectsForTests(.symbolPanel)?.cap {
+                 let pt = CGPoint(x: symRect.midX, y: symRect.midY)
+                 kb.feedForTests([
+                     TouchSample(id: 943, phase: .began, point: pt, time: 2.0),
+                     TouchSample(id: 943, phase: .ended, point: pt, time: 2.06),
+                 ])
+-                log(vc.testState.page == .numbers && h.string.isEmpty,
+-                    "r94.Numpad 符号 tap opens .numbers without firing Return or inserting newline",
+-                    "page=\(vc.testState.page) text=\(h.string.debugDescription)")
++                log(vc.symbolPanelShownForTests && h.string.isEmpty,
++                    "r94.Numpad 符号 tap opens SymbolPanelView without firing Return or inserting newline",
++                    "sym=\(vc.symbolPanelShownForTests) text=\(h.string.debugDescription)")
+             } else {
+                 log(false, "r94.Numpad 符号 rect lookup")
+             }
+         }
+ 
+-        // 4. English auto-capitalization + double-tap Shift locks Caps Lock in 2 taps (Bug #6)
++        // 4. English defaults to lowercase (WeChat fix) and double-tap Shift locks Caps Lock in 2 taps (Bug #6)
+         if let pair = makeKeyboard(scheme: 1, in: window) {
+             let (vc, _) = pair
+             vc.handle(.toggleLanguage, tap: nil)
+-            let autoStarted = vc.keyboardViewForTests.context?.shifted == true && vc.keyboardViewForTests.context?.capsLock == false
++            let startsLower = vc.keyboardViewForTests.context?.shifted == false && vc.keyboardViewForTests.context?.capsLock == false
+             vc.handle(.shift, tap: nil)
+             vc.handle(.shift, tap: nil)
+-            let lockedFromAuto = vc.keyboardViewForTests.context?.capsLock == true && vc.keyboardViewForTests.context?.shifted == true
++            let lockedInTwo = vc.keyboardViewForTests.context?.capsLock == true && vc.keyboardViewForTests.context?.shifted == true
+             vc.handle(.shift, tap: nil)
+             let unlockedClean = vc.keyboardViewForTests.context?.capsLock == false && vc.keyboardViewForTests.context?.shifted == false
+-            log(autoStarted && lockedFromAuto && unlockedClean,
+-                "r94.English auto-shifted double-tap Shift engages Caps Lock directly in 2 taps",
+-                "auto=\(autoStarted) locked=\(lockedFromAuto) unlocked=\(unlockedClean)")
++            log(startsLower && lockedInTwo && unlockedClean,
++                "r94.English starts lowercase cleanly and double-tap Shift locks Caps Lock in 2 taps",
++                "lower=\(startsLower) locked=\(lockedInTwo) unlocked=\(unlockedClean)")
++        }
++    }
++
++
++    // MARK: - R95: Zero-Drift Toggle Law, Mosto Super-Key & Minimalist Single-Gear Top Bar
++
++    static func r95ZeroDriftToggleAndMostoSuperKey(_ window: UIWindow) {
++        // 1. Mosto bottom-row key has 0pt horizontal drift across T9, QWERTY, and Symbol pages
++        let kv = KeyboardView(spatial: SpatialModel.standard(width: 393))
++        kv.frame = CGRect(x: 0, y: 0, width: 393, height: 216)
++        kv.configure(LayoutContext(page: .letters, chinese: true, showGlobe: false, returnLabel: nil, returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true, numberGrid: true, pinyinGrid: true))
++        kv.layoutIfNeeded()
++        let xT9 = kv.keyRectsForTests(.emoji)?.cap.minX ?? -1
++        kv.configure(LayoutContext(page: .letters, chinese: false, showGlobe: false, returnLabel: nil, returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true, numberGrid: true, pinyinGrid: true))
++        kv.layoutIfNeeded()
++        let xEn = kv.keyRectsForTests(.emoji)?.cap.minX ?? -100
++        kv.configure(LayoutContext(page: .numbers, chinese: true, showGlobe: false, returnLabel: nil, returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true, numberGrid: true, pinyinGrid: true))
++        kv.layoutIfNeeded()
++        let xNum = kv.keyRectsForTests(.emoji)?.cap.minX ?? -200
++        log(xT9 > 40 && abs(xT9 - xEn) < 1.0 && abs(xT9 - xNum) < 1.0,
++            "r95.Bottom-row Mosto super-key stays locked to identical X coordinate across T9, QWERTY, and Symbols",
++            "t9=\(xT9) en=\(xEn) num=\(xNum)")
++
++        // 2. Mosto 0ms instant-open + <350ms second tap upgrades to Kaomoji + same-spot close + Send button visible
++        if let pair = makeKeyboard(scheme: 1, grid: true, in: window) {
++            let (vc, _) = pair
++            vc.view.layoutIfNeeded()
++            let keyX = vc.keyboardViewForTests.keyRectsForTests(.emoji)?.cap.minX ?? -1
++            vc.handle(.emoji, tap: nil)
++            vc.view.layoutIfNeeded()
++            let openedEmoji = vc.emojiShownForTests && (vc.emojiPanelIfLoadedForTests?.kaomojiModeForTests == false)
++            let returnBtnVisible = vc.emojiPanelIfLoadedForTests?.returnButtonVisibleForTests == true
++            let panelMostoX = vc.emojiPanelIfLoadedForTests?.mostoReturnFrameInSelfForTests.minX ?? -99
++            let emojiAligned = abs(panelMostoX - keyX) < 1.5
++            // Immediate second tap (<350ms) upgrades to Kaomoji instead of closing
++            vc.emojiPanelIfLoadedForTests?.onBack?()
++            let upgradedToKaomoji = vc.emojiShownForTests && (vc.emojiPanelIfLoadedForTests?.kaomojiModeForTests == true)
++            // Next tap in Kaomoji closes back to keyboard
++            vc.emojiPanelIfLoadedForTests?.onBack?()
++            let closedClean = !vc.emojiShownForTests
++            log(openedEmoji && returnBtnVisible && emojiAligned && upgradedToKaomoji && closedClean,
++                "r95.Mosto super-key 0ms opens Emoji, <350ms double-tap upgrades to Kaomoji, and same-spot closes with Send visible",
++                "open=\(openedEmoji) send=\(returnBtnVisible) aligned=\(emojiAligned) kaomoji=\(upgradedToKaomoji) close=\(closedClean)")
++
++            // 3. Settings panel has classic gearshape.fill top-right AND bottom Mosto return aligned with main Mosto key
++            vc.handle(.settings, tap: nil)
++            vc.view.layoutIfNeeded()
++            let sp = vc.settingsPanelIfLoadedForTests
++            let gearTopRight = sp?.doneButtonUsesGearForTests == true
++            let spMostoX = sp?.mostoReturnFrameInSelfForTests.minX ?? -99
++            let settingsAligned = abs(spMostoX - keyX) < 2.0
++            log(gearTopRight && settingsAligned,
++                "r95.SettingsPanelView uses top-right gearshape.fill and 0pt-drift bottom Mosto return anchor",
++                "gear=\(gearTopRight) spX=\(spMostoX) keyX=\(keyX)")
+         }
+     }
+ 
+diff --git a/Keyboard/CandidateViews.swift b/Keyboard/CandidateViews.swift
+index 8e6d8ba..16d5419 100644
+--- a/Keyboard/CandidateViews.swift
++++ b/Keyboard/CandidateViews.swift
+@@ -287,10 +287,13 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
+         deletePreviewPill.isHidden = true
+         addSubview(deletePreviewPill)
+         let cfg = UIImage.SymbolConfiguration(pointSize: 16, weight: .regular)
+-        expandButton.setImage(UIImage(systemName: "chevron.down", withConfiguration: cfg), for: .normal)
++        expandButton.setImage(UIImage(systemName: "gearshape", withConfiguration: cfg), for: .normal)
+         expandButton.tintColor = Theme.secondaryText
+         addSubview(expandButton)
+         expandButton.addTarget(self, action: #selector(expandTapped), for: .touchUpInside)
++        let gearLP = UILongPressGestureRecognizer(target: self, action: #selector(expandHeld(_:)))
++        gearLP.minimumPressDuration = 0.40
++        expandButton.addGestureRecognizer(gearLP)
+         var uc = UIButton.Configuration.filled()
+         uc.cornerStyle = .capsule
+         uc.baseBackgroundColor = Theme.correctedTint
+@@ -337,6 +340,10 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
+     }
+ 
+     @objc private func expandTapped() { if gridExpanded || !candidates.isEmpty { onExpand?() } else { onSettings?() } }
++    @objc private func expandHeld(_ g: UILongPressGestureRecognizer) {
++        guard g.state == .began, candidates.isEmpty, !gridExpanded else { return }
++        onLightToggle?()
++    }
+ 
+     /// Exact character indices in the raw typed preedit string highlighted by active autocorrection `fixes`.
+     struct CorrectionPinpoint: Equatable {
+@@ -950,16 +957,9 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
+         if changed { setNeedsLayout() }
+     }
+ 
+-    private var shouldShowIdleControls: Bool {
+-        idleControlsEnabled
+-            && candidates.isEmpty
+-            && !typing
+-            && undoText == nil
+-            && !gridExpanded
+-            && forgetOverlay == nil
+-            && !isTelemetryOverlayActive
+-            && (Theme.plain || mostoWanted || showsMosto)
+-    }
++    /// R95 minimalist top bar: idle bar stays pure glass with only the far-right classic gear (`expandButton`).
++    /// Mosto lives on the bottom row as the unified Emoji / Kaomoji / Settings super-key.
++    private var shouldShowIdleControls: Bool { false }
+ 
+     private func updateIdleControlsVisibility() {
+         let show = shouldShowIdleControls
+@@ -1096,22 +1096,15 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
+     }
+ 
+     private func setMosto(_ on: Bool) {
+-        // put away even when he was never asked for (a new strip starts with him hidden, 简洁 never shows him)
+-        if !on, !mostoWanted {
+-            mosto.isHidden = true
+-            updateIdleControlsVisibility()
+-            return
+-        }
+-        guard on != mostoWanted else { return }
+-        mostoWanted = on
+-        if !on { onMostoShown?(false) }
++        // R95: Mosto moved to the bottom-row super-key; top bar stays clean and never shows a duplicate Mosto icon.
++        mostoWanted = false
+         mostoTimer?.invalidate(); mostoTimer = nil
+-        guard on else {
+-            mosto.layer.removeAllAnimations()
+-            mosto.isHidden = true
+-            updateIdleControlsVisibility()
+-            return
+-        }
++        mosto.layer.removeAllAnimations()
++        mosto.isHidden = true
++        updateIdleControlsVisibility()
++        onMostoShown?(on)
++        return
++        if false {
+         mosto.isHidden = false
+         mosto.transform = .identity
+         updateIdleControlsVisibility()
+@@ -1129,6 +1122,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
+             guard let self, self.mostoWanted else { return }
+             self.mosto.greet()
+         }
++        }
+     }
+ 
+     override func layoutSubviews() {
+@@ -1459,7 +1453,7 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
+         if strip.contentSize != size { strip.contentSize = size }
+         // ⌄: there are candidates past the edge (the full grid shows them all)
+         let idleGear = candidates.isEmpty && !typing && undoText == nil && !gridExpanded && window != nil
+-        let sym = idleGear ? "slider.horizontal.3" : (gridExpanded ? "chevron.up" : "chevron.down")
++        let sym = idleGear ? "gearshape" : (gridExpanded ? "chevron.up" : "chevron.down")
+         let symKey = "\(sym)_\(idleGear ? 1 : 0)_\(gridExpanded ? 1 : 0)"
+         if symKey != lastExpandSym {
+             lastExpandSym = symKey
+@@ -2462,10 +2456,14 @@ final class SettingsPanelView: UIView {
+ 
+     private let accessBanner = UILabel()
+     private let utilityRow = UIView()
++    private let mostoReturnButton = UIButton(type: .custom)
+     private let guidePill = UIButton(type: .custom)
+     private let guideLed = CALayer()
+     private let offlineStatusLabel = UILabel()
+     private let moreButton = UIButton(type: .system)
++    /// Exact X origin & width of the main keyboard's bottom-row Mosto key (for 0pt-drift return).
++    var mostoAnchorX: CGFloat?
++    var mostoAnchorWidth: CGFloat?
+ 
+     // Secondary low-frequency preferences drawer (pure frame layout — 0 Auto Layout constraints)
+     private let moreScroll = UIScrollView()
+@@ -2527,8 +2525,10 @@ final class SettingsPanelView: UIView {
+         statusLabel.textColor = Theme.secondaryText
+         statusLabel.tag = Self.tagSecondary
+ 
+-        doneButton.setTitle("完成", for: .normal)
+-        doneButton.titleLabel?.font = Theme.font(14, .bold)
++        let gearCfg = UIImage.SymbolConfiguration(pointSize: 16, weight: .semibold)
++        doneButton.setImage(UIImage(systemName: "gearshape.fill", withConfiguration: gearCfg), for: .normal)
++        doneButton.setTitle(nil, for: .normal)
++        doneButton.accessibilityLabel = "关闭设置返回键盘"
+         doneButton.layer.cornerRadius = 14
+         doneButton.layer.cornerCurve = .continuous
+         doneButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
+@@ -2561,6 +2561,11 @@ final class SettingsPanelView: UIView {
+         deckContainer.addSubview(accessBanner)
+ 
+         deckContainer.addSubview(utilityRow)
++        mostoReturnButton.layer.cornerRadius = Metrics.cornerRadius
++        mostoReturnButton.layer.cornerCurve = .continuous
++        mostoReturnButton.accessibilityLabel = "返回键盘输入"
++        mostoReturnButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
++        utilityRow.addSubview(mostoReturnButton)
+         guidePill.setTitle("   键位提示", for: .normal)
+         guidePill.titleLabel?.font = Theme.font(11.5, .semibold)
+         guidePill.titleLabel?.adjustsFontSizeToFitWidth = true
+@@ -2897,10 +2902,27 @@ final class SettingsPanelView: UIView {
+     }
+ 
+     func setNight(_ night: Bool) {
+-        mostoImage.image = UIImage(named: night ? "mosto_night" : "mosto_day", in: Bundle(for: SettingsPanelView.self), with: nil)
++        let name = night ? "mosto_night" : "mosto_day"
++        mostoImage.image = UIImage(named: name, in: Bundle(for: SettingsPanelView.self), with: nil)
++        updateMostoReturnArtwork(night: night)
+         updateStatus(night: night)
+     }
+ 
++    private func updateMostoReturnArtwork(night: Bool? = nil) {
++        let isDark = night ?? (traitCollection.userInterfaceStyle == .dark)
++        mostoReturnButton.backgroundColor = Theme.selection.withAlphaComponent(0.18)
++        if Theme.plain {
++            let cfg = UIImage.SymbolConfiguration(pointSize: 15, weight: .semibold)
++            mostoReturnButton.setImage(UIImage(systemName: "keyboard.chevron.compact.down", withConfiguration: cfg), for: .normal)
++            mostoReturnButton.tintColor = Theme.selection
++        } else if let raw = UIImage(named: isDark ? "mosto_night" : "mosto_day", in: Bundle(for: SettingsPanelView.self), with: nil) {
++            let side: CGFloat = 20
++            let r = UIGraphicsImageRenderer(size: CGSize(width: side, height: side))
++            let scaled = r.image { _ in raw.draw(in: CGRect(x: 0, y: 0, width: side, height: side)) }.withRenderingMode(.alwaysOriginal)
++            mostoReturnButton.setImage(scaled, for: .normal)
++        }
++    }
++
+     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+         super.traitCollectionDidChange(previous)
+         styleChrome()
+@@ -2914,6 +2936,7 @@ final class SettingsPanelView: UIView {
+ 
+     func load() {
+         let s = KeyboardSettings.shared
++        updateMostoReturnArtwork()
+         updateStatus()
+ 
+         schemeTile.configure(
+@@ -3217,6 +3240,8 @@ final class SettingsPanelView: UIView {
+     func tapSchemeTileForTests() { toggleScheme() }
+     func tapHapticTileForTests() { toggleHaptic() }
+     var maxTileHeightForTests: CGFloat { hardwareTiles.map(\.frame.height).max() ?? 0 }
++    var doneButtonUsesGearForTests: Bool { doneButton.image(for: .normal) != nil && doneButton.title(for: .normal) == nil }
++    var mostoReturnFrameInSelfForTests: CGRect { utilityRow.convert(mostoReturnButton.frame, to: self) }
+     var utilityRowNonOverlappingForTests: Bool {
+         let guideOk = guidePill.isHidden || (!guidePill.frame.intersects(moreButton.frame) && guidePill.frame.minX >= 0 && guidePill.frame.maxX <= utilityRow.bounds.width + 0.5)
+         let offlineOk = offlineStatusLabel.isHidden || (!offlineStatusLabel.frame.intersects(moreButton.frame) && offlineStatusLabel.frame.minX >= 0 && offlineStatusLabel.frame.maxX <= utilityRow.bounds.width + 0.5)
+@@ -3234,8 +3259,10 @@ final class SettingsPanelView: UIView {
+         guard w > 60, h > 60 else { return }
+         let headH: CGFloat = h < 205 ? 36 : 42
+         header.frame = CGRect(x: 0, y: 0, width: w, height: headH)
+-        let doneW: CGFloat = 56, doneH: CGFloat = 28
+-        doneButton.frame = CGRect(x: w - 12 - doneW, y: floor((headH - doneH) / 2), width: doneW, height: doneH)
++        let sidePad: CGFloat = w > 500 ? Metrics.sideInsetLandscape : Metrics.sideInset
++        let edgeAlign = sidePad + Metrics.gapX / 2
++        let doneW: CGFloat = 34, doneH: CGFloat = 28
++        doneButton.frame = CGRect(x: w - edgeAlign - doneW + 3, y: floor((headH - doneH) / 2), width: doneW, height: doneH)
+         var textLeadX: CGFloat = 12
+         if !backDeckButton.isHidden {
+             let backW: CGFloat = 64, backH: CGFloat = 28
+@@ -3291,14 +3318,19 @@ final class SettingsPanelView: UIView {
+         let gapUtil: CGFloat = 6
+         let moreW = min(76, max(64, (uw * 0.20).rounded()))
+         moreButton.frame = CGRect(x: uw - moreW, y: 0, width: moreW, height: utilH)
+-        let leftAvail = max(40, uw - moreW - gapUtil)
+-        let guideW = min(104, max(84, (uw * 0.28).rounded()))
+-        guidePill.frame = CGRect(x: 0, y: 0, width: min(guideW, leftAvail), height: utilH)
++        let mrW = max(34, min(44, mostoAnchorWidth ?? 36))
++        let desiredMrX = (mostoAnchorX ?? (padX + 48)) - padX
++        let mrX = max(0, min(desiredMrX, max(0, uw - moreW - gapUtil - mrW)))
++        mostoReturnButton.frame = CGRect(x: mrX, y: 0, width: mrW, height: utilH)
++        let afterMostoX = mostoReturnButton.frame.maxX + gapUtil
++        let midAvail = max(40, moreButton.frame.minX - gapUtil - afterMostoX)
++        let guideW = min(100, max(80, (uw * 0.26).rounded()))
++        guidePill.frame = CGRect(x: afterMostoX, y: 0, width: min(guideW, midAvail), height: utilH)
+         CATransaction.begin()
+         CATransaction.setDisableActions(true)
+         guideLed.frame = CGRect(x: 9, y: (utilH - 4.5) / 2, width: 4.5, height: 4.5)
+         CATransaction.commit()
+-        offlineStatusLabel.frame = CGRect(x: 2, y: 0, width: leftAvail, height: utilH)
++        offlineStatusLabel.frame = CGRect(x: afterMostoX, y: 0, width: midAvail, height: utilH)
+ 
+         // Layout secondary `moreScroll` purely with frames
+         let drawerH = layoutMoreDrawer(width: w, apply: true)
+diff --git a/Keyboard/EmojiPanelView.swift b/Keyboard/EmojiPanelView.swift
+index 3fe70a1..3974074 100644
+--- a/Keyboard/EmojiPanelView.swift
++++ b/Keyboard/EmojiPanelView.swift
+@@ -5,8 +5,13 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
+     var onEmoji: ((String) -> Void)?
+     var onDelete: (() -> Void)?
+     var onBack: (() -> Void)?
++    var onNumbers: (() -> Void)?
++    var onReturn: (() -> Void)?
+     var onSettings: (() -> Void)?
+     var onFeedback: ((FeedbackEvent) -> Void)?
++    /// Exact X origin & width of the main keyboard's bottom-row Mosto key for 0pt-drift toggle.
++    var mostoAnchorX: CGFloat?
++    var mostoAnchorWidth: CGFloat?
+ 
+     struct Category { let name: String; let symbol: String; var items: [String] }
+     struct MoodGroup { let title: String; let items: [String] }
+@@ -37,6 +42,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
+     private let tabScroll = UIScrollView()
+     private var tabButtons: [UIButton] = []
+     private let backButton = UIButton(type: .custom)
++    private let mostoReturnButton = UIButton(type: .custom)
+     private let deleteButton = UIButton(type: .system)
+     private let returnButton = UIButton(type: .system)
+     private let gear = UIButton(type: .system)
+@@ -135,13 +141,14 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
+         tabButtons.count > 6 && tabButtons[6].frame.maxX <= tabScrollBox.bounds.width
+     }
+     var kaomojiDockGearFullyVisibleForTests: Bool {
+-        let f = tabScroll.convert(gear.frame, to: tabScrollBox)
++        guard let last = tabButtons.last else { return false }
++        let f = tabScroll.convert(last.frame, to: tabScrollBox)
+         return f.width > 0 && f.minX >= -0.5 && f.maxX <= tabScrollBox.bounds.width + 0.5
+     }
+     var dockNoTrailingHalfSliceForTests: Bool {
+         let boxW = tabScrollBox.bounds.width
+         guard boxW > 0 else { return false }
+-        let items = tabButtons + [gear]
++        let items = tabButtons
+         if tabScroll.contentSize.width <= boxW + 0.5 { return true }
+         return !items.contains {
+             let f = tabScroll.convert($0.frame, to: tabScrollBox)
+@@ -151,7 +158,9 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
+     var moodMostoBadgeShownForTests: Bool { !moodMostoBadge.isHidden && moodMostoBadge.bounds.width >= 28 }
+     var backButtonUsesFunctionStyleForTests: Bool { backButton.backgroundColor == Theme.functionKey }
+     var dockTabWidthForTests: CGFloat { tabButtons.first?.frame.width ?? 0 }
+-    var landscapeDockAllInsideForTests: Bool { gear.frame.maxX <= tabScrollBox.bounds.width + 0.5 }
++    var landscapeDockAllInsideForTests: Bool { (tabButtons.last?.frame.maxX ?? 0) <= tabScrollBox.bounds.width + 0.5 }
++    var mostoReturnFrameInSelfForTests: CGRect { dockBar.convert(mostoReturnButton.frame, to: self) }
++    var returnButtonVisibleForTests: Bool { !returnButton.isHidden && returnButton.frame.width >= 48 }
+     var emojiBadgesBorderlessForTests: Bool { kaomojiShortcutButton.layer.borderWidth == 0 && moodMostoBadge.layer.borderWidth == 0 }
+ 
+     final class Cell: UICollectionViewCell {
+@@ -302,24 +311,27 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
+         dockBar.addSubview(tabScrollBox)
+ 
+         let cfg = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
+-        backButton.setTitle("ABC", for: .normal)
+-        backButton.titleLabel?.font = Theme.font(16, .semibold)
++        backButton.setTitle("123", for: .normal)
++        backButton.titleLabel?.font = Theme.font(15.5, .semibold)
+         backButton.setTitleColor(Theme.keyText, for: .normal)
+         backButton.setTitleColor(Theme.secondaryText, for: .highlighted)
+-        backButton.accessibilityLabel = "返回键盘"
+-        backButton.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
++        backButton.accessibilityLabel = "数字键盘"
++        backButton.addTarget(self, action: #selector(numbersTapped), for: .touchUpInside)
++
++        mostoReturnButton.accessibilityLabel = "关闭表情返回键盘"
++        mostoReturnButton.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
+ 
+         deleteButton.setImage(UIImage(systemName: "delete.left", withConfiguration: cfg), for: .normal)
+         deleteButton.addTarget(self, action: #selector(deleteDown), for: .touchDown)
+         deleteButton.addTarget(self, action: #selector(deleteUp), for: [.touchUpInside, .touchUpOutside, .touchCancel])
+ 
+-        returnButton.setTitle("返回", for: .normal)
+-        returnButton.titleLabel?.font = Theme.font(16, .bold)
+-        returnButton.accessibilityLabel = "返回键盘"
+-        returnButton.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
+-        returnButton.isHidden = true
++        returnButton.setTitle("换行", for: .normal)
++        returnButton.titleLabel?.font = Theme.font(15.5, .semibold)
++        returnButton.accessibilityLabel = "发送或换行"
++        returnButton.addTarget(self, action: #selector(returnTapped), for: .touchUpInside)
++        returnButton.isHidden = false
+ 
+-        for b in [backButton, deleteButton, returnButton] {
++        for b in [backButton, mostoReturnButton, deleteButton, returnButton] {
+             b.tintColor = Theme.keyText
+             b.setTitleColor(Theme.keyText, for: .normal)
+             b.backgroundColor = Theme.functionKey
+@@ -357,13 +369,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
+         tabScroll.addSubview(mosto)
+         tabButtons.append(mosto)
+ 
+-        gear.setImage(UIImage(systemName: "gearshape", withConfiguration: tabCfg), for: .normal)
+-        gear.tintColor = Theme.secondaryText
+-        gear.accessibilityLabel = "设置"
+-        gear.layer.cornerRadius = 8
+-        gear.layer.cornerCurve = .continuous
+-        gear.addTarget(self, action: #selector(settingsTapped), for: .touchUpInside)
+-        tabScroll.addSubview(gear)
++        gear.isHidden = true
+ 
+         load()
+     }
+@@ -393,6 +399,20 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
+         }
+         backButton.backgroundColor = Theme.functionKey
+         backButton.setTitleColor(Theme.keyText, for: .normal)
++        mostoReturnButton.backgroundColor = Theme.selection.withAlphaComponent(0.18)
++        if Theme.plain {
++            let mCfg = UIImage.SymbolConfiguration(pointSize: 16, weight: .semibold)
++            mostoReturnButton.setImage(UIImage(systemName: "face.smiling", withConfiguration: mCfg)?.withRenderingMode(.alwaysTemplate), for: .normal)
++            mostoReturnButton.tintColor = Theme.selection
++        } else {
++            let night = KeyboardSettings.shared.appearance == 2 || (KeyboardSettings.shared.appearance == 0 && t.userInterfaceStyle == .dark)
++            let imgName = night ? "mosto_night" : "mosto_day"
++            if let face = UIImage(named: imgName, in: Bundle(for: EmojiPanelView.self), with: nil) {
++                mostoReturnButton.setImage(Self.resizedFace(face, side: 22).withRenderingMode(.alwaysOriginal), for: .normal)
++            }
++        }
++        returnButton.backgroundColor = Theme.accentKey
++        returnButton.setTitleColor(Theme.accentText, for: .normal)
+         if let kaomojiTab = tabButtons.last {
+             if Theme.plain {
+                 let cfg = UIImage.SymbolConfiguration(pointSize: 16, weight: .medium)
+@@ -649,10 +669,16 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
+     }
+ 
+     func setChinese(_ chinese: Bool) {
+-        backButton.setTitle(chinese ? "拼音" : "ABC", for: .normal)
++        backButton.setTitle("123", for: .normal)
+         backButton.setNeedsLayout()
+     }
+ 
++    func setReturnLabel(_ title: String?, chinese: Bool) {
++        let label = title ?? (chinese ? "换行" : "return")
++        returnButton.setTitle(label, for: .normal)
++        returnButton.accessibilityLabel = label
++    }
++
+     // MARK: - Layout
+ 
+     private var cellSide: CGFloat {
+@@ -768,24 +794,38 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
+         dockHairline.frame = CGRect(x: 8, y: 0, width: max(0, b.width - 16), height: 1 / UIScreen.main.scale)
+         CATransaction.commit()
+ 
+-        let side: CGFloat = 54
++        let sideInset: CGFloat = b.width > 500 ? Metrics.sideInsetLandscape : Metrics.sideInset
++        let contentW = max(1, b.width - sideInset * 2)
++        let unit = contentW / 10
++        let gapX = Metrics.gapX
+         let btnH: CGFloat = barH - 8
+         let btnY: CGFloat = 4
+-        backButton.frame = CGRect(x: 6, y: btnY, width: side, height: btnH)
+-        deleteButton.frame = CGRect(x: b.width - side - 6, y: btnY, width: side, height: btnH)
+-        returnButton.frame = deleteButton.frame
+-        for btn in [backButton, deleteButton, returnButton] {
++        let leftW = floor(1.4 * unit - gapX)
++        let leftX = floor(sideInset + gapX / 2)
++        backButton.frame = CGRect(x: leftX, y: btnY, width: max(40, leftW), height: btnH)
++
++        let mrW = mostoAnchorWidth ?? max(32, floor(1.0 * unit - gapX))
++        let mrX = mostoAnchorX ?? (backButton.frame.maxX + gapX)
++        mostoReturnButton.frame = CGRect(x: mrX, y: btnY, width: mrW, height: btnH)
++
++        let retW = max(52, floor(1.8 * unit - gapX))
++        let retX = floor(b.width - sideInset - gapX / 2 - retW)
++        returnButton.frame = CGRect(x: retX, y: btnY, width: retW, height: btnH)
++
++        let delW: CGFloat = max(36, floor(1.05 * unit - gapX))
++        deleteButton.frame = CGRect(x: returnButton.frame.minX - gapX - delW, y: btnY, width: delW, height: btnH)
++
++        for btn in [backButton, mostoReturnButton, deleteButton, returnButton] {
+             let sr = CGRect(x: 0.75, y: 0.5, width: max(0, btn.bounds.width - 1.5), height: max(0, btn.bounds.height - 0.5))
+             btn.layer.shadowPath = UIBezierPath(roundedRect: sr, cornerRadius: max(1, Metrics.cornerRadius - 0.5)).cgPath
+         }
+ 
+-        // Scrollable horizontal category pills between backButton and deleteButton:
+-        // snap visible slots cleanly inside boxW so no trailing icon gets sliced halfway at rest.
+-        let tabLeft = backButton.frame.maxX + 6
+-        let tabRight = deleteButton.frame.minX - 6
++        // Scrollable horizontal category pills between mostoReturnButton and deleteButton.
++        let tabLeft = mostoReturnButton.frame.maxX + 4
++        let tabRight = deleteButton.frame.minX - 4
+         tabScrollBox.frame = CGRect(x: tabLeft, y: 0, width: max(0, tabRight - tabLeft), height: barH)
+         tabScroll.frame = tabScrollBox.bounds
+-        let dockItems = tabButtons + [gear]
++        let dockItems = tabButtons
+         let boxW = tabScrollBox.bounds.width
+         let itemH: CGFloat = 34
+         let ty = (barH - itemH) / 2
+@@ -1027,6 +1067,8 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
+     }
+ 
+     @objc private func backTapped() { onBack?() }
++    @objc private func numbersTapped() { onNumbers?() }
++    @objc private func returnTapped() { onReturn?() }
+     @objc private func settingsTapped() { onSettings?() }
+ 
+     @objc private func deleteDown() {
+@@ -1052,3 +1094,262 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
+         deleteTimer = nil
+     }
+ }
++
++
++// MARK: - R95: T9 / Numpad Classified Symbol Panel (0pt-drift Row 3 Right Return)
++
++/// 九宫格/数字键盘专属分类符号面板：左列分类、中区网格、右列四行与九宫格严格对齐（⌫ / 空格 / 返回 / 发送）。
++final class SymbolPanelView: UIView, UICollectionViewDataSource, UICollectionViewDelegateFlowLayout {
++    var onSymbol: ((String) -> Void)?
++    var onDelete: (() -> Void)?
++    var onSpace: (() -> Void)?
++    var onReturn: (() -> Void)?
++    var onClose: (() -> Void)?
++    var onFeedback: ((FeedbackEvent) -> Void)?
++
++    struct Category { let title: String; let items: [String] }
++    static let categories: [Category] = [
++        Category(title: "常用", items: ["，", "。", "？", "！", "、", "：", "；", "“", "（", "《", "【", "—", "…", "～", "·", "@", "#", "%", "¥", "$", "+", "-", "×", "÷"]),
++        Category(title: "中文", items: ["，", "。", "、", "；", "：", "？", "！", "…", "—", "·", "～", "￥", "「", "『", "《", "（", "【", "“", "’", "°", "℃", "‰", "※", "§"]),
++        Category(title: "英文", items: [".", ",", "?", "!", ":", ";", "'", "\"", "@", "#", "$", "%", "&", "*", "_", "-", "/", "\\", "|", "~", "`", "^", "<", ">"]),
++        Category(title: "括号", items: ["（", "）", "【", "】", "《", "》", "「", "」", "『", "』", "“", "”", "(", ")", "[", "]", "{", "}", "<", ">", "〈", "〉", "〔", "〕"]),
++        Category(title: "数学", items: ["+", "-", "×", "÷", "=", "≠", "≈", "±", "<", ">", "≤", "≥", "%", "‰", "°", "℃", "√", "∞", "π", "∑", "∠", "⊥", "∥", "△"]),
++        Category(title: "序号", items: ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩", "⑴", "⑵", "⑶", "⑷", "⑸", "一", "二", "三", "Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ", "Ⅵ"]),
++    ]
++
++    private var selectedCategory = 0
++    private var categoryButtons: [UIButton] = []
++    private let categoryScroll = UIScrollView()
++    private let collection: UICollectionView
++    private let deleteButton = UIButton(type: .system)
++    private let spaceButton = UIButton(type: .system)
++    private let closeButton = UIButton(type: .system)
++    private let returnButton = UIButton(type: .system)
++    private var deleteTimer: Timer?
++
++    var closeButtonFrameForTests: CGRect { closeButton.frame }
++    var returnButtonFrameForTests: CGRect { returnButton.frame }
++
++    final class SymCell: UICollectionViewCell {
++        let label = UILabel()
++        override init(frame: CGRect) {
++            super.init(frame: frame)
++            label.font = Theme.font(20, .medium)
++            label.textAlignment = .center
++            label.textColor = Theme.keyText
++            label.layer.cornerRadius = 8
++            label.layer.cornerCurve = .continuous
++            label.clipsToBounds = true
++            contentView.addSubview(label)
++            isAccessibilityElement = true
++            accessibilityTraits = .keyboardKey
++        }
++        required init?(coder: NSCoder) { fatalError() }
++        override func layoutSubviews() {
++            super.layoutSubviews()
++            label.frame = contentView.bounds.insetBy(dx: 3, dy: 3)
++        }
++        override var isHighlighted: Bool {
++            didSet {
++                label.backgroundColor = isHighlighted ? Theme.keyPressed : Theme.keyTop
++            }
++        }
++    }
++
++    override init(frame: CGRect) {
++        let layout = UICollectionViewFlowLayout()
++        layout.scrollDirection = .vertical
++        layout.minimumInteritemSpacing = 0
++        layout.minimumLineSpacing = 0
++        collection = UICollectionView(frame: .zero, collectionViewLayout: layout)
++        super.init(frame: frame)
++        backgroundColor = Theme.touchable
++
++        categoryScroll.showsVerticalScrollIndicator = false
++        categoryScroll.showsHorizontalScrollIndicator = false
++        categoryScroll.alwaysBounceHorizontal = false
++        categoryScroll.disableAllEdgeEffects()
++        addSubview(categoryScroll)
++
++        for (i, cat) in Self.categories.enumerated() {
++            let b = UIButton(type: .system)
++            b.setTitle(cat.title, for: .normal)
++            b.titleLabel?.font = Theme.font(14, .semibold)
++            b.tag = i
++            b.layer.cornerRadius = Metrics.cornerRadius
++            b.layer.cornerCurve = .continuous
++            b.addTarget(self, action: #selector(categoryTapped(_:)), for: .touchUpInside)
++            categoryScroll.addSubview(b)
++            categoryButtons.append(b)
++        }
++
++        collection.backgroundColor = .clear
++        collection.showsVerticalScrollIndicator = false
++        collection.alwaysBounceHorizontal = false
++        collection.delaysContentTouches = false
++        collection.disableAllEdgeEffects()
++        collection.dataSource = self
++        collection.delegate = self
++        collection.register(SymCell.self, forCellWithReuseIdentifier: "s")
++        addSubview(collection)
++
++        let cfg = UIImage.SymbolConfiguration(pointSize: 18, weight: .medium)
++        deleteButton.setImage(UIImage(systemName: "delete.left", withConfiguration: cfg), for: .normal)
++        deleteButton.accessibilityLabel = "删除"
++        deleteButton.addTarget(self, action: #selector(deleteDown), for: .touchDown)
++        deleteButton.addTarget(self, action: #selector(deleteUp), for: [.touchUpInside, .touchUpOutside, .touchCancel])
++
++        spaceButton.setTitle("空格", for: .normal)
++        spaceButton.titleLabel?.font = Theme.font(15, .medium)
++        spaceButton.accessibilityLabel = "空格"
++        spaceButton.addTarget(self, action: #selector(spaceTapped), for: .touchUpInside)
++
++        closeButton.setTitle("返回", for: .normal)
++        closeButton.titleLabel?.font = Theme.font(15.5, .semibold)
++        closeButton.accessibilityLabel = "返回键盘"
++        closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
++
++        returnButton.setTitle("换行", for: .normal)
++        returnButton.titleLabel?.font = Theme.font(15.5, .semibold)
++        returnButton.accessibilityLabel = "发送或换行"
++        returnButton.addTarget(self, action: #selector(returnTapped), for: .touchUpInside)
++
++        for b in [deleteButton, spaceButton, closeButton, returnButton] {
++            b.layer.cornerRadius = Metrics.cornerRadius
++            b.layer.cornerCurve = .continuous
++            addSubview(b)
++        }
++        themeChanged()
++    }
++
++    required init?(coder: NSCoder) { fatalError() }
++
++    func setReturnLabel(_ title: String?, chinese: Bool) {
++        let label = title ?? (chinese ? "换行" : "return")
++        returnButton.setTitle(label, for: .normal)
++        returnButton.accessibilityLabel = label
++        spaceButton.setTitle(chinese ? "空格" : "space", for: .normal)
++    }
++
++    func themeChanged() {
++        for (i, b) in categoryButtons.enumerated() {
++            let active = i == selectedCategory
++            b.backgroundColor = active ? Theme.selection : Theme.functionKey
++            b.setTitleColor(active ? Theme.selectionText : Theme.keyText, for: .normal)
++        }
++        deleteButton.backgroundColor = Theme.functionKey
++        deleteButton.tintColor = Theme.keyText
++        spaceButton.backgroundColor = Theme.key
++        spaceButton.setTitleColor(Theme.keyText, for: .normal)
++        closeButton.backgroundColor = Theme.selection.withAlphaComponent(0.18)
++        closeButton.setTitleColor(Theme.selection, for: .normal)
++        returnButton.backgroundColor = Theme.accentKey
++        returnButton.setTitleColor(Theme.accentText, for: .normal)
++        collection.reloadData()
++    }
++
++    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
++        super.traitCollectionDidChange(previous)
++        if previous?.userInterfaceStyle != traitCollection.userInterfaceStyle {
++            themeChanged()
++        }
++    }
++
++    override func layoutSubviews() {
++        super.layoutSubviews()
++        let b = bounds
++        guard b.width > 100, b.height > 80 else { return }
++        let sideInset: CGFloat = b.width > 500 ? Metrics.sideInsetLandscape : Metrics.sideInset
++        let contentW = max(1, b.width - sideInset * 2)
++        let unit = contentW / 10
++        let gapX = Metrics.gapX
++        let rowH = b.height / 4
++        let gapY: CGFloat = rowH <= 60 ? min(12, max(8, (rowH * 0.20).rounded())) : 12
++        let capH = max(1, rowH - gapY)
++
++        let leftW = floor(1.6 * unit - gapX)
++        let leftX = floor(sideInset + gapX / 2)
++        categoryScroll.frame = CGRect(x: leftX, y: floor(gapY / 2), width: leftW, height: max(1, b.height - gapY))
++        let catBtnH: CGFloat = max(32, floor((b.height - gapY - 5 * 6) / 6))
++        var cy: CGFloat = 0
++        for btn in categoryButtons {
++            btn.frame = CGRect(x: 0, y: cy, width: leftW, height: catBtnH)
++            cy += catBtnH + 6
++        }
++        categoryScroll.contentSize = CGSize(width: leftW, height: max(categoryScroll.bounds.height, cy))
++
++        let rightW = floor(1.6 * unit - gapX)
++        let rightX = floor(b.width - sideInset - gapX / 2 - rightW)
++        let rightButtons = [deleteButton, spaceButton, closeButton, returnButton]
++        for (r, btn) in rightButtons.enumerated() {
++            let y0 = floor(CGFloat(r) * rowH + gapY / 2)
++            btn.frame = CGRect(x: rightX, y: y0, width: rightW, height: capH)
++        }
++
++        let gridX = leftX + leftW + gapX
++        let gridW = max(40, rightX - gapX - gridX)
++        collection.frame = CGRect(x: gridX, y: floor(gapY / 2), width: gridW, height: max(1, b.height - gapY))
++        collection.collectionViewLayout.invalidateLayout()
++    }
++
++    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
++        Self.categories[selectedCategory].items.count
++    }
++
++    func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
++        let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "s", for: indexPath) as! SymCell
++        let sym = Self.categories[selectedCategory].items[indexPath.item]
++        cell.label.text = sym
++        cell.label.textColor = Theme.keyText
++        cell.label.backgroundColor = Theme.keyTop
++        cell.accessibilityLabel = sym
++        return cell
++    }
++
++    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
++        let cols: CGFloat = 4
++        let w = floor(collectionView.bounds.width / cols)
++        let h = floor(collectionView.bounds.height / 4)
++        return CGSize(width: max(30, w), height: max(34, h))
++    }
++
++    func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
++        let sym = Self.categories[selectedCategory].items[indexPath.item]
++        onFeedback?(.key(.char(sym)))
++        onSymbol?(sym)
++    }
++
++    @objc private func categoryTapped(_ b: UIButton) {
++        selectedCategory = b.tag
++        onFeedback?(.candidate)
++        themeChanged()
++        collection.setContentOffset(.zero, animated: false)
++    }
++
++    @objc private func spaceTapped() { onSpace?() }
++    @objc private func closeTapped() { onClose?() }
++    @objc private func returnTapped() { onReturn?() }
++
++    @objc private func deleteDown() {
++        onDelete?()
++        deleteTimer?.invalidate()
++        let t = Timer(timeInterval: 0.45, repeats: false) { [weak self] _ in
++            let r = Timer(timeInterval: 0.09, repeats: true) { [weak self] _ in self?.onDelete?() }
++            RunLoop.main.add(r, forMode: .common)
++            self?.deleteTimer = r
++        }
++        RunLoop.main.add(t, forMode: .common)
++        deleteTimer = t
++    }
++
++    override var isHidden: Bool { didSet { if isHidden { deleteUp() } } }
++    override func didMoveToWindow() {
++        super.didMoveToWindow()
++        if window == nil { deleteUp() }
++    }
++
++    @objc private func deleteUp() {
++        deleteTimer?.invalidate()
++        deleteTimer = nil
++    }
++}
+diff --git a/Keyboard/KeyFeedback.swift b/Keyboard/KeyFeedback.swift
+index 80ccce3..2c3e8c1 100644
+--- a/Keyboard/KeyFeedback.swift
++++ b/Keyboard/KeyFeedback.swift
+@@ -96,7 +96,7 @@ enum FeedbackModel {
+                 return FeedbackResponse(kind: .impact, intensity: function, sound: 1104)
+             case .delete, .deleteWord:
+                 return FeedbackResponse(kind: .impact, intensity: function, sound: 1155)
+-            case .shift, .ret, .globe, .settings, .page, .toggleLanguage, .clearInput, .emoji:
++            case .shift, .ret, .globe, .settings, .page, .toggleLanguage, .clearInput, .emoji, .symbolPanel:
+                 return FeedbackResponse(kind: .impact, intensity: function, sound: 1156)
+             }
+         case .candidate:
+diff --git a/Keyboard/KeyboardLayout.swift b/Keyboard/KeyboardLayout.swift
+index bbaee97..25faec9 100644
+--- a/Keyboard/KeyboardLayout.swift
++++ b/Keyboard/KeyboardLayout.swift
+@@ -19,8 +19,10 @@ enum KeyAction: Equatable {
+     case clearInput
+     /// Held delete, after a while: a word at a time (two Chinese characters, or a Latin word with its space).
+     case deleteWord
+-    /// 表情: the emoji page. Held, it opens the keyboard settings instead (as Gboard's emoji key).
++    /// Mosto 超级键: tap opens/closes emoji, double-tap upgrades to kaomoji, hold opens settings.
+     case emoji
++    /// 九宫格/数字键盘专属分类符号面板（右侧第3行同位返回，不跳全键盘符号页）.
++    case symbolPanel
+ }
+ 
+ extension KeyAction {
+@@ -29,7 +31,7 @@ extension KeyAction {
+     /// 不该让一条刚出现的联想凭空空掉（Krug：别让我想；Norman：状态变化要可归因）。
+     var endsSuggestions: Bool {
+         switch self {
+-        case .char, .delete, .space, .ret, .t9, .clearInput, .deleteWord, .emoji, .toggleLanguage, .page, .settings:
++        case .char, .delete, .space, .ret, .t9, .clearInput, .deleteWord, .emoji, .symbolPanel, .toggleLanguage, .page, .settings:
+             return true
+         case .shift, .globe:
+             return false
+@@ -197,7 +199,7 @@ enum Layouts {
+             }
+             rows.append(specs)
+         }
+-        let leftW: CGFloat = ctx.showGlobe ? 1.2 : 1.25
++        let leftW: CGFloat = ctx.showGlobe ? 1.2 : 1.4
+         let langW: CGFloat = ctx.showGlobe ? 1.1 : 1.2
+         let retW: CGFloat = ctx.showGlobe ? 1.7 : 1.8
+         var bottom: [KeySpec] = [KeySpec(action: .page(ctx.numberGrid ? .numpad : .numbers), label: "123", width: leftW, style: .function)]
+@@ -217,7 +219,7 @@ enum Layouts {
+     }
+ 
+     private static func bottomRow(_ ctx: LayoutContext) -> [KeySpec] {
+-        var bottom: [KeySpec] = [KeySpec(action: .page(.letters), label: ctx.chinese ? "拼音" : "ABC", width: ctx.showGlobe ? 1.25 : 1.4, style: .function)]
++        var bottom: [KeySpec] = [KeySpec(action: .page(.letters), label: ctx.chinese ? "拼音" : "ABC", width: ctx.showGlobe ? 1.2 : 1.4, style: .function)]
+         bottom += leftUtilityKeys(ctx)
+         bottom.append(spaceKey(ctx))
+         bottom.append(languageKey(ctx, width: 1.4))
+@@ -247,15 +249,18 @@ enum Layouts {
+         func p(_ s: String, _ alt: String?, more: [String] = []) -> KeySpec {
+             KeySpec(action: .char(s), label: s, width: side, alt: alt, style: .function, hint: alt, moreAlts: more)
+         }
+-        let row1 = [p("，", "、", more: ["：", "；", "（", "《", "“"]), k("'", "分词"), k("2", "ABC"), k("3", "DEF"),
++        let row1Key1: KeySpec = ctx.composing
++            ? k("'", "分词")
++            : KeySpec(action: .char("、"), label: "、", width: mid, alt: "@", style: .normal, hint: "@", moreAlts: ["：", "；", "·", "—"])
++        let row1 = [p("，", "、", more: ["：", "；", "（", "《", "“"]), row1Key1, k("2", "ABC"), k("3", "DEF"),
+                     KeySpec(action: .delete, label: "", symbol: "delete.left", width: side, style: .function)]
+         let row2Right: KeySpec = ctx.composing
+             ? KeySpec(action: .clearInput, label: "重输", width: side, style: .function)
+             : p("！", "～", more: ["：", "；", "—", "…"])
+         let row2 = [p("。", "…", more: ["·", "—", "）", "》", "”"]), k("4", "GHI"), k("5", "JKL"), k("6", "MNO"), row2Right]
+         let row3 = [p("？", "！", more: ["～", "【", "】", "「", "」"]), k("7", "PQRS"), k("8", "TUV"), k("9", "WXYZ"),
+-                    KeySpec(action: .page(.numbers), label: "符号", width: side, style: .function)]
+-        let leftW: CGFloat = ctx.showGlobe ? 1.4 : side
++                    KeySpec(action: .symbolPanel, label: "符号", width: side, style: .function)]
++        let leftW: CGFloat = ctx.showGlobe ? 1.2 : 1.4
+         let row4 = [KeySpec(action: .page(ctx.numberGrid ? .numpad : .numbers), label: "123", width: leftW, style: .function)]
+                     + leftUtilityKeys(ctx)
+                     + [spaceKey(ctx),
+@@ -276,7 +281,7 @@ enum Layouts {
+         let row2 = [p("-", "_"), d("4"), d("5"), d("6"),
+                     KeySpec(action: .space, label: ctx.chinese ? "空格" : "space", width: side)]
+         let row3 = [p("/", "*"), d("7"), d("8"), d("9"),
+-                    KeySpec(action: .page(.numbers), label: ctx.chinese ? "符号" : "#+=", width: side, style: .function)]
++                    KeySpec(action: .symbolPanel, label: ctx.chinese ? "符号" : "#+=", width: side, style: .function)]
+         // the way back keeps its full width (and the same name as on every other page); with the globe key the two
+         // punctuation keys give it the room while 0 stays aligned under 2 / 5 / 8 and Return stays bottom-right
+         let back = KeySpec(action: .page(.letters), label: ctx.chinese ? "拼音" : "ABC", width: ctx.showGlobe ? 1.5 : side, style: .function)
+diff --git a/Keyboard/KeyboardView.swift b/Keyboard/KeyboardView.swift
+index f335535..fdaebdb 100644
+--- a/Keyboard/KeyboardView.swift
++++ b/Keyboard/KeyboardView.swift
+@@ -100,6 +100,17 @@ final class KeyView: UIView {
+         return img
+     }
+ 
++    private static func cachedMostoCap(_ imgName: String) -> UIImage? {
++        let k = "cap_" + imgName
++        if let img = symbolCache[k] { return img }
++        guard let raw = UIImage(named: imgName, in: Bundle(for: KeyView.self), with: nil) else { return nil }
++        let side: CGFloat = 22
++        let r = UIGraphicsImageRenderer(size: CGSize(width: side, height: side))
++        let scaled = r.image { _ in raw.draw(in: CGRect(x: 0, y: 0, width: side, height: side)) }.withRenderingMode(.alwaysOriginal)
++        symbolCache[k] = scaled
++        return scaled
++    }
++
+     init(spec: KeySpec, borders: Bool) {
+         self.spec = spec
+         super.init(frame: .zero)
+@@ -171,7 +182,17 @@ final class KeyView: UIView {
+         case .space: label.font = spec.isSmartSpace ? Theme.font(13.5, .semibold) : Theme.font(15, .regular)
+         default: label.font = Theme.font(Metrics.functionFont, Theme.plain ? .medium : .semibold)
+         }
+-        if let name = spec.symbol {
++        if spec.action == .emoji && !Theme.plain {
++            icon.overrideUserInterfaceStyle = .unspecified
++            let night = traitCollection.userInterfaceStyle == .dark
++            let imgName = night ? "mosto_night" : "mosto_day"
++            if let img = Self.cachedMostoCap(imgName) {
++                icon.image = img
++            } else if let name = spec.symbol {
++                icon.image = Self.cachedSymbol(name)
++            }
++            icon.isHidden = false
++        } else if let name = spec.symbol {
+             // Keep face.smiling in its crisp outline variant in dark mode so it harmonizes with shift & delete.
+             icon.overrideUserInterfaceStyle = (name == "face.smiling") ? .light : .unspecified
+             icon.image = Self.cachedSymbol(name)
+@@ -199,7 +220,8 @@ final class KeyView: UIView {
+         case .ret: return spec.label.isEmpty ? "换行" : spec.label
+         case .globe: return "下一个键盘"
+         case .settings: return "键盘设置"
+-        case .emoji: return "表情，按住打开键盘设置"
++        case .emoji: return "Mosto 表情，双击颜文字，按住打开设置"
++        case .symbolPanel: return "符号"
+         case .toggleLanguage: return spec.label == "中" ? "中文，轻点切换到英文" : "英文，轻点切换到中文"
+         case .t9(let d): return d == "'" ? "分词" : "\(d)，\(spec.label)"
+         case .deleteWord: return "删除词"
+@@ -338,10 +360,14 @@ final class KeyView: UIView {
+     var visibleLabelTextForTests: String? { label.isHidden ? nil : label.text }
+     var isSoftenedForDarkGlassForTests: Bool { softenedForDarkGlass }
+     var isSoftenedForLightGlassForTests: Bool { softenedForLightGlass }
+-    var iconPointSizeForTests: CGFloat { icon.image?.size.height ?? 0 }
++    var iconPointSizeForTests: CGFloat {
++        if spec.action == .emoji { return Metrics.emojiIconSize }
++        return icon.image?.size.height ?? 0
++    }
+ 
+     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+         super.traitCollectionDidChange(previous)
++        if spec.action == .emoji && !Theme.plain { apply(spec, borders: borders, force: true) }
+         updateColors()
+     }
+ 
+diff --git a/Keyboard/KeyboardViewController.swift b/Keyboard/KeyboardViewController.swift
+index a76a31b..973f772 100644
+--- a/Keyboard/KeyboardViewController.swift
++++ b/Keyboard/KeyboardViewController.swift
+@@ -43,6 +43,15 @@ final class KeyboardViewController: UIInputViewController {
+         emojiPanelIfLoaded = p
+         return p
+     }
++    private var symbolPanelIfLoaded: SymbolPanelView?
++    private var symbolPanel: SymbolPanelView {
++        if let p = symbolPanelIfLoaded { return p }
++        let p = makeSymbolPanel()
++        symbolPanelIfLoaded = p
++        return p
++    }
++    private var symbolPanelShown = false
++    private var lastEmojiOpenTime: CFTimeInterval = 0
+     private let syllablePicker = SyllablePickerView()
+     private var syllableChoices: (start: Int, choices: [(text: String, keys: [Character])]) = (0, [])
+     private var heightConstraint: NSLayoutConstraint?
+@@ -261,6 +270,10 @@ final class KeyboardViewController: UIInputViewController {
+     var candidateBarForTests: CandidateBarView { candidateBar }
+     var gridIfLoadedForTests: CandidateGridView? { gridIfLoaded }
+     var emojiPanelIfLoadedForTests: EmojiPanelView? { emojiPanelIfLoaded }
++    var symbolPanelIfLoadedForTests: SymbolPanelView? { symbolPanelIfLoaded }
++    var symbolPanelShownForTests: Bool { symbolPanelShown }
++    var settingsPanelIfLoadedForTests: SettingsPanelView? { settingsPanelIfLoaded }
++    var emojiShownForTests: Bool { emojiShown }
+     var preferredHeightForTests: CGFloat { preferredHeight() }
+     func heightForTests(landscape: Bool) -> CGFloat { preferredHeight(landscape: landscape) }
+     var heightConstraintConstantForTests: CGFloat? { heightConstraint?.constant }
+@@ -513,6 +526,7 @@ final class KeyboardViewController: UIInputViewController {
+         if let sp = settingsPanelIfLoaded, !sp.isHidden { showSettings(false) }
+         if let g = gridIfLoaded, !g.isHidden { showGrid(false) }
+         if emojiShown { showEmoji(false) }
++        if symbolPanelShown { showSymbolPanel(false) }
+         if !safeMode, english == nil, let en = engine.englishLexicon { english = EnglishDecoder(lexicon: en) }
+         adaptToField()
+         applyAppearance()
+@@ -546,6 +560,10 @@ final class KeyboardViewController: UIInputViewController {
+             p.removeFromSuperview()
+             emojiPanelIfLoaded = nil
+         }
++        if !symbolPanelShown, let p = symbolPanelIfLoaded {
++            p.removeFromSuperview()
++            symbolPanelIfLoaded = nil
++        }
+         if let g = gridIfLoaded, g.isHidden {
+             g.removeFromSuperview()
+             gridIfLoaded = nil
+@@ -637,6 +655,8 @@ final class KeyboardViewController: UIInputViewController {
+         gridIfLoaded?.frame = CGRect(x: insetL, y: originY + baseBarH, width: w, height: max(0, contentH - baseBarH))
+         settingsPanelIfLoaded?.frame = panelRect
+         if emojiShown { emojiPanel.frame = panelRect }
++        if symbolPanelShown { symbolPanel.frame = CGRect(x: insetL, y: originY + baseBarH, width: w, height: max(0, contentH - baseBarH)) }
++        syncMostoAnchors()
+         CATransaction.commit()
+         if vb.width > 100 && vb.height > 100 && actualLand != lastResolvedLandscape {
+             lastResolvedLandscape = actualLand
+@@ -815,6 +835,10 @@ final class KeyboardViewController: UIInputViewController {
+             p.removeFromSuperview()
+             emojiPanelIfLoaded = nil
+         }
++        if !symbolPanelShown, let p = symbolPanelIfLoaded {
++            p.removeFromSuperview()
++            symbolPanelIfLoaded = nil
++        }
+         if let g = gridIfLoaded, g.isHidden {
+             g.removeFromSuperview()
+             gridIfLoaded = nil
+@@ -883,6 +907,7 @@ final class KeyboardViewController: UIInputViewController {
+             && predictions.isEmpty
+             && enSuggestions.isEmpty
+             && !emojiShown
++            && !symbolPanelShown
+             && (settingsPanelIfLoaded?.isHidden ?? true)
+             && (gridIfLoaded?.isHidden ?? true)
+         candidateBar.setIdleControls(enabled: allowed, night: isNight, forcedDayOnDarkGlass: systemIsDark && !isNight)
+@@ -1150,7 +1175,11 @@ final class KeyboardViewController: UIInputViewController {
+             deleteWord()
+         case .emoji:
+             if !taps.isEmpty { commitAll() }
++            lastEmojiOpenTime = CACurrentMediaTime()
+             showEmoji(true)
++        case .symbolPanel:
++            if !taps.isEmpty { commitAll() }
++            showSymbolPanel(true)
+         }
+     }
+ 
+@@ -1612,16 +1641,11 @@ final class KeyboardViewController: UIInputViewController {
+ 
+     private func updateAutoShift() {
+         guard !capsLock else { return }
+-        let proxy = host
+-        let type = proxy.autocapitalizationType ?? .sentences
+-        guard type != .none else { shifted = false; return }
+-        let before = proxy.documentContextBeforeInput ?? ""
+-        if type == .allCharacters { shifted = true; return }
+-        if type == .words { shifted = before.isEmpty || before.last == " " || before.last == "\n"; return }
+-        let trimmed = before.trimmingCharacters(in: .whitespaces)
+-        shifted = before.isEmpty || trimmed.hasSuffix(".") && before.hasSuffix(" ")
+-            || trimmed.hasSuffix("!") && before.hasSuffix(" ") || trimmed.hasSuffix("?") && before.hasSuffix(" ")
+-            || before.hasSuffix("\n")
++        // R95: In Chinese-primary keyboards (especially WeChat whose MMGrowTextView defaults to .sentences
++        // and fires async textDidChange), English mode starts cleanly in lowercase unless the host explicitly
++        // requires .allCharacters (e.g. code/plate inputs). Single-tap Shift = 1 uppercase; double-tap = Caps Lock.
++        let type = host.autocapitalizationType ?? .none
++        shifted = (type == .allCharacters)
+     }
+ 
+     // MARK: - Composition
+@@ -2100,13 +2124,23 @@ final class KeyboardViewController: UIInputViewController {
+             gridIfLoaded?.isHidden = true
+         }
+         candidateBar.gridExpanded = on; updatePlainLightButton()
+-        keyboard.isHidden = on || !(settingsPanelIfLoaded?.isHidden ?? true) || emojiShown
++        keyboard.isHidden = on || !(settingsPanelIfLoaded?.isHidden ?? true) || emojiShown || symbolPanelShown
++    }
++
++    private func syncMostoAnchors() {
++        guard let cap = keyboard.keyRectsForTests(.emoji)?.cap, cap.width > 10 else { return }
++        emojiPanelIfLoaded?.mostoAnchorX = cap.minX
++        emojiPanelIfLoaded?.mostoAnchorWidth = cap.width
++        settingsPanelIfLoaded?.mostoAnchorX = cap.minX
++        settingsPanelIfLoaded?.mostoAnchorWidth = cap.width
+     }
+ 
+     private func showSettings(_ on: Bool) {
+         if on {
+             showEmoji(false)
++            showSymbolPanel(false)
+             let sp = settingsPanel
++            syncMostoAnchors()
+             let insetL = view.safeAreaInsets.left, insetR = view.safeAreaInsets.right
+             let cb = currentContentBounds()
+             sp.frame = CGRect(x: insetL, y: cb.minY, width: max(0, cb.width - insetL - insetR), height: cb.height)
+@@ -2121,7 +2155,7 @@ final class KeyboardViewController: UIInputViewController {
+             settingsPanelIfLoaded = nil
+         }
+         candidateBar.isHidden = on
+-        keyboard.isHidden = on || !(gridIfLoaded?.isHidden ?? true)
++        keyboard.isHidden = on || !(gridIfLoaded?.isHidden ?? true) || emojiShown || symbolPanelShown
+         updatePlainLightButton()
+         if !on {
+             candidateBar.setNeedsLayout()
+@@ -2149,7 +2183,29 @@ final class KeyboardViewController: UIInputViewController {
+             self.feel(.key(.delete))
+             if !self.lastEmojiInserted.isEmpty, (self.host.documentContextBeforeInput ?? "").hasSuffix(self.lastEmojiInserted) { for _ in self.lastEmojiInserted { self.host.deleteBackward() }; self.lastEmojiInserted = "" } else { self.lastEmojiInserted = ""; self.host.deleteBackward() }
+         }
+-        p.onBack = { [weak self] in self?.feel(.key(.page(.letters))); self?.showEmoji(false) }
++        // R95 0ms instant-open + 350ms double-tap upgrade to Kaomoji + same-spot close
++        p.onBack = { [weak self] in
++            guard let self else { return }
++            let dt = CACurrentMediaTime() - self.lastEmojiOpenTime
++            if !p.kaomojiModeForTests && dt < 0.35 {
++                self.feel(.mosto)
++                p.load(kaomoji: true)
++            } else {
++                self.feel(.key(.page(.letters)))
++                self.showEmoji(false)
++            }
++        }
++        p.onNumbers = { [weak self] in
++            guard let self else { return }
++            self.feel(.key(.page(self.numberPadOn ? .numpad : .numbers)))
++            self.showEmoji(false)
++            self.handle(.page(self.numberPadOn ? .numpad : .numbers), tap: nil)
++        }
++        p.onReturn = { [weak self] in
++            guard let self else { return }
++            self.feel(.key(.ret))
++            self.handle(.ret, tap: nil)
++        }
+         p.onSettings = { [weak self] in self?.showSettings(true) }
+         p.onFeedback = { [weak self] ev in self?.feel(ev) }
+         return p
+@@ -2161,8 +2217,11 @@ final class KeyboardViewController: UIInputViewController {
+         emojiShown = on
+         if on {
+             showGrid(false)
++            showSymbolPanel(false)
+             endEnglishWord()
++            syncMostoAnchors()
+             emojiPanel.setChinese(chinese)
++            emojiPanel.setReturnLabel(returnLabel().0, chinese: chinese)
+             let cb = currentContentBounds()
+             emojiPanel.frame = CGRect(x: view.safeAreaInsets.left, y: cb.minY, width: max(0, cb.width - view.safeAreaInsets.left - view.safeAreaInsets.right), height: cb.height)
+             emojiPanel.load(kaomoji: kaomoji)
+@@ -2174,6 +2233,59 @@ final class KeyboardViewController: UIInputViewController {
+         }
+         if on { emojiPanel.isHidden = false } else { emojiPanelIfLoaded?.isHidden = true }
+         candidateBar.isHidden = on || !(settingsPanelIfLoaded?.isHidden ?? true); updatePlainLightButton()
+-        keyboard.isHidden = on || !(gridIfLoaded?.isHidden ?? true) || !(settingsPanelIfLoaded?.isHidden ?? true)
++        keyboard.isHidden = on || symbolPanelShown || !(gridIfLoaded?.isHidden ?? true) || !(settingsPanelIfLoaded?.isHidden ?? true)
++    }
++
++    // MARK: - 九宫格分类符号面板
++
++    private func makeSymbolPanel() -> SymbolPanelView {
++        let p = SymbolPanelView()
++        p.isHidden = true
++        root.addSubview(p)
++        p.onSymbol = { [weak self] s in self?.symbol(s) }
++        p.onDelete = { [weak self] in
++            guard let self else { return }
++            self.feel(.key(.delete))
++            self.handle(.delete, tap: nil)
++        }
++        p.onSpace = { [weak self] in
++            guard let self else { return }
++            self.feel(.key(.space))
++            self.handle(.space, tap: nil)
++        }
++        p.onReturn = { [weak self] in
++            guard let self else { return }
++            self.feel(.key(.ret))
++            self.handle(.ret, tap: nil)
++        }
++        p.onClose = { [weak self] in
++            guard let self else { return }
++            self.feel(.key(.page(.letters)))
++            self.showSymbolPanel(false)
++        }
++        p.onFeedback = { [weak self] ev in self?.feel(ev) }
++        return p
++    }
++
++    private func showSymbolPanel(_ on: Bool) {
++        guard on != symbolPanelShown else { return }
++        symbolPanelShown = on
++        if on {
++            showGrid(false)
++            showEmoji(false)
++            endEnglishWord()
++            symbolPanel.setReturnLabel(returnLabel().0, chinese: chinese)
++            let insetL = view.safeAreaInsets.left, insetR = view.safeAreaInsets.right
++            let cb = currentContentBounds()
++            let topBarH = candidateBar.bounds.height > 0 ? candidateBar.bounds.height : barHeight
++            symbolPanel.frame = CGRect(x: insetL, y: cb.minY + topBarH, width: max(0, cb.width - insetL - insetR), height: max(0, cb.height - topBarH))
++            symbolPanel.themeChanged()
++            symbolPanel.isHidden = false
++            root.bringSubviewToFront(symbolPanel)
++        } else {
++            symbolPanelIfLoaded?.isHidden = true
++        }
++        updatePlainLightButton()
++        keyboard.isHidden = on || emojiShown || !(gridIfLoaded?.isHidden ?? true) || !(settingsPanelIfLoaded?.isHidden ?? true)
+     }
+ }

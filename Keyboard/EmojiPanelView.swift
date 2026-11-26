@@ -138,7 +138,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     func tapKaomojiShortcutForTests() { kaomojiShortcutTapped() }
     var collectionForTests: UICollectionView { collection }
     var portraitDockLightbulbUnclippedForTests: Bool {
-        tabButtons.count > 6 && tabButtons[6].frame.maxX <= tabScrollBox.bounds.width
+        tabButtons.count > 3 && tabButtons[3].frame.maxX <= tabScrollBox.bounds.width + 0.5
     }
     var kaomojiDockGearFullyVisibleForTests: Bool {
         guard let last = tabButtons.last else { return false }
@@ -643,7 +643,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         updateMoodMostoPose(animated: false)
         selected = -1
         pendingScrollToSelectedTab = true
-        returnButton.isHidden = true
+        returnButton.isHidden = false
         deleteButton.isHidden = false
         applyLips()
         moodHeader.isHidden = !kaomoji
@@ -800,19 +800,20 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         let gapX = Metrics.gapX
         let btnH: CGFloat = barH - 8
         let btnY: CGFloat = 4
-        let leftW = floor(1.4 * unit - gapX)
+        let isLand = b.width > 500
+        let leftW = isLand ? 54 : floor(1.4 * unit - gapX)
         let leftX = floor(sideInset + gapX / 2)
         backButton.frame = CGRect(x: leftX, y: btnY, width: max(40, leftW), height: btnH)
 
-        let mrW = mostoAnchorWidth ?? max(32, floor(1.0 * unit - gapX))
+        let mrW = mostoAnchorWidth ?? (isLand ? 42 : max(32, floor(1.0 * unit - gapX)))
         let mrX = mostoAnchorX ?? (backButton.frame.maxX + gapX)
         mostoReturnButton.frame = CGRect(x: mrX, y: btnY, width: mrW, height: btnH)
 
-        let retW = max(52, floor(1.8 * unit - gapX))
+        let retW = isLand ? 66 : max(52, floor(1.8 * unit - gapX))
         let retX = floor(b.width - sideInset - gapX / 2 - retW)
         returnButton.frame = CGRect(x: retX, y: btnY, width: retW, height: btnH)
 
-        let delW: CGFloat = max(36, floor(1.05 * unit - gapX))
+        let delW: CGFloat = isLand ? 44 : max(36, floor(1.05 * unit - gapX))
         deleteButton.frame = CGRect(x: returnButton.frame.minX - gapX - delW, y: btnY, width: delW, height: btnH)
 
         for btn in [backButton, mostoReturnButton, deleteButton, returnButton] {
@@ -844,11 +845,9 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             totalTabW = boxW
         } else {
             let startX: CGFloat = 2
-            let nVisible = boxW >= 250
-                ? max(7, min(dockItems.count, Int(floor((boxW + 6) / 39))))
-                : max(5, min(dockItems.count, Int(floor((boxW + 2) / 36))))
-            let stride = (boxW - startX + 2) / CGFloat(nVisible)
-            let itemW = min(34, max(26, floor(stride - 5)))
+            let nVisible = max(4, min(dockItems.count, Int(floor((boxW - startX) / 34))))
+            let stride = (boxW - startX) / CGFloat(nVisible)
+            let itemW = min(34, max(26, floor(stride - 4)))
             for (i, item) in dockItems.enumerated() {
                 item.frame = CGRect(x: startX + CGFloat(i) * stride, y: ty, width: itemW, height: itemH)
             }
