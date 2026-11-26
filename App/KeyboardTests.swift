@@ -4313,7 +4313,7 @@ enum KeyboardTests {
         let decoder = Decoder(lexicon: lex, user: ud)
         decoder.scheme = .xiaohe
         decoder.leftContext = Array("寄出")
-        let taps = "ubho".map { Tap.exact($0) }
+        let taps = "uzho".map { Tap.exact($0) }
         let beforeScore = decoder.decode(taps).candidates.first(where: { $0.text == "收货" })?.score ?? -.infinity
 
         ud.learnBigram(prev: "寄出", next: "收货")
