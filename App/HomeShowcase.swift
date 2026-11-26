@@ -468,6 +468,20 @@ func aboutIcon(_ id: String) -> String {
     switch id {
     case "privacy": return "hand.raised"
     case "terms": return "doc.text"
-    default: return "shippingbox"
+    case "sources": return "books.vertical"
+    case "licenses": return "shippingbox"
+    case "regulatory": return "checkmark.seal"
+    default: return "doc.plaintext"
+    }
+}
+
+func aboutSubtitle(_ id: String) -> String? {
+    switch id {
+    case "privacy": return "键盘 100% 离线 · 权限与本机数据清单"
+    case "terms": return "免费工具条款 · IP 归属与商标声明"
+    case "sources": return "词库、语言模型与双拼键位出处"
+    case "licenses": return "GPL-3.0 与第三方 SPDX 开源许可"
+    case "regulatory": return "PIPL 合规 · 离线备案口径 · 无 AI 声明"
+    default: return nil
     }
 }

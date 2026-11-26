@@ -408,7 +408,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             let night = KeyboardSettings.shared.appearance == 2 || (KeyboardSettings.shared.appearance == 0 && t.userInterfaceStyle == .dark)
             let imgName = night ? "mosto_night" : "mosto_day"
             if let face = UIImage(named: imgName, in: Bundle(for: EmojiPanelView.self), with: nil) {
-                mostoReturnButton.setImage(Self.resizedFace(face, side: 22).withRenderingMode(.alwaysOriginal), for: .normal)
+                mostoReturnButton.setImage(Self.resizedFace(face, side: 28).withRenderingMode(.alwaysOriginal), for: .normal)
             }
         }
         returnButton.backgroundColor = Theme.accentKey

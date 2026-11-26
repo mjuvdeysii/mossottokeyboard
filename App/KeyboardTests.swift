@@ -4282,7 +4282,18 @@ enum KeyboardTests {
         log(MosslingLink.appleID == 6825856138 && cardSize.width > 200 && cardSize.height > 80,
             "r96.Mossling sister-app card binds Apple ID 6825856138 and renders cleanly",
             "id=\(MosslingLink.appleID) size=\(cardSize)")
-    }
+    
+        // 7. R97: Official adaptive MosslingAppIcon loads & MostoRunController steps in-place without view churn
+        let mosslingIconOK = mostoImage("MosslingAppIcon").size.width > 0
+        let runCtrl = MostoRunController()
+        runCtrl.handleTouchDown()
+        runCtrl.advance(to: 1.0, trackWidth: 340)
+        runCtrl.advance(to: 1.016, trackWidth: 340)
+        let ctrlSmoothOK = runCtrl.engine.running && runCtrl.engine.distance > 0
+        log(mosslingIconOK && ctrlSmoothOK,
+            "r97.Official MosslingAppIcon loads and MostoRunController steps in-place without view churn",
+            "icon=\(mosslingIconOK) dist=\(runCtrl.engine.distance)")
+}
 
     static func fuzz(_ window: UIWindow) {
         var rng = SeededRandom(seed: fuzzSeed)

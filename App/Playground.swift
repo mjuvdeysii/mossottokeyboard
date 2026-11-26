@@ -558,13 +558,162 @@ struct MostoRunEngine {
     }
 }
 
+/// High-frequency non-publishing game controller so TimelineView + Canvas runs at native 60/120fps
+/// without triggering SwiftUI View-tree invalidation, per-frame image decoding, or Taptic Engine hitches.
+final class MostoRunController: ObservableObject {
+    var engine = MostoRunEngine()
+    private var lastTimestamp: TimeInterval? = nil
+    private var jumpBufferRemaining: CGFloat = 0
+    private var lastPublishedScore: Int = 0
+    private var lastPublishedRunning: Bool = false
+    private var lastPublishedGameOver: Bool = false
+    private var lastPublishedNight: Bool = false
+
+    @Published var displayedScore: Int = 0
+    @Published var bestScore: Int = MostoRunEngine.loadHighScore()
+    @Published var isRunning: Bool = false
+    @Published var isGameOver: Bool = false
+    @Published var isNight: Bool = false
+
+    // Pre-downsampled sprites (120x120 px = 40pt @3x) cached once so Canvas never decodes PNGs per frame.
+    let mostoDayImage: Image
+    let mostoNightImage: Image
+    let ottoLitImage: Image
+
+    // Pre-warmed haptic generators to eliminate main-thread XPC stutter on jump/pickup.
+    private let jumpHaptic = UIImpactFeedbackGenerator(style: .light)
+    private let beadHaptic = UIImpactFeedbackGenerator(style: .soft)
+    private let crashHaptic = UINotificationFeedbackGenerator()
+
+    init() {
+        self.mostoDayImage = Image(uiImage: Self.cachedSprite("Mosto", side: 120))
+        self.mostoNightImage = Image(uiImage: Self.cachedSprite("MostoNight", side: 120))
+        self.ottoLitImage = Image(uiImage: Self.cachedSprite("OttoLit", side: 120))
+    }
+
+    private static func cachedSprite(_ name: String, side: CGFloat) -> UIImage {
+        let raw = mostoImage(name)
+        guard raw.size.width > 0, raw.size.height > 0 else { return raw }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1.0
+        format.opaque = false
+        return UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: format).image { _ in
+            raw.draw(in: CGRect(x: 0, y: 0, width: side, height: side))
+        }
+    }
+
+    func prepareHaptics() {
+        jumpHaptic.prepare()
+        beadHaptic.prepare()
+        crashHaptic.prepare()
+    }
+
+    func handleTouchDown() {
+        let wasRunning = engine.running
+        let wasGameOver = engine.gameOver
+        if engine.jump() {
+            jumpBufferRemaining = 0
+            if !wasRunning || wasGameOver {
+                lastTimestamp = nil
+                prepareHaptics()
+            }
+            if KeyboardSettings.shared.feedback {
+                jumpHaptic.impactOccurred(intensity: 0.72)
+                jumpHaptic.prepare()
+            }
+            if KeyboardSettings.shared.keySound {
+                AudioServicesPlaySystemSound(1104)
+            }
+            syncHUDIfNeeded(immediate: true)
+        } else if engine.running && !engine.gameOver {
+            // Buffer rapid tap slightly before landing so consecutive jumps never feel dropped.
+            jumpBufferRemaining = 0.11
+        }
+    }
+
+    /// Steps physics in-place inside Canvas render pass (zero @State churn per frame).
+    func advance(to timestamp: TimeInterval, trackWidth: CGFloat) {
+        guard engine.running, !engine.gameOver else {
+            lastTimestamp = timestamp
+            return
+        }
+        guard let prev = lastTimestamp else {
+            lastTimestamp = timestamp
+            return
+        }
+        lastTimestamp = timestamp
+        let dt = CGFloat(timestamp - prev)
+        guard dt > 0.0005 else { return }
+
+        if jumpBufferRemaining > 0 {
+            jumpBufferRemaining = max(0, jumpBufferRemaining - min(dt, 0.05))
+            if engine.playerY <= 1.5, engine.jump() {
+                jumpBufferRemaining = 0
+                if KeyboardSettings.shared.feedback {
+                    jumpHaptic.impactOccurred(intensity: 0.72)
+                    jumpHaptic.prepare()
+                }
+            }
+        }
+
+        let res = engine.step(dt: dt, trackWidth: max(260, trackWidth))
+        if res.collected {
+            if KeyboardSettings.shared.feedback {
+                beadHaptic.impactOccurred(intensity: 0.8)
+                beadHaptic.prepare()
+            }
+            if KeyboardSettings.shared.keySound {
+                AudioServicesPlaySystemSound(1156)
+            }
+        }
+        if res.died {
+            let newBest = MostoRunEngine.recordHighScore(engine.score)
+            if KeyboardSettings.shared.feedback {
+                crashHaptic.notificationOccurred(.warning)
+            }
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.bestScore = newBest
+                self.syncHUDIfNeeded(immediate: true)
+            }
+            return
+        }
+        syncHUDIfNeeded(immediate: false)
+    }
+
+    private func syncHUDIfNeeded(immediate: Bool) {
+        let s = engine.score
+        let r = engine.running
+        let g = engine.gameOver
+        let n = engine.isNight
+        guard s != lastPublishedScore || r != lastPublishedRunning || g != lastPublishedGameOver || n != lastPublishedNight else {
+            return
+        }
+        lastPublishedScore = s
+        lastPublishedRunning = r
+        lastPublishedGameOver = g
+        lastPublishedNight = n
+        let apply = { [weak self] in
+            guard let self else { return }
+            self.displayedScore = s
+            self.isRunning = r
+            self.isGameOver = g
+            self.isNight = n
+        }
+        if immediate && Thread.isMainThread {
+            apply()
+        } else {
+            DispatchQueue.main.async(execute: apply)
+        }
+    }
+}
+
 /// Interactive Chrome-Dino-inspired offline desk runner starring Mosto, with natural handoff to 摸索台灯.
 struct MostoRunEasterEggView: View {
     var onOpenMossling: () -> Void
     @Environment(\.dismiss) private var dismiss
-    @State private var engine = MostoRunEngine()
-    @State private var bestScore = MostoRunEngine.loadHighScore()
-    @State private var lastTick: Date? = nil
+    @StateObject private var controller = MostoRunController()
+    @State private var isPressing = false
 
     var body: some View {
         NavigationStack {
@@ -574,36 +723,48 @@ struct MostoRunEasterEggView: View {
                         Text("桌边夜行 · Mosto Run")
                             .font(.headline.weight(.bold))
                             .foregroundStyle(MossOttoStyle.inkPrimary)
-                        Text(engine.isNight ? "夜灯模式 · 跳过铅笔与积木，接住暖金光珠" : "日光书桌 · 轻点屏幕跳跃，满 100 分切换夜灯")
+                        Text(controller.isNight ? "夜灯模式 · 跳过铅笔与积木，接住暖金光珠" : "日光书桌 · 轻点屏幕跳跃，满 100 分切换夜灯")
                             .font(.caption)
                             .foregroundStyle(MossOttoStyle.inkSecondary)
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 2) {
-                        Text("\(engine.score)")
+                        Text("\(controller.displayedScore)")
                             .font(.title2.weight(.bold).monospacedDigit())
                             .foregroundStyle(MossOttoStyle.violet)
-                        Text("最高 \(bestScore)")
+                        Text("最高 \(controller.bestScore)")
                             .font(.caption2.weight(.semibold).monospacedDigit())
                             .foregroundStyle(MossOttoStyle.inkSecondary)
                     }
                 }
 
-                TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: !engine.running)) { timeline in
-                    Canvas { ctx, size in
+                TimelineView(.animation(paused: !controller.isRunning)) { timeline in
+                    Canvas(opaque: true, rendersAsynchronously: false) { ctx, size in
+                        controller.advance(to: timeline.date.timeIntervalSinceReferenceDate, trackWidth: size.width)
+                        let eng = controller.engine
+                        let night = eng.isNight
                         let groundY = size.height - 34
-                        let bgTop = engine.isNight ? Color(uiColor: MossOttoStyle.hex(0x161229)) : Color(uiColor: MossOttoStyle.hex(0xF6F2EA))
-                        let bgBot = engine.isNight ? Color(uiColor: MossOttoStyle.hex(0x231C3E)) : Color(uiColor: MossOttoStyle.hex(0xEBE5D8))
+
+                        let bgTop = night ? Color(uiColor: MossOttoStyle.hex(0x161229)) : Color(uiColor: MossOttoStyle.hex(0xF6F2EA))
+                        let bgBot = night ? Color(uiColor: MossOttoStyle.hex(0x231C3E)) : Color(uiColor: MossOttoStyle.hex(0xEBE5D8))
                         ctx.fill(Path(CGRect(origin: .zero, size: size)),
                                  with: .linearGradient(Gradient(colors: [bgTop, bgBot]),
                                                        startPoint: .zero, endPoint: CGPoint(x: 0, y: size.height)))
 
-                        // Desk surface line
-                        let deskColor = engine.isNight ? Color.white.opacity(0.18) : Color(uiColor: MossOttoStyle.hex(0x2B1961, 0.16))
+                        // Desk surface line + subtle scrolling desk grain ticks for crisp motion feel
+                        let deskColor = night ? Color.white.opacity(0.20) : Color(uiColor: MossOttoStyle.hex(0x2B1961, 0.16))
                         ctx.fill(Path(CGRect(x: 0, y: groundY, width: size.width, height: 1.5)), with: .color(deskColor))
+                        let tickStride: CGFloat = 44
+                        let tickOffset = eng.distance.truncatingRemainder(dividingBy: tickStride)
+                        let tickColor = night ? Color.white.opacity(0.11) : Color(uiColor: MossOttoStyle.hex(0x2B1961, 0.09))
+                        var tx = -tickOffset
+                        while tx < size.width {
+                            ctx.fill(Path(CGRect(x: tx, y: groundY + 8, width: 14, height: 2)), with: .color(tickColor))
+                            tx += tickStride
+                        }
 
                         // 100-pt milestone: Otto lights up the desk with a warm golden beam in Night mode
-                        if engine.isNight {
+                        if night {
                             var beam = Path()
                             beam.move(to: CGPoint(x: size.width - 42, y: 18))
                             beam.addLine(to: CGPoint(x: size.width - 170, y: groundY))
@@ -614,29 +775,31 @@ struct MostoRunEasterEggView: View {
                                 startPoint: CGPoint(x: size.width - 42, y: 18),
                                 endPoint: CGPoint(x: size.width - 80, y: groundY)
                             ))
-                            let ottoSprite = mostoImage("OttoLit")
-                            ctx.draw(Image(uiImage: ottoSprite), in: CGRect(x: size.width - 62, y: 10, width: 42, height: 42))
+                            ctx.draw(controller.ottoLitImage, in: CGRect(x: size.width - 62, y: 10, width: 42, height: 42))
                         }
 
-                        // Obstacles (pencils & blocks)
-                        for o in engine.obstacles {
+                        // Obstacles (pencils & wooden blocks)
+                        let pencilColor = Color(uiColor: MossOttoStyle.hex(night ? 0xD69A34 : 0x55704A))
+                        let blockColor = Color(uiColor: MossOttoStyle.hex(night ? 0x8F7AD8 : 0x2D4A8C))
+                        for o in eng.obstacles {
                             let rect = CGRect(x: o.x, y: groundY - o.height, width: o.width, height: o.height)
-                            let fill = o.kind == 0
-                                ? Color(uiColor: MossOttoStyle.hex(engine.isNight ? 0xD69A34 : 0x55704A))
-                                : Color(uiColor: MossOttoStyle.hex(engine.isNight ? 0x8F7AD8 : 0x2D4A8C))
-                            ctx.fill(Path(roundedRect: rect, cornerRadius: 4), with: .color(fill))
+                            ctx.fill(Path(roundedRect: rect, cornerRadius: 4), with: .color(o.kind == 0 ? pencilColor : blockColor))
                         }
 
                         // Otto's warm gold lamp beads
-                        for b in engine.beads where !b.collected {
+                        let beadColor = Color(uiColor: MossOttoStyle.hex(0xFFC45A))
+                        for b in eng.beads where !b.collected {
                             let r = CGRect(x: b.x - 6, y: groundY - b.y - 6, width: 12, height: 12)
-                            ctx.fill(Path(ellipseIn: r), with: .color(Color(uiColor: MossOttoStyle.hex(0xFFC45A))))
+                            ctx.fill(Path(ellipseIn: r), with: .color(beadColor))
                         }
 
-                        // Mosto player sprite
-                        let sprite = mostoImage(engine.isNight ? "MostoNight" : "Mosto")
-                        let pRect = CGRect(x: 48, y: groundY - engine.playerY - 38, width: 38, height: 38)
-                        ctx.draw(Image(uiImage: sprite), in: pRect)
+                        // Ground contact shadow + pre-cached Mosto sprite
+                        let shadowScale = max(0.35, 1.0 - eng.playerY / 130.0)
+                        let sw = 26 * shadowScale
+                        ctx.fill(Path(ellipseIn: CGRect(x: 67 - sw * 0.5, y: groundY - 2, width: sw, height: 4)),
+                                 with: .color(night ? Color.black.opacity(0.32) : Color.black.opacity(0.12)))
+                        let pRect = CGRect(x: 48, y: groundY - eng.playerY - 38, width: 38, height: 38)
+                        ctx.draw(night ? controller.mostoNightImage : controller.mostoDayImage, in: pRect)
                     }
                     .frame(height: 196)
                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
@@ -645,14 +808,14 @@ struct MostoRunEasterEggView: View {
                             .strokeBorder(MossOttoStyle.hairline, lineWidth: 0.6)
                     )
                     .overlay {
-                        if !engine.running {
+                        if !controller.isRunning {
                             VStack(spacing: 8) {
-                                Text(engine.gameOver ? (engine.score >= 100 ? "Otto 为你点亮了夜灯" : (engine.score >= 50 ? "快追上 Otto 的台灯光了" : "书桌上的铅笔有点高")) : "轻点屏幕，开始夜行")
+                                Text(controller.isGameOver ? (controller.displayedScore >= 100 ? "Otto 为你点亮了夜灯" : (controller.displayedScore >= 50 ? "快追上 Otto 的台灯光了" : "书桌上的铅笔有点高")) : "轻点屏幕，开始夜行")
                                     .font(.subheadline.weight(.bold))
-                                    .foregroundStyle(engine.isNight ? Color.white : MossOttoStyle.inkPrimary)
-                                Text(engine.gameOver ? "本次得分 \(engine.score) · 轻点再来一局" : "纯离线彩蛋 · 满 100 分召唤 Otto 点灯")
+                                    .foregroundStyle(controller.isNight ? Color.white : MossOttoStyle.inkPrimary)
+                                Text(controller.isGameOver ? "本次得分 \(controller.displayedScore) · 轻点再来一局" : "纯离线彩蛋 · 满 100 分召唤 Otto 点灯")
                                     .font(.caption)
-                                    .foregroundStyle(engine.isNight ? Color.white.opacity(0.72) : MossOttoStyle.inkSecondary)
+                                    .foregroundStyle(controller.isNight ? Color.white.opacity(0.72) : MossOttoStyle.inkSecondary)
                             }
                             .padding(.horizontal, 16)
                             .padding(.vertical, 10)
@@ -660,50 +823,32 @@ struct MostoRunEasterEggView: View {
                         }
                     }
                     .contentShape(Rectangle())
-                    .onTapGesture {
-                        if engine.jump() {
-                            if KeyboardSettings.shared.feedback {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred(intensity: 0.72)
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { _ in
+                                guard !isPressing else { return }
+                                isPressing = true
+                                controller.handleTouchDown()
                             }
-                            if KeyboardSettings.shared.keySound {
-                                AudioServicesPlaySystemSound(1104)
+                            .onEnded { _ in
+                                isPressing = false
                             }
-                        }
-                    }
-                    .onChange(of: timeline.date) { now in
-                        if let prev = lastTick {
-                            let res = engine.step(dt: CGFloat(now.timeIntervalSince(prev)))
-                            if res.collected {
-                                if KeyboardSettings.shared.feedback {
-                                    UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.8)
-                                }
-                                if KeyboardSettings.shared.keySound {
-                                    AudioServicesPlaySystemSound(1156)
-                                }
-                            }
-                            if res.died {
-                                bestScore = MostoRunEngine.recordHighScore(engine.score)
-                                if KeyboardSettings.shared.feedback {
-                                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
-                                }
-                            }
-                        }
-                        lastTick = now
-                    }
+                    )
                 }
 
-                // Gentle, non-pushy character handoff to 摸索台灯
+                // Gentle, non-pushy character handoff to 摸索台灯 using official adaptive App Icon
                 Button(action: onOpenMossling) {
                     HStack(spacing: 12) {
-                        Image(uiImage: mostoImage("OttoLit"))
+                        Image("MosslingAppIcon")
                             .resizable()
                             .scaledToFit()
-                            .frame(width: 36, height: 36)
+                            .frame(width: 40, height: 40)
+                            .shadow(color: Color.black.opacity(0.08), radius: 3, y: 1.5)
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Moss 和 Otto 住在《摸索台灯》里")
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(MossOttoStyle.inkPrimary)
-                            Text("0–3 岁亲子共玩与床头夜灯 · 点这里在 App Store 看一眼")
+                            Text("0–3 岁亲子共玩与床头夜灯 · 点这里去官网看看它们的故事")
                                 .font(.caption)
                                 .foregroundStyle(MossOttoStyle.inkSecondary)
                         }
@@ -730,6 +875,6 @@ struct MostoRunEasterEggView: View {
                 }
             }
         }
-        .onAppear { lastTick = Date() }
+        .onAppear { controller.prepareHaptics() }
     }
 }

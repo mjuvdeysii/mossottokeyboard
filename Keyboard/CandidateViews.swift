@@ -2907,7 +2907,7 @@ final class SettingsPanelView: UIView {
             mostoReturnButton.setImage(UIImage(systemName: "keyboard.chevron.compact.down", withConfiguration: cfg), for: .normal)
             mostoReturnButton.tintColor = Theme.selection
         } else if let raw = UIImage(named: isDark ? "mosto_night" : "mosto_day", in: Bundle(for: SettingsPanelView.self), with: nil) {
-            let side: CGFloat = 20
+            let side: CGFloat = 26
             let r = UIGraphicsImageRenderer(size: CGSize(width: side, height: side))
             let scaled = r.image { _ in raw.draw(in: CGRect(x: 0, y: 0, width: side, height: side)) }.withRenderingMode(.alwaysOriginal)
             mostoReturnButton.setImage(scaled, for: .normal)

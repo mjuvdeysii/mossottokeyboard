@@ -104,7 +104,7 @@ final class KeyView: UIView {
         let k = "cap_" + imgName
         if let img = symbolCache[k] { return img }
         guard let raw = UIImage(named: imgName, in: Bundle(for: KeyView.self), with: nil) else { return nil }
-        let side: CGFloat = 22
+        let side: CGFloat = 28
         let r = UIGraphicsImageRenderer(size: CGSize(width: side, height: side))
         let scaled = r.image { _ in raw.draw(in: CGRect(x: 0, y: 0, width: side, height: side)) }.withRenderingMode(.alwaysOriginal)
         symbolCache[k] = scaled

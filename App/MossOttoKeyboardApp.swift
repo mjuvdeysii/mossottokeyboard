@@ -1,5 +1,6 @@
 import SwiftUI
 import StoreKit
+import SafariServices
 import UIKit
 
 @main
@@ -97,6 +98,7 @@ private struct CompanionHomeScreen: View {
     @Environment(\.scenePhase) private var phase
     @State private var added = KeyboardStatus.isAdded()
     @State private var verifyText = ""
+    @State private var showMosslingWebsite = false
     @State private var showMosslingStore = false
     @FocusState private var typing: Bool
 
@@ -114,9 +116,10 @@ private struct CompanionHomeScreen: View {
 
                 CompanionCapabilitiesSection()
 
-                MosslingSisterAppCard {
-                    showMosslingStore = true
-                }
+                MosslingSisterAppCard(
+                    onOpenWebsite: { showMosslingWebsite = true },
+                    onOpenStore: { showMosslingStore = true }
+                )
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
@@ -143,11 +146,15 @@ private struct CompanionHomeScreen: View {
             MostoRunEasterEggView {
                 family.showMostoRun = false
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    showMosslingStore = true
+                    showMosslingWebsite = true
                 }
             }
             .presentationDetents([.fraction(0.62), .large])
             .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showMosslingWebsite) {
+            MosslingWebsiteSheet()
+                .ignoresSafeArea()
         }
         .sheet(isPresented: $showMosslingStore) {
             MosslingAppStoreSheet()
@@ -719,6 +726,7 @@ private struct AboutScreen: View {
 struct AboutCompanionContent: View {
     let added: Bool
     var nav: AppNavigation? = nil
+    @State private var showMosslingWebsite = false
     @State private var showMosslingStore = false
 
     @MainActor
@@ -784,8 +792,13 @@ struct AboutCompanionContent: View {
                     .strokeBorder(MossOttoStyle.hairline, lineWidth: 0.5)
             )
 
-            MosslingSisterAppCard {
-                showMosslingStore = true
+            MosslingSisterAppCard(
+                onOpenWebsite: { showMosslingWebsite = true },
+                onOpenStore: { showMosslingStore = true }
+            )
+            .sheet(isPresented: $showMosslingWebsite) {
+                MosslingWebsiteSheet()
+                    .ignoresSafeArea()
             }
             .sheet(isPresented: $showMosslingStore) {
                 MosslingAppStoreSheet()
@@ -857,7 +870,7 @@ struct AboutCompanionContent: View {
                 }
             }
 
-            Card(title: "条款与开源许可") {
+            Card(title: "合规、来源与许可") {
                 ForEach(Array(LegalText.docs.enumerated()), id: \.element.id) { idx, doc in
                     if idx > 0 { Divider() }
                     cardLink {
@@ -865,9 +878,9 @@ struct AboutCompanionContent: View {
                     } label: {
                         aboutRow(
                             icon: aboutIcon(doc.id),
-                            iconColor: MossOttoStyle.inkSecondary,
+                            iconColor: doc.id == "regulatory" ? MossOttoStyle.moss : MossOttoStyle.inkSecondary,
                             title: doc.title,
-                            subtitle: nil
+                            subtitle: aboutSubtitle(doc.id)
                         )
                     }
                 }
@@ -936,12 +949,26 @@ struct AboutCompanionContent: View {
 }
 
 private struct StudioVersionFooter: View {
+    private var versionLine: String {
+        let short = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
+        return "Mosto键盘 v\(short) (Build \(build)) · GPL-3.0"
+    }
+
     var body: some View {
-        Text("OTTOSSOM Studio · 纯离线 · 无广告 · 无追踪")
-            .font(.caption2)
-            .foregroundStyle(MossOttoStyle.inkSecondary.opacity(0.75))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 6)
+        VStack(spacing: 4) {
+            Text(versionLine)
+                .font(.caption2.weight(.medium).monospacedDigit())
+                .foregroundStyle(MossOttoStyle.inkSecondary.opacity(0.85))
+            Text("OTTOSSOM Studio · 键盘扩展 100% 离线 · 无广告 · 无追踪")
+                .font(.caption2)
+                .foregroundStyle(MossOttoStyle.inkSecondary.opacity(0.72))
+            Text("© 2026 OTTOSSOM Studio")
+                .font(.caption2)
+                .foregroundStyle(MossOttoStyle.inkSecondary.opacity(0.6))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
     }
 }
 
@@ -1122,6 +1149,7 @@ enum MosslingLink {
 
 /// Restrained, editorial sister-app card for 摸索台灯 (Moss & Otto 0-3y parenting companion).
 struct MosslingSisterAppCard: View {
+    var onOpenWebsite: () -> Void = {}
     var onOpenStore: () -> Void = {}
 
     @MainActor
@@ -1134,18 +1162,11 @@ struct MosslingSisterAppCard: View {
     var body: some View {
         Card(title: "来自同一盏灯 · 摸索台灯") {
             HStack(spacing: 12) {
-                ZStack(alignment: .bottomTrailing) {
-                    Image(uiImage: mostoImage("OttoLit"))
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 48, height: 48)
-                    Image(uiImage: mostoImage("Moss"))
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 26, height: 26)
-                        .offset(x: 4, y: 2)
-                }
-                .frame(width: 54, height: 52)
+                Image("MosslingAppIcon")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 54, height: 54)
+                    .shadow(color: Color.black.opacity(0.08), radius: 4, y: 2)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text("孩子摸索，大人点灯")
@@ -1159,22 +1180,53 @@ struct MosslingSisterAppCard: View {
                 Spacer(minLength: 4)
             }
 
-            Button(action: onOpenStore) {
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.up.right.square")
-                        .font(.system(size: 13, weight: .semibold))
-                    Text("在 App Store 看看《摸索台灯》")
-                        .font(.subheadline.weight(.semibold))
+            HStack(spacing: 10) {
+                Button(action: onOpenWebsite) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "safari")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("去官网了解《摸索台灯》")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .foregroundStyle(MossOttoStyle.onViolet)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 11)
+                    .background(RoundedRectangle(cornerRadius: 13, style: .continuous).fill(MossOttoStyle.violet))
                 }
-                .foregroundStyle(MossOttoStyle.onViolet)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 11)
-                .background(RoundedRectangle(cornerRadius: 13, style: .continuous).fill(MossOttoStyle.violet))
+                .buttonStyle(.plain)
+                .accessibilityLabel("打开摸索台灯官网")
+
+                Button(action: onOpenStore) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.up.right.square")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text("App Store")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .foregroundStyle(MossOttoStyle.violet)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 11)
+                    .background(RoundedRectangle(cornerRadius: 13, style: .continuous).fill(MossOttoStyle.violet.opacity(0.11)))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("在 App Store 打开摸索台灯")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("在 App Store 打开摸索台灯")
         }
     }
+}
+
+/// Native in-app Safari sheet presenting the official 摸索台灯 website (https://mossotto.pages.dev/).
+struct MosslingWebsiteSheet: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> SFSafariViewController {
+        let cfg = SFSafariViewController.Configuration()
+        cfg.entersReaderIfAvailable = false
+        let vc = SFSafariViewController(url: MosslingLink.websiteURL, configuration: cfg)
+        vc.preferredControlTintColor = UIColor(MossOttoStyle.violet)
+        vc.dismissButtonStyle = .close
+        return vc
+    }
+
+    func updateUIViewController(_ uiViewController: SFSafariViewController, context: Context) {}
 }
 
 /// Native in-app App Store product card (`SKStoreProductViewController`) for 摸索台灯 (Apple ID 6825856138).
