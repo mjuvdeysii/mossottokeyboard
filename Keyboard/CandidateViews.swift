@@ -1103,26 +1103,6 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         mosto.isHidden = true
         updateIdleControlsVisibility()
         onMostoShown?(on)
-        return
-        if false {
-        mosto.isHidden = false
-        mosto.transform = .identity
-        updateIdleControlsVisibility()
-        if window == nil || UIAccessibility.isReduceMotionEnabled {
-            mosto.alpha = 1
-            onMostoShown?(true)
-            return
-        }
-        mosto.alpha = 0
-        onMostoShown?(true)
-        UIView.animate(withDuration: 0.14, delay: 0, options: [.allowUserInteraction]) {
-            self.mosto.alpha = 1
-        }
-        mostoTimer = Timer.scheduledTimer(withTimeInterval: 0.26, repeats: false) { [weak self] _ in
-            guard let self, self.mostoWanted else { return }
-            self.mosto.greet()
-        }
-        }
     }
 
     override func layoutSubviews() {
