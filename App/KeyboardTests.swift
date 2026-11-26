@@ -171,6 +171,7 @@ enum KeyboardTests {
         r94T9UnifiedLayoutAndStateMachines(window)
         r95ZeroDriftToggleAndMostoSuperKey(window)
         r96HiddenBugFixesAndCompanionEcosystem(window)
+        r99LocalBigramAndAdaptiveBeam(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -4294,6 +4295,58 @@ enum KeyboardTests {
             "r97.Official MosslingAppIcon loads and MostoRunController steps in-place without view churn",
             "icon=\(mosslingIconOK) dist=\(runCtrl.engine.distance)")
 }
+
+    // MARK: - R99: Local Word-Pair Bigram Memory & Adaptive Long-Sentence Beam
+
+    static func r99LocalBigramAndAdaptiveBeam(_ window: UIWindow) {
+        _ = window
+        guard let lexPath = KeyboardViewController.resourceBundle.path(forResource: "lexicon", ofType: "bin"),
+              let lex = try? Lexicon(path: lexPath) else {
+            log(false, "r99.Local bigram and adaptive beam setup", "missing lexicon.bin")
+            return
+        }
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mosto-r99-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("userdict.json")
+        let ud = UserDictionary(lexicon: lex, url: url)
+
+        let decoder = Decoder(lexicon: lex, user: ud)
+        decoder.scheme = .xiaohe
+        decoder.leftContext = Array("寄出")
+        let taps = "ubho".map { Tap.exact($0) }
+        let beforeScore = decoder.decode(taps).candidates.first(where: { $0.text == "收货" })?.score ?? -.infinity
+
+        ud.learnBigram(prev: "寄出", next: "收货")
+        ud.learnBigram(prev: "寄出", next: "收货")
+        let afterScore = decoder.decode(taps).candidates.first(where: { $0.text == "收货" })?.score ?? -.infinity
+        let boosted = afterScore > beforeScore + 1.0
+        let predicted = ud.continuations(after: Array("寄出")).first == "收货"
+
+        ud.save()
+        let bigramFile = url.appendingPathExtension("bigrams")
+        let fileCreated = FileManager.default.fileExists(atPath: bigramFile.path)
+        let reloaded = UserDictionary(lexicon: lex, url: url)
+        let persistOk = fileCreated
+            && reloaded.bigramCountForTests == 1
+            && reloaded.continuations(after: Array("寄出")).first == "收货"
+
+        reloaded.reset()
+        let clearedOk = reloaded.bigramCountForTests == 0
+            && !FileManager.default.fileExists(atPath: bigramFile.path)
+
+        let beamOk = decoder.longBeam == 6 && decoder.longBeam >= decoder.beam
+        decoder.user = nil
+        decoder.leftContext = []
+        let longXiaohe = decoder.decode("nihcdajx".map { Tap.exact($0) })
+        decoder.scheme = .quanpin
+        let longQuanpin = decoder.decode("jintian".map { Tap.exact($0) })
+        let decodeOk = longXiaohe.candidates.first?.tapCount == 8
+            && longQuanpin.candidates.first?.tapCount == 7
+
+        log(boosted && predicted && persistOk && clearedOk && beamOk && decodeOk,
+            "r99.Local word-pair bigram persists, boosts continuations/lattice, resets cleanly, and adaptive longBeam decodes long sequences",
+            "boosted=\(boosted) pred=\(predicted) persist=\(persistOk) clear=\(clearedOk) beam=\(beamOk) decode=\(decodeOk)")
+    }
 
     static func fuzz(_ window: UIWindow) {
         var rng = SeededRandom(seed: fuzzSeed)

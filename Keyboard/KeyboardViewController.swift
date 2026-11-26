@@ -121,6 +121,7 @@ final class KeyboardViewController: UIInputViewController {
     private var lastHostWriteTime: CFTimeInterval = 0
     private var lastReconcileTime: CFTimeInterval = 0
     private var lastCommittedContext = ""
+    private var lastCommittedWord = ""
     private var cachedFieldContext = ""
     /// In the real iOS .appex extension, show pinyin in CandidateBarView's leading single-row pill (0 setMarkedText XPC,
     /// < 1ms keystroke latency, 0ms haptic delay, 100% reliable candidate taps). In-app test bench keeps inline marked text.
@@ -361,6 +362,7 @@ final class KeyboardViewController: UIInputViewController {
             self.justInsertedPair = nil
             if hadPair { self.reconfigure() }
             self.lastCommittedContext = ""
+            self.lastCommittedWord = ""
             self.endEnglishWord()
             let before = self.host.documentContextBeforeInput
             let after = self.host.documentContextAfterInput
@@ -518,6 +520,7 @@ final class KeyboardViewController: UIInputViewController {
         hostEchoesMarked = 0
         lastEchoed = ""
         lastCommittedContext = ""
+        lastCommittedWord = ""
         cachedFieldContext = ""
         pairCloseStack.removeAll(keepingCapacity: true)
         candidateBar.showsPreedit = !useInlineMarkedText
@@ -677,6 +680,7 @@ final class KeyboardViewController: UIInputViewController {
             hostEchoesMarked = 0
             lastEchoed = ""
             lastCommittedContext = ""
+            lastCommittedWord = ""
             cachedFieldContext = ""
             let traitsChanged = fieldTraits() != lastFieldTraits
             if !taps.isEmpty, traitsChanged {
@@ -708,6 +712,7 @@ final class KeyboardViewController: UIInputViewController {
         super.selectionDidChange(textInput)
         if !useInlineMarkedText, !taps.isEmpty, CACurrentMediaTime() - lastHostWriteTime > 0.35 {
             lastCommittedContext = ""
+            lastCommittedWord = ""
             cachedFieldContext = ""
             clearComposition(touchHost: false)
             return
@@ -732,11 +737,13 @@ final class KeyboardViewController: UIInputViewController {
                 // Only predictions active and user tapped elsewhere outside our own write echo: clear without XPC.
                 clearPredictions()
                 lastCommittedContext = ""
+                lastCommittedWord = ""
                 return
             }
         }
         guard contextSnapshot() != afterLastKey else { return }
         lastCommittedContext = ""
+        lastCommittedWord = ""
         cachedFieldContext = ""
         forgetLastWord()
     }
@@ -750,6 +757,7 @@ final class KeyboardViewController: UIInputViewController {
         deletedWordsBuffer = ""
         lastInsertedSpace = false
         lastEmojiInserted = ""
+        lastCommittedWord = ""
         let hadPair = !pairCloseStack.isEmpty || justInsertedPair != nil
         pairCloseStack.removeAll(keepingCapacity: true)
         justInsertedPair = nil
@@ -1117,7 +1125,7 @@ final class KeyboardViewController: UIInputViewController {
             delete()
         case .ret:
             pairCloseStack.removeAll(keepingCapacity: true)
-            if !taps.isEmpty { commitRaw() } else { lastHostWriteTime = CACurrentMediaTime(); host.insertText("\n"); lastCommittedContext = "" }
+            if !taps.isEmpty { commitRaw() } else { lastHostWriteTime = CACurrentMediaTime(); host.insertText("\n"); lastCommittedContext = ""; lastCommittedWord = "" }
             lastInsertedSpace = false
             if !chinese { updateAutoShift() }
             reconfigure()
@@ -1213,6 +1221,7 @@ final class KeyboardViewController: UIInputViewController {
         }
         // English, or Shift held in Chinese mode: direct letter.
         if !taps.isEmpty { commitAll() }
+        lastCommittedWord = ""
         let typed = (shifted || capsLock) ? s.uppercased() : s
         host.insertText(typed)
         if !chinese, english != nil {
@@ -1229,6 +1238,7 @@ final class KeyboardViewController: UIInputViewController {
 
     private func symbol(_ s: String) {
         if !taps.isEmpty { commitAll() }
+        lastCommittedWord = ""
         // English: a sentence or clause mark ends the word, applying its autocorrection first (as space does)
         if !chinese, !enTaps.isEmpty {
             if [".", ",", "!", "?", ";", ":"].contains(s) { applyEnglishAutocorrection() }
@@ -1422,6 +1432,7 @@ final class KeyboardViewController: UIInputViewController {
             reconfigure()
         }
         proxy.insertText(" ")
+        lastCommittedWord = ""
         lastInsertedSpace = true
         if !chinese { updateAutoShift(); reconfigure() }
     }
@@ -1464,6 +1475,7 @@ final class KeyboardViewController: UIInputViewController {
             }
         }
         host.deleteBackward()
+        lastCommittedWord = ""
         if !enTaps.isEmpty {
             enTaps.removeLast()
             if !enTyped.isEmpty { enTyped.removeLast() }
@@ -1572,6 +1584,7 @@ final class KeyboardViewController: UIInputViewController {
             return
         }
         endEnglishWord()
+        lastCommittedWord = ""
         let before = host.documentContextBeforeInput ?? ""
         guard let last = before.last else { host.deleteBackward(); return }
         let snapshot = Array(before)
@@ -1748,6 +1761,8 @@ final class KeyboardViewController: UIInputViewController {
         // Learn: the word itself and where this user's finger actually lands.
         if !c.syllables.isEmpty {
             engine.learn(syllables: c.syllables, text: c.text)
+            if committedParts.isEmpty, !lastCommittedWord.isEmpty { engine.learnBigram(prev: lastCommittedWord, next: c.text) }
+            lastCommittedWord = c.text
             committedParts.append((c.text, c.syllables))
             // touch habits only from a reading that uses every key once (one with a key left out would pair the
             // taps after it with the wrong keys)
@@ -1765,6 +1780,8 @@ final class KeyboardViewController: UIInputViewController {
                     KeyboardSettings.shared.keyOffsets = keyOffsets
                 }
             }
+        } else {
+            lastCommittedWord = ""
         }
         taps.removeFirst(min(c.tapCount, taps.count))
         if !taps.isEmpty { engine.setContext(committedParts.map { $0.text }.joined().isEmpty ? c.text : committedParts.map { $0.text }.joined()) }
@@ -1803,6 +1820,7 @@ final class KeyboardViewController: UIInputViewController {
     private func undoCorrection(_ u: (text: String, taps: [Tap], syllables: [UInt16])) -> Bool {
         guard taps.isEmpty, (host.documentContextBeforeInput ?? "").hasSuffix(u.text) else { return false }
         for _ in u.text { host.deleteBackward() }
+        lastCommittedWord = ""
         if !u.syllables.isEmpty { engine.unlearn(syllables: u.syllables, text: u.text) }
         let rawKeys = String(u.taps.map { $0.key })
         if !rawKeys.isEmpty {
@@ -1885,6 +1903,7 @@ final class KeyboardViewController: UIInputViewController {
             ? (currentResult()?.preedit ?? String(taps.map { $0.key })).replacingOccurrences(of: " ", with: "")
             : String(taps.map { $0.key })
         insertCommitted(raw)
+        lastCommittedWord = ""
         clearComposition()
     }
 
@@ -2091,6 +2110,7 @@ final class KeyboardViewController: UIInputViewController {
         sp.onClose = { [weak self] in self?.showSettings(false) }
         sp.onChange = { [weak self] in self?.applySettings() }
         sp.onResetLearning = { [weak self] in
+            self?.lastCommittedWord = ""
             self?.engine.resetLearning()
             self?.spatial.offsetX = 0
             self?.spatial.offsetY = 0

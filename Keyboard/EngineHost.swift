@@ -294,7 +294,7 @@ final class EngineHost {
 
     /// The text just before the cursor (the language model reads the first word in its context).
     func setContext(_ text: String) {
-        let ctx = Array(text.suffix(3))
+        let ctx = Array(text.suffix(4))
         queue.async { self.decoder?.leftContext = ctx }
     }
 
@@ -536,6 +536,7 @@ final class EngineHost {
     }
 
     func learn(syllables: [UInt16], text: String) { queue.async { self.userDict?.learn(syllables: syllables, text: text); self.syncLearnedCount() } }
+    func learnBigram(prev: String, next: String) { queue.async { self.userDict?.learnBigram(prev: prev, next: next) } }
     func learn(parts: [(text: String, ids: [UInt16])]) { queue.async { self.userDict?.learn(parts: parts); self.syncLearnedCount() } }
     func unlearn(syllables: [UInt16], text: String) { queue.async { self.userDict?.unlearn(syllables: syllables, text: text); self.syncLearnedCount() } }
     func forget(syllables: [UInt16], text: String) {

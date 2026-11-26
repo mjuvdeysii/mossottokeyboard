@@ -20,7 +20,7 @@ public final class Grammar {
 
     public var collocationPenalty = -12.0
     public var nonCollocationPenalty = -12.0
-    public var weakCollocationPenalty = -24.0
+    public var weakCollocationPenalty = -20.0
     public var collocationMinLength = 3
 
     public init(path: String) throws {

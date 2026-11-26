@@ -56,7 +56,7 @@ public final class Decoder {
     public var correctionEnabled = true
     public var spatialWeight = 1.8
     public var correctionPenalty = 1.5
-    public var wordPenalty = 26.0   // with the language model (each word also pays its non-collocation cost)
+    public var wordPenalty = 23.0   // R99b recalibrated for 39 MB grammar.gram (each word also pays its non-collocation cost)
     /// What learning adds. A word the lexicon has gets its own frequency plus  userWeight·ln(1 + times picked),
     /// at most `userCap` (a single character at most a quarter of it) — so picking 得 once in 过得 lifts 得 a little
     /// without pushing 的 out of every other sentence. A phrase of the user's own (not in the lexicon) starts from
@@ -67,6 +67,8 @@ public final class Decoder {
     /// time; homophone words rarely collide the way single characters do).
     public var userWordBoost = 3.0
     public var userPhraseScore = 11.0
+    public var userBigramWeight = 1.6
+    public var userBigramCap = 4.5
     /// 中英混输: English words for the typed letters, ranked against the Chinese readings by frequency.
     public var english: EnglishLexicon?
     public var englishEnabled = true
@@ -80,7 +82,7 @@ public final class Decoder {
     /// it does not talk the keyboard into changing keys to make a likelier phrase. R4 grid (×correctionPenalty 1.5 /
     /// 2.5 / 3.5): 0.6 with 1.5 — 0.7 and above lose two 中英混输 sentences (小鹤), 1.0 also sentences typed with
     /// touch noise (88.85 → 87.54).
-    public var grammarCorrectedFactor = 0.6
+    public var grammarCorrectedFactor = 0.55
     /// The text just before the cursor (a few characters), so the first word is also read in context.
     public var leftContext: [Character] = []
     /// Cost of reading the letters as English in Chinese mode (English is the less likely intent there).
@@ -138,6 +140,8 @@ public final class Decoder {
     /// When the keys as typed lead, a corrected whole reading at most this far below comes second (0: off).
     public var alternateMargin = 8.0
     public var beam = 4
+    /// Long sentences (≥ 6 taps) widen the beam slightly so early ambiguities survive for later collocation scoring.
+    public var longBeam = 6
     /// 九宫格 keeps more partial sentences per position (each key reads several ways; measured better, full keyboard not)
     public var t9Beam = 8
     /// 全拼: cost of a syllable typed as its initial only (简拼), and of a half-typed last syllable.
@@ -153,10 +157,10 @@ public final class Decoder {
     public var t9PrefixExtra = 3.0
     /// How much of a word's own frequency the language model takes back when it scores the word in context.
     public var unigramDiscount = 0.5
-    public var unigramCenter = 10.0
+    public var unigramCenter = 12.0
     /// The model's counts are read against how much it has seen after the context (P(word | context) rather than
     /// a joint count): a common context no longer lends its own frequency to whatever follows it.
-    public var contextNormalisation = 0.3
+    public var contextNormalisation = 0.45
 
     public init(lexicon: Lexicon, user: UserDictionary? = nil) {
         self.lexicon = lexicon
@@ -952,26 +956,33 @@ public final class Decoder {
         // per-context normalisation of the language model: on the full keyboard (九宫格 measured no better with it)
         grammar?.massWeight = keypad ? 0 : contextNormalisation
         grammar?.resetMassBudget()
-        /// The language-model score of word `ei` after the words of `prev` (or after the text in the field).
+        /// The language-model score (and local word-pair transition boost) of word `ei` after `prev` (or `leftContext`).
         func link(_ prev: [Int], _ ei: Int) -> Double {
-            guard let grammar, edges[ei].userText?.isEmpty != true else { return 0 }
+            guard edges[ei].userText?.isEmpty != true else { return 0 }
             var ctx: [Character] = []
             var k = prev.count - 1
-            while ctx.count < 3 && k >= 0 { ctx.insert(contentsOf: chars(prev[k]), at: 0); k -= 1 }
-            if ctx.count < 3 { ctx.insert(contentsOf: leftContext.suffix(3 - ctx.count), at: 0) }
-            let q = grammar.query(context: Array(ctx.suffix(3)), word: chars(ei))
-            // a corrected word keeps the same baseline but only part of the lift above it
-            let base = grammar.nonCollocationPenalty
-            var lift = grammarWeight * (edges[ei].corrected ? base + grammarCorrectedFactor * (q - base) : q)
-            // The model's counts are joint (how often context + word occur), so they already carry how common the
-            // word is; the lexicon's frequency added on top counts that twice and lets 在 outvote 再 after 可以.
-            // Where the model has the pair, part of the word's own frequency is taken back out.
-            if unigramDiscount > 0, !keypad, q > base, !edges[ei].corrected, edges[ei].entry >= 0 {
-                lift -= unigramDiscount * (Double(lexicon.entry(edges[ei].entry).score) / 100 - unigramCenter)
+            while ctx.count < 4 && k >= 0 { ctx.insert(contentsOf: chars(prev[k]), at: 0); k -= 1 }
+            if ctx.count < 4 { ctx.insert(contentsOf: leftContext.suffix(4 - ctx.count), at: 0) }
+            let wChars = chars(ei)
+            var lift = 0.0
+            if let grammar {
+                let q = grammar.query(context: Array(ctx.suffix(3)), word: wChars)
+                // a corrected word keeps the same baseline but only part of the lift above it
+                let base = grammar.nonCollocationPenalty
+                lift = grammarWeight * (edges[ei].corrected ? base + grammarCorrectedFactor * (q - base) : q)
+                // The model's counts are joint (how often context + word occur), so they already carry how common the
+                // word is; the lexicon's frequency added on top counts that twice and lets 在 outvote 再 after 可以.
+                // Where the model has the pair, part of the word's own frequency is taken back out.
+                if unigramDiscount > 0, !keypad, q > base, !edges[ei].corrected, edges[ei].entry >= 0 {
+                    lift -= unigramDiscount * (Double(lexicon.entry(edges[ei].entry).score) / 100 - unigramCenter)
+                }
+            }
+            if let user, !edges[ei].corrected {
+                lift += user.bigramBonus(after: ctx, word: wChars, weight: userBigramWeight, cap: userBigramCap)
             }
             return lift
         }
-        let width = keypad ? t9Beam : beam
+        let width = keypad ? t9Beam : (n >= 6 ? max(beam, longBeam) : beam)
         func bestPaths(literalOnly: Bool) -> [Path] {
             var paths = [[Path]](repeating: [], count: n + 1)
             paths[0] = [Path(score: 0, edges: [], corrected: false)]
