@@ -21,9 +21,8 @@ def oid(*parts):
 app_sources = sorted(glob.glob("App/*.swift")) + sorted(glob.glob("Keyboard/*.swift")) + sorted(glob.glob("Engine/*.swift"))
 ext_sources = sorted(glob.glob("Keyboard/*.swift")) + sorted(glob.glob("Engine/*.swift"))
 ext_resources = sorted(p for p in glob.glob("Keyboard/Resources/*") if not p.endswith(".DS_Store"))
-# the sentence model (万象, ~400 MB) is fetched by CI (Tools/fetch_sentence_model.sh), not kept in git
-if "Keyboard/Resources/sentence.gram" not in ext_resources:
-    ext_resources = sorted(ext_resources + ["Keyboard/Resources/sentence.gram"])
+# R98: Slim package (~60 MB) — rely on bundled 39 MB grammar.gram instead of 373 MB sentence.gram
+ext_resources = [p for p in ext_resources if p != "Keyboard/Resources/sentence.gram"]
 app_resources = ["App/Assets.xcassets", "App/PrivacyInfo.xcprivacy", "Keyboard/Resources/emoji.txt"] + sorted(glob.glob("Keyboard/Resources/mosto_*.png"))
 
 objs = {}  # id -> text

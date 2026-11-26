@@ -25,13 +25,13 @@ enum LegalText {
         ]),
         Doc(id: "sources", title: "内容与词库来源", sections: [
             ("一、透明来源说明", [.text("Mosto键盘 坚持完全本机计算、不依赖云端词库。以下列出本应用内置词库、语法模型、词频表、表情名称与键位规则的原始出处与用途，便于用户与开源社区核验。")]),
-            ("二、中文词库与语言模型", [.bullets(["雾凇拼音 rime-ice：提供基础中文单字与常用词库（含经其收录整理的腾讯 AI Lab 公开中文词向量词表），并由 pypinyin 生成注音映射 — https://github.com/iDvel/rime-ice", "八股文 rime-octagram-data：提供词语搭配与 N-gram 统计模型，用于本机上下文联想与排序 — https://github.com/lotem/rime-octagram-data", "万象语法模型 wanxiang-lts-zh-hans（作者 amzxyz）：提供整句切分与读法统计权重，提升长句一次上屏准确率 — https://github.com/amzxyz/rime-wanxiang-data"])]),
+            ("二、中文词库与语言模型", [.bullets(["雾凇拼音 rime-ice：提供基础中文单字与常用词库（含经其收录整理的腾讯 AI Lab 公开中文词向量词表），并由 pypinyin 生成注音映射 — https://github.com/iDvel/rime-ice", "八股文 rime-octagram-data：提供词语搭配、整句读法与 N-gram 统计模型，用于本机上下文联想与整句排序 — https://github.com/lotem/rime-octagram-data"])]),
             ("三、英文词频与表情数据", [.bullets(["wordfreq：提供公开英文词频统计表，用于中英混输时的英文候选排序 — https://github.com/rspeer/wordfreq", "Emojibase：提供标准 Unicode Emoji 列表、分组结构与版本元数据 — https://github.com/milesj/emojibase", "Unicode CLDR：提供 Emoji 的标准中文名称与检索关键词，用于本机表情联想 — https://github.com/unicode-org/cldr"])]),
             ("四、拼音与键位规范及非背书声明", [.text("全拼与九宫格（T9）遵循《汉语拼音方案》及通用手机键盘数字字母映射；小鹤双拼键位兼容小鹤公开双拼键位布局，由开发者独立实现。"), .text("上述公开数据、标准与开源项目的所有权及商标权归原机构或原作者所有；本应用仅作合规引用或依开源许可使用，不代表原机构或原作者对本应用的背书或合作关系。")]),
         ]),
         Doc(id: "licenses", title: "开源许可与致谢", sections: [
             ("一、本应用开源许可", [.text("Mosto键盘 源代码依据 GNU General Public License v3.0（SPDX: GPL-3.0-only）开源发布。"), .text("完整源代码与完整许可文本： https://github.com/mjuvdeysii/mossottokeyboard")]),
-            ("二、第三方开源组件与数据许可（SPDX）", [.bullets(["雾凇拼音 rime-ice — GPL-3.0-only — https://github.com/iDvel/rime-ice", "pypinyin（词库构建期注音工具）— MIT — https://github.com/mozillazg/python-pinyin", "八股文 rime-octagram-data — LGPL-3.0-only — https://github.com/lotem/rime-octagram-data", "万象语法模型 wanxiang-lts-zh-hans — CC-BY-4.0 — https://github.com/amzxyz/rime-wanxiang-data", "wordfreq（英文词频数据）— CC-BY-SA-4.0 — https://github.com/rspeer/wordfreq", "Emojibase — MIT — https://github.com/milesj/emojibase", "Unicode CLDR — Unicode-3.0 — https://github.com/unicode-org/cldr"]), .text("各上游项目的完整版权声明与许可证全文见本应用代码仓库的 LICENSE 与 ThirdParty 目录。衷心感谢上述开源作者与社区维护者。")]),
+            ("二、第三方开源组件与数据许可（SPDX）", [.bullets(["雾凇拼音 rime-ice — GPL-3.0-only — https://github.com/iDvel/rime-ice", "pypinyin（词库构建期注音工具）— MIT — https://github.com/mozillazg/python-pinyin", "八股文 rime-octagram-data — LGPL-3.0-only — https://github.com/lotem/rime-octagram-data", "wordfreq（英文词频数据）— CC-BY-SA-4.0 — https://github.com/rspeer/wordfreq", "Emojibase — MIT — https://github.com/milesj/emojibase", "Unicode CLDR — Unicode-3.0 — https://github.com/unicode-org/cldr"]), .text("各上游项目的完整版权声明与许可证全文见本应用代码仓库的 LICENSE 与 ThirdParty 目录。衷心感谢上述开源作者与社区维护者。")]),
         ]),
         Doc(id: "regulatory", title: "法规、备案与合规信息", sections: [
             ("一、网络与备案合规说明", [.text("Mosto键盘 键盘扩展（.appex）全程离线运行，不发起任何网络连接；伴侣 App 亦不自建后台服务器、不提供账号注册或互联网信息发布服务，属于纯本地离线单机工具。"), .text("如后续版本新增联网云同步或在线服务功能，开发者将在上线前依法完成对应地区的互联网信息服务（ICP）备案及公示。")]),

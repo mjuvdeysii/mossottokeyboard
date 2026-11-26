@@ -88,8 +88,7 @@ DOCS = [
         ]),
         ("二、中文词库与语言模型", [
             ["雾凇拼音 rime-ice：提供基础中文单字与常用词库（含经其收录整理的腾讯 AI Lab 公开中文词向量词表），并由 pypinyin 生成注音映射 — https://github.com/iDvel/rime-ice",
-             "八股文 rime-octagram-data：提供词语搭配与 N-gram 统计模型，用于本机上下文联想与排序 — https://github.com/lotem/rime-octagram-data",
-             "万象语法模型 wanxiang-lts-zh-hans（作者 amzxyz）：提供整句切分与读法统计权重，提升长句一次上屏准确率 — https://github.com/amzxyz/rime-wanxiang-data"],
+             "八股文 rime-octagram-data：提供词语搭配、整句读法与 N-gram 统计模型，用于本机上下文联想与整句排序 — https://github.com/lotem/rime-octagram-data"],
         ]),
         ("三、英文词频与表情数据", [
             ["wordfreq：提供公开英文词频统计表，用于中英混输时的英文候选排序 — https://github.com/rspeer/wordfreq",
@@ -110,7 +109,6 @@ DOCS = [
             ["雾凇拼音 rime-ice — GPL-3.0-only — https://github.com/iDvel/rime-ice",
              "pypinyin（词库构建期注音工具）— MIT — https://github.com/mozillazg/python-pinyin",
              "八股文 rime-octagram-data — LGPL-3.0-only — https://github.com/lotem/rime-octagram-data",
-             "万象语法模型 wanxiang-lts-zh-hans — CC-BY-4.0 — https://github.com/amzxyz/rime-wanxiang-data",
              "wordfreq（英文词频数据）— CC-BY-SA-4.0 — https://github.com/rspeer/wordfreq",
              "Emojibase — MIT — https://github.com/milesj/emojibase",
              "Unicode CLDR — Unicode-3.0 — https://github.com/unicode-org/cldr"],
