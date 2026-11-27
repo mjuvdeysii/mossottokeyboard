@@ -24,7 +24,7 @@ final class MostoView: UIView {
         super.init(frame: frame)
         isAccessibilityElement = true
         accessibilityLabel = "Mosto"
-        accessibilityHint = "轻点选颜文字，轻点两下切换日光与夜灯"
+        accessibilityHint = "轻点打开表情，双击颜文字，按住打开设置"
         accessibilityTraits = .button
         accessibilityCustomActions = [UIAccessibilityCustomAction(name: "切换日光与夜灯") { [weak self] _ in
             self?.onToggleLight?(); return true

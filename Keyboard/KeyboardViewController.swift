@@ -448,6 +448,7 @@ final class KeyboardViewController: UIInputViewController {
         keyboard.overlay = syllablePicker
         syllablePicker.onPick = { [weak self] i in self?.pickSyllable(i) }
         candidateBar.onExpand = { [weak self] in guard let self else { return }; self.feel(.key(.page(.letters))); self.showGrid(self.gridIfLoaded?.isHidden ?? true) }
+        candidateBar.onQuickToggleGrid = { [weak self] in self?.handle(.toggleGrid, tap: nil) }
         candidateBar.onLongPress = { [weak self] i in self?.offerForget(i) }
         candidateBar.onSettings = { [weak self] in self?.showSettings(true) }
         candidateBar.onMostoTap = { [weak self] in
@@ -705,7 +706,12 @@ final class KeyboardViewController: UIInputViewController {
             }
             return
         }
-        if !chinese { updateAutoShift(); reconfigure() }
+        let wasSecure = lastFieldTraits.count >= 4 && lastFieldTraits[3] == 1
+        if isSecureField != wasSecure {
+            adaptToField()
+            return
+        }
+        if !chinese && !isSecureField { updateAutoShift(); reconfigure() }
     }
 
     override func selectionDidChange(_ textInput: UITextInput?) {
@@ -806,10 +812,12 @@ final class KeyboardViewController: UIInputViewController {
         onCandidatesUpdated?()
     }
 
+    private var isSecureField: Bool { host.isSecureTextEntry ?? false }
+
     /// What `adaptToField` looks at: a new identifier with the same traits is the same kind of field.
     private func fieldTraits() -> [Int] {
         let p = host
-        return [p.keyboardType?.rawValue ?? -1, p.returnKeyType?.rawValue ?? -1, p.autocapitalizationType?.rawValue ?? -1]
+        return [p.keyboardType?.rawValue ?? -1, p.returnKeyType?.rawValue ?? -1, p.autocapitalizationType?.rawValue ?? -1, (p.isSecureTextEntry ?? false) ? 1 : 0]
     }
     private var lastFieldTraits: [Int] = []
 
@@ -894,19 +902,20 @@ final class KeyboardViewController: UIInputViewController {
         let night = mode == 1 ? false : mode == 2 ? true : sysDark
         let forcedDay = sysDark && !night
         let forcedNight = !sysDark && night
-        let glass: UIUserInterfaceStyle = sysDark ? .dark : .light   // strip, capsules, emoji and settings always match the host glass
+        let glass: UIUserInterfaceStyle = sysDark ? .dark : .light   // follow host glass only in 自动 mode
         let keys: UIUserInterfaceStyle = mode == 0 ? glass : (night ? .dark : .light)
         isNight = night
-        root.overrideUserInterfaceStyle = glass
+        root.overrideUserInterfaceStyle = (mode == 0) ? glass : keys
         keyboard.overrideUserInterfaceStyle = keys
         keyboard.softenedForDarkGlass = forcedDay
         keyboard.softenedForLightGlass = forcedNight
         tintView.night = night
-        tintView.forcedNight = false
-        tintView.forcedDay = false
+        tintView.forcedNight = forcedNight
+        tintView.forcedDay = forcedDay
+        tintView.syncBackdrop()
         candidateBar.mosto.setNight(night)
         candidateBar.showsMosto = !Theme.plain
-        tintView.isHidden = Theme.plain
+        tintView.isHidden = Theme.plain && !forcedDay && !forcedNight
         root.backgroundColor = Theme.touchable
         settingsPanelIfLoaded?.setNight(night)
         updatePlainLightButton()
@@ -920,7 +929,8 @@ final class KeyboardViewController: UIInputViewController {
             && !symbolPanelShown
             && (settingsPanelIfLoaded?.isHidden ?? true)
             && (gridIfLoaded?.isHidden ?? true)
-        candidateBar.setIdleControls(enabled: allowed, night: isNight, forcedDayOnDarkGlass: systemIsDark && !isNight)
+        let quickTitle = (allowed && chinese && !isSecureField) ? (pinyinGridOn ? "26键" : "9键") : nil
+        candidateBar.setIdleControls(enabled: allowed, night: isNight, forcedDayOnDarkGlass: systemIsDark && !isNight, quickGridTitle: quickTitle)
     }
 
     private func triggerMostoYawn() {
@@ -965,6 +975,7 @@ final class KeyboardViewController: UIInputViewController {
         soundOn = s.keySound
         numberPadOn = s.numberPad
         pinyinGridOn = s.pinyinGrid
+        panguSpacingOn = s.panguSpacing
         if let sp = settingsPanelIfLoaded, !sp.isHidden {
             let n = engine.counts()
             sp.setLearned("词库 \(n.lexicon) 条 · 已学习 \(n.learned) 个词")
@@ -985,6 +996,7 @@ final class KeyboardViewController: UIInputViewController {
     private var soundOn = true
     private var numberPadOn = false
     private var pinyinGridOn = false
+    private var panguSpacingOn = false
     /// Felt and heard as the table says (FeedbackModel), when the switches and 允许完全访问 allow it.
     func feel(_ event: FeedbackEvent, at point: CGPoint? = nil) {
         guard feedbackAllowed else { return }
@@ -998,10 +1010,25 @@ final class KeyboardViewController: UIInputViewController {
     private var userToggledModeInField = false
     private func adaptToField() {
         let prevKind = lastFieldTraits.first
+        let wasSecure = lastFieldTraits.count >= 4 && lastFieldTraits[3] == 1
         lastFieldTraits = fieldTraits()
-        if lastFieldTraits.first != prevKind { userToggledModeInField = false }
+        if lastFieldTraits.first != prevKind || isSecureField != wasSecure { userToggledModeInField = false }
         let proxy = host
         cachedReturnKeyType = proxy.returnKeyType ?? .default
+        if isSecureField {
+            endEnglishWord()
+            clearPredictions()
+            undoable = nil
+            enUndo = nil
+            cleared = nil
+            if !taps.isEmpty { clearComposition(touchHost: false) }
+            page = .letters
+            chinese = false
+            shifted = false
+            capsLock = false
+            reconfigure()
+            return
+        }
         if !userToggledModeInField {
                                     switch proxy.keyboardType ?? .default {
         case .numberPad, .decimalPad, .phonePad, .asciiCapableNumberPad:
@@ -1051,6 +1078,9 @@ final class KeyboardViewController: UIInputViewController {
         let pendingInitial: Character? = (guideOn && scheme == .xiaohe && chinese && !pinyinGridOn && page == .letters && taps.count % 2 == 1)
             ? taps.last?.key
             : nil
+        let spaceSchemeLabel: String? = isSecureField
+            ? "password"
+            : (!chinese ? "English" : (pinyinGridOn ? "九宫格" : (scheme == .xiaohe ? "小鹤" : "全拼")))
         let ctx = LayoutContext(page: page, chinese: chinese, showGlobe: cachedShowGlobe,
                                          returnLabel: label, returnIsAccent: accent,
                                          shifted: shifted, capsLock: capsLock,
@@ -1059,7 +1089,8 @@ final class KeyboardViewController: UIInputViewController {
                                          pinyinGrid: pinyinGridOn, composing: !taps.isEmpty,
                                          xiaoheGuide: guideOn && scheme == .xiaohe,
                                          xiaohePendingInitial: pendingInitial,
-                                         spaceOverride: spaceOverrideLabel())
+                                         spaceOverride: spaceOverrideLabel(),
+                                         spaceSchemeLabel: spaceSchemeLabel)
         // most keystrokes change nothing on the keys: skip the work entirely (it ran twice per keystroke before)
         if ctx == lastContext { return }
         lastContext = ctx
@@ -1136,6 +1167,7 @@ final class KeyboardViewController: UIInputViewController {
             page = p; userToggledModeInField = true
             reconfigure()
         case .toggleLanguage:
+            guard !isSecureField else { return }
             if !taps.isEmpty { commitRaw() }
             pairCloseStack.removeAll(keepingCapacity: true)
             justInsertedPair = nil
@@ -1194,6 +1226,12 @@ final class KeyboardViewController: UIInputViewController {
         case .symbolPanel:
             if !taps.isEmpty { commitAll() }
             showSymbolPanel(true)
+        case .toggleGrid:
+            guard chinese, !isSecureField else { return }
+            if !taps.isEmpty { commitAll() }
+            KeyboardSettings.shared.pinyinGrid.toggle()
+            applySettings()
+            settingsPanelIfLoaded?.load()
         }
     }
 
@@ -1212,7 +1250,7 @@ final class KeyboardViewController: UIInputViewController {
                 select(idx, shown: r.candidates[idx])
             }
         }
-        if chinese && !(shifted || capsLock) {
+        if chinese && !isSecureField && !(shifted || capsLock) {
             // a new composition: reuse locally known committed/prefetched context (0 XPC) in .appex
             if taps.isEmpty { engine.setContext(initialEngineContext()) }
             taps.append(tap)
@@ -1223,8 +1261,15 @@ final class KeyboardViewController: UIInputViewController {
         if !taps.isEmpty { commitAll() }
         lastCommittedWord = ""
         let typed = (shifted || capsLock) ? s.uppercased() : s
-        host.insertText(typed)
-        if !chinese, english != nil {
+        let priorContext = !lastCommittedContext.isEmpty ? lastCommittedContext : (useInlineMarkedText ? (host.documentContextBeforeInput ?? "") : cachedFieldContext)
+        if !chinese, enTaps.isEmpty, panguSpacingOn, !isSecureField,
+           let ch = typed.first, ch.isASCII, ch.isLetter || ch.isNumber,
+           let prev = priorContext.last, Self.isCJKHanzi(prev) {
+            host.insertText(" " + typed)
+        } else {
+            host.insertText(typed)
+        }
+        if !chinese, !isSecureField, english != nil {
             enTaps.append(tap)
             enTyped += typed
             updateEnglishSuggestions()
@@ -1248,8 +1293,14 @@ final class KeyboardViewController: UIInputViewController {
         // (3.14, 12:30), never 3。14 or 12：30.
         var out = s
         if chinese, s == "。" || s == "：", let before = host.documentContextBeforeInput, let prev = before.last,
-           prev.isASCII, (prev.isNumber || (s == "。" && prev.isLetter && before.contains("@"))) {
-            out = s == "。" ? "." : ":"
+           prev.isASCII {
+            let token = String(before.reversed().prefix(while: { !$0.isWhitespace && !$0.isNewline && $0 < "\u{3000}" }).reversed())
+            let lower = token.lowercased()
+            let looksLikeURLOrEmail = token.contains("@") || token.contains("://") || lower == "www" || lower.hasPrefix("www.") || (s == "。" && token.contains(".") && prev.isLetter)
+            let isProtocolColon = (s == "：" && ["http", "https", "ftp"].contains(lower))
+            if prev.isNumber || (s == "。" && looksLikeURLOrEmail) || isProtocolColon {
+                out = s == "。" ? "." : ":"
+            }
         }
         let pairs: [String: (full: String, closing: String)] = [
             "《": ("《》", "》"), "（": ("（）", "）"), "【": ("【】", "】"), "「": ("「」", "」"), "『": ("『』", "』"), "“": ("“”", "”")
@@ -1494,7 +1545,7 @@ final class KeyboardViewController: UIInputViewController {
     /// The suggestions for the word being typed, shown in the strip: the autocorrection first (underlined, it is
     /// what space will type), then the word exactly as typed, then the other readings — written in the word's case.
     private func updateEnglishSuggestions() {
-        guard let english, !enTaps.isEmpty else { endEnglishWord(); return }
+        guard !isSecureField, let english, !enTaps.isEmpty else { endEnglishWord(); return }
         let list = english.suggestions(enTaps)
         let typedLower = enTyped.lowercased()
         let fix = (KeyboardSettings.shared.autocorrect && !sessionLiteralEnglish.contains(typedLower))
@@ -1530,7 +1581,7 @@ final class KeyboardViewController: UIInputViewController {
 
     /// Space or a punctuation mark: put in the autocorrection, remembering it so a delete right after undoes it.
     private func applyEnglishAutocorrection() {
-        guard let c = enCorrection, c != enTyped else { return }
+        guard !isSecureField, let c = enCorrection, c != enTyped else { return }
         let before = host.documentContextBeforeInput ?? ""
         guard before.hasSuffix(enTyped) else { return }
         let saved = (typed: enTyped, taps: enTaps, corrected: c)
@@ -1759,7 +1810,7 @@ final class KeyboardViewController: UIInputViewController {
         guard c.tapCount > 0, c.tapCount <= taps.count else { return }
         insertCommitted(c.text)
         // Learn: the word itself and where this user's finger actually lands.
-        if !c.syllables.isEmpty {
+        if !isSecureField, !c.syllables.isEmpty {
             engine.learn(syllables: c.syllables, text: c.text)
             if committedParts.isEmpty, !lastCommittedWord.isEmpty { engine.learnBigram(prev: lastCommittedWord, next: c.text) }
             lastCommittedWord = c.text
@@ -1790,7 +1841,7 @@ final class KeyboardViewController: UIInputViewController {
             let committedText = full.isEmpty ? c.text : full
             let sleepy = ["困", "睡", "晚安", "累", "哈欠", "熬夜"].contains { full.contains($0) || c.text.contains($0) }
             let happy = c.text.count >= 4 || committedParts.count >= 2 || ["哈哈", "嘿嘿", "开心", "太好", "爱你", "恭喜", "谢谢", "棒", "可爱", "女儿", "宝宝"].contains { full.contains($0) || c.text.contains($0) }
-            engine.learn(parts: committedParts)
+            if !isSecureField { engine.learn(parts: committedParts) }
             if !Theme.plain {
                 yawnGeneration &+= 1
                 let gen = yawnGeneration
@@ -1821,7 +1872,7 @@ final class KeyboardViewController: UIInputViewController {
         guard taps.isEmpty, (host.documentContextBeforeInput ?? "").hasSuffix(u.text) else { return false }
         for _ in u.text { host.deleteBackward() }
         lastCommittedWord = ""
-        if !u.syllables.isEmpty { engine.unlearn(syllables: u.syllables, text: u.text) }
+        if !isSecureField, !u.syllables.isEmpty { engine.unlearn(syllables: u.syllables, text: u.text) }
         let rawKeys = String(u.taps.map { $0.key })
         if !rawKeys.isEmpty {
             let count = (undoCountsByKeys[rawKeys] ?? 0) + 1
@@ -1887,10 +1938,33 @@ final class KeyboardViewController: UIInputViewController {
         refresh()
     }
 
+    private static func isCJKHanzi(_ ch: Character) -> Bool {
+        ch.unicodeScalars.contains { s in
+            (0x4E00...0x9FFF).contains(s.value) || (0x3400...0x4DBF).contains(s.value)
+        }
+    }
+
     /// Insert committed text; it replaces the marked pinyin when there is one.
     private func insertCommitted(_ text: String) {
+        var finalText = text
+        if panguSpacingOn, !isSecureField, let first = text.first {
+            let rawBefore = host.documentContextBeforeInput ?? ""
+            let baseBefore: Substring
+            if hasMarkedText, !markedString.isEmpty, rawBefore.hasSuffix(markedString) {
+                baseBefore = rawBefore.dropLast(markedString.count)
+            } else {
+                baseBefore = Substring(rawBefore)
+            }
+            if let prev = baseBefore.last {
+                let firstIsASCII = first.isASCII && (first.isLetter || first.isNumber)
+                let prevIsASCII = prev.isASCII && (prev.isLetter || prev.isNumber)
+                if (Self.isCJKHanzi(prev) && firstIsASCII) || (prevIsASCII && Self.isCJKHanzi(first)) {
+                    finalText = " " + text
+                }
+            }
+        }
         lastHostWriteTime = CACurrentMediaTime()
-        host.insertText(text)
+        host.insertText(finalText)
         lastCommittedContext = String((lastCommittedContext + text).suffix(8))
         hasMarkedText = false
         markedString = ""
@@ -2054,7 +2128,7 @@ final class KeyboardViewController: UIInputViewController {
 
     private func requestPredictions(after knownContext: String? = nil) {
         predictGeneration += 1
-        guard chinese, taps.isEmpty, enTaps.isEmpty, !emojiShown else { return }
+        guard !isSecureField, chinese, taps.isEmpty, enTaps.isEmpty, !emojiShown else { return }
         let gen = predictGeneration
         let ctx = knownContext ?? (host.documentContextBeforeInput ?? "")
         engine.predict(after: ctx) { [weak self] list in

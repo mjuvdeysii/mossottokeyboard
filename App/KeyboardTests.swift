@@ -12,6 +12,7 @@ class FakeTextHost: NSObject, UITextDocumentProxy {
     var keyboardType: UIKeyboardType = .default
     var returnKeyType: UIReturnKeyType = .default
     var autocapitalizationType: UITextAutocapitalizationType = .sentences
+    var isSecureTextEntry: Bool = false
     let identifier = UUID()
 
     var string: String { String(text) }
@@ -175,6 +176,7 @@ enum KeyboardTests {
         r100DistilledDualSectionGrammar(window)
         r100_5CommercialPolishEmojiSwipeAndMostoRun(window)
         r101QuantizedGrammarV2AndTuning(window)
+        r102Wave1HardeningAndCraft(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -1605,9 +1607,9 @@ enum KeyboardTests {
         ep.layoutIfNeeded()
         ep.load(kaomoji: true)
         ep.layoutIfNeeded()
-        log(ep.tabScrollOffsetXForTests > 20,
-            "r54.EmojiPanelView auto-scrolls bottom dock to active Mosto tab on kaomoji open",
-            "offsetX=\(ep.tabScrollOffsetXForTests)")
+        log(ep.kaomojiDockCleanForTests,
+            "r54.EmojiPanelView keeps uncluttered Kaomoji dock with centered Emoji/Kaomoji switch",
+            "clean=\(ep.kaomojiDockCleanForTests) gear=\(ep.kaomojiDockGearFullyVisibleForTests)")
     }
 
     static func r55DualLegendFlickAndMathBadge(_ window: UIWindow) {
@@ -1625,7 +1627,7 @@ enum KeyboardTests {
 
         kb.configure(LayoutContext(page: .symbols, chinese: true, showGlobe: false, returnLabel: nil, returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true))
         kb.layoutIfNeeded()
-        let symHints = kb.keyHintTextForTests(.char("…")) == "—" && kb.keyHintTextForTests(.char("^_^")) == "ψ"
+        let symHints = kb.keyHintTextForTests(.char("…")) == "—" && kb.keyHintTextForTests(.char("×")) == "÷"
 
         kb.configure(LayoutContext(page: .letters, chinese: true, showGlobe: false, returnLabel: nil, returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true, pinyinGrid: true))
         kb.layoutIfNeeded()
@@ -1731,15 +1733,15 @@ enum KeyboardTests {
             "r57.KeyView 2D CoreText opticalOffset centers fullwidth 。 horizontally and lifts it vertically",
             "dx=\(o.x) dy=\(o.y)")
 
-        // 3. Multi-char symbol key ^_^ separates cleanly below its top-right ψ corner legend
+        // 3. Symbol key × separates cleanly below its top-right ÷ corner legend
         let kb = KeyboardView(spatial: SpatialModel.standard())
         kb.frame = CGRect(x: 0, y: 0, width: 402, height: 214)
         kb.configure(LayoutContext(page: .symbols, chinese: true, showGlobe: false, returnLabel: nil, returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true))
         kb.layoutIfNeeded()
-        let symHint = kb.keyHintTextForTests(.char("^_^"))
-        let symFontSize = kb.keyLabelFontSizeForTests(.char("^_^")) ?? 99
-        log(symHint == "ψ" && symFontSize <= 19.5,
-            "r57.Multi-char symbol key ^_^ separates cleanly below its top-right ψ corner legend",
+        let symHint = kb.keyHintTextForTests(.char("×"))
+        let symFontSize = kb.keyLabelFontSizeForTests(.char("×")) ?? 99
+        log(symHint == "÷" && symFontSize <= 24.5,
+            "r57.Symbol key × separates cleanly below its top-right ÷ corner legend",
             "hint=\(symHint ?? "nil") fontSize=\(symFontSize)")
     }
 
@@ -2728,10 +2730,10 @@ enum KeyboardTests {
         ep.tapKaomojiShortcutForTests()
         ep.layoutIfNeeded()
         let switchedToKaomoji = ep.kaomojiModeForTests && !ep.kaomojiShortcutVisibleForTests
-            && !ep.collectionBottomFadeActiveForTests && ep.tabScrollOffsetXForTests > 20
+            && !ep.collectionBottomFadeActiveForTests && ep.kaomojiDockCleanForTests
         log(fadeOn && shortcutShown && bulbUnclipped && switchedToKaomoji,
             "r68.EmojiPanelView applies soft bottom fade, keeps portrait dock lightbulb unclipped, and opens Kaomoji in 1 tap",
-            "fade=\(fadeOn) shortcut=\(shortcutShown) bulb=\(bulbUnclipped) kao=\(switchedToKaomoji) offsetX=\(ep.tabScrollOffsetXForTests)")
+            "fade=\(fadeOn) shortcut=\(shortcutShown) bulb=\(bulbUnclipped) kao=\(switchedToKaomoji) clean=\(ep.kaomojiDockCleanForTests)")
     }
 
     // MARK: - R69: Height persistence root-cause fix & visual-first hardware console
@@ -2826,9 +2828,9 @@ enum KeyboardTests {
         ep.layoutIfNeeded()
         ep.load(kaomoji: true)
         ep.layoutIfNeeded()
-        log(ep.tabScrollOffsetXForTests > 20 && ep.kaomojiDockGearFullyVisibleForTests,
-            "r70.EmojiPanelView keeps trailing settings gear completely visible inside Kaomoji dock",
-            "offsetX=\(ep.tabScrollOffsetXForTests) gearVisible=\(ep.kaomojiDockGearFullyVisibleForTests)")
+        log(ep.kaomojiDockCleanForTests && ep.kaomojiDockGearFullyVisibleForTests,
+            "r70.EmojiPanelView keeps uncluttered switcher and Mosto tab completely visible inside Kaomoji dock",
+            "clean=\(ep.kaomojiDockCleanForTests) gearVisible=\(ep.kaomojiDockGearFullyVisibleForTests)")
 
         // 2. CandidateGridView 3-mode scope rail (全部 / 词组 / 单字), live count badge, real-index mapping & dock non-overlap
         let grid = CandidateGridView(frame: CGRect(x: 0, y: 0, width: 375, height: 200))
@@ -3691,7 +3693,7 @@ enum KeyboardTests {
             family.interact(with: .moss)
             return family.activeMember == .moss
         }()
-        let atlasEffectsOk = GestureAtlasContent.MostoPreviewAction.allCases.map(\.shortEffect) == ["颜文字", "换光效", "打哈欠"]
+        let atlasEffectsOk = GestureAtlasContent.MostoPreviewAction.allCases.map(\.shortEffect) == ["颜文字", "换光效", "开设置"]
         log(directInteractOk && atlasEffectsOk,
             "r84.IP family sound interaction triggers directly without volume gate and GestureAtlas mirrors live idle bar",
             "direct=\(directInteractOk) atlas=\(atlasEffectsOk)")
@@ -4653,6 +4655,138 @@ enum KeyboardTests {
         }
         log(violations.isEmpty, "fuzz.\(steps) random keys keep the field and the composition in step",
             Array(Set(violations)).prefix(6).joined(separator: " | "))
+    }
+
+    // MARK: - R102: Wave 1 Hardening, Security Routing, Panel Polish & High-Freq Shortcuts
+
+    static func r102Wave1HardeningAndCraft(_ window: UIWindow) {
+        let s = KeyboardSettings.shared
+        let saved = (s.scheme, s.pinyinGrid, s.panguSpacing, s.appearance, s.style)
+        defer {
+            s.scheme = saved.0
+            s.pinyinGrid = saved.1
+            s.panguSpacing = saved.2
+            s.appearance = saved.3
+            s.style = saved.4
+            Theme.plain = (saved.4 == 1)
+        }
+
+        // 1. Default Return is calm .function; host action returnIsAccent is .accent; Space shows scheme + bottom notch
+        let idleRows = Layouts.rows(LayoutContext(page: .letters, chinese: true, showGlobe: false, returnLabel: nil, returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true, spaceSchemeLabel: "全拼"))
+        let sendRows = Layouts.rows(LayoutContext(page: .letters, chinese: true, showGlobe: false, returnLabel: "发送", returnIsAccent: true, shifted: false, capsLock: false, keyBorders: true, spaceSchemeLabel: "小鹤"))
+        let defaultRetFunction = idleRows[3].last?.style == .function
+        let sendRetAccent = sendRows[3].last?.style == .accent
+        let spaceHasLabel = idleRows[3].first(where: { $0.action == .space })?.label == "全拼"
+        log(defaultRetFunction && sendRetAccent && spaceHasLabel,
+            "r102.Default return key uses function style, host actions use accent, and spacebar carries subtle scheme label",
+            "retFn=\(defaultRetFunction) sendAcc=\(sendRetAccent) space=\(spaceHasLabel)")
+
+        // 2. AltPopup keeps purple selection slot centered regardless of CJK glyph optical offset
+        let popup = AltPopup(options: ["。", "？", "！", "、"], cell: 38, height: 42)
+        window.addSubview(popup)
+        popup.layoutIfNeeded()
+        popup.selected = 0
+        let off0 = popup.selectedSlotCenterOffsetForTests
+        popup.selected = 1
+        let off1 = popup.selectedSlotCenterOffsetForTests
+        popup.removeFromSuperview()
+        log(off0 < 0.5 && off1 < 0.5,
+            "r102.AltPopup keeps selection slot container centered independently of optical glyph offset",
+            "off0=\(off0) off1=\(off1)")
+
+        // 3. T9 swipe-up digits, vertical flick cone guard, toggleLanguage swipe-up 9/26, & idle quick toggle
+        let kvT9 = KeyboardView(spatial: SpatialModel.standard())
+        kvT9.frame = CGRect(x: 0, y: 0, width: 393, height: 216)
+        kvT9.configure(LayoutContext(page: .letters, chinese: true, showGlobe: false, returnLabel: nil, returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true, pinyinGrid: true))
+        kvT9.layoutIfNeeded()
+        var emittedT9: [KeyAction] = []
+        kvT9.onAction = { act, _ in emittedT9.append(act) }
+        if let abcRect = kvT9.keyRectsForTests(.t9("2"))?.cap, let langRect = kvT9.keyRectsForTests(.toggleLanguage)?.cap {
+            let p2 = CGPoint(x: abcRect.midX, y: abcRect.midY)
+            kvT9.feedForTests([
+                TouchSample(id: 201, phase: .began, point: p2, time: 0.0),
+                TouchSample(id: 201, phase: .moved, point: CGPoint(x: p2.x, y: p2.y - 24), time: 0.04),
+                TouchSample(id: 201, phase: .ended, point: CGPoint(x: p2.x, y: p2.y - 24), time: 0.07),
+            ])
+            let pL = CGPoint(x: langRect.midX, y: langRect.midY)
+            kvT9.feedForTests([
+                TouchSample(id: 202, phase: .began, point: pL, time: 0.2),
+                TouchSample(id: 202, phase: .moved, point: CGPoint(x: pL.x, y: pL.y - 24), time: 0.24),
+                TouchSample(id: 202, phase: .ended, point: CGPoint(x: pL.x, y: pL.y - 24), time: 0.27),
+            ])
+        }
+        let kvQ = KeyboardView(spatial: SpatialModel.standard())
+        kvQ.frame = CGRect(x: 0, y: 0, width: 393, height: 216)
+        kvQ.configure(LayoutContext(page: .letters, chinese: true, showGlobe: false, returnLabel: nil, returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true))
+        kvQ.layoutIfNeeded()
+        var diagChar: String?
+        kvQ.onAction = { act, _ in if case .char(let c) = act { diagChar = c } }
+        if let comma = kvQ.keyRectsForTests(.char("，"))?.cap {
+            let pc = CGPoint(x: comma.midX, y: comma.midY)
+            // Wide horizontal drift (28pt vs 20pt vertical rise) should fall outside the strict upward cone and not flick
+            kvQ.feedForTests([
+                TouchSample(id: 203, phase: .began, point: pc, time: 0.0),
+                TouchSample(id: 203, phase: .moved, point: CGPoint(x: pc.x - 28, y: pc.y - 20), time: 0.04),
+                TouchSample(id: 203, phase: .ended, point: CGPoint(x: pc.x - 28, y: pc.y - 20), time: 0.07),
+            ])
+        }
+        log(emittedT9.contains(.char("2")) && emittedT9.contains(.toggleGrid) && diagChar != "。",
+            "r102.T9 swipe-up emits digit, toggleLanguage swipe-up switches 9/26, and sideways drift avoids accidental flick",
+            "t9=\(emittedT9) diag=\(diagChar ?? "nil")")
+
+        // 4. Secure field isolation + URL dot protection + optional Pangu spacing + idle 9/26 pill
+        if let pair = makeKeyboard(scheme: 0, grid: false, in: window) {
+            let (vc, h) = pair
+            vc.view.layoutIfNeeded()
+            let bar = vc.candidateBarForTests
+            let initialPill = bar.quickGridTitleForTests == "9键"
+            bar.tapQuickGridForTests()
+            vc.view.layoutIfNeeded()
+            let toggledToGrid = KeyboardSettings.shared.pinyinGrid && bar.quickGridTitleForTests == "26键"
+            bar.tapQuickGridForTests()
+            vc.view.layoutIfNeeded()
+
+            // URL / email vs ordinary CJK-Latin prose dot protection
+            h.clear(); h.insertText("www"); vc.textDidChange(nil)
+            vc.handle(.char("。"), tap: nil)
+            let wwwDot = h.string == "www."
+            h.clear(); h.insertText("https"); vc.textDidChange(nil)
+            vc.handle(.char("："), tap: nil)
+            let httpsColon = h.string == "https:"
+            h.clear(); h.insertText("我用iPhone"); vc.textDidChange(nil)
+            vc.handle(.char("。"), tap: nil)
+            let prosePeriod = h.string == "我用iPhone。"
+
+            // Optional Pangu spacing (default false)
+            let defaultPanguOff = !s.panguSpacing
+            s.panguSpacing = true
+            vc.applySettings()
+            h.clear(); vc.discardComposition(); vc.textDidChange(nil)
+            h.insertText("hello")
+            type(vc, "nihc"); settle(vc); vc.handle(.space, tap: nil); drain(0.05)
+            let panguCjkAfterEn = h.string.hasPrefix("hello ")
+            vc.handle(.toggleLanguage, tap: nil)
+            type(vc, "hi")
+            let panguEnAfterCjk = h.string.contains(" hi")
+            vc.handle(.toggleLanguage, tap: nil)
+            let panguInserted = panguCjkAfterEn && panguEnAfterCjk
+
+            // Secure field isolation: forces English QWERTY, clears predictions/marked text, blocks toggleLanguage & Pinyin
+            h.clear(); vc.discardComposition()
+            h.isSecureTextEntry = true
+            vc.textDidChange(nil)
+            vc.handle(.toggleLanguage, tap: nil)
+            type(vc, "pwd")
+            let secureEnglish = h.string == "pwd" && h.marked == nil && vc.testState.english && vc.testState.predictions.isEmpty
+            h.isSecureTextEntry = false
+            vc.textDidChange(nil)
+
+            log(initialPill && toggledToGrid && wwwDot && httpsColon && prosePeriod && defaultPanguOff && panguInserted && secureEnglish,
+                "r102.Idle 9/26 pill, domain punctuation, Pangu spacing, and isSecureTextEntry isolation behave cleanly",
+                "pill=\(initialPill)/\(toggledToGrid) url=\(wwwDot)/\(httpsColon)/\(prosePeriod) pangu=\(defaultPanguOff)/\(panguInserted) sec=\(secureEnglish)")
+        } else {
+            log(false, "r102.controller setup", "engine did not load")
+        }
     }
 }
 

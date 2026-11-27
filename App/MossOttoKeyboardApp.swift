@@ -482,23 +482,23 @@ private struct GuideScreen: View {
 
 struct GestureAtlasContent: View {
     enum MostoPreviewAction: String, CaseIterable {
-        case kaomoji = "左侧 Mosto"
-        case toggleLight = "右侧日月"
-        case yawn = "长按 Mosto"
+        case kaomoji = "双击底栏 Mosto"
+        case toggleLight = "长按右上齿轮"
+        case openSettings = "按住底栏 Mosto"
 
         var shortEffect: String {
             switch self {
             case .kaomoji: return "颜文字"
             case .toggleLight: return "换光效"
-            case .yawn: return "打哈欠"
+            case .openSettings: return "开设置"
             }
         }
 
         var badge: String {
             switch self {
-            case .kaomoji: return "(=^･ω･^=)  无框轻点 · 200+ 颜文字"
-            case .toggleLight: return "日光与夜灯一键切换 · Mosto 同步亮尾"
-            case .yawn: return "按住 0.4s 慵懒打哈欠 · 软触反馈"
+            case .kaomoji: return "(=^･ω･^=)  单击 Mosto 表情 · 双击 200+ 颜文字"
+            case .toggleLight: return "长按右上齿轮 0.4s 切换日光 / 夜灯"
+            case .openSettings: return "按住底栏 Mosto 0.45s 直达键盘设置"
             }
         }
     }
@@ -587,12 +587,13 @@ struct GestureAtlasContent: View {
                             .scaledToFit()
                             .frame(width: 28, height: 28)
                             .scaleEffect((mostoBounce && !reduceMotion) ? 1.16 : 1.0)
+                            .onTapGesture(count: 2) { triggerMostoPreview(.kaomoji) }
                             .onTapGesture { triggerMostoPreview(.kaomoji) }
-                            .onLongPressGesture(minimumDuration: 0.4) { triggerMostoPreview(.yawn) }
+                            .onLongPressGesture(minimumDuration: 0.4) { triggerMostoPreview(.openSettings) }
                             .accessibilityAddTraits(.isButton)
-                            .accessibilityLabel("底栏 Mosto 超级键，单击表情，双击颜文字，长按设置")
+                            .accessibilityLabel("底栏 Mosto 超级键，单击表情，双击颜文字，按住打开设置")
 
-                        Text(selectedMosto?.badge ?? "底栏 Mosto 单击表情 · 双击颜文字 · 长按设置")
+                        Text(selectedMosto?.badge ?? "底栏 Mosto 单击表情 · 双击颜文字 · 按住设置")
                             .font(.caption2.weight(.medium))
                             .foregroundStyle(previewNight ? Color.white.opacity(0.74) : MossOttoStyle.inkSecondary)
                             .lineLimit(1)
@@ -601,32 +602,31 @@ struct GestureAtlasContent: View {
                         Spacer(minLength: 4)
 
                         Button {
-                            triggerMostoPreview(.toggleLight)
+                            triggerMostoPreview(.openSettings)
                         } label: {
-                            Image(systemName: previewNight ? "moon.fill" : "sun.max.fill")
-                                .font(.system(size: 13.5, weight: .medium))
+                            Image(systemName: previewNight ? "gearshape.fill" : "gearshape")
+                                .font(.system(size: 14.5, weight: .regular))
                                 .foregroundStyle(
                                     previewNight
                                         ? Color(uiColor: MossOttoStyle.hex(0xE0BE74))
                                         : MossOttoStyle.inkSecondary
                                 )
-                                .frame(width: 34, height: 28)
+                                .frame(width: 30, height: 28)
                                 .background(
                                     Capsule().fill(
                                         previewNight
-                                            ? Color.white.opacity(0.14)
-                                            : Color(uiColor: MossOttoStyle.hex(0x633EBF, 0.10))
+                                            ? Color.white.opacity(0.12)
+                                            : Color(uiColor: MossOttoStyle.hex(0x633EBF, 0.08))
                                     )
                                 )
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("迷你顶栏切换日光与夜灯")
-
-                        Image(systemName: "gearshape")
-                            .font(.system(size: 14.5, weight: .regular))
-                            .foregroundStyle(previewNight ? Color.white.opacity(0.68) : MossOttoStyle.inkSecondary)
-                            .frame(width: 26, height: 28)
-                            .accessibilityHidden(true)
+                        .simultaneousGesture(
+                            LongPressGesture(minimumDuration: 0.4).onEnded { _ in
+                                triggerMostoPreview(.toggleLight)
+                            }
+                        )
+                        .accessibilityLabel("顶栏齿轮，轻点打开设置，长按切换日光与夜灯")
                     }
                     .padding(.horizontal, 10)
                     .frame(height: 42)
@@ -650,14 +650,14 @@ struct GestureAtlasContent: View {
     }
 
     private var activePreviewSprite: String {
-        if selectedMosto == .yawn { return "MostoYawn" }
+        if selectedMosto == .openSettings { return "MostoYawn" }
         if previewNight { return "MostoNight" }
         if selectedMosto == .kaomoji { return "MostoBlink" }
         return "Mosto"
     }
 
     private func triggerMostoPreview(_ action: MostoPreviewAction) {
-        let style: UIImpactFeedbackGenerator.FeedbackStyle = action == .yawn ? .soft : (action == .toggleLight ? .medium : .light)
+        let style: UIImpactFeedbackGenerator.FeedbackStyle = action == .openSettings ? .soft : (action == .toggleLight ? .medium : .light)
         UIImpactFeedbackGenerator(style: style).impactOccurred()
         withAnimation(reduceMotion ? .none : .spring(response: 0.24, dampingFraction: 0.65)) {
             if action == .toggleLight { nightOverride = !previewNight }
@@ -1066,7 +1066,7 @@ struct PrivacyCommitmentContent: View {
             icon: "trash",
             tint: MossOttoStyle.ottoIndigo,
             title: "随时可一键清空",
-            detail: "你可以在系统键盘内打开设置，前往“学习”页面一键清空已学词语与触点习惯，或卸载应用彻底移除。"
+            detail: "你可以在系统键盘内打开设置，前往“控制台 › 更多 › 本机词库”一键清空已学词语与触点习惯，或卸载应用彻底移除。"
         ),
     ]
 
@@ -1236,7 +1236,7 @@ struct MosslingSisterAppCard: View {
                     Text("孩子摸索，大人点灯")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(MossOttoStyle.inkPrimary)
-                    Text("每天被触碰最多次的交互面，值得与硬件同等级的准度与隐私边界。把这份安静带回书桌，在《摸索台灯》里遇见 0–3 岁亲子共玩与床头夜灯。")
+                    Text("专为 0–3 岁宝宝打造的床头互动夜灯与睡前陪伴应用。拉下真实拉绳点亮暖光，与 Moss 和 Otto 一起轻触动物朋友、聆听自然白噪音。")
                         .font(.caption)
                         .foregroundStyle(MossOttoStyle.inkSecondary)
                         .fixedSize(horizontal: false, vertical: true)

@@ -42,8 +42,8 @@ final class KeyView: UIView {
                 let a: CGFloat = self.blanked ? 0 : 1
                 self.label.alpha = a; self.hintLabel?.alpha = a; self.icon.alpha = a; self.guideLabel?.alpha = a
             }
-            statusDot?.isHidden = blanked || Theme.plain || !(spec.action == .toggleLanguage || spec.action == .shift)
-            spaceNotch?.isHidden = blanked || Theme.plain || spec.action != .space || bounds.width <= 120
+            statusDot?.isHidden = blanked || Theme.plain || !spec.isSmartSpace
+            spaceNotch?.isHidden = blanked || Theme.plain || spec.action != .space || spec.isSmartSpace || bounds.width <= 96
         }
     }
 
@@ -179,7 +179,7 @@ final class KeyView: UIView {
             label.font = Theme.font(18.5, .medium)
         case .char: label.font = Theme.font(Metrics.symbolFont, .medium)
         case .t9(let d): label.font = Theme.font(d == "'" ? Metrics.functionFont : 20, .semibold)
-        case .space: label.font = spec.isSmartSpace ? Theme.font(13.5, .semibold) : Theme.font(15, .regular)
+        case .space: label.font = spec.isSmartSpace ? Theme.font(13.5, .semibold) : Theme.font(12, .medium)
         default: label.font = Theme.font(Metrics.functionFont, Theme.plain ? .medium : .semibold)
         }
         if spec.action == .emoji && !Theme.plain {
@@ -222,7 +222,8 @@ final class KeyView: UIView {
         case .settings: return "键盘设置"
         case .emoji: return "Mosto 表情，双击颜文字，按住打开设置"
         case .symbolPanel: return "符号"
-        case .toggleLanguage: return spec.label == "中" ? "中文，轻点切换到英文" : "英文，轻点切换到中文"
+        case .toggleGrid: return "切换九宫格与全键盘"
+        case .toggleLanguage: return spec.label == "中" ? "中文，轻点切换到英文，上滑切换九宫格" : "英文，轻点切换到中文"
         case .t9(let d): return d == "'" ? "分词" : "\(d)，\(spec.label)"
         case .deleteWord: return "删除词"
         case .clearInput: return "重输"
@@ -305,9 +306,8 @@ final class KeyView: UIView {
             ? Theme.correctedMark.withAlphaComponent(0.55).resolvedColor(with: t).cgColor
             : nil
         if let dot = statusDot {
-            let active = (spec.action == .toggleLanguage && spec.label == "中") || (spec.action == .shift && spec.style == .normal)
-            dot.backgroundColor = (spec.isSmartSpace ? Theme.correctedMark : (active ? Theme.statusLedActive : Theme.statusLedMuted)).resolvedColor(with: t).cgColor
-            dot.isHidden = blanked || Theme.plain || !(spec.action == .toggleLanguage || spec.action == .shift || spec.isSmartSpace)
+            dot.backgroundColor = Theme.correctedMark.resolvedColor(with: t).cgColor
+            dot.isHidden = blanked || Theme.plain || !spec.isSmartSpace
         }
         if let notch = spaceNotch {
             notch.backgroundColor = Theme.spaceNotch.resolvedColor(with: t).cgColor
@@ -318,12 +318,17 @@ final class KeyView: UIView {
             if spec.action == .space && spec.isSmartSpace {
                 label.textColor = Theme.correctedMark.resolvedColor(with: t)
             } else {
-                label.textColor = spec.action == .space ? restFg.withAlphaComponent(0.76) : restFg
+                let spaceAlpha: CGFloat = UIAccessibility.isDarkerSystemColorsEnabled ? 0.88 : 0.70
+                label.textColor = spec.action == .space ? Theme.secondaryText.withAlphaComponent(spaceAlpha).resolvedColor(with: t) : restFg
             }
             icon.tintColor = restFg
         }
         if let h = hintLabel, !h.isHidden {
-            let color = hintLit ? Theme.correctedMark : Theme.secondaryText.withAlphaComponent(0.78)
+            let baseAlpha: CGFloat = {
+                if case .t9 = spec.action { return UIAccessibility.isDarkerSystemColorsEnabled ? 0.78 : 0.58 }
+                return UIAccessibility.isDarkerSystemColorsEnabled ? 0.86 : 0.68
+            }()
+            let color = hintLit ? Theme.correctedMark : Theme.secondaryText.withAlphaComponent(baseAlpha)
             h.textColor = color.resolvedColor(with: t)
         }
         if let g = guideLabel, !g.isHidden {
@@ -338,7 +343,11 @@ final class KeyView: UIView {
         guard lit != hintLit else { return }
         hintLit = lit
         guard let h = hintLabel, !h.isHidden else { return }
-        let color = lit ? Theme.correctedMark : Theme.secondaryText.withAlphaComponent(0.78)
+        let baseAlpha: CGFloat = {
+            if case .t9 = spec.action { return UIAccessibility.isDarkerSystemColorsEnabled ? 0.78 : 0.58 }
+            return UIAccessibility.isDarkerSystemColorsEnabled ? 0.86 : 0.68
+        }()
+        let color = lit ? Theme.correctedMark : Theme.secondaryText.withAlphaComponent(baseAlpha)
         h.textColor = color.resolvedColor(with: traitCollection)
     }
 
@@ -395,7 +404,7 @@ final class KeyView: UIView {
             let shadowRect = CGRect(x: 0.75, y: 0.5, width: max(0, f.width - 1.5), height: max(0, f.height - 0.5))
             layer.shadowPath = UIBezierPath(roundedRect: shadowRect, cornerRadius: max(1, cr - 0.5)).cgPath
         }
-        let wantsDot = !Theme.plain && (spec.action == .toggleLanguage || spec.action == .shift || spec.isSmartSpace)
+        let wantsDot = !Theme.plain && spec.isSmartSpace
         if wantsDot {
             let dot = statusDot ?? {
                 let d = CALayer()
@@ -405,8 +414,7 @@ final class KeyView: UIView {
                 return d
             }()
             dot.frame = CGRect(x: f.width - 9.5, y: 5.5, width: 4.5, height: 4.5)
-            let active = (spec.action == .toggleLanguage && spec.label == "中") || (spec.action == .shift && spec.style == .normal)
-            dot.backgroundColor = (spec.isSmartSpace ? Theme.correctedMark : (active ? Theme.statusLedActive : Theme.statusLedMuted)).resolvedColor(with: traitCollection).cgColor
+            dot.backgroundColor = Theme.correctedMark.resolvedColor(with: traitCollection).cgColor
             dot.isHidden = blanked
         } else {
             statusDot?.isHidden = true
@@ -415,26 +423,26 @@ final class KeyView: UIView {
         if wantsNotch {
             let notch = spaceNotch ?? {
                 let n = CALayer()
-                n.cornerRadius = 1.25
+                n.cornerRadius = 1.0
                 layer.addSublayer(n)
                 spaceNotch = n
                 return n
             }()
-            notch.frame = CGRect(x: (f.width - 22) / 2, y: (f.height - 2.5) / 2, width: 22, height: 2.5)
+            notch.frame = CGRect(x: (f.width - 22) / 2, y: f.height - 6.5, width: 22, height: 2.0)
             notch.backgroundColor = Theme.spaceNotch.resolvedColor(with: traitCollection).cgColor
             notch.isHidden = blanked
-            label.isHidden = true
         } else {
             spaceNotch?.isHidden = true
-            label.isHidden = false
         }
+        label.isHidden = false
         CATransaction.commit()
 
         let hasHint = !(hintLabel?.isHidden ?? true)
         let isBracket = Self.balancedBrackets.contains(spec.label)
         let o = cjkPunctuationOffset(label.text, fontSize: label.font.pointSize, font: label.font)
         let hintDrop: CGFloat = hasHint ? (spec.label.count >= 3 ? 4.0 : (isBracket ? 3.5 : 1.5)) : 0
-        label.frame = f.insetBy(dx: 2, dy: 0).offsetBy(dx: o.x, dy: o.y + hintDrop)
+        let spaceLift: CGFloat = wantsNotch ? -2.5 : 0
+        label.frame = f.insetBy(dx: 2, dy: 0).offsetBy(dx: o.x, dy: o.y + hintDrop + spaceLift)
         icon.frame = f
         // 键位提示: the letter moves up and smaller; the initial and finals sit under it (portrait only).
         let guided = !(spec.guideFinals.isEmpty && spec.guideInitial == nil) && f.height >= 34
@@ -537,8 +545,10 @@ final class KeyView: UIView {
         let boldFont = Theme.font(size, .bold)
         let para = NSMutableParagraphStyle()
         para.alignment = .center
-        para.lineSpacing = 0
-        para.maximumLineHeight = (hasBold ? boldFont : regularFont).lineHeight
+        para.lineSpacing = lines.count >= 3 ? -1.5 : 0
+        para.maximumLineHeight = lines.count >= 3
+            ? max(8, (hasBold ? boldFont : regularFont).lineHeight - 1.5)
+            : (hasBold ? boldFont : regularFont).lineHeight
         let out = NSMutableAttributedString()
         for (lineIdx, segments) in lines.enumerated() {
             if lineIdx > 0 {
@@ -639,8 +649,9 @@ final class KeyPreview: UIView {
     /// `key`: the key's frame; `limit`: the horizontal room available (container bounds), both in container space.
     func place(over key: CGRect, within limit: CGRect, upwardLift: CGFloat = 0) {
         let capW = max(key.width + 16, 46)
-        let availAbove = max(36, key.minY - limit.minY - 4)
-        let capH = min(max(36, key.height * 1.04), availAbove)
+        let availAbove = max(30, key.minY - limit.minY - 4)
+        let minCapH: CGFloat = availAbove < 38 ? 30 : 36
+        let capH = min(max(minCapH, key.height * 1.04), availAbove)
         var capX = key.midX - capW / 2
         capX = min(max(limit.minX + 2, capX), limit.maxX - capW - 2)
         let top = max(limit.minY + 1, key.minY - capH - 4 - upwardLift)
@@ -683,6 +694,7 @@ final class KeyPreview: UIView {
 
 /// Long-press row of alternates (Gboard style): slide to choose, release to type the highlighted one.
 final class AltPopup: UIView {
+    private var slots: [UIView] = []
     private var labels: [UILabel] = []
     private let surfaceLayer = CAGradientLayer()
     private let activeIndicator = CALayer()
@@ -721,18 +733,19 @@ final class AltPopup: UIView {
         for (i, o) in options.enumerated() {
             let slot = reversed ? options.count - 1 - i : i
             let shift = cjkPunctuationOffset(o, fontSize: 24, font: optFont)
-            let l = UILabel(frame: CGRect(x: 4 + CGFloat(slot) * cell, y: 4, width: cell, height: height - 8))
+            let box = UIView(frame: CGRect(x: 4 + CGFloat(slot) * cell, y: 4, width: cell, height: height - 8))
+            box.layer.cornerRadius = 8
+            box.layer.cornerCurve = .continuous
+            box.clipsToBounds = true
+            let l = UILabel(frame: box.bounds.offsetBy(dx: shift.x, dy: shift.y))
             l.text = o
             l.textAlignment = .center
             l.font = optFont
             l.adjustsFontSizeToFitWidth = true
             l.minimumScaleFactor = 0.5
-            l.layer.cornerRadius = 8
-            l.layer.cornerCurve = .continuous
-            l.clipsToBounds = true
-            l.tag = Int((shift.x * 100).rounded())
-            l.accessibilityValue = "\(Int((shift.y * 100).rounded()))"
-            addSubview(l)
+            box.addSubview(l)
+            addSubview(box)
+            slots.append(box)
             labels.append(l)
         }
         refresh()
@@ -766,6 +779,12 @@ final class AltPopup: UIView {
     }
     var borderWidthForTests: CGFloat { layer.borderWidth + surfaceLayer.borderWidth }
     var shadowOpacityForTests: Float { layer.shadowOpacity }
+    var selectedSlotCenterOffsetForTests: CGFloat {
+        guard slots.indices.contains(selected) else { return 99 }
+        let slot = reversed ? slots.count - 1 - selected : selected
+        let expectedMidX = 4 + (CGFloat(slot) + 0.5) * cell
+        return abs(slots[selected].center.x - expectedMidX)
+    }
 
     func refresh() {
         let t = traitCollection
@@ -780,27 +799,26 @@ final class AltPopup: UIView {
         let reduceMotion = UIAccessibility.isReduceMotionEnabled
         let indicatorColor = (Theme.plain ? Theme.selectionText : Theme.correctedMark).resolvedColor(with: t).cgColor
 
-        for (i, l) in labels.enumerated() {
+        for (i, box) in slots.enumerated() {
+            let l = labels[i]
             let active = i == selected
-            l.backgroundColor = active ? Theme.selection : .clear
+            box.backgroundColor = active ? Theme.selection : .clear
             l.textColor = active ? Theme.selectionText : Theme.keyText
-            let sx = CGFloat(l.tag) / 100.0
-            let sy = CGFloat(Int(l.accessibilityValue ?? "0") ?? 0) / 100.0
             if active && !reduceMotion {
-                l.transform = CGAffineTransform(translationX: sx, y: sy - 1.5).scaledBy(x: 1.07, y: 1.07)
+                box.transform = CGAffineTransform(translationX: 0, y: -1.5).scaledBy(x: 1.07, y: 1.07)
             } else {
-                l.transform = CGAffineTransform(translationX: sx, y: sy)
+                box.transform = .identity
             }
             if active {
-                let indW = min(14, max(8, l.frame.width - 14))
+                let indW = min(14, max(8, box.frame.width - 14))
                 CATransaction.begin()
                 CATransaction.setDisableActions(true)
                 activeIndicator.backgroundColor = indicatorColor
-                activeIndicator.frame = CGRect(x: l.frame.midX - indW / 2, y: bounds.height - 6.5, width: indW, height: 2)
+                activeIndicator.frame = CGRect(x: box.frame.midX - indW / 2, y: bounds.height - 6.5, width: indW, height: 2)
                 CATransaction.commit()
             }
         }
-        bringSubviewToFront(labels.indices.contains(selected) ? labels[selected] : self)
+        bringSubviewToFront(slots.indices.contains(selected) ? slots[selected] : self)
     }
 
     func index(at x: CGFloat) -> Int {
@@ -958,8 +976,10 @@ final class KeyboardView: UIView {
         var typedOnDown = false
         /// On delete, while something is being composed: the swipe left that clears it (rounds/R3.md).
         var clearSwipe: ClearSwipe?
-        /// Upward flick off the Chinese comma key (，) emits a period (。) instantaneously without waiting for long-press.
+        /// Upward flick off a key (e.g. `，` -> `。` or T9 `2`–`9` -> digits) without waiting for long-press.
         var flickedAlt: String?
+        /// Upward flick off the 中/英 toggle key switches between 9-key and 26-key layouts.
+        var flickedGrid = false
         /// Spring-loaded Shift glide / two-finger Shift chord tracking.
         var shiftOriginIndex: Int?
         var shiftGlided = false
@@ -1391,10 +1411,14 @@ final class KeyboardView: UIView {
             } else {
                 onAction?(.char(s), nil)
             }
-        case .t9:
-            tr.typedOnDown = true
-            stats.emitted += 1
-            onAction?(kv.spec.action, nil)
+        case .t9(let d):
+            if d == "'" || kv.spec.alt == nil {
+                tr.typedOnDown = true
+                stats.emitted += 1
+                onAction?(kv.spec.action, nil)
+            } else {
+                showPreview(tr, text: String(d), allowFunction: true)
+            }
         case .char:
             lastCharDownTime = time
             showPreview(tr, text: kv.spec.label)
@@ -1534,7 +1558,8 @@ final class KeyboardView: UIView {
             if !tr.shiftGlided, tr.pageGlideReturn == nil, let alt = kv.spec.alt {
                 let rise = tr.start.y - p.y
                 let driftX = abs(p.x - tr.start.x)
-                if rise >= 16 && driftX <= 32 {
+                let coneX = min(32.0, max(10.0, rise * 0.55))
+                if rise >= 16 && driftX <= coneX {
                     kv.setHintLit(true)
                     if tr.flickedAlt == nil {
                         tr.flickedAlt = alt
@@ -1554,12 +1579,12 @@ final class KeyboardView: UIView {
                         recyclePreview(tr.preview); tr.preview = nil
                     }
                     break
-                } else if rise >= 6 && driftX <= 32 {
+                } else if rise >= 6 && driftX <= coneX {
                     kv.setHintLit(true)
                     break
                 } else if tr.flickedAlt == nil {
                     kv.setHintLit(false)
-                    if rise > 6 && driftX <= 28 { break }
+                    if rise > 6 && driftX <= coneX { break }
                 }
             }
             // Slide to a neighbouring character key before release (or back to Shift to cancel a Shift-glide).
@@ -1589,6 +1614,44 @@ final class KeyboardView: UIView {
                         }
                     }
                 }
+            }
+        case .t9(let d) where d != "'" && !tr.typedOnDown:
+            if let alt = kv.spec.alt {
+                let rise = tr.start.y - p.y
+                let driftX = abs(p.x - tr.start.x)
+                let coneX = min(32.0, max(10.0, rise * 0.55))
+                if rise >= 16 && driftX <= coneX {
+                    kv.setHintLit(true)
+                    if tr.flickedAlt == nil {
+                        tr.flickedAlt = alt
+                        showPreview(tr, text: alt, flicked: true, allowFunction: true)
+                        onFeedback?(.altMoved, p)
+                    }
+                } else if tr.flickedAlt != nil && rise < 8 {
+                    tr.flickedAlt = nil
+                    kv.setHintLit(false)
+                    showPreview(tr, text: String(d), flicked: false, allowFunction: true)
+                    onFeedback?(.altMoved, p)
+                } else if rise >= 6 && driftX <= coneX {
+                    kv.setHintLit(true)
+                } else if tr.flickedAlt == nil {
+                    kv.setHintLit(false)
+                }
+            }
+        case .toggleLanguage where !tr.typedOnDown:
+            let rise = tr.start.y - p.y
+            let driftX = abs(p.x - tr.start.x)
+            let coneX = min(32.0, max(10.0, rise * 0.55))
+            if rise >= 18 && driftX <= coneX {
+                if !tr.flickedGrid {
+                    tr.flickedGrid = true
+                    showPreview(tr, text: "9/26", flicked: true, allowFunction: true)
+                    onFeedback?(.altMoved, p)
+                }
+            } else if tr.flickedGrid && rise < 8 {
+                tr.flickedGrid = false
+                recyclePreview(tr.preview); tr.preview = nil
+                onFeedback?(.altMoved, p)
             }
         case .shift:
             if let idx = keyIndex(at: p), idx < keyViews.count, idx != tr.keyIndex, case .char = keyViews[idx].spec.action {
@@ -1922,6 +1985,14 @@ final class KeyboardView: UIView {
                       let returnPage = tr.pageGlideReturn, context?.page != returnPage {
                 onAction?(.page(returnPage), nil)
             }
+        case .t9:
+            if let flick = tr.flickedAlt {
+                onAction?(.char(flick), nil)
+            } else {
+                onAction?(kv.spec.action, nil)
+            }
+        case .toggleLanguage:
+            onAction?(tr.flickedGrid ? .toggleGrid : .toggleLanguage, nil)
         case .emoji:
             if !tr.altShown { onAction?(.emoji, nil) }
         default:
@@ -2020,9 +2091,11 @@ final class KeyboardView: UIView {
         p.label.text = text
         if p.superview == nil { addSubview(p) } else { bringSubviewToFront(p) }
         p.isHidden = false
-        // the room above: up to the top of the keyboard's whole view (the strip included)
-        let topY = superview.map { convert(CGPoint.zero, from: $0).y } ?? bounds.minY
-        p.place(over: kv.frame, within: CGRect(x: bounds.minX, y: topY + 1, width: bounds.width, height: bounds.maxY - topY - 1), upwardLift: flicked ? 3 : 0)
+        let composingInStrip = !(stripIsEmpty?() ?? true)
+        let rawTopY = superview.map { convert(CGPoint.zero, from: $0).y } ?? bounds.minY
+        let isTopRow = kv.frame.minY < 20
+        let limitTopY = (composingInStrip && isTopRow) ? (bounds.minY - 8) : (rawTopY + 1)
+        p.place(over: kv.frame, within: CGRect(x: bounds.minX, y: limitTopY, width: bounds.width, height: bounds.maxY - limitTopY), upwardLift: flicked ? 3 : 0)
         tr.preview = p
     }
 

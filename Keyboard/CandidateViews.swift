@@ -52,10 +52,14 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     var onLongPress: ((Int) -> Void)?
     /// Tap on the leading raw-key preview pill: commits the literal typed letters immediately.
     var onPreeditTap: (() -> Void)?
+    /// Quick 1-tap 9-key / 26-key switch pill shown on the leading idle strip in Chinese mode.
+    var onQuickToggleGrid: (() -> Void)?
 
     private var idleControlsEnabled = true
     private var isNightLight = false
     private var isForcedDayOnDarkGlass = false
+    private var idleQuickGridTitle: String?
+    private let quickGridButton = UIButton(type: .system)
     private let kaomojiButton = UIButton(type: .system)
     private let lightToggleButton = UIButton(type: .system)
     private static var idleSymbolCache: [String: UIImage] = [:]
@@ -172,8 +176,8 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     var xiaoheRhythm = false { didSet { if xiaoheRhythm != oldValue { applyPreeditText(preeditRaw) } } }
     private var preeditRaw = ""
 
-    static var font: UIFont { Theme.font(19, .regular) }
-    static var firstFont: UIFont { Theme.font(19, .medium) }
+    static var font: UIFont { Theme.font(Theme.scaledSize(19, maxDelta: 2.5), .regular) }
+    static var firstFont: UIFont { Theme.font(Theme.scaledSize(19, maxDelta: 2.5), .medium) }
     static var fixFont: UIFont { Theme.font(10.5, .semibold) }
     /// Below this height (landscape) a caption sits beside its candidate, not under it.
     static let twoLineHeight: CGFloat = 44
@@ -327,6 +331,14 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         lightToggleButton.layer.cornerCurve = .continuous
         lightToggleButton.addAction(UIAction { [weak self] _ in self?.onLightToggle?() }, for: .touchUpInside)
         addSubview(lightToggleButton)
+
+        quickGridButton.titleLabel?.font = Theme.font(11.5, .semibold)
+        quickGridButton.layer.cornerCurve = .continuous
+        quickGridButton.layer.borderWidth = 0
+        quickGridButton.accessibilityLabel = "切换九宫格与全键盘"
+        quickGridButton.addAction(UIAction { [weak self] _ in self?.onQuickToggleGrid?() }, for: .touchUpInside)
+        quickGridButton.isHidden = true
+        addSubview(quickGridButton)
 
         update(preedit: "", candidates: [])
     }
@@ -842,6 +854,8 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     var clearFilamentTrackShownForTests: Bool { !clearFilamentTrack.isHidden }
     var cursorCenterTickShownForTests: Bool { !cursorCenterTick.isHidden }
     var idleLightTintColorForTests: UIColor { lightToggleButton.tintColor }
+    var quickGridTitleForTests: String? { quickGridButton.isHidden ? nil : quickGridButton.title(for: .normal) }
+    func tapQuickGridForTests() { onQuickToggleGrid?() }
     var barPillsBorderlessForTests: Bool {
         preeditDock.layer.borderWidth == 0
             && clearArmedPill.layer.borderWidth == 0
@@ -948,11 +962,16 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         onMostoLongPress?()
     }
 
-    func setIdleControls(enabled: Bool, night: Bool, forcedDayOnDarkGlass: Bool = false) {
-        let changed = idleControlsEnabled != enabled || isNightLight != night || isForcedDayOnDarkGlass != forcedDayOnDarkGlass
+    func setIdleControls(enabled: Bool, night: Bool, forcedDayOnDarkGlass: Bool = false, quickGridTitle: String? = nil) {
+        let changed = idleControlsEnabled != enabled || isNightLight != night || isForcedDayOnDarkGlass != forcedDayOnDarkGlass || idleQuickGridTitle != quickGridTitle
         idleControlsEnabled = enabled
         isNightLight = night
         isForcedDayOnDarkGlass = forcedDayOnDarkGlass
+        idleQuickGridTitle = quickGridTitle
+        if let quickGridTitle {
+            quickGridButton.setTitle(quickGridTitle, for: .normal)
+            quickGridButton.accessibilityValue = quickGridTitle == "9键" ? "当前全键盘，轻点切至九宫格" : "当前九宫格，轻点切至全键盘"
+        }
         let fg = Theme.secondaryText.resolvedColor(with: traitCollection)
         if isNightLight {
             lightToggleButton.tintColor = Theme.plain ? fg : Theme.dyn(Theme.hex(0x784F0A), Theme.hex(0xE0BE74))
@@ -1123,6 +1142,8 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             expandButton.isHidden = true
             undoChip.isHidden = true
             mosto.isHidden = true
+            quickGridButton.isHidden = true
+            quickGridButton.isUserInteractionEnabled = false
             clearArmedPill.isHidden = true
             deletePreviewPill.isHidden = true
             layoutIdleControls(height: h, edgeAlign: edgeAlign)
@@ -1144,6 +1165,28 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             return
         }
         let hideChromeForHud = isDeleteClutchEngaged || cursorScrubActive
+        let showQuickGrid = idleControlsEnabled
+            && !typing
+            && candidates.isEmpty
+            && undoText == nil
+            && !gridExpanded
+            && forgetOverlay == nil
+            && !hideChromeForHud
+            && clearArmedPill.isHidden
+            && deletePreviewPill.isHidden
+            && idleQuickGridTitle != nil
+        quickGridButton.isHidden = !showQuickGrid
+        quickGridButton.isUserInteractionEnabled = showQuickGrid
+        if showQuickGrid {
+            let qH = min(26, max(22, h - 14))
+            let fitW = ceil((quickGridButton.title(for: .normal) as NSString? ?? "").size(withAttributes: [.font: Theme.font(11.5, .semibold)]).width)
+            let qW = max(36, fitW + 16)
+            quickGridButton.frame = CGRect(x: 10, y: floor((h - qH) / 2), width: qW, height: qH)
+            quickGridButton.layer.cornerRadius = qH / 2
+            quickGridButton.backgroundColor = Theme.preeditPillBg
+            quickGridButton.setTitleColor(Theme.secondaryText, for: .normal)
+            bringSubviewToFront(quickGridButton)
+        }
         undoChip.isHidden = undoText == nil || hideChromeForHud
         preeditDock.isHidden = !preeditDockWanted || !undoChip.isHidden || hideChromeForHud
         mosto.isHidden = !mostoWanted || hideChromeForHud
@@ -1922,7 +1965,10 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         dockBar.layer.addSublayer(dockHairline)
         addSubview(dockBar)
         let cfg = UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
-        closeButton.setImage(UIImage(systemName: "chevron.up", withConfiguration: cfg), for: .normal)
+        closeButton.setImage(nil, for: .normal)
+        closeButton.setTitle("收起", for: .normal)
+        closeButton.titleLabel?.font = Theme.font(13, .semibold)
+        closeButton.setTitleColor(Theme.functionText, for: .normal)
         deleteButton.setImage(UIImage(systemName: "delete.left", withConfiguration: cfg), for: .normal)
         for (b, surface) in [(closeButton, closeSurface), (deleteButton, deleteSurface)] {
             b.tintColor = Theme.functionText
@@ -1997,6 +2043,7 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         super.traitCollectionDidChange(previous)
         dockHairline.backgroundColor = Theme.separator.resolvedColor(with: traitCollection).cgColor
         for b in [closeButton, deleteButton] { b.layer.shadowColor = Theme.functionLip.resolvedColor(with: traitCollection).cgColor }
+        closeButton.setTitleColor(Theme.functionText, for: .normal)
         applyDockGradients()
         updateFilterRailStyle()
     }
@@ -2134,12 +2181,16 @@ final class CandidateGridView: UIView, UICollectionViewDataSource, UICollectionV
         let realIndex = displayedIndices[indexPath.item]
         let c = allCandidates[realIndex]
         let isFirst = realIndex == 0
-        let bg: UIColor = isFirst ? (c.corrected ? Theme.correctedTint : Theme.firstCandidateTint) : .clear
+        let isAsciiFallback = !isFirst && c.syllables.isEmpty && !c.isEnglish && !c.text.isEmpty && c.text.allSatisfy(\.isASCII)
+        let bg: UIColor = isFirst
+            ? (c.corrected ? Theme.correctedTint : Theme.firstCandidateTint)
+            : (isAsciiFallback ? Theme.preeditPillBg : .clear)
         cell.label.text = c.text
-        cell.label.font = isFirst ? CandidateBarView.firstFont : CandidateBarView.font
-        cell.label.textColor = isFirst && c.corrected ? Theme.correctedMark : Theme.candidateText
+        cell.label.font = isFirst ? CandidateBarView.firstFont : (isAsciiFallback ? Theme.font(14, .medium) : CandidateBarView.font)
+        cell.label.textColor = (isFirst && c.corrected) ? Theme.correctedMark : (isAsciiFallback ? Theme.secondaryText : Theme.candidateText)
         cell.baseBackground = bg
         cell.contentView.backgroundColor = bg
+        cell.contentView.layer.cornerRadius = isAsciiFallback ? 13 : 10
         cell.correctionBar.backgroundColor = Theme.correctedMark.resolvedColor(with: traitCollection).cgColor
         cell.correctionBar.isHidden = !(isFirst && c.corrected)
         return cell
@@ -2196,6 +2247,7 @@ private final class HardwareTileButton: UIControl {
     private let ledHalo = CALayer()
     private let ledDot = CALayer()
     private var activeTint: Bool = false
+    private var isModeSelector: Bool = false
     private var locked: Bool = false
     private var lastShadowSize: CGSize = .zero
     private var lastShadowCornerRadius: CGFloat = -1
@@ -2263,11 +2315,12 @@ private final class HardwareTileButton: UIControl {
     var shadowRadiusForTests: CGFloat { layer.shadowRadius }
     var activeLedHaloVisibleForTests: Bool { !ledHalo.isHidden }
 
-    func configure(icon: String, eyebrow: String, value: String, active: Bool, locked: Bool = false, spoken: String? = nil) {
+    func configure(icon: String, eyebrow: String, value: String, active: Bool, locked: Bool = false, isModeSelector: Bool = false, spoken: String? = nil) {
         iconView.image = Self.cachedSymbol(icon)
         eyebrowLabel.text = eyebrow
         valueLabel.text = value
         self.activeTint = active
+        self.isModeSelector = isModeSelector
         self.locked = locked
         accessibilityLabel = spoken ?? "\(eyebrow)：\(value)"
         refreshAppearance()
@@ -2284,7 +2337,7 @@ private final class HardwareTileButton: UIControl {
         let surfaceColors = pressed ? [downWell.cgColor, down.cgColor] : [topColor.cgColor, botColor.cgColor]
         let ledColor: UIColor = locked
             ? Theme.statusLedMuted.withAlphaComponent(0.35)
-            : (activeTint ? Theme.statusLedActive : Theme.statusLedMuted)
+            : (isModeSelector ? Theme.selection.withAlphaComponent(activeTint ? 0.95 : 0.55) : (activeTint ? Theme.statusLedActive : Theme.statusLedMuted))
         let showHalo = activeTint && !locked
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -2298,7 +2351,7 @@ private final class HardwareTileButton: UIControl {
         ledHalo.isHidden = !showHalo
         ledHalo.backgroundColor = Theme.statusLedActive.resolvedColor(with: t).withAlphaComponent(dark ? 0.34 : 0.24).cgColor
         CATransaction.commit()
-        let tint: UIColor = locked ? Theme.secondaryText.withAlphaComponent(0.6) : (activeTint ? Theme.selection : Theme.secondaryText)
+        let tint: UIColor = locked ? Theme.secondaryText.withAlphaComponent(0.6) : (isModeSelector ? (activeTint ? Theme.selection : Theme.keyText.withAlphaComponent(0.76)) : (activeTint ? Theme.selection : Theme.secondaryText))
         iconView.tintColor = tint.resolvedColor(with: t)
         eyebrowLabel.textColor = Theme.secondaryText
         eyebrowLabel.font = Theme.font(10.5, .medium)
@@ -2413,6 +2466,7 @@ final class SettingsPanelView: UIView {
     private enum DrawerRowKind {
         case control(icon: UIImageView, label: UILabel, control: UIView)
         case chips(views: [TelemetryChipView], detail: UILabel)
+        case toggleChips(button: UIButton, views: [TelemetryChipView], detail: UILabel)
         case reset(icon: UIImageView, button: UIButton)
     }
 
@@ -2458,6 +2512,7 @@ final class SettingsPanelView: UIView {
 
     private let numberControl = UISegmentedControl(items: ["完整页", "九宫格"])
     private let englishSwitch = UISwitch()
+    private let panguSwitch = UISwitch()
     private let appearance = UISegmentedControl(items: ["自动", "日光", "夜灯"])
     private let styleControl = UISegmentedControl(items: ["Mosto", "简洁"])
     private let lexiconChip = TelemetryChipView()
@@ -2467,6 +2522,8 @@ final class SettingsPanelView: UIView {
     private let memChip = TelemetryChipView()
     private let readyChip = TelemetryChipView()
     private let diagLabel = UILabel()
+    private let diagToggleButton = UIButton(type: .system)
+    private var diagExpanded = false
     private let notePill = UIView()
     private let noteIcon = UIImageView()
     private let note = UILabel()
@@ -2483,6 +2540,7 @@ final class SettingsPanelView: UIView {
         backgroundColor = Theme.touchable
         tintColor = Theme.selection
         englishSwitch.onTintColor = Theme.selection
+        panguSwitch.onTintColor = Theme.selection
         for i in 0..<numberControl.numberOfSegments { numberControl.setWidth(78, forSegmentAt: i) }
         for sc in [numberControl, appearance, styleControl] {
             sc.selectedSegmentTintColor = Theme.selection
@@ -2511,8 +2569,8 @@ final class SettingsPanelView: UIView {
         statusLabel.textColor = Theme.secondaryText
         statusLabel.tag = Self.tagSecondary
 
-        let gearCfg = UIImage.SymbolConfiguration(pointSize: 16, weight: .semibold)
-        doneButton.setImage(UIImage(systemName: "gearshape.fill", withConfiguration: gearCfg), for: .normal)
+        let closeCfg = UIImage.SymbolConfiguration(pointSize: 15, weight: .semibold)
+        doneButton.setImage(UIImage(systemName: "xmark", withConfiguration: closeCfg), for: .normal)
         doneButton.setTitle(nil, for: .normal)
         doneButton.accessibilityLabel = "关闭设置返回键盘"
         doneButton.layer.cornerRadius = 14
@@ -2589,6 +2647,7 @@ final class SettingsPanelView: UIView {
 
         addSection("输入与按键", rows: [
             makeControlRow("中英混输", icon: "globe", control: englishSwitch),
+            makeControlRow("中英自动留白", icon: "space", control: panguSwitch),
             makeControlRow("123 数字键", icon: "number.square", control: numberControl),
         ])
 
@@ -2627,9 +2686,13 @@ final class SettingsPanelView: UIView {
         diagLabel.tag = Self.tagSecondary
         diagLabel.numberOfLines = 0
         diagLabel.isHidden = true
+        diagToggleButton.setTitle("本机诊断 ▾", for: .normal)
+        diagToggleButton.titleLabel?.font = Theme.font(13.5, .medium)
+        diagToggleButton.contentHorizontalAlignment = .leading
+        diagToggleButton.addTarget(self, action: #selector(toggleDiagSection), for: .touchUpInside)
         if Self.isTestFlight {
-            addSection("实时遥测", rows: [
-                .chips(views: [tapsChip, memChip, readyChip], detail: diagLabel),
+            addSection("测试诊断", rows: [
+                .toggleChips(button: diagToggleButton, views: [tapsChip, memChip, readyChip], detail: diagLabel),
             ])
         }
 
@@ -2652,6 +2715,7 @@ final class SettingsPanelView: UIView {
         numberControl.addTarget(self, action: #selector(numberChanged), for: .valueChanged)
         for c in [appearance, styleControl] { c.addTarget(self, action: #selector(drawerChanged), for: .valueChanged) }
         englishSwitch.addTarget(self, action: #selector(drawerChanged), for: .valueChanged)
+        panguSwitch.addTarget(self, action: #selector(drawerChanged), for: .valueChanged)
 
         styleChrome()
         load()
@@ -2687,12 +2751,14 @@ final class SettingsPanelView: UIView {
             sc.setTitleTextAttributes([.foregroundColor: Theme.keyText, .font: Theme.font(13, .medium)], for: .normal)
         }
         englishSwitch.onTintColor = Theme.selection
+        panguSwitch.onTintColor = Theme.selection
         let red = destructiveRedColor(for: t)
         resetButton.setTitleColor(red, for: .normal)
         resetTrashIcon.tintColor = red
         noteIcon.tintColor = (feedbackAvailable ? Theme.secondaryText : Theme.correctedMark).resolvedColor(with: t)
         for tile in hardwareTiles { tile.refreshAppearance() }
         for chip in telemetryChips { chip.refreshAppearance() }
+        diagToggleButton.setTitleColor(Theme.secondaryText, for: .normal)
         refreshGuidePill()
     }
 
@@ -2776,6 +2842,10 @@ final class SettingsPanelView: UIView {
             case .chips(let views, let detail):
                 for chip in views { group.addSubview(chip) }
                 group.addSubview(detail)
+            case .toggleChips(let btn, let views, let detail):
+                group.addSubview(btn)
+                for chip in views { group.addSubview(chip) }
+                group.addSubview(detail)
             case .reset(let iv, let btn):
                 group.addSubview(iv)
                 group.addSubview(btn)
@@ -2836,6 +2906,37 @@ final class SettingsPanelView: UIView {
                         gy += dH
                     }
                     gy += botPad
+                case .toggleChips(let btn, let chips, let detail):
+                    let toggleH: CGFloat = 38
+                    if apply {
+                        btn.frame = CGRect(x: 14, y: gy + 2, width: max(40, groupW - 28), height: toggleH - 4)
+                    }
+                    gy += toggleH
+                    if diagExpanded {
+                        let topPad: CGFloat = 4
+                        let chipH: CGFloat = 50
+                        let botPad: CGFloat = 8
+                        let innerW = max(40, groupW - 26)
+                        let gap: CGFloat = 8
+                        let count = CGFloat(max(1, chips.count))
+                        let chipW = max(20, (innerW - gap * (count - 1)) / count)
+                        if apply {
+                            for (ci, chip) in chips.enumerated() {
+                                chip.isHidden = false
+                                chip.frame = CGRect(x: 14 + CGFloat(ci) * (chipW + gap), y: gy + topPad, width: chipW, height: chipH)
+                            }
+                        }
+                        gy += topPad + chipH
+                        if !detail.isHidden, let txt = detail.text, !txt.isEmpty {
+                            let dH = max(16, ceil(detail.sizeThatFits(CGSize(width: innerW, height: 400)).height))
+                            gy += 6
+                            if apply { detail.frame = CGRect(x: 14, y: gy, width: innerW, height: dH) }
+                            gy += dH
+                        }
+                        gy += botPad
+                    } else if apply {
+                        for chip in chips { chip.isHidden = true }
+                    }
                 case .reset(let iv, let btn):
                     let rowH: CGFloat = 42
                     if apply {
@@ -2896,22 +2997,15 @@ final class SettingsPanelView: UIView {
     }
 
     private func updateMostoReturnArtwork(night: Bool? = nil) {
-        let isDark = night ?? (traitCollection.userInterfaceStyle == .dark)
-        mostoReturnButton.backgroundColor = Theme.selection.withAlphaComponent(0.18)
+        _ = night
+        mostoReturnButton.backgroundColor = Theme.functionKey
         mostoReturnButton.layer.shadowColor = Theme.functionLip.resolvedColor(with: traitCollection).cgColor
         mostoReturnButton.layer.shadowOpacity = 1
         mostoReturnButton.layer.shadowRadius = Metrics.shadowBlur
         mostoReturnButton.layer.shadowOffset = CGSize(width: 0, height: Metrics.lip)
-        if Theme.plain {
-            let cfg = UIImage.SymbolConfiguration(pointSize: 15, weight: .semibold)
-            mostoReturnButton.setImage(UIImage(systemName: "keyboard.chevron.compact.down", withConfiguration: cfg), for: .normal)
-            mostoReturnButton.tintColor = Theme.selection
-        } else if let raw = UIImage(named: isDark ? "mosto_night" : "mosto_day", in: Bundle(for: SettingsPanelView.self), with: nil) {
-            let side: CGFloat = 26
-            let r = UIGraphicsImageRenderer(size: CGSize(width: side, height: side))
-            let scaled = r.image { _ in raw.draw(in: CGRect(x: 0, y: 0, width: side, height: side)) }.withRenderingMode(.alwaysOriginal)
-            mostoReturnButton.setImage(scaled, for: .normal)
-        }
+        let cfg = UIImage.SymbolConfiguration(pointSize: 16, weight: .semibold)
+        mostoReturnButton.setImage(UIImage(systemName: "keyboard.chevron.compact.down", withConfiguration: cfg), for: .normal)
+        mostoReturnButton.tintColor = Theme.keyText
     }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
@@ -2935,6 +3029,7 @@ final class SettingsPanelView: UIView {
             eyebrow: "方案",
             value: s.scheme == 0 ? "双拼" : "全拼",
             active: s.scheme == 0,
+            isModeSelector: true,
             spoken: "输入方案：\(s.scheme == 0 ? "小鹤双拼" : "全拼")"
         )
         layoutTile.configure(
@@ -2942,6 +3037,7 @@ final class SettingsPanelView: UIView {
             eyebrow: "布局",
             value: s.pinyinGrid ? "九宫格" : "全键盘",
             active: s.pinyinGrid,
+            isModeSelector: true,
             spoken: "键盘布局：\(s.pinyinGrid ? "九宫格" : "全键盘")"
         )
         let lightIcon: String
@@ -2988,6 +3084,7 @@ final class SettingsPanelView: UIView {
 
         numberControl.selectedSegmentIndex = s.numberPad ? 1 : 0
         englishSwitch.isOn = s.english
+        panguSwitch.isOn = s.panguSpacing
         appearance.selectedSegmentIndex = s.appearance
         styleControl.selectedSegmentIndex = s.style
         refreshGuidePill()
@@ -3149,6 +3246,12 @@ final class SettingsPanelView: UIView {
         notifyTileChange()
     }
 
+    @objc private func toggleDiagSection() {
+        diagExpanded.toggle()
+        diagToggleButton.setTitle(diagExpanded ? "本机诊断 ▴" : "本机诊断 ▾", for: .normal)
+        setNeedsLayout()
+    }
+
     @objc private func openMore() {
         if canProvideHaptic { UISelectionFeedbackGenerator().selectionChanged() }
         deckContainer.isHidden = true
@@ -3176,6 +3279,7 @@ final class SettingsPanelView: UIView {
         if canProvideHaptic { UISelectionFeedbackGenerator().selectionChanged() }
         let s = KeyboardSettings.shared
         s.english = englishSwitch.isOn
+        s.panguSpacing = panguSwitch.isOn
         if appearance.selectedSegmentIndex >= 0 {
             s.appearance = appearance.selectedSegmentIndex
         }
@@ -3349,7 +3453,7 @@ final class KeyboardSettings {
         if FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: Self.appGroupID) != nil,
            let group = UserDefaults(suiteName: Self.appGroupID) {
             if !group.bool(forKey: "migratedToAppGroup") {
-                let keys = ["scheme", "autocorrect", "xiaoheGuide", "english", "pinyinGrid", "numberPad", "style", "appearance", "feedback", "hapticProfile", "keySound", "keyOffsets", "offsetX", "offsetY"]
+                let keys = ["scheme", "autocorrect", "xiaoheGuide", "english", "panguSpacing", "pinyinGrid", "numberPad", "style", "appearance", "feedback", "hapticProfile", "keySound", "keyOffsets", "offsetX", "offsetY"]
                 for k in keys where group.object(forKey: k) == nil {
                     if let v = standard.object(forKey: k) { group.set(v, forKey: k) }
                 }
@@ -3390,6 +3494,11 @@ final class KeyboardSettings {
     var english: Bool {
         get { d.object(forKey: "english") as? Bool ?? true }
         set { d.set(newValue, forKey: "english"); notify() }
+    }
+    /// 中英混排自动留白（Pangu spacing，默认关闭，开启后在中英文边界自动加空格）.
+    var panguSpacing: Bool {
+        get { d.object(forKey: "panguSpacing") as? Bool ?? false }
+        set { d.set(newValue, forKey: "panguSpacing"); notify() }
     }
     /// Chinese typed on the 九宫格 pinyin keypad (on) or the full keyboard (off).
     var pinyinGrid: Bool {

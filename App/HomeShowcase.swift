@@ -307,25 +307,25 @@ struct MonolithKeycapView: View {
             }
 
             if !finals.isEmpty || initialMark != nil {
-                VStack(spacing: 1) {
+                VStack(spacing: 0.5) {
                     Text(label)
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .font(.system(size: 13.5, weight: .semibold, design: .rounded))
                         .foregroundStyle(isNight ? Color.white : MossOttoStyle.inkPrimary)
                     if let initialMark {
                         Text(initialMark)
-                            .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                            .font(.system(size: 9.0, weight: .bold, design: .rounded))
                             .foregroundStyle(MossOttoStyle.violet)
                     }
                     ForEach(finals, id: \.self) { f in
                         Text(f)
-                            .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                            .font(.system(size: 9.0, weight: .medium, design: .rounded))
                             .foregroundStyle(MossOttoStyle.inkSecondary)
                     }
                     Spacer(minLength: 0)
                 }
                 .lineLimit(1)
-                .minimumScaleFactor(0.6)
-                .padding(.top, 5)
+                .minimumScaleFactor(0.58)
+                .padding(.top, 3)
             } else {
                 VStack(spacing: 2) {
                     if let symbol {

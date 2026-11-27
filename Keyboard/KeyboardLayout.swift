@@ -23,6 +23,8 @@ enum KeyAction: Equatable {
     case emoji
     /// 九宫格/数字键盘专属分类符号面板（右侧第3行同位返回，不跳全键盘符号页）.
     case symbolPanel
+    /// 快速切换九宫格 / 全键盘拼音布局.
+    case toggleGrid
 }
 
 extension KeyAction {
@@ -31,7 +33,7 @@ extension KeyAction {
     /// 不该让一条刚出现的联想凭空空掉（Krug：别让我想；Norman：状态变化要可归因）。
     var endsSuggestions: Bool {
         switch self {
-        case .char, .delete, .space, .ret, .t9, .clearInput, .deleteWord, .emoji, .symbolPanel, .toggleLanguage, .page, .settings:
+        case .char, .delete, .space, .ret, .t9, .clearInput, .deleteWord, .emoji, .symbolPanel, .toggleLanguage, .toggleGrid, .page, .settings:
             return true
         case .shift, .globe:
             return false
@@ -81,6 +83,8 @@ struct LayoutContext: Equatable {
     var xiaohePendingInitial: Character? = nil
     /// Contextual spacebar label override (`跳出 》` for smart CJK pairs or `= 383` for trailing math).
     var spaceOverride: String? = nil
+    /// Subtle current-scheme label centered on Space when idle or composing (`小鹤`, `全拼`, `九宫格`, `English`).
+    var spaceSchemeLabel: String? = nil
 }
 
 /// Geometry aligned with Gboard iOS & native Apple Chinese keyboard (42 pt bar + 4×54 pt = 258 pt portrait,
@@ -122,10 +126,11 @@ enum Metrics {
         landscape ? 224 : 308
     }
 
-    /// Optical letter font size anchored at baseline 40 pt cap height -> 24 pt, scaled in 0.5 pt steps.
+    /// Optical letter font size anchored at baseline 40 pt cap height -> 24 pt, scaled in 0.5 pt steps with bounded Dynamic Type support.
     static func letterFontSize(forCapHeight capHeight: CGFloat) -> CGFloat {
-        let raw = letterFont + (capHeight - 40) * 0.25
-        let clamped = min(26.5, max(20.5, raw))
+        let base = letterFont + (capHeight - 40) * 0.25
+        let scaled = Theme.scaledSize(base, maxDelta: 2.0)
+        let clamped = min(28.0, max(20.5, scaled))
         return (clamped * 2).rounded() / 2
     }
 }
@@ -158,20 +163,20 @@ enum Layouts {
         KeySpec(action: .toggleLanguage, label: ctx.chinese ? "中" : "英", width: width, style: .function)
     }
 
-    /// As on the system keyboard: 换行 / return, the host's action (搜索, 发送…) in blue, 确认 while composing.
+    /// As on the system keyboard: 换行 / return uses calm function keycaps; only explicit host actions (搜索, 发送…) glow accent.
     private static func returnKey(_ ctx: LayoutContext, width: CGFloat, wide: Bool) -> KeySpec {
-        // always Mosto's crown gold: the one key every message ends on
+        let style: KeyStyle = ctx.returnIsAccent ? .accent : .function
         if let l = ctx.returnLabel {
-            return KeySpec(action: .ret, label: l, width: width, style: .accent)
+            return KeySpec(action: .ret, label: l, width: width, style: style)
         }
-        return KeySpec(action: .ret, label: ctx.chinese ? "换行" : "return", width: width, style: .accent)
+        return KeySpec(action: .ret, label: ctx.chinese ? "换行" : "return", width: width, style: style)
     }
 
     private static func spaceKey(_ ctx: LayoutContext) -> KeySpec {
         if let label = ctx.spaceOverride {
             return KeySpec(action: .space, label: label, width: 0, isSmartSpace: true)
         }
-        return KeySpec(action: .space, label: ctx.chinese ? "空格" : "space", width: 0)
+        return KeySpec(action: .space, label: ctx.spaceSchemeLabel ?? (ctx.chinese ? "空格" : "space"), width: 0)
     }
 
     private static func letters(_ ctx: LayoutContext) -> [[KeySpec]] {
@@ -245,7 +250,9 @@ enum Layouts {
     /// Each key stands for all its letters; the decoder sorts out which were meant (小鹤双拼 and 全拼 alike).
     private static func pinyinPad(_ ctx: LayoutContext) -> [[KeySpec]] {
         let side: CGFloat = 1.6, mid: CGFloat = 6.8 / 3
-        func k(_ d: Character, _ label: String) -> KeySpec { KeySpec(action: .t9(d), label: label, width: mid) }
+        func k(_ d: Character, _ label: String) -> KeySpec {
+            KeySpec(action: .t9(d), label: label, width: mid, alt: d == "'" ? nil : String(d), hint: d == "'" ? nil : String(d))
+        }
         func p(_ s: String, _ alt: String?, more: [String] = []) -> KeySpec {
             KeySpec(action: .char(s), label: s, width: side, alt: alt, style: .function, hint: alt, moreAlts: more)
         }
@@ -303,7 +310,7 @@ enum Layouts {
             : charRow(["_", "\\", "|", "~", "<", ">", "€", "£", "¥", "•"], alts: ["~": "°"])
         var row3: [KeySpec] = [KeySpec(action: .page(.numbers), label: "123", width: 1.5, style: .function)]
         row3 += ctx.chinese
-            ? charRow(["…", "，", "^_^", "？", "！", "'"], width: sixth, alts: ["…": "——", "^_^": "ψ(｀∇´)ψ", "'": "’"], hints: ["…": "—", "^_^": "ψ"])
+            ? charRow(["…", "，", "×", "？", "！", "'"], width: sixth, alts: ["…": "——", "×": "÷", "'": "’"], hints: ["…": "—", "×": "÷"])
             : charRow([".", ",", "?", "!", "'", "`"], width: sixth)
         row3.append(KeySpec(action: .delete, label: "", symbol: "delete.left", width: 1.5, style: .function))
         return [row1, row2, row3, bottomRow(ctx)]
@@ -329,6 +336,11 @@ enum Theme {
 
     /// 简洁 (无主题): plain keys in the system's greys, no Mosto, the system type — 日光 and 夜光.
     static var plain = false
+
+    /// Bounded Dynamic Type helper so keys and candidates adapt subtly without breaking compact strips.
+    static func scaledSize(_ base: CGFloat, maxDelta: CGFloat = 2.5) -> CGFloat {
+        min(base + maxDelta, max(base, UIFontMetrics.default.scaledValue(for: base)))
+    }
 
     private struct FontKey: Hashable { let plain: Bool; let size10: Int; let weight: CGFloat }
     private static var fontCache: [FontKey: UIFont] = [:]
@@ -363,7 +375,12 @@ enum Theme {
     static var settingsGroup: UIColor { plain ? plain_settingsGroup : mosto_settingsGroup }
     private static let mosto_settingsGroup: UIColor = dyn(UIColor(white: 1, alpha: 0.88), hex(0x2E2942, 0.72))
     private static let plain_settingsGroup: UIColor = dyn(UIColor(white: 1, alpha: 0.9), UIColor(white: 1, alpha: 0.08))
-    static var separator: UIColor { plain ? plain_separator : mosto_separator }
+    static var separator: UIColor {
+        if UIAccessibility.isDarkerSystemColorsEnabled {
+            return dyn(UIColor(white: 0, alpha: 0.24), UIColor(white: 1, alpha: 0.26))
+        }
+        return plain ? plain_separator : mosto_separator
+    }
 
     // Sculpted matte vinyl caps (Day: ceramic ivory + cool lavender stone + brushed gold; Night: obsidian charcoal-violet).
     private static let mosto_separator: UIColor = dyn(hex(0x22193D, 0.12), UIColor(white: 1, alpha: 0.12))
@@ -407,7 +424,12 @@ enum Theme {
     static var accentText: UIColor { plain ? plain_accentText : mosto_accentText }
     private static let mosto_accentText: UIColor = hex(0x241748)
     private static let plain_accentText: UIColor = UIColor.white
-    static var keyBorder: UIColor { plain ? plain_keyBorder : mosto_keyBorder }
+    static var keyBorder: UIColor {
+        if UIAccessibility.isDarkerSystemColorsEnabled {
+            return dyn(hex(0x22193D, 0.22), UIColor(white: 1, alpha: 0.24))
+        }
+        return plain ? plain_keyBorder : mosto_keyBorder
+    }
     private static let mosto_keyBorder: UIColor = dyn(hex(0x22193D, 0.08), UIColor(white: 1, alpha: 0.09))
     private static let plain_keyBorder: UIColor = dyn(UIColor(white: 0, alpha: 0.08), UIColor(white: 1, alpha: 0.10))
     static var statusLedActive: UIColor { plain ? plain_statusLedActive : mosto_statusLedActive }
@@ -460,7 +482,12 @@ enum Theme {
         return UIColor(red: r1 + (r2 - r1) * k, green: g1 + (g2 - g1) * k, blue: b1 + (b2 - b1) * k, alpha: a1 + (a2 - a1) * k)
     }
     static var candidateText: UIColor { keyText }
-    static var secondaryText: UIColor { plain ? plain_secondaryText : mosto_secondaryText }
+    static var secondaryText: UIColor {
+        if UIAccessibility.isDarkerSystemColorsEnabled {
+            return plain ? dyn(hex(0x3D414B), hex(0xD1D1D6)) : dyn(hex(0x43366E), hex(0xD8CFF2))
+        }
+        return plain ? plain_secondaryText : mosto_secondaryText
+    }
     /// 键位提示 finals on the letter caps: ≥ 4.5:1 on the cream face by day and the violet face at night
     private static let mosto_secondaryText: UIColor = dyn(hex(0x6A5C96), hex(0xB4A8DC))
     private static let plain_secondaryText: UIColor = dyn(hex(0x5F636E), hex(0xAEAEB2))

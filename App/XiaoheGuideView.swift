@@ -243,7 +243,7 @@ struct XiaoheKeyChart: View {
                 }
             }
         }
-        .frame(height: 3 * 68 + 2 * 6)
+        .frame(height: 3 * 50 + 2 * 6)
     }
 }
 
@@ -262,7 +262,7 @@ struct ChartKey: View {
             cornerRadius: 8
         )
         .frame(maxWidth: .infinity)
-        .frame(height: 68)
+        .frame(height: 50)
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .strokeBorder(mark ?? .clear, lineWidth: 2)

@@ -41,6 +41,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     private let tabFade = CAGradientLayer()
     private let tabScroll = UIScrollView()
     private var tabButtons: [UIButton] = []
+    private let emojiSwitchTab = UIButton(type: .system)
     private let backButton = UIButton(type: .custom)
     private let mostoReturnButton = UIButton(type: .custom)
     private let deleteButton = UIButton(type: .system)
@@ -151,6 +152,13 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         guard let last = tabButtons.last else { return false }
         let f = tabScroll.convert(last.frame, to: tabScrollBox)
         return f.width > 0 && f.minX >= -0.5 && f.maxX <= tabScrollBox.bounds.width + 0.5
+    }
+    var kaomojiDockCleanForTests: Bool {
+        kaomojiMode
+            && !emojiSwitchTab.isHidden
+            && tabButtons.dropLast().allSatisfy(\.isHidden)
+            && !(tabButtons.last?.isHidden ?? true)
+            && kaomojiDockGearFullyVisibleForTests
     }
     var dockNoTrailingHalfSliceForTests: Bool {
         let boxW = tabScrollBox.bounds.width
@@ -374,6 +382,15 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         applyLips()
 
         let tabCfg = UIImage.SymbolConfiguration(pointSize: 15, weight: .regular)
+        emojiSwitchTab.setImage(UIImage(systemName: "face.smiling", withConfiguration: tabCfg), for: .normal)
+        emojiSwitchTab.tintColor = Theme.secondaryText
+        emojiSwitchTab.accessibilityLabel = "切换回表情"
+        emojiSwitchTab.layer.cornerRadius = 8
+        emojiSwitchTab.layer.cornerCurve = .continuous
+        emojiSwitchTab.isHidden = true
+        emojiSwitchTab.addTarget(self, action: #selector(emojiSwitchTapped), for: .touchUpInside)
+        tabScroll.addSubview(emojiSwitchTab)
+
         for (i, (name, symbol)) in ([("常用", "clock")] + Self.categoryNames).enumerated() {
             let b = UIButton(type: .system)
             b.setImage(UIImage(systemName: symbol, withConfiguration: tabCfg), for: .normal)
@@ -420,7 +437,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         dockHairline.backgroundColor = Theme.separator.resolvedColor(with: t).cgColor
         moodHairline.backgroundColor = Theme.separator.resolvedColor(with: t).cgColor
         moodMostoBadge.backgroundColor = Theme.preeditPillBg
-        for (b, lip) in [(backButton, Theme.functionLip), (deleteButton, Theme.functionLip), (returnButton, Theme.accentLip)] {
+        for (b, lip) in [(backButton, Theme.functionLip), (mostoReturnButton, Theme.functionLip), (deleteButton, Theme.functionLip), (returnButton, Theme.accentLip)] {
             b.layer.shadowColor = lip.resolvedColor(with: t).cgColor
             b.layer.shadowOpacity = 1
             b.layer.shadowRadius = Metrics.shadowBlur
@@ -429,20 +446,14 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         }
         backButton.backgroundColor = Theme.functionKey
         backButton.setTitleColor(Theme.keyText, for: .normal)
-        mostoReturnButton.backgroundColor = Theme.selection.withAlphaComponent(0.18)
-        if Theme.plain {
-            let mCfg = UIImage.SymbolConfiguration(pointSize: 16, weight: .semibold)
-            mostoReturnButton.setImage(UIImage(systemName: "face.smiling", withConfiguration: mCfg)?.withRenderingMode(.alwaysTemplate), for: .normal)
-            mostoReturnButton.tintColor = Theme.selection
-        } else {
-            let night = KeyboardSettings.shared.appearance == 2 || (KeyboardSettings.shared.appearance == 0 && t.userInterfaceStyle == .dark)
-            let imgName = night ? "mosto_night" : "mosto_day"
-            if let face = UIImage(named: imgName, in: Bundle(for: EmojiPanelView.self), with: nil) {
-                mostoReturnButton.setImage(Self.resizedFace(face, side: 28).withRenderingMode(.alwaysOriginal), for: .normal)
-            }
-        }
+        mostoReturnButton.backgroundColor = Theme.functionKey
+        let retCfg = UIImage.SymbolConfiguration(pointSize: 16, weight: .semibold)
+        mostoReturnButton.setImage(UIImage(systemName: "keyboard.chevron.compact.down", withConfiguration: retCfg), for: .normal)
+        mostoReturnButton.tintColor = Theme.keyText
         returnButton.backgroundColor = Theme.accentKey
         returnButton.setTitleColor(Theme.accentText, for: .normal)
+        emojiSwitchTab.tintColor = Theme.secondaryText.resolvedColor(with: t)
+        emojiSwitchTab.backgroundColor = .clear
         if let kaomojiTab = tabButtons.last {
             if Theme.plain {
                 let cfg = UIImage.SymbolConfiguration(pointSize: 16, weight: .medium)
@@ -727,10 +738,10 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         let cols = emojiColumns
         let cellW = floor(w / CGFloat(cols))
         let headerH: CGFloat = bounds.height < 210 ? 22 : 24
-        let insetV: CGFloat = bounds.height < 210 ? 4 : 6
+        let insetV: CGFloat = bounds.height < 210 ? 4 : 12
         let gridH = max(80, collection.bounds.height - headerH - insetV)
         let rows: CGFloat = bounds.height < 210 ? 3 : 4
-        let cellH = min(46, max(36, floor(gridH / rows)))
+        let cellH = min(46, max(34, floor(gridH / rows)))
         return CGSize(width: cellW, height: cellH)
     }
 
@@ -855,7 +866,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         collectionFade.frame = collectionBox.bounds
-        let frac = Double(min(0.16, 15.0 / h))
+        let frac = Double(min(0.22, 22.0 / h))
         collectionFade.locations = [0, NSNumber(value: 1.0 - frac), 1]
         if collectionBox.layer.mask !== collectionFade { collectionBox.layer.mask = collectionFade }
         CATransaction.commit()
@@ -906,7 +917,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         collectionBox.frame = CGRect(x: 0, y: topH, width: b.width, height: max(0, b.height - topH - barH))
         collection.frame = collectionBox.bounds
         if let flow = collection.collectionViewLayout as? UICollectionViewFlowLayout {
-            flow.sectionInset = UIEdgeInsets(top: 2, left: 6, bottom: b.height < 210 ? 2 : 4, right: 6)
+            flow.sectionInset = UIEdgeInsets(top: 2, left: 6, bottom: b.height < 210 ? 4 : 12, right: 6)
         }
         kaomojiShortcutButton.isHidden = kaomojiMode
         if !kaomojiMode {
@@ -962,35 +973,55 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         let tabRight = deleteButton.frame.minX - 4
         tabScrollBox.frame = CGRect(x: tabLeft, y: 0, width: max(0, tabRight - tabLeft), height: barH)
         tabScroll.frame = tabScrollBox.bounds
-        let dockItems = tabButtons
         let boxW = tabScrollBox.bounds.width
         let itemH: CGFloat = 34
         let ty = (barH - itemH) / 2
-        let defaultSpan = CGFloat(dockItems.count) * 34 + CGFloat(max(0, dockItems.count - 1)) * 3 + 4
         let totalTabW: CGFloat
-        if defaultSpan <= boxW {
-            let count = CGFloat(max(1, dockItems.count))
-            let gaps = CGFloat(max(0, dockItems.count - 1))
-            let itemW = min(44, max(34, floor((boxW - gaps * 6 - 8) / count)))
-            let itemGap = gaps > 0 ? min(8, max(3, floor((boxW - count * itemW - 8) / gaps))) : 0
-            let contentW = count * itemW + gaps * itemGap
+        if kaomojiMode, let kaomojiTab = tabButtons.last {
+            for b in tabButtons.dropLast() { b.isHidden = true }
+            emojiSwitchTab.isHidden = false
+            kaomojiTab.isHidden = false
+            let pair = [emojiSwitchTab, kaomojiTab]
+            let itemW = min(44, max(34, floor((boxW - 12) / 2)))
+            let gap: CGFloat = 10
+            let contentW = CGFloat(pair.count) * itemW + gap
             let pad = max(0, (boxW - contentW) / 2)
-            for (i, item) in dockItems.enumerated() {
-                item.frame = CGRect(x: pad + CGFloat(i) * (itemW + itemGap), y: ty, width: itemW, height: itemH)
+            for (i, item) in pair.enumerated() {
+                item.frame = CGRect(x: pad + CGFloat(i) * (itemW + gap), y: ty, width: itemW, height: itemH)
             }
             totalTabW = boxW
         } else {
-            let startX: CGFloat = 2
-            let nVisible = max(4, min(dockItems.count, Int(floor((boxW - startX) / 34))))
-            let stride = (boxW - startX) / CGFloat(nVisible)
-            let itemW = min(34, max(26, floor(stride - 4)))
-            for (i, item) in dockItems.enumerated() {
-                item.frame = CGRect(x: startX + CGFloat(i) * stride, y: ty, width: itemW, height: itemH)
+            emojiSwitchTab.isHidden = true
+            for b in tabButtons { b.isHidden = false }
+            let dockItems = tabButtons
+            let defaultSpan = CGFloat(dockItems.count) * 34 + CGFloat(max(0, dockItems.count - 1)) * 3 + 4
+            if defaultSpan <= boxW {
+                let count = CGFloat(max(1, dockItems.count))
+                let gaps = CGFloat(max(0, dockItems.count - 1))
+                let itemW = min(44, max(34, floor((boxW - gaps * 6 - 8) / count)))
+                let itemGap = gaps > 0 ? min(8, max(3, floor((boxW - count * itemW - 8) / gaps))) : 0
+                let contentW = count * itemW + gaps * itemGap
+                let pad = max(0, (boxW - contentW) / 2)
+                for (i, item) in dockItems.enumerated() {
+                    item.frame = CGRect(x: pad + CGFloat(i) * (itemW + itemGap), y: ty, width: itemW, height: itemH)
+                }
+                totalTabW = boxW
+            } else {
+                let startX: CGFloat = 2
+                let nVisible = max(4, min(dockItems.count, Int(floor((boxW - startX) / 34))))
+                let stride = (boxW - startX) / CGFloat(nVisible)
+                let itemW = min(34, max(26, floor(stride - 4)))
+                for (i, item) in dockItems.enumerated() {
+                    item.frame = CGRect(x: startX + CGFloat(i) * stride, y: ty, width: itemW, height: itemH)
+                }
+                totalTabW = startX + CGFloat(dockItems.count - 1) * stride + itemW + 6
             }
-            totalTabW = startX + CGFloat(dockItems.count - 1) * stride + itemW + 6
         }
         tabScroll.contentSize = CGSize(width: max(tabScroll.bounds.width, totalTabW), height: barH)
-        if pendingScrollToSelectedTab || (kaomojiMode && selected == tabButtons.count - 1) {
+        if kaomojiMode {
+            tabScroll.setContentOffset(.zero, animated: false)
+            pendingScrollToSelectedTab = false
+        } else if pendingScrollToSelectedTab {
             ensureSelectedTabVisible(animated: false)
             pendingScrollToSelectedTab = false
         }
@@ -1306,6 +1337,12 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
 
     @objc func kaomojiShortcutTappedForTests() {
         kaomojiShortcutTapped()
+    }
+
+    @objc private func emojiSwitchTapped() {
+        let target = Self.recents().isEmpty ? 1 : 0
+        guard tabButtons.indices.contains(target) else { return }
+        tabTapped(tabButtons[target])
     }
 
     @objc private func tabTapped(_ b: UIButton) {
