@@ -31,7 +31,7 @@ def variance(path):
         chunk = data[pos + 8:pos + 8 + length]
         pos += 12 + length
         if kind == b"IHDR":
-            w, h, _depth, colour = struct.unpack(">IIBB", chunk[:10])
+            w, h, depth, colour = struct.unpack(">IIBB", chunk[:10])
         elif kind == b"IDAT":
             idat += chunk
         elif kind == b"IEND":
@@ -43,17 +43,17 @@ def variance(path):
     except zlib.error:
         return None
     channels = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}.get(colour, 4)
-    stride = w * channels
-    step = max(1, channels * 16)
+    bps = max(1, depth // 8)
+    stride = w * channels * bps
+    step_x = max(1, channels * bps * 16)
+    step_y = max(1, h // 48)
     samples = []
-    offset = 0
-    for y in range(min(h, 240)):
+    for y in range(0, h, step_y):
+        offset = y * (1 + stride)
         if offset + 1 + stride > len(raw):
             break
         line = raw[offset + 1:offset + 1 + stride]  # skip the filter byte
-        offset += 1 + stride
-        if y % 8 == 0:
-            samples.extend(line[::step])
+        samples.extend(line[::step_x])
     if not samples:
         return None
     mean = sum(samples) / len(samples)
