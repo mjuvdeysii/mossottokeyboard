@@ -82,7 +82,7 @@ if let v = env["MASSB"].flatMap(Int.init) { decoder.grammar?.massBudget = v }
 if let v = env["MW"].flatMap(Double.init) { decoder.contextNormalisation = v }
 if let v = env["MB"].flatMap(Int.init) { decoder.grammar?.massBudget = v }
 if let v = env["MC"].flatMap(Double.init) { decoder.grammar?.massCenter = v }
-if let v = env["GCF"].flatMap(Double.init) { decoder.grammarCorrectedFactor = v }
+if let v = env["GCF"].flatMap(Double.init) { decoder.grammarCorrectedFactor = v; decoder.xiaoheGrammarCorrectedFactor = v }
 if let v = env["UC"].flatMap(Double.init) { decoder.userCap = v }
 if let v = env["UP"].flatMap(Double.init) { decoder.userPhraseScore = v }
 if let v = env["UB"].flatMap(Double.init) { decoder.userWordBoost = v }
@@ -276,7 +276,7 @@ func countSlips(_ items: [(String, [Character])], depth: String, split: Bool, di
     slipRNG = RNG(s: 11)
     defer { model.adaptiveHits = keepHits; decoder.correctionEnabled = keepCorr }
     var r = SlipCount()
-    let keepPen = decoder.correctionPenalty, keepGCF = decoder.grammarCorrectedFactor, keepBeam = decoder.beam
+    let keepPen = decoder.correctionPenalty, keepGCF = decoder.grammarCorrectedFactor, keepXGCF = decoder.xiaoheGrammarCorrectedFactor, keepBeam = decoder.beam
     for (text, keys) in items {
         guard decoder.decode(keys.map(centreTap)).candidates.first?.text == text else { continue }
         r.clean += 1
@@ -323,9 +323,9 @@ func countSlips(_ items: [(String, [Character])], depth: String, split: Bool, di
                         b = w2.contains(where: { $0.text == text }) ? "5 beam" : "6 not reached"
                     }
                 } else {
-                    decoder.correctionPenalty = 0; decoder.grammarCorrectedFactor = 1
+                    decoder.correctionPenalty = 0; decoder.grammarCorrectedFactor = 1; decoder.xiaoheGrammarCorrectedFactor = 1
                     let fair = decoder.decode(taps).candidates.first?.text == text
-                    decoder.correctionPenalty = keepPen; decoder.grammarCorrectedFactor = keepGCF
+                    decoder.correctionPenalty = keepPen; decoder.grammarCorrectedFactor = keepGCF; decoder.xiaoheGrammarCorrectedFactor = keepXGCF
                     if fair {
                         decoder.correctionPenalty = 0
                         let a = decoder.decode(taps).candidates.first?.text == text
@@ -917,38 +917,38 @@ case "bench", "gate":
             ("words.on", 96.0, true),          // σ=0.22 touch noise, correction on, top-1 (%)
             ("words.broken", 1.0, false),      // clean words changed by correction (%) — at most
             ("sentences.perfect", 86.5, true), // R101 v2 measured 88.85 with 48.39 MB Mosto::GramV2
-            ("sentences.on", 89.0, true),      // R101 v2 measured 90.49
-            ("sentences.true", 80.5, true),    // R101 v2 measured 82.62
+            ("sentences.on", 90.0, true),      // R104 measured 91.48 (with xiaoheGrammarCorrectedFactor = 0.65)
+            ("sentences.true", 82.0, true),    // R104 measured 83.61
             ("words.ms", 3.0, false),          // average decode time (ms) — at most
             ("en.kept", 99.0, true),            // English: correctly typed words left alone (%)
             ("en.on", 97.0, true),              // English: σ=0.22 touch noise, what space types is the word (%)
             ("en.top3", 98.0, true),            // English: the word among the first three suggestions (%)
             ("t9.words.top1", 47.0, true),     // 九宫格 (each key = its 3–4 letters), perfect keys
-            ("t9.sentences.top3", 51.5, true), // R101 v2 measured 53.44
-            ("t9.sentences.ms", 45.0, false),  // CI runners vary 5–8× (~3 ms locally)
-            ("learn.same", 95.5, true),        // sentences typed again after picking them once (%) (R101 measured 96.39)
+            ("t9.sentences.top3", 53.5, true), // R104 measured 55.41 with t9Beam = 12
+            ("t9.sentences.ms", 45.0, false),  // CI runners vary 5–8× (~4.4 ms locally)
+            ("learn.same", 95.5, true),        // sentences typed again after picking them once (%) (R104 measured 96.72)
             ("userword.alone", 98.0, true),    // 自造词 typed again alone: first (%)
             ("userword.inside", 95.5, true),   // R101 measured 97.71
             ("adapt.after", 78.0, true),       // off-centre thumbs, unseen words after 1000 words of use (%)
             ("learn.harm", 1.0, false),        // unseen sentences made worse by what was learned (points) — at most
             ("fuzz.bad", 0.0, false),          // random input: candidates that use no keys, too many, or have no text
             ("fuzz.p99.ms", 55.0, false),      // random input: 99th-percentile decode time (ms) — at most
-            ("extra.sentences.top1", 75.0, true),   // R101 measured 77.05
-            ("mixed.sentences.top1", 72.0, true),   // R101 measured 73.75
+            ("extra.sentences.top1", 76.0, true),   // R104 measured 77.70
+            ("mixed.sentences.top1", 74.5, true),   // R104 measured 76.25
             ("fix.caption.coverage", 98.0, true),   // a corrected first candidate says what it changed (%)
             ("dedupe.pairs", 100.0, false),         // first three readings differing only in a last one-character word
             // R4 按偏一个键 (a quarter key onto a neighbour; the keys as typed still spell something = legal)
             ("slip.words.legal.top1", 79.0, true),
             ("slip.words.legal.top3", 96.5, true),
             ("slip.words.other.top1", 96.5, true),   // control: the keys as typed spell nothing
-            ("slip.sent.legal.top1", 73.0, true),    // R101 measured 74.25
-            ("slip.sent.legal.top3", 87.0, true),    // R101 measured 90.91
-            ("slip.sent.other.top1", 90.0, true),    // R101 measured 93.71
+            ("slip.sent.legal.top1", 76.0, true),    // R104 measured 77.50
+            ("slip.sent.legal.top3", 90.5, true),    // R104 measured 92.47
+            ("slip.sent.other.top1", 90.0, true),    // R104 measured 93.90
             ("slip.words.edge.legal.top1", 85.5, true),   // on the key's edge (the gate's touch noise)
             ("slip.words.centre.legal.top1", 40.5, true), // on the neighbour's centre
             ("rare.kept", 99.5, true),         // uncommon words typed on purpose stay first (%)
-            ("missing.sentences.top1", 40.0, true),   // R101 measured 42.30
-            ("transpose.sentences.top1", 53.0, true), // R101 measured 56.51 (R100 was 36.99)
+            ("missing.sentences.top1", 42.0, true),   // R104 measured 43.93
+            ("transpose.sentences.top1", 57.5, true), // R104 measured 59.59 (R101 was 56.51)
             ("predict.cold.ms", 250.0, false), // 冷启动首次联想：实测 ~1.8ms；250ms 留裕量拦住全词库懒加载
         ] : [
             ("words.on", 97.0, true),
@@ -958,7 +958,7 @@ case "bench", "gate":
             ("sentences.true", 82.5, true),    // R101 v2 measured 85.25
             ("sentences.ms", 32.0, false),     // CI runners vary 2–5× (~4.5 ms locally)
             ("t9.words.top1", 66.0, true),
-            ("t9.sentences.top1", 65.0, true), // R101 v2 measured 67.60
+            ("t9.sentences.top1", 66.0, true), // R104 measured 67.87 with t9Beam = 12
             ("t9.sentences.ms", 150.0, false),
             ("learn.same", 95.5, true),        // R101 measured 96.39
             ("userword.alone", 98.0, true),

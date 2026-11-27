@@ -32,7 +32,7 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p report
-          swiftc -O -enforce-exclusivity=unchecked Engine/*.swift EngineCLI/main.swift -o /tmp/engine-cli 2>&1 | tee report/engine-build.txt
+          swiftc -O Engine/*.swift EngineCLI/main.swift -o /tmp/engine-cli 2>&1 | tee report/engine-build.txt
           /tmp/engine-cli Keyboard/Resources/lexicon.bin type nihcdajx | tee report/engine-bench.txt
           /tmp/engine-cli Keyboard/Resources/lexicon.bin bench 0.22 0.30 | tee -a report/engine-bench.txt
       - name: Build app + keyboard (simulator, unsigned)
@@ -94,14 +94,21 @@ jobs:
         # missing, tiny, or a flat colour.
         run: |
           set -euo pipefail
-          for f in day_emoji.png night_emoji.png day_mosto_kaomoji.png day_letters_composing.png; do
-            test -s "report/snapshots/$f" || { echo "FAIL missing or empty snapshot: $f"; exit 1; }
+          SNAPS=(
+            day_letters_idle.png night_letters_idle.png day_letters_composing.png
+            day_forced_light.png night_forced_light.png day_forced_idle.png night_forced_idle.png
+            day_emoji.png night_emoji.png day_mosto_kaomoji.png night_mosto_kaomoji.png
+            day_longpress_comma.png day_press_q.png day_symbols.png
+            day_settings.png day_settings_full.png day_grid.png day_t9_composing.png
+            night_app_home0.png day_app_home3.png day_app_atlas.png
+          )
+          PATHS=()
+          for f in "${SNAPS[@]}"; do
+            p="report/snapshots/$f"
+            test -s "$p" || { echo "FAIL missing or empty snapshot: $f"; exit 1; }
+            PATHS+=("$p")
           done
-          python3 Tools/check_snapshots.py 40000 \
-            report/snapshots/day_emoji.png \
-            report/snapshots/night_emoji.png \
-            report/snapshots/day_mosto_kaomoji.png \
-            report/snapshots/day_letters_composing.png
+          python3 Tools/check_snapshots.py 40000 "${PATHS[@]}"
       - name: Engine quality gate (blocks the release on regression)
         run: |
           set -o pipefail

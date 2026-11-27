@@ -83,6 +83,8 @@ public final class Decoder {
     /// 2.5 / 3.5): 0.6 with 1.5 — 0.7 and above lose two 中英混输 sentences (小鹤), 1.0 also sentences typed with
     /// touch noise (88.85 → 87.54).
     public var grammarCorrectedFactor = 0.45
+    /// 小鹤每音节两键，合法误按更需上下文辅助纠偏，与全拼区分设置以免误伤全拼精确读法。
+    public var xiaoheGrammarCorrectedFactor = 0.65
     /// The text just before the cursor (a few characters), so the first word is also read in context.
     public var leftContext: [Character] = []
     /// Cost of reading the letters as English in Chinese mode (English is the less likely intent there).
@@ -143,7 +145,7 @@ public final class Decoder {
     /// Long sentences (≥ 6 taps) widen the beam slightly so early ambiguities survive for later collocation scoring.
     public var longBeam = 6
     /// 九宫格 keeps more partial sentences per position (each key reads several ways; measured better, full keyboard not)
-    public var t9Beam = 8
+    public var t9Beam = 12
     /// 全拼: cost of a syllable typed as its initial only (简拼), and of a half-typed last syllable.
     public var abbreviationPenalty = 6.0
     public var prefixPenalty = 0.4
@@ -741,18 +743,30 @@ public final class Decoder {
                 let len = j - i + 1
                 guard len >= 2, let w = english.exact(word) else { continue }
                 let cased = w.display != w.key
-                // two letters only for a capitalised word (OK); a plain word that is itself a pinyin syllable (men,
-                // ban, shi) is never English here; one the letters could also spell as pinyin (women) pays more; a
-                // rare one (costco, emoji) is kept for when nothing else reads those keys
+                // two letters only for a capitalised word (OK); a plain word that is itself a valid syllable in the active
+                // scheme (men, ban, shi in 全拼) is never English here; multi-syllable overlap pays more; rare loanwords
+                // below cutoff pay rare penalty, while longer non-pinyin foreign spans (≥4 chars, syl == 0) keep protection down to zipf 3.2
                 guard cased || len >= 3 else { continue }
+                let syl = { () -> Int in
+                    if scheme == .quanpin { return pinyinSyllables(word) }
+                    let bytes = Array(word.utf8)
+                    guard bytes.count >= 2, bytes.count % 2 == 0 else { return 0 }
+                    for k in stride(from: 0, to: bytes.count, by: 2) {
+                        let code = String(decoding: bytes[k..<k+2], as: UTF8.self)
+                        if lexicon.codeToSyllables[code] == nil { return 0 }
+                    }
+                    return bytes.count / 2
+                }()
                 var cost = mixedPenalty
                 if !cased {
-                    let syl = pinyinSyllables(word)
                     if syl == 1 { continue }
                     if syl > 1 { cost += mixedPinyinPenalty }
-                    if w.zipf < mixedMinZipf { cost += mixedRarePenalty }
+                    let rareMin = (len >= 4 && syl == 0) ? min(mixedMinZipf, 3.2) : mixedMinZipf
+                    if w.zipf < rareMin { cost += mixedRarePenalty }
                     // not when it is the tail of a longer word typed here (lack in slack)
                     else if syl == 0, !englishEdges.contains(where: { $0.end == j + 1 }) { cost -= mixedForeignBonus; foreignSpans.insert(i * 1024 + j + 1) }
+                } else if len >= 3, syl == 0, !englishEdges.contains(where: { $0.end == j + 1 }) {
+                    foreignSpans.insert(i * 1024 + j + 1)
                 }
                 let score = mixedA + mixedB * w.zipf - wordPenalty - cost + (cased ? mixedCasedBonus : 0)
                 englishEdges.append(Edge(start: i, end: j + 1, score: score, corrected: false, entry: -1, userText: w.display,
@@ -836,8 +850,9 @@ public final class Decoder {
             }
             for first in spansFrom[i] {
                 let firstEnd = first.end
-                // a slip read into the letters of a common English word typed whole (bu·g for bug) pays more
-                let fsp = first.spatial - (first.kind == 3 && foreignSpans.contains(i * 1024 + firstEnd) ? mixedSlipPenalty : 0)
+                // a slip read into the letters of a foreign English token pays more
+                let inForeign = first.kind >= 3 && foreignSpans.contains(i * 1024 + firstEnd)
+                let fsp = first.spatial - (inForeign ? mixedSlipPenalty : 0)
                 // Single characters (best first: stop at the first that no longer makes the cut). An abbreviation
                 // is never a one-character word.
                 if first.kind != 2 {
@@ -855,7 +870,9 @@ public final class Decoder {
                     // two-syllable words: each reading of the second syllable, the words best first
                     if !follow.pairs.isEmpty {
                         for s2 in seconds {
-                            let sp = fsp + s2.spatial
+                            let pairInForeign = (first.kind >= 2 || s2.kind >= 2 || first.corrected || s2.corrected)
+                                && foreignSpans.contains(i * 1024 + s2.end)
+                            let sp = fsp + s2.spatial - (pairInForeign ? mixedSlipPenalty : 0)
                             let corr = first.corrected || s2.corrected
                             for idx in follow.pairs {
                                 let score = Double(lexicon.entry(idx).score) / 100
@@ -969,7 +986,8 @@ public final class Decoder {
                 let q = grammar.query(context: Array(ctx.suffix(3)), word: wChars)
                 // a corrected word keeps the same baseline but only part of the lift above it
                 let base = grammar.nonCollocationPenalty
-                lift = grammarWeight * (edges[ei].corrected ? base + grammarCorrectedFactor * (q - base) : q)
+                let gcf = scheme == .xiaohe ? xiaoheGrammarCorrectedFactor : grammarCorrectedFactor
+                lift = grammarWeight * (edges[ei].corrected ? base + gcf * (q - base) : q)
                 // The model's counts are joint (how often context + word occur), so they already carry how common the
                 // word is; the lexicon's frequency added on top counts that twice and lets 在 outvote 再 after 可以.
                 // Where the model has the pair, part of the word's own frequency is taken back out.

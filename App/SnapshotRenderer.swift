@@ -141,7 +141,10 @@ enum SnapshotRenderer {
                 bar.overrideUserInterfaceStyle = forced ? (night ? .dark : .light) : .unspecified
                 bar.mosto.setNight(night)
                 bar.showsMosto = !Theme.plain
-                bar.setIdleControls(enabled: true, night: night, forcedDayOnDarkGlass: false)
+                let isT9 = shot.name.hasPrefix("t9") || shot.name.hasSuffix("_t9")
+                let isEn = shot.name.hasPrefix("en_")
+                bar.setIdleControls(enabled: true, night: night, forcedDayOnDarkGlass: false,
+                                    quickGridTitle: isEn ? nil : (isT9 ? "26键" : "9键"))
                 if shot.name == "plain_appex_pill" || shot.name == "letters_guide_chord" {
                     bar.showsPreedit = true
                     bar.xiaoheRhythm = true
@@ -155,15 +158,16 @@ enum SnapshotRenderer {
                 root.addSubview(kb)
                 let isGuideShot = shot.name == "letters_guide" || shot.name == "letters_guide_chord"
                 let chordInitial: Character? = shot.name == "letters_guide_chord" ? "q" : nil
-                kb.configure(LayoutContext(page: shot.page, chinese: !shot.name.hasPrefix("en_"), showGlobe: shot.globe, returnLabel: nil,
+                kb.configure(LayoutContext(page: shot.page, chinese: !isEn, showGlobe: shot.globe, returnLabel: nil,
                                            returnIsAccent: false, shifted: shot.state == "shift", capsLock: false,
-                                           keyBorders: shot.borders, pinyinGrid: shot.name.hasPrefix("t9") || shot.name.hasSuffix("_t9"),
+                                           keyBorders: shot.borders, pinyinGrid: isT9,
                                            composing: shot.state == "composing",
                                            xiaoheGuide: isGuideShot,
                                            xiaohePendingInitial: chordInitial,
-                                           spaceOverride: shot.state == "smart_space" ? "跳出 》" : nil))
+                                           spaceOverride: shot.state == "smart_space" ? "跳出 》" : nil,
+                                           spaceSchemeLabel: isEn ? nil : (isGuideShot ? "小鹤" : "全拼")))
                 // 九宫格 keys have no neighbours to slip onto: its first candidate carries no correction
-                let t9Shot = shot.name.hasPrefix("t9") || shot.name.hasSuffix("_t9")
+                let t9Shot = isT9
                 var composing = candidates(["你好", "尼好", "泥好", "拟好", "你", "尼", "泥", "拟", "逆", "腻", "nihc"], correctedFirst: !t9Shot)
                 if !t9Shot { composing[0].fixes = [Fix(typed: "hap", meant: "hao")] }
                 switch shot.state {
