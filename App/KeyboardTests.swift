@@ -12,6 +12,7 @@ class FakeTextHost: NSObject, UITextDocumentProxy {
     var keyboardType: UIKeyboardType = .default
     var returnKeyType: UIReturnKeyType = .default
     var autocapitalizationType: UITextAutocapitalizationType = .sentences
+    var keyboardAppearance: UIKeyboardAppearance = .default
     var isSecureTextEntry: Bool = false
     let identifier = UUID()
 
@@ -177,6 +178,7 @@ enum KeyboardTests {
         r100_5CommercialPolishEmojiSwipeAndMostoRun(window)
         r101QuantizedGrammarV2AndTuning(window)
         r102Wave1HardeningAndCraft(window)
+        r104_1Build428HotfixRegressionTests(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -4730,21 +4732,16 @@ enum KeyboardTests {
                 TouchSample(id: 203, phase: .ended, point: CGPoint(x: pc.x - 28, y: pc.y - 20), time: 0.07),
             ])
         }
-        log(emittedT9.contains(.char("2")) && emittedT9.contains(.toggleGrid) && diagChar != "。",
-            "r102.T9 swipe-up emits digit, toggleLanguage swipe-up switches 9/26, and sideways drift avoids accidental flick",
+        log(emittedT9 == [.char("2"), .toggleLanguage] && !KeyboardSettings.shared.pinyinGrid && diagChar != "。",
+            "r102.T9 swipe-up emits digit, toggleLanguage keeps clean tap switching, and sideways drift avoids accidental flick",
             "t9=\(emittedT9) diag=\(diagChar ?? "nil")")
 
-        // 4. Secure field isolation + URL dot protection + optional Pangu spacing + idle 9/26 pill
+        // 4. Secure field isolation + URL dot protection + optional Pangu spacing + clean idle bar (no 9/26 pill)
         if let pair = makeKeyboard(scheme: 0, grid: false, in: window) {
             let (vc, h) = pair
             vc.view.layoutIfNeeded()
             let bar = vc.candidateBarForTests
-            let initialPill = bar.quickGridTitleForTests == "9键"
-            bar.tapQuickGridForTests()
-            vc.view.layoutIfNeeded()
-            let toggledToGrid = KeyboardSettings.shared.pinyinGrid && bar.quickGridTitleForTests == "26键"
-            bar.tapQuickGridForTests()
-            vc.view.layoutIfNeeded()
+            let cleanIdleNoQuickGridPill = bar.idleHasNoQuickGridPillForTests && !KeyboardSettings.shared.pinyinGrid
 
             // URL / email vs ordinary CJK-Latin prose dot protection
             h.clear(); h.insertText("www"); vc.textDidChange(nil)
@@ -4781,12 +4778,100 @@ enum KeyboardTests {
             h.isSecureTextEntry = false
             vc.textDidChange(nil)
 
-            log(initialPill && toggledToGrid && wwwDot && httpsColon && prosePeriod && defaultPanguOff && panguInserted && secureEnglish,
-                "r102.Idle 9/26 pill, domain punctuation, Pangu spacing, and isSecureTextEntry isolation behave cleanly",
-                "pill=\(initialPill)/\(toggledToGrid) url=\(wwwDot)/\(httpsColon)/\(prosePeriod) pangu=\(defaultPanguOff)/\(panguInserted) sec=\(secureEnglish)")
+            log(cleanIdleNoQuickGridPill && wwwDot && httpsColon && prosePeriod && defaultPanguOff && panguInserted && secureEnglish,
+                "r102.Clean idle bar omits 9/26 pill while domain punctuation, Pangu spacing, and isSecureTextEntry isolation behave cleanly",
+                "idle=\(cleanIdleNoQuickGridPill) url=\(wwwDot)/\(httpsColon)/\(prosePeriod) pangu=\(defaultPanguOff)/\(panguInserted) sec=\(secureEnglish)")
         } else {
             log(false, "r102.controller setup", "engine did not load")
         }
+    }
+
+    // MARK: - R104.1: Urgent Build 428 Real-Device Hotfix Regression Tests
+
+    static func r104_1Build428HotfixRegressionTests(_ window: UIWindow) {
+        let s = KeyboardSettings.shared
+        let saved = (s.scheme, s.pinyinGrid, s.appearance, s.style)
+        defer {
+            s.scheme = saved.0
+            s.pinyinGrid = saved.1
+            s.appearance = saved.2
+            s.style = saved.3
+            Theme.plain = (saved.3 == 1)
+        }
+
+        // 1. Day/Night priority, textDidChange live sync, zero split theme, and clear AmbientLightView backdrop
+        if let pair = makeKeyboard(scheme: 0, grid: false, in: window) {
+            let (vc, h) = pair
+            defer { vc.view.overrideUserInterfaceStyle = .unspecified }
+            s.appearance = 0
+            vc.view.overrideUserInterfaceStyle = .dark
+            h.keyboardAppearance = .light
+            vc.textDidChange(nil)
+            vc.view.layoutIfNeeded()
+            let lightPriorityOk = !vc.isNightForTests
+                && vc.rootStyleForTests == .light
+                && vc.keyboardStyleForTests == .light
+                && vc.keyboardViewForTests.keyViewForTests(.char("q"))?.resolvedStyleForTests == .light
+                && vc.candidateBarForTests.idleHasNoQuickGridPillForTests
+
+            h.keyboardAppearance = .dark
+            vc.textDidChange(nil)
+            vc.view.layoutIfNeeded()
+            let darkFlipOk = vc.isNightForTests
+                && vc.rootStyleForTests == .dark
+                && vc.keyboardStyleForTests == .dark
+                && vc.keyboardViewForTests.keyViewForTests(.char("q"))?.resolvedStyleForTests == .dark
+
+            h.keyboardAppearance = .light
+            vc.textDidChange(nil)
+            vc.view.layoutIfNeeded()
+            let backToLightOk = !vc.isNightForTests
+                && vc.rootStyleForTests == .light
+                && vc.keyboardStyleForTests == .light
+                && vc.keyboardViewForTests.keyViewForTests(.char("q"))?.resolvedStyleForTests == .light
+
+            s.appearance = 2
+            vc.applySettings()
+            vc.view.layoutIfNeeded()
+            let forcedNightCleanOk = vc.isNightForTests
+                && vc.ambientBackdropClearForTests
+                && vc.rootStyleForTests == .light
+                && vc.keyboardStyleForTests == .dark
+                && vc.keyboardViewForTests.softenedForLightGlassForTests
+                && vc.keyboardViewForTests.keyViewForTests(.char("q"))?.resolvedStyleForTests == .dark
+
+            log(lightPriorityOk && darkFlipOk && backToLightOk && forcedNightCleanOk,
+                "r104_1.Day/Night sync prioritizes host.keyboardAppearance, prevents split themes, and keeps forced backdrop clear",
+                "light=\(lightPriorityOk) dark=\(darkFlipOk) back=\(backToLightOk) forcedNight=\(forcedNightCleanOk)")
+        } else {
+            log(false, "r104_1.Day/Night sync setup", "engine did not load")
+        }
+
+        // 2. Kaomoji mood ribbon touch-canceling scroll + badge clearance + zero swipe-transition left gap
+        for e in ["👍", "😭", "❤️", "🙏", "😂"] { EmojiPanelView.remember(e) }
+        let ep = EmojiPanelView(frame: CGRect(x: 0, y: 0, width: 402, height: 258))
+        window.addSubview(ep)
+        defer { ep.removeFromSuperview() }
+        ep.load(kaomoji: false)
+        ep.layoutIfNeeded()
+        while ep.selectedSectionForTests < EmojiPanelView.categoryNames.count {
+            ep.swipeCategoryForTests(delta: 1)
+        }
+        ep.simulateSwipeIntoKaomojiWithDragOffsetForTests(-44)
+        if let nightIdx = ep.moodTitlesForTests.firstIndex(of: "晚安") {
+            ep.selectMoodForTests(nightIdx)
+        }
+        ep.layoutIfNeeded()
+        let boundsInSelf = ep.visibleKaomojiBoundsInSelfForTests
+        let kaoAligned = ep.kaomojiModeForTests
+            && abs(ep.collectionOriginXForTests) < 0.5
+            && ep.collectionForTests.contentOffset == .zero
+            && (boundsInSelf.map { $0.minX <= 12.0 && $0.maxX <= ep.bounds.width + 0.5 } ?? false)
+        let ribbonOk = ep.moodScrollCancelsButtonTouchesForTests && ep.moodHeaderClearOfBadgeForTests
+
+        log(kaoAligned && ribbonOk,
+            "r104_1.Kaomoji mood ribbon scrolls smoothly clear of Mosto badge and Emoji->Kaomoji swipe aligns with zero gap",
+            "aligned=\(kaoAligned) originX=\(ep.collectionOriginXForTests) bounds=\(String(describing: boundsInSelf)) ribbon=\(ribbonOk)")
     }
 }
 

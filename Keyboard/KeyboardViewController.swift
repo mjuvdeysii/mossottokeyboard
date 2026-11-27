@@ -289,6 +289,10 @@ final class KeyboardViewController: UIInputViewController {
     var rootFrameForTests: CGRect { root.frame }
     var contentFrameForTests: CGRect { lastContentFrame.isEmpty ? root.bounds : lastContentFrame }
     var maxKeycapHeightForTests: CGFloat { keyboard.maxKeycapHeightForTests }
+    var isNightForTests: Bool { isNight }
+    var rootStyleForTests: UIUserInterfaceStyle { root.overrideUserInterfaceStyle }
+    var keyboardStyleForTests: UIUserInterfaceStyle { keyboard.overrideUserInterfaceStyle }
+    var ambientBackdropClearForTests: Bool { tintView.backgroundColor == nil || tintView.backgroundColor == .clear }
     var testSettled: Bool { taps.isEmpty || resultGeneration == generation }
     var onCandidatesUpdated: (() -> Void)?
     var activeFirstFixesForTests: [Fix] {
@@ -448,7 +452,6 @@ final class KeyboardViewController: UIInputViewController {
         keyboard.overlay = syllablePicker
         syllablePicker.onPick = { [weak self] i in self?.pickSyllable(i) }
         candidateBar.onExpand = { [weak self] in guard let self else { return }; self.feel(.key(.page(.letters))); self.showGrid(self.gridIfLoaded?.isHidden ?? true) }
-        candidateBar.onQuickToggleGrid = { [weak self] in self?.handle(.toggleGrid, tap: nil) }
         candidateBar.onLongPress = { [weak self] i in self?.offerForget(i) }
         candidateBar.onSettings = { [weak self] in self?.showSettings(true) }
         candidateBar.onMostoTap = { [weak self] in
@@ -475,6 +478,11 @@ final class KeyboardViewController: UIInputViewController {
         spatial.offsetX = off.0
         spatial.offsetY = off.1
         spatial.keyOffsetsList = KeyboardSettings.shared.keyOffsets
+        if #available(iOS 17.0, *) {
+            registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (vc: KeyboardViewController, _) in
+                vc.applyAppearance()
+            }
+        }
         reconfigure()
     }
 
@@ -484,9 +492,11 @@ final class KeyboardViewController: UIInputViewController {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         LaunchGuard.succeeded()
+        applyAppearance()
         releaseOwnGestureDelays(in: view)
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
+            self.applyAppearance()
             self.feedbackPlayer.prepare()
             if !self.useInlineMarkedText, self.taps.isEmpty, self.cachedFieldContext.isEmpty {
                 self.cachedFieldContext = self.host.documentContextBeforeInput ?? ""
@@ -628,6 +638,7 @@ final class KeyboardViewController: UIInputViewController {
         super.viewDidLayoutSubviews()
         let vb = view.bounds
         guard vb.width > 0, vb.height > 0 else { return }
+        applyAppearance()
         cachedShowGlobe = needsInputModeSwitchKey
         let b = CGRect(origin: .zero, size: vb.size)
         let actualLand = resolvedIsLandscape(forWidth: b.width)
@@ -671,6 +682,11 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
+    override func textWillChange(_ textInput: UITextInput?) {
+        super.textWillChange(textInput)
+        applyAppearance()
+    }
+
     override func textDidChange(_ textInput: UITextInput?) {
         super.textDidChange(textInput)
         reconcileWithHost()
@@ -703,9 +719,12 @@ final class KeyboardViewController: UIInputViewController {
                         self.cachedFieldContext = self.host.documentContextBeforeInput ?? ""
                     }
                 }
+            } else {
+                applyAppearance()
             }
             return
         }
+        applyAppearance()
         let wasSecure = lastFieldTraits.count >= 4 && lastFieldTraits[3] == 1
         if isSecureField != wasSecure {
             adaptToField()
@@ -872,10 +891,25 @@ final class KeyboardViewController: UIInputViewController {
 
     // MARK: - 日光 / 夜灯
 
+    private struct AppearanceSignature: Equatable {
+        let plain: Bool
+        let sysDark: Bool
+        let mode: Int
+    }
+    private var lastAppearanceSignature: AppearanceSignature?
+
     /// The system's own light: dark mode, or a host that asks for a dark keyboard (Spotlight, dark search bars).
-    /// Read from the controller's view (never overridden) and the proxy's keyboardAppearance.
+    /// Check explicit `host.keyboardAppearance` first, then fall back to the controller's own view traits.
     private var systemIsDark: Bool {
-        view.traitCollection.userInterfaceStyle == .dark || host.keyboardAppearance == .dark
+        switch host.keyboardAppearance {
+        case .dark:
+            return true
+        case .light:
+            return false
+        default:
+            let style = view.traitCollection.userInterfaceStyle
+            return (style == .unspecified ? traitCollection.userInterfaceStyle : style) == .dark
+        }
     }
 
     /// The glass under the keyboard is always the system's (light or dark, as the system or the host asks), and it
@@ -883,11 +917,12 @@ final class KeyboardViewController: UIInputViewController {
     /// light is split: everything that sits on the glass — the candidate strip, the emoji page, settings — follows the
     /// glass and stays readable on it; the keys (and Mosto) follow the light chosen: 自动 the glass's, 日光 / 夜灯
     /// their own. Night on a light system is violet vinyl keys on pale glass; day on a dark one, cream keys on dark.
-    private func applyAppearance(animated: Bool = false) {
+    private func applyAppearance(animated: Bool = false, force: Bool = false) {
         _ = animated
         // 风格: Mosto or 简洁 (无主题); every key and loaded panel follow
         let plain = KeyboardSettings.shared.style == 1
-        if plain != Theme.plain {
+        let styleChanged = plain != Theme.plain
+        if styleChanged {
             Theme.plain = plain
             keyboard.themeChanged()
             candidateBar.themeChanged()
@@ -902,22 +937,36 @@ final class KeyboardViewController: UIInputViewController {
         let night = mode == 1 ? false : mode == 2 ? true : sysDark
         let forcedDay = sysDark && !night
         let forcedNight = !sysDark && night
-        let glass: UIUserInterfaceStyle = sysDark ? .dark : .light   // follow host glass only in 自动 mode
+        let glass: UIUserInterfaceStyle = sysDark ? .dark : .light   // strip, capsules, emoji and settings always match the host glass
         let keys: UIUserInterfaceStyle = mode == 0 ? glass : (night ? .dark : .light)
+        let sig = AppearanceSignature(plain: plain, sysDark: sysDark, mode: mode)
+        if !force, !styleChanged, lastAppearanceSignature == sig,
+           root.overrideUserInterfaceStyle == glass,
+           keyboard.overrideUserInterfaceStyle == keys {
+            return
+        }
+        lastAppearanceSignature = sig
         isNight = night
-        root.overrideUserInterfaceStyle = (mode == 0) ? glass : keys
+        root.overrideUserInterfaceStyle = glass
         keyboard.overrideUserInterfaceStyle = keys
         keyboard.softenedForDarkGlass = forcedDay
         keyboard.softenedForLightGlass = forcedNight
+        if #available(iOS 17.0, *) {
+            root.updateTraitsIfNeeded()
+            keyboard.updateTraitsIfNeeded()
+        }
         tintView.night = night
         tintView.forcedNight = forcedNight
         tintView.forcedDay = forcedDay
         tintView.syncBackdrop()
         candidateBar.mosto.setNight(night)
         candidateBar.showsMosto = !Theme.plain
-        tintView.isHidden = Theme.plain && !forcedDay && !forcedNight
+        tintView.isHidden = Theme.plain
         root.backgroundColor = Theme.touchable
         settingsPanelIfLoaded?.setNight(night)
+        keyboard.refreshAppearance()
+        candidateBar.setNeedsLayout()
+        emojiPanelIfLoaded?.refreshAppearance()
         updatePlainLightButton()
     }
 
@@ -929,8 +978,7 @@ final class KeyboardViewController: UIInputViewController {
             && !symbolPanelShown
             && (settingsPanelIfLoaded?.isHidden ?? true)
             && (gridIfLoaded?.isHidden ?? true)
-        let quickTitle = (allowed && chinese && !isSecureField) ? (pinyinGridOn ? "26键" : "9键") : nil
-        candidateBar.setIdleControls(enabled: allowed, night: isNight, forcedDayOnDarkGlass: systemIsDark && !isNight, quickGridTitle: quickTitle)
+        candidateBar.setIdleControls(enabled: allowed, night: isNight, forcedDayOnDarkGlass: systemIsDark && !isNight)
     }
 
     private func triggerMostoYawn() {
@@ -1226,12 +1274,6 @@ final class KeyboardViewController: UIInputViewController {
         case .symbolPanel:
             if !taps.isEmpty { commitAll() }
             showSymbolPanel(true)
-        case .toggleGrid:
-            guard chinese, !isSecureField else { return }
-            if !taps.isEmpty { commitAll() }
-            KeyboardSettings.shared.pinyinGrid.toggle()
-            applySettings()
-            settingsPanelIfLoaded?.load()
         }
     }
 

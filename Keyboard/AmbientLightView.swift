@@ -17,12 +17,6 @@ final class AmbientLightView: UIView {
     required init?(coder: NSCoder) { fatalError() }
 
     func syncBackdrop() {
-        if forcedDay {
-            backgroundColor = Theme.plain ? Theme.hex(0xEBEDF2, 0.92) : Theme.hex(0xEFEBF6, 0.92)
-        } else if forcedNight {
-            backgroundColor = Theme.plain ? Theme.hex(0x1B1C22, 0.94) : Theme.hex(0x181426, 0.94)
-        } else {
-            backgroundColor = .clear
-        }
+        backgroundColor = .clear
     }
 }

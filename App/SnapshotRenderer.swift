@@ -132,19 +132,17 @@ enum SnapshotRenderer {
                 tint.night = night
                 tint.forcedNight = forced && night
                 tint.forcedDay = forced && !night
-                tint.isHidden = Theme.plain && !forced
+                tint.isHidden = Theme.plain
                 root.addSubview(tint)
 
                 // Mosto is set up before the strip is on screen: he is simply there, as when the keyboard opens
                 // (on screen he would wait 0.6 s and fade in — after the picture is taken)
                 let bar = CandidateBarView(frame: CGRect(x: inset, y: 0, width: width, height: barH))
-                bar.overrideUserInterfaceStyle = forced ? (night ? .dark : .light) : .unspecified
                 bar.mosto.setNight(night)
                 bar.showsMosto = !Theme.plain
                 let isT9 = shot.name.hasPrefix("t9") || shot.name.hasSuffix("_t9")
                 let isEn = shot.name.hasPrefix("en_")
-                bar.setIdleControls(enabled: true, night: night, forcedDayOnDarkGlass: false,
-                                    quickGridTitle: isEn ? nil : (isT9 ? "26键" : "9键"))
+                bar.setIdleControls(enabled: true, night: night, forcedDayOnDarkGlass: forced && !night)
                 if shot.name == "plain_appex_pill" || shot.name == "letters_guide_chord" {
                     bar.showsPreedit = true
                     bar.xiaoheRhythm = true

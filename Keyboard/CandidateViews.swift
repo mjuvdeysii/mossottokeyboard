@@ -52,14 +52,10 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     var onLongPress: ((Int) -> Void)?
     /// Tap on the leading raw-key preview pill: commits the literal typed letters immediately.
     var onPreeditTap: (() -> Void)?
-    /// Quick 1-tap 9-key / 26-key switch pill shown on the leading idle strip in Chinese mode.
-    var onQuickToggleGrid: (() -> Void)?
 
     private var idleControlsEnabled = true
     private var isNightLight = false
     private var isForcedDayOnDarkGlass = false
-    private var idleQuickGridTitle: String?
-    private let quickGridButton = UIButton(type: .system)
     private let kaomojiButton = UIButton(type: .system)
     private let lightToggleButton = UIButton(type: .system)
     private static var idleSymbolCache: [String: UIImage] = [:]
@@ -331,14 +327,6 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         lightToggleButton.layer.cornerCurve = .continuous
         lightToggleButton.addAction(UIAction { [weak self] _ in self?.onLightToggle?() }, for: .touchUpInside)
         addSubview(lightToggleButton)
-
-        quickGridButton.titleLabel?.font = Theme.font(11.5, .semibold)
-        quickGridButton.layer.cornerCurve = .continuous
-        quickGridButton.layer.borderWidth = 0
-        quickGridButton.accessibilityLabel = "切换九宫格与全键盘"
-        quickGridButton.addAction(UIAction { [weak self] _ in self?.onQuickToggleGrid?() }, for: .touchUpInside)
-        quickGridButton.isHidden = true
-        addSubview(quickGridButton)
 
         update(preedit: "", candidates: [])
     }
@@ -854,8 +842,9 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
     var clearFilamentTrackShownForTests: Bool { !clearFilamentTrack.isHidden }
     var cursorCenterTickShownForTests: Bool { !cursorCenterTick.isHidden }
     var idleLightTintColorForTests: UIColor { lightToggleButton.tintColor }
-    var quickGridTitleForTests: String? { quickGridButton.isHidden ? nil : quickGridButton.title(for: .normal) }
-    func tapQuickGridForTests() { onQuickToggleGrid?() }
+    var idleHasNoQuickGridPillForTests: Bool {
+        !subviews.contains { ($0 as? UIButton)?.title(for: .normal) == "9键" || ($0 as? UIButton)?.title(for: .normal) == "26键" }
+    }
     var barPillsBorderlessForTests: Bool {
         preeditDock.layer.borderWidth == 0
             && clearArmedPill.layer.borderWidth == 0
@@ -962,16 +951,11 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
         onMostoLongPress?()
     }
 
-    func setIdleControls(enabled: Bool, night: Bool, forcedDayOnDarkGlass: Bool = false, quickGridTitle: String? = nil) {
-        let changed = idleControlsEnabled != enabled || isNightLight != night || isForcedDayOnDarkGlass != forcedDayOnDarkGlass || idleQuickGridTitle != quickGridTitle
+    func setIdleControls(enabled: Bool, night: Bool, forcedDayOnDarkGlass: Bool = false) {
+        let changed = idleControlsEnabled != enabled || isNightLight != night || isForcedDayOnDarkGlass != forcedDayOnDarkGlass
         idleControlsEnabled = enabled
         isNightLight = night
         isForcedDayOnDarkGlass = forcedDayOnDarkGlass
-        idleQuickGridTitle = quickGridTitle
-        if let quickGridTitle {
-            quickGridButton.setTitle(quickGridTitle, for: .normal)
-            quickGridButton.accessibilityValue = quickGridTitle == "9键" ? "当前全键盘，轻点切至九宫格" : "当前九宫格，轻点切至全键盘"
-        }
         let fg = Theme.secondaryText.resolvedColor(with: traitCollection)
         if isNightLight {
             lightToggleButton.tintColor = Theme.plain ? fg : Theme.dyn(Theme.hex(0x784F0A), Theme.hex(0xE0BE74))
@@ -1142,8 +1126,6 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             expandButton.isHidden = true
             undoChip.isHidden = true
             mosto.isHidden = true
-            quickGridButton.isHidden = true
-            quickGridButton.isUserInteractionEnabled = false
             clearArmedPill.isHidden = true
             deletePreviewPill.isHidden = true
             layoutIdleControls(height: h, edgeAlign: edgeAlign)
@@ -1165,28 +1147,6 @@ final class CandidateBarView: UIView, UIScrollViewDelegate {
             return
         }
         let hideChromeForHud = isDeleteClutchEngaged || cursorScrubActive
-        let showQuickGrid = idleControlsEnabled
-            && !typing
-            && candidates.isEmpty
-            && undoText == nil
-            && !gridExpanded
-            && forgetOverlay == nil
-            && !hideChromeForHud
-            && clearArmedPill.isHidden
-            && deletePreviewPill.isHidden
-            && idleQuickGridTitle != nil
-        quickGridButton.isHidden = !showQuickGrid
-        quickGridButton.isUserInteractionEnabled = showQuickGrid
-        if showQuickGrid {
-            let qH = min(26, max(22, h - 14))
-            let fitW = ceil((quickGridButton.title(for: .normal) as NSString? ?? "").size(withAttributes: [.font: Theme.font(11.5, .semibold)]).width)
-            let qW = max(36, fitW + 16)
-            quickGridButton.frame = CGRect(x: 10, y: floor((h - qH) / 2), width: qW, height: qH)
-            quickGridButton.layer.cornerRadius = qH / 2
-            quickGridButton.backgroundColor = Theme.preeditPillBg
-            quickGridButton.setTitleColor(Theme.secondaryText, for: .normal)
-            bringSubviewToFront(quickGridButton)
-        }
         undoChip.isHidden = undoText == nil || hideChromeForHud
         preeditDock.isHidden = !preeditDockWanted || !undoChip.isHidden || hideChromeForHud
         mosto.isHidden = !mostoWanted || hideChromeForHud
@@ -3555,7 +3515,7 @@ final class KeyboardSettings {
 final class SyllablePickerView: UIView, UIScrollViewDelegate {
     var onPick: ((Int) -> Void)?
     private let scrollBox = UIView()
-    private let scroll = UIScrollView()
+    private let scroll = PillScrollView()
     private let bottomFade = CAGradientLayer()
     private let activeBar = UIView()
     private var buttons: [UIButton] = []

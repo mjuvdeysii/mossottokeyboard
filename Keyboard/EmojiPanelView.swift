@@ -26,7 +26,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     private let moodMosto = UIImageView()
     private let moodScrollBox = UIView()
     private let moodFade = CAGradientLayer()
-    private let moodScroll = UIScrollView()
+    private let moodScroll = PillScrollView()
     private let moodHairline = CALayer()
     private var moodButtons: [UIButton] = []
     private var displayedMoods: [(title: String, items: [String])] = []
@@ -39,7 +39,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     private let dockHairline = CALayer()
     private let tabScrollBox = UIView()
     private let tabFade = CAGradientLayer()
-    private let tabScroll = UIScrollView()
+    private let tabScroll = PillScrollView()
     private var tabButtons: [UIButton] = []
     private let emojiSwitchTab = UIButton(type: .system)
     private let backButton = UIButton(type: .custom)
@@ -180,6 +180,30 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     var selectedSectionForTests: Int { selected }
     var emojiColumnsForTests: Int { emojiColumns }
     var emojiCellSizeForTests: CGSize { emojiCellSize }
+    var moodScrollCancelsButtonTouchesForTests: Bool {
+        guard let firstBtn = moodButtons.first else { return false }
+        return moodScroll.canCancelContentTouches
+            && moodScroll.touchesShouldCancel(in: firstBtn)
+            && moodScroll.contentSize.width > moodScrollBox.bounds.width
+    }
+    var moodHeaderClearOfBadgeForTests: Bool {
+        moodScrollBox.clipsToBounds && moodScrollBox.frame.minX >= moodMostoBadge.frame.maxX + 6
+    }
+    var collectionOriginXForTests: CGFloat { collection.frame.minX }
+    var visibleKaomojiBoundsInSelfForTests: (minX: CGFloat, maxX: CGFloat)? {
+        collection.layoutIfNeeded()
+        let frames = collection.visibleCells.compactMap { cell -> CGRect? in
+            guard cell.tag == 1 else { return nil }
+            return cell.convert(cell.bounds, to: self)
+        }
+        guard let minX = frames.map(\.minX).min(), let maxX = frames.map(\.maxX).max() else { return nil }
+        return (minX, maxX)
+    }
+    func simulateSwipeIntoKaomojiWithDragOffsetForTests(_ dragX: CGFloat) {
+        collection.transform = CGAffineTransform(translationX: dragX, y: 0)
+        stepCategory(by: 1, animated: false)
+        layoutIfNeeded()
+    }
     func swipeCategoryForTests(delta: Int) { stepCategory(by: delta, animated: false) }
     func swipeMoodForTests(delta: Int) { stepMood(by: delta, animated: false) }
     func kaomojiItemWidthForTests(_ text: String) -> CGFloat {
@@ -318,6 +342,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         moodFade.startPoint = CGPoint(x: 0, y: 0.5)
         moodFade.endPoint = CGPoint(x: 1, y: 0.5)
         moodFade.colors = [UIColor.clear.cgColor, UIColor.black.cgColor, UIColor.black.cgColor, UIColor.clear.cgColor]
+        moodScrollBox.clipsToBounds = true
         moodScrollBox.backgroundColor = .clear
         moodScroll.showsHorizontalScrollIndicator = false
         moodScroll.alwaysBounceHorizontal = true
@@ -430,6 +455,11 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         refreshMoodRibbonStyle()
         collection.reloadData()
         setNeedsLayout()
+    }
+
+    func refreshAppearance() {
+        applyLips()
+        refreshMoodRibbonStyle()
     }
 
     private func applyLips() {
@@ -602,15 +632,34 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         }
     }
 
+    private func ensureSelectedMoodVisible(animated: Bool) {
+        guard moodButtons.indices.contains(selectedMood),
+              moodScroll.bounds.width > 0,
+              moodScroll.contentSize.width > 0 else { return }
+        let maxX = max(0, moodScroll.contentSize.width - moodScroll.bounds.width)
+        guard maxX > 0.5 else {
+            if abs(moodScroll.contentOffset.x) > 0.5 {
+                moodScroll.setContentOffset(.zero, animated: animated && !UIAccessibility.isReduceMotionEnabled)
+            }
+            updateEdgeFade(box: moodScrollBox, scroll: moodScroll, fade: moodFade, edge: 14)
+            return
+        }
+        let targetBtn = moodButtons[selectedMood].frame
+        let centeredX = targetBtn.midX - moodScroll.bounds.width / 2
+        let offsetX = min(maxX, max(0, centeredX))
+        if abs(offsetX - moodScroll.contentOffset.x) > 0.5 {
+            moodScroll.setContentOffset(CGPoint(x: offsetX, y: 0), animated: animated && !UIAccessibility.isReduceMotionEnabled)
+        }
+        updateEdgeFade(box: moodScrollBox, scroll: moodScroll, fade: moodFade, edge: 14)
+    }
+
     private func selectMood(_ index: Int, animated: Bool = true) {
         guard displayedMoods.indices.contains(index) else { return }
         selectedMood = index
         refreshMoodRibbonStyle()
         updateMoodMostoPose(animated: true)
         layoutMoodPills()
-        if index < moodButtons.count {
-            moodScroll.scrollRectToVisible(moodButtons[index].frame.insetBy(dx: -16, dy: 0), animated: animated && !UIAccessibility.isReduceMotionEnabled)
-        }
+        ensureSelectedMoodVisible(animated: animated)
         if kaomojiMode {
             invalidateKaomojiWidths()
             collection.reloadData()
@@ -691,6 +740,9 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         moodHeader.isHidden = !kaomoji
         moodMosto.isHidden = Theme.plain
         moodMostoBadge.isHidden = Theme.plain
+        collection.layer.removeAllAnimations()
+        collection.transform = .identity
+        collection.alpha = 1
         invalidateKaomojiWidths()
         collection.reloadData()
         setNeedsLayout()
@@ -702,6 +754,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         layoutIfNeeded()
         collection.layoutIfNeeded()
         if kaomoji {
+            ensureSelectedMoodVisible(animated: false)
             setSelected(Self.categoryNames.count + 1, animated: false)
             collection.setContentOffset(.zero, animated: false)
             updateCollectionBottomFade()
@@ -873,7 +926,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     }
 
     private func layoutMoodPills() {
-        var x: CGFloat = 2
+        var x: CGFloat = 4
         let h: CGFloat = 26
         let y: CGFloat = max(0, (moodScroll.bounds.height - h) / 2)
         for b in moodButtons {
@@ -883,7 +936,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             b.frame = CGRect(x: x, y: y, width: w, height: h)
             x += w + 6
         }
-        moodScroll.contentSize = CGSize(width: x + 4, height: moodScroll.bounds.height)
+        moodScroll.contentSize = CGSize(width: x + 2, height: moodScroll.bounds.height)
     }
 
     override func layoutSubviews() {
@@ -899,13 +952,13 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             let showMosto = !Theme.plain
             moodMostoBadge.isHidden = !showMosto
             moodMosto.isHidden = !showMosto
-            let lead: CGFloat = showMosto ? 46 : 12
+            let lead: CGFloat = showMosto ? 48 : 12
             moodMostoBadge.frame = CGRect(x: 10, y: (topH - 28) / 2, width: 30, height: 28)
             moodMosto.frame = CGRect(x: 15, y: (topH - 20) / 2, width: 20, height: 20)
-            moodScrollBox.frame = CGRect(x: lead, y: 0, width: max(0, b.width - lead - 12), height: topH)
+            moodScrollBox.frame = CGRect(x: lead, y: 0, width: max(0, b.width - lead - 10), height: topH)
             moodScroll.frame = moodScrollBox.bounds
             layoutMoodPills()
-            updateEdgeFade(box: moodScrollBox, scroll: moodScroll, fade: moodFade)
+            updateEdgeFade(box: moodScrollBox, scroll: moodScroll, fade: moodFade, edge: 14)
             CATransaction.begin()
             CATransaction.setDisableActions(true)
             moodHairline.frame = CGRect(x: 8, y: topH - 0.5, width: max(0, b.width - 16), height: 1 / UIScreen.main.scale)
@@ -914,8 +967,13 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             moodHeader.isHidden = true
         }
 
+        collectionBox.clipsToBounds = true
         collectionBox.frame = CGRect(x: 0, y: topH, width: b.width, height: max(0, b.height - topH - barH))
-        collection.frame = collectionBox.bounds
+        let targetSize = collectionBox.bounds.size
+        if collection.bounds.size != targetSize {
+            collection.bounds = CGRect(origin: .zero, size: targetSize)
+        }
+        collection.center = CGPoint(x: collectionBox.bounds.midX, y: collectionBox.bounds.midY)
         if let flow = collection.collectionViewLayout as? UICollectionViewFlowLayout {
             flow.sectionInset = UIEdgeInsets(top: 2, left: 6, bottom: b.height < 210 ? 4 : 12, right: 6)
         }
@@ -1149,11 +1207,11 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
         if scrollView === moodScroll {
-            updateEdgeFade(box: moodScrollBox, scroll: moodScroll, fade: moodFade)
+            updateEdgeFade(box: moodScrollBox, scroll: moodScroll, fade: moodFade, edge: 14)
             return
         }
         if scrollView === tabScroll {
-            updateEdgeFade(box: tabScrollBox, scroll: tabScroll, fade: tabFade, edge: 26)
+            updateEdgeFade(box: tabScrollBox, scroll: tabScroll, fade: tabFade, edge: 12)
             return
         }
         guard scrollView === collection, !kaomojiMode else { return }
@@ -1234,6 +1292,9 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             return
         }
         onFeedback?(.candidate)
+        collection.layer.removeAllAnimations()
+        collection.transform = .identity
+        collection.alpha = 1
         selectMood(next, animated: animated)
         animatePageSlide(delta: delta, animated: animated)
     }
@@ -1249,6 +1310,9 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         }
         let targetSection = valid[nextPos]
         onFeedback?(.candidate)
+        collection.layer.removeAllAnimations()
+        collection.transform = .identity
+        collection.alpha = 1
         if targetSection == Self.categoryNames.count + 1 {
             kaomojiMode = true
             applyLips()
@@ -1256,6 +1320,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
             collection.reloadData()
             setNeedsLayout()
             layoutIfNeeded()
+            ensureSelectedMoodVisible(animated: false)
             setSelected(targetSection, animated: animated)
             collection.setContentOffset(.zero, animated: false)
             updateCollectionBottomFade()
@@ -1351,12 +1416,16 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         if tapKaomoji != kaomojiMode {
             kaomojiMode = tapKaomoji
             applyLips()
+            collection.layer.removeAllAnimations()
+            collection.transform = .identity
+            collection.alpha = 1
             invalidateKaomojiWidths()
             collection.reloadData()
             setNeedsLayout()
             layoutIfNeeded()
         }
         if kaomojiMode {
+            ensureSelectedMoodVisible(animated: false)
             setSelected(b.tag, animated: true)
             collection.setContentOffset(.zero, animated: false)
         } else {
@@ -1418,7 +1487,7 @@ final class SymbolPanelView: UIView, UICollectionViewDataSource, UICollectionVie
 
     private var selectedCategory = 0
     private var categoryButtons: [UIButton] = []
-    private let categoryScroll = UIScrollView()
+    private let categoryScroll = PillScrollView()
     private let collection: UICollectionView
     private let deleteButton = UIButton(type: .system)
     private let spaceButton = UIButton(type: .system)

@@ -23,8 +23,6 @@ enum KeyAction: Equatable {
     case emoji
     /// 九宫格/数字键盘专属分类符号面板（右侧第3行同位返回，不跳全键盘符号页）.
     case symbolPanel
-    /// 快速切换九宫格 / 全键盘拼音布局.
-    case toggleGrid
 }
 
 extension KeyAction {
@@ -33,7 +31,7 @@ extension KeyAction {
     /// 不该让一条刚出现的联想凭空空掉（Krug：别让我想；Norman：状态变化要可归因）。
     var endsSuggestions: Bool {
         switch self {
-        case .char, .delete, .space, .ret, .t9, .clearInput, .deleteWord, .emoji, .symbolPanel, .toggleLanguage, .toggleGrid, .page, .settings:
+        case .char, .delete, .space, .ret, .t9, .clearInput, .deleteWord, .emoji, .symbolPanel, .toggleLanguage, .page, .settings:
             return true
         case .shift, .globe:
             return false
@@ -529,4 +527,15 @@ extension UIScrollView {
             rightEdgeEffect.isHidden = true
         }
     }
+}
+
+/// Scroll view whose pan gesture always cancels touches in child UIButtons so pill ribbons scroll smoothly.
+final class PillScrollView: UIScrollView {
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        canCancelContentTouches = true
+        delaysContentTouches = false
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    override func touchesShouldCancel(in view: UIView) -> Bool { true }
 }

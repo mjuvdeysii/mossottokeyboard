@@ -33,6 +33,7 @@ final class KeyView: UIView {
         }
     }
     private var hasApplied = false
+    private var lastResolvedStyle: UIUserInterfaceStyle = .unspecified
     private(set) var applyRunsForTests = 0
     /// While the space bar drives the cursor the other caps go blank, as in the iOS trackpad mode.
     var blanked = false {
@@ -131,6 +132,11 @@ final class KeyView: UIView {
         icon.contentMode = .center
         addSubview(label)
         addSubview(icon)
+        if #available(iOS 17.0, *) {
+            registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: KeyView, _) in
+                view.refreshAppearance()
+            }
+        }
         apply(spec, borders: borders, force: true)
     }
 
@@ -222,8 +228,7 @@ final class KeyView: UIView {
         case .settings: return "键盘设置"
         case .emoji: return "Mosto 表情，双击颜文字，按住打开设置"
         case .symbolPanel: return "符号"
-        case .toggleGrid: return "切换九宫格与全键盘"
-        case .toggleLanguage: return spec.label == "中" ? "中文，轻点切换到英文，上滑切换九宫格" : "英文，轻点切换到中文"
+        case .toggleLanguage: return spec.label == "中" ? "中文，轻点切换到英文" : "英文，轻点切换到中文"
         case .t9(let d): return d == "'" ? "分词" : "\(d)，\(spec.label)"
         case .deleteWord: return "删除词"
         case .clearInput: return "重输"
@@ -253,6 +258,7 @@ final class KeyView: UIView {
 
     private func updateColors() {
         let t = traitCollection
+        lastResolvedStyle = t.userInterfaceStyle
         let softDay = softenedForDarkGlass && t.userInterfaceStyle != .dark
         let softNight = softenedForLightGlass && t.userInterfaceStyle == .dark
         let topColor: UIColor, bottomColor: UIColor, downColor: UIColor, under: UIColor, fg: UIColor, downFg: UIColor
@@ -369,15 +375,37 @@ final class KeyView: UIView {
     var visibleLabelTextForTests: String? { label.isHidden ? nil : label.text }
     var isSoftenedForDarkGlassForTests: Bool { softenedForDarkGlass }
     var isSoftenedForLightGlassForTests: Bool { softenedForLightGlass }
+    var resolvedStyleForTests: UIUserInterfaceStyle { lastResolvedStyle }
     var iconPointSizeForTests: CGFloat {
         if spec.action == .emoji { return Metrics.emojiIconSize }
         return icon.image?.size.height ?? 0
     }
 
+    func refreshAppearance() {
+        if spec.action == .emoji && !Theme.plain {
+            icon.overrideUserInterfaceStyle = .unspecified
+            let night = traitCollection.userInterfaceStyle == .dark
+            let imgName = night ? "mosto_night" : "mosto_day"
+            if let img = Self.cachedMostoCap(imgName) {
+                icon.image = img
+            } else if let name = spec.symbol {
+                icon.image = Self.cachedSymbol(name)
+            }
+            icon.isHidden = false
+        }
+        updateColors()
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window != nil { refreshAppearance() }
+    }
+
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
         super.traitCollectionDidChange(previous)
-        if spec.action == .emoji && !Theme.plain { apply(spec, borders: borders, force: true) }
-        updateColors()
+        if previous?.userInterfaceStyle != traitCollection.userInterfaceStyle {
+            refreshAppearance()
+        }
     }
 
     /// The style changed (Mosto / 简洁): colours, type and the cap's shape follow.
@@ -567,6 +595,9 @@ final class KeyView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        if traitCollection.userInterfaceStyle != lastResolvedStyle {
+            refreshAppearance()
+        }
         layoutCap()
     }
 
@@ -978,8 +1009,6 @@ final class KeyboardView: UIView {
         var clearSwipe: ClearSwipe?
         /// Upward flick off a key (e.g. `，` -> `。` or T9 `2`–`9` -> digits) without waiting for long-press.
         var flickedAlt: String?
-        /// Upward flick off the 中/英 toggle key switches between 9-key and 26-key layouts.
-        var flickedGrid = false
         /// Spring-loaded Shift glide / two-finger Shift chord tracking.
         var shiftOriginIndex: Int?
         var shiftGlided = false
@@ -1037,14 +1066,31 @@ final class KeyboardView: UIView {
         trackpadBadge.isAccessibilityElement = false
         trackpadBadge.isHidden = true
         addSubview(trackpadBadge)
+        if #available(iOS 17.0, *) {
+            registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (kb: KeyboardView, _) in
+                kb.refreshAppearance()
+            }
+        }
         updateTrackpadRulerColors()
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
+    func refreshAppearance() {
+        if #available(iOS 17.0, *) {
+            keyViews.forEach { $0.updateTraitsIfNeeded() }
+        }
+        keyViews.forEach { $0.refreshAppearance() }
+        previewPool.forEach { $0.refreshStyle() }
+        for tr in tracked.values { tr.preview?.refreshStyle() }
+        updateTrackpadRulerColors()
+    }
+
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
         super.traitCollectionDidChange(previous)
-        updateTrackpadRulerColors()
+        if previous?.userInterfaceStyle != traitCollection.userInterfaceStyle {
+            refreshAppearance()
+        }
     }
 
     private var trackpadRubberBandOffset: CGFloat {
@@ -1638,21 +1684,6 @@ final class KeyboardView: UIView {
                     kv.setHintLit(false)
                 }
             }
-        case .toggleLanguage where !tr.typedOnDown:
-            let rise = tr.start.y - p.y
-            let driftX = abs(p.x - tr.start.x)
-            let coneX = min(32.0, max(10.0, rise * 0.55))
-            if rise >= 18 && driftX <= coneX {
-                if !tr.flickedGrid {
-                    tr.flickedGrid = true
-                    showPreview(tr, text: "9/26", flicked: true, allowFunction: true)
-                    onFeedback?(.altMoved, p)
-                }
-            } else if tr.flickedGrid && rise < 8 {
-                tr.flickedGrid = false
-                recyclePreview(tr.preview); tr.preview = nil
-                onFeedback?(.altMoved, p)
-            }
         case .shift:
             if let idx = keyIndex(at: p), idx < keyViews.count, idx != tr.keyIndex, case .char = keyViews[idx].spec.action {
                 tr.shiftGlided = true
@@ -1991,8 +2022,6 @@ final class KeyboardView: UIView {
             } else {
                 onAction?(kv.spec.action, nil)
             }
-        case .toggleLanguage:
-            onAction?(tr.flickedGrid ? .toggleGrid : .toggleLanguage, nil)
         case .emoji:
             if !tr.altShown { onAction?(.emoji, nil) }
         default:

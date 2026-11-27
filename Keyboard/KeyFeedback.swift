@@ -96,7 +96,7 @@ enum FeedbackModel {
                 return FeedbackResponse(kind: .impact, intensity: function, sound: 1104)
             case .delete, .deleteWord:
                 return FeedbackResponse(kind: .impact, intensity: function, sound: 1155)
-            case .shift, .ret, .globe, .settings, .page, .toggleLanguage, .toggleGrid, .clearInput, .emoji, .symbolPanel:
+            case .shift, .ret, .globe, .settings, .page, .toggleLanguage, .clearInput, .emoji, .symbolPanel:
                 return FeedbackResponse(kind: .impact, intensity: function, sound: 1156)
             }
         case .candidate:
