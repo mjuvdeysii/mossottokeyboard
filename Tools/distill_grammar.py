@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Build the R100 dual-section Rime::Grammar/1.0 language model cleanly offline:
+Build the R101 dual-section Mosto::GramV2 8-bit quantized language model cleanly offline:
   - Section 1: Wanxiang teacher + Octagram corroborated 2..4-grams (Viterbi decoding)
   - Section 2: Pruned Octagram sub-trie appended in-file (context continuations)
 
-Keeps 100% Rime::Grammar/1.0 mmap zero-dirty-RAM layout and <= 48.50 MB total size.
+Keeps zero-dirty-RAM mmap layout and <= 48.50 MiB (50,855,936 B) total size.
 """
 import argparse
 import gzip
@@ -20,21 +20,21 @@ FETCH_SCRIPT = os.path.join(ROOT, "Tools", "fetch_sentence_model.sh")
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Distill Wanxiang + Octagram into dual-section grammar.gram")
+    ap = argparse.ArgumentParser(description="Distill Wanxiang + Octagram into dual-section Mosto::GramV2 grammar.gram")
     ap.add_argument("--student", default="/tmp/octagram-base.gram", help="Original 39MB Octagram grammar.gram path")
     ap.add_argument("--teacher", default="/tmp/wanxiang-lts-zh-hans.gram", help="Wanxiang teacher .gram path (in /tmp)")
     ap.add_argument("--lexicon", default=os.path.join(ROOT, "Keyboard/Resources/lexicon.bin"), help="Path to lexicon.bin")
     ap.add_argument("--out", default=os.path.join(ROOT, "Keyboard/Resources/grammar.gram"), help="Output dual-section .gram")
     ap.add_argument("--k2", type=int, default=100000)
-    ap.add_argument("--k3", type=int, default=2980000)
-    ap.add_argument("--k4", type=int, default=2620000)
-    ap.add_argument("--w-seg", type=float, default=1.0)
+    ap.add_argument("--k3", type=int, default=4300000)
+    ap.add_argument("--k4", type=int, default=7320000)
+    ap.add_argument("--w-seg", type=float, default=0.0)
     ap.add_argument("--w-tea", type=float, default=1.5)
-    ap.add_argument("--stu-boost", type=float, default=3.0)
-    ap.add_argument("--pred-max3-1ch", type=int, default=80000)
-    ap.add_argument("--pred-max3-2ch", type=int, default=340000)
-    ap.add_argument("--pred-max4-1ch", type=int, default=160000)
-    ap.add_argument("--pred-max4-2ch", type=int, default=70000)
+    ap.add_argument("--stu-boost", type=float, default=1.5)
+    ap.add_argument("--pred-max3-1ch", type=int, default=110000)
+    ap.add_argument("--pred-max3-2ch", type=int, default=480000)
+    ap.add_argument("--pred-max4-1ch", type=int, default=240000)
+    ap.add_argument("--pred-max4-2ch", type=int, default=110000)
     ap.add_argument("--pred-lambda", type=float, default=1.0)
     args = ap.parse_args()
 

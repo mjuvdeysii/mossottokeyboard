@@ -15,7 +15,7 @@
 - **技术支持页面**：`https://mossotto.pages.dev/#support`（对应 `docs/index.html#support`）
 - **使用条款页面**：`https://mossotto.pages.dev/terms.html`（对应 `docs/terms.html`）
 - **品牌官网主页**：`https://mossotto.pages.dev/`
-- **参考验证版本**：1.0 RC（R100.5，全拼+九宫格大众定位重构、双段离线语法引擎、横滑表情与自适应颜文字、升级版《桌边夜行》彩蛋与商业化法务官网）
+- **参考验证版本**：1.0 Final（R100.5 大众全拼/九宫格体验重构 + R101 8-bit 量化紧凑双段语法引擎 `Mosto::GramV2`（48.39 MB 承载 1164 万解码 + 85 万联想 n-gram）与漏键/换位联合精调；`Keyboard/Resources` 总包 64 MB `<= 75 MB`）
 
 ## 2. 关键词（Keywords，100 字符以内）
 

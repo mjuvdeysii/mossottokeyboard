@@ -174,6 +174,7 @@ enum KeyboardTests {
         r99LocalBigramAndAdaptiveBeam(window)
         r100DistilledDualSectionGrammar(window)
         r100_5CommercialPolishEmojiSwipeAndMostoRun(window)
+        r101QuantizedGrammarV2AndTuning(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -4435,8 +4436,14 @@ enum KeyboardTests {
         ep.layoutIfNeeded()
         feedbackEvents.removeAll()
         let shortW = ep.kaomojiItemWidthForTests("QAQ")
-        let wideW = ep.kaomojiItemWidthForTests("(╯°□°）╯︵ ┻━┻")
-        let adaptiveOk = ep.kaomojiUsesAdaptiveWidthsForTests && shortW > 50 && wideW >= 180 && shortW < wideW
+        let wideW = ep.kaomojiItemWidthForTests("( ^_^)／□☆□＼(^_^ )")
+        if let nightMoodIdx = ep.moodTitlesForTests.firstIndex(of: "晚安") {
+            ep.selectMoodForTests(nightMoodIdx)
+            ep.layoutIfNeeded()
+        }
+        let adaptiveOk = ep.kaomojiUsesAdaptiveWidthsForTests && shortW >= 60 && wideW >= 120 && wideW > shortW + 25
+        ep.selectMoodForTests(0)
+        ep.layoutIfNeeded()
 
         let mood0 = ep.activeMoodIndexForTests
         ep.swipeMoodForTests(delta: 1)
@@ -4523,6 +4530,72 @@ enum KeyboardTests {
         log(guideDefaultOk && legalIdsOk && legalClean,
             "r100_5.Companion defaults to Pinyin/T9 guide and converged commercial LegalText has zero bare URLs or personal handle",
             "guide=\(guideDefaultOk) ids=\(legalIdsOk) clean=\(legalClean)")
+    }
+
+    /// R101: Compact 8-bit quantized Mosto::GramV2 format, Section 2 predictions, and Xiaohe/Quanpin missing & transpose tuning.
+    static func r101QuantizedGrammarV2AndTuning(_ window: UIWindow) {
+        var gramV2Ok = false
+        var xiaoheTuningOk = false
+        var quanpinTuningOk = false
+        var paramOk = false
+
+        if let gp = KeyboardViewController.resourceBundle.path(forResource: "grammar", ofType: "gram"),
+           let lp = KeyboardViewController.resourceBundle.path(forResource: "lexicon", ofType: "bin"),
+           let lex = try? Lexicon(path: lp),
+           let gram = try? Grammar(path: gp) {
+            let c2 = gram.logCount(Array("我们"))
+            let c3 = gram.logCount(Array("我们在"))
+            let c4 = gram.logCount(Array("卖得很好"))
+            let qOk = gram.query(context: Array("卖得"), word: Array("很好")) > 0
+                && gram.query(context: Array("信号"), word: Array("不好")) > 0
+            let predOk = gram.continuations(after: Array("我们"), limit: 8).contains { $0.text == "在" }
+            gramV2Ok = gram.isCompactV2
+                && (c2 ?? -99) > 5 && (c3 ?? -99) > 5 && (c4 ?? -99) > 5
+                && qOk && predOk
+
+            let dec = Decoder(lexicon: lex)
+            dec.grammar = gram
+            paramOk = abs(dec.grammarWeight - 0.78) < 1e-6
+                && abs(dec.xiaoheTransposePenalty - 7.0) < 1e-6
+                && abs(dec.xiaoheMissingPenalty - 2.7) < 1e-6
+                && dec.missingKeyAlternatives == 40
+                && abs(dec.transposePenalty - 6.0) < 1e-6
+                && abs(dec.missingPenalty - 7.0) < 1e-6
+
+            dec.scheme = .xiaohe
+            let xhTrans = dec.decode(Array("inhc").map { Tap.exact($0) }).candidates.first?.text == "你好"
+            let xhMiss1 = dec.decode(Array("jbtmtqihfhc").map { Tap.exact($0) }).candidates.first?.text == "今天天气很好"
+            let xhMiss2 = dec.decode(Array("keyiwmf").map { Tap.exact($0) }).candidates.first?.text == "可以我们"
+            xiaoheTuningOk = xhTrans && xhMiss1 && xhMiss2
+
+            dec.scheme = .quanpin
+            let qpTrans1 = dec.decode(Array("nihoa").map { Tap.exact($0) }).candidates.first?.text == "你好"
+            let qpTrans2 = dec.decode(Array("jintina").map { Tap.exact($0) }).candidates.first?.text == "今天"
+            let qpTrans3 = dec.decode(Array("womne").map { Tap.exact($0) }).candidates.first?.text == "我们"
+            let qpMiss = dec.decode(Array("woxiangqumaidonxi").map { Tap.exact($0) }).candidates.first?.text == "我想去买东西"
+            quanpinTuningOk = qpTrans1 && qpTrans2 && qpTrans3 && qpMiss
+        }
+
+        // End-to-end KeyboardViewController verification for both Xiaohe and Quanpin transpose recovery
+        var xhVcCand = "-"
+        var qpVcCand = "-"
+        if let pair0 = makeKeyboard(scheme: 0, in: window) {
+            let (vc0, _) = pair0
+            type(vc0, "inhc"); settle(vc0)
+            xhVcCand = vc0.testState.candidates.first ?? "-"
+            vc0.handle(.clearInput, tap: nil); drain(0.02)
+        }
+        if let pair1 = makeKeyboard(scheme: 1, in: window) {
+            let (vc1, _) = pair1
+            type(vc1, "jintina"); settle(vc1)
+            qpVcCand = vc1.testState.candidates.first ?? "-"
+            vc1.handle(.clearInput, tap: nil); drain(0.02)
+        }
+        let vcOk = xhVcCand == "你好" && qpVcCand == "今天"
+
+        log(gramV2Ok && paramOk && xiaoheTuningOk && quanpinTuningOk && vcOk,
+            "r101.Mosto::GramV2 loads dual quantized tries and improves Xiaohe/Quanpin missing & transpose decoding",
+            "v2=\(gramV2Ok) param=\(paramOk) xh=\(xiaoheTuningOk) qp=\(quanpinTuningOk) xhVc=\(xhVcCand) qpVc=\(qpVcCand)")
     }
 
     static func fuzz(_ window: UIWindow) {

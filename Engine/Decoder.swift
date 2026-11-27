@@ -77,7 +77,7 @@ public final class Decoder {
     public var grammar: Grammar?
     /// 联想 reads its own model when set (the sentence model's scores are not counts of what follows a context).
     public var predictionGrammar: Grammar?
-    public var grammarWeight = 0.75
+    public var grammarWeight = 0.78
     /// The language model weighs less on a word whose keys were corrected: it chooses between words the keys spell,
     /// it does not talk the keyboard into changing keys to make a likelier phrase. R4 grid (×correctionPenalty 1.5 /
     /// 2.5 / 3.5): 0.6 with 1.5 — 0.7 and above lose two 中英混输 sentences (小鹤), 1.0 also sentences typed with
@@ -287,8 +287,8 @@ public final class Decoder {
     }()
     /// 小鹤漏按一键：由词驱动，只在组词时生成（kind 4）。关掉它门禁里的漏按门槛必须变红。
     public var missingKeyEnabled = true
-    public var xiaoheMissingPenalty   = 3.0
-    public var missingKeyAlternatives = 32 
+    public var xiaoheMissingPenalty   = 2.7
+    public var missingKeyAlternatives = 40
 
     public var correctionKeep = 2  /// At most this many corrected syllables per position (R4).
     public var correctionAlternatives = 6
@@ -366,11 +366,11 @@ public final class Decoder {
     public var skipDoublePenalty = 8.0
     public var xiaoheSkipPenalty = 7.0
     /// 漏按了一个键 (全拼): a letter the keys left out — don for dong, tia for tian.
-    public var missingPenalty = 9.0
+    public var missingPenalty = 7.0
     /// 相邻换位: two neighbouring keys typed in reverse order (全拼 nihoa → nihao, womne → women; 小鹤 inhc → nihc).
     public var transposeEnabled = true
-    public var transposePenalty = 6.5
-    public var xiaoheTransposePenalty = 8.2
+    public var transposePenalty = 6.0
+    public var xiaoheTransposePenalty = 7.0
     /// 句末多按 (全拼): the last key read as one pressed by mistake after the words before it (gongyuann → 公园,
     /// fageiwoo → 发给我), at the cost of a slip (`skipCost`) plus a correction, weighed by the language model against
     /// reading that key as the initial of one more character (公园内, 方案吗). Inside a sentence a key is still never
@@ -454,7 +454,7 @@ public final class Decoder {
                         next.append(State(node: st.node, score: st.score - skipCost(taps, pos), corrected: true, skipped: true))
                     }
                   // 相邻换位 (全拼): 两个相邻键顺序打反 (nihoa → nihao, womne → women, zhnog → zhong), once per syllable
-                   if transposeEnabled, !t.group, !st.skipped, st.node.children[t.key] == nil, pos + 1 < n, !taps[pos + 1].group,
+                   if transposeEnabled, !t.group, !st.skipped, pos + 1 < n, !taps[pos + 1].group,
                       t.key != taps[pos + 1].key, !boundaries.contains(pos + 1),
                     let c1 = st.node.children[taps[pos + 1].key], let c2 = c1.children[t.key] {
                         j2.append(State(node: c2, score: st.score - transposePenalty, corrected: true, skipped: true))

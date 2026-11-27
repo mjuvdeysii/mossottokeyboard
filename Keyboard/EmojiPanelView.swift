@@ -680,6 +680,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         moodHeader.isHidden = !kaomoji
         moodMosto.isHidden = Theme.plain
         moodMostoBadge.isHidden = Theme.plain
+        invalidateKaomojiWidths()
         collection.reloadData()
         setNeedsLayout()
         guard bounds.width > 100, bounds.height > 100 else {

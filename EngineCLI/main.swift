@@ -46,6 +46,7 @@ if let v = env["MIXR"].flatMap(Double.init) { decoder.mixedRarePenalty = v }
 if let v = env["MIXY"].flatMap(Double.init) { decoder.mixedPinyinPenalty = v }
 if let v = env["MIXZ"].flatMap(Double.init) { decoder.mixedMinZipf = v }
 if let v = env["MISSP"].flatMap(Double.init) { decoder.missingPenalty = v }
+if let v = env["TPEN"].flatMap(Double.init) { decoder.transposePenalty = v }
 if let v = env["MIXF"].flatMap(Double.init) { decoder.mixedForeignBonus = v }
 if let v = env["ABM"].flatMap(Double.init) { decoder.midAbbreviationPenalty = v }
 if let v = env["MIXS"].flatMap(Double.init) { decoder.mixedSlipPenalty = v }
@@ -60,6 +61,7 @@ if let v = env["XSKIPP"].flatMap(Double.init) { decoder.xiaoheSkipPenalty = v }
 if let v = env["XMISS"].flatMap(Int.init) { decoder.missingKeyEnabled = v != 0 }
 if let v = env["XMISSP"].flatMap(Double.init) { decoder.xiaoheMissingPenalty = v }
 if let v = env["XMISSA"].flatMap(Int.init) { decoder.missingKeyAlternatives = v }
+if let v = env["XTPEN"].flatMap(Double.init) { decoder.xiaoheTransposePenalty = v }
 if let v = env["T9PFX"].flatMap(Double.init) { decoder.t9PrefixExtra = v }
 if let v = env["T9MIN"].flatMap(Double.init) { decoder.t9MinWordScore = v }
 if let v = env["UW"].flatMap(Double.init) { decoder.userWeight = v }
@@ -914,71 +916,70 @@ case "bench", "gate":
         let floors: [(String, Double, Bool)] = decoder.scheme == .xiaohe ? [
             ("words.on", 96.0, true),          // σ=0.22 touch noise, correction on, top-1 (%)
             ("words.broken", 1.0, false),      // clean words changed by correction (%) — at most
-            ("sentences.perfect", 84.5, true), // R100 measured 86.23 with 47.91 MB dual-section grammar.gram
-            ("sentences.on", 89.0, true),      // R100 measured 91.15
-            ("sentences.true", 78.5, true),    // R100 measured 80.66
+            ("sentences.perfect", 86.5, true), // R101 v2 measured 88.85 with 48.39 MB Mosto::GramV2
+            ("sentences.on", 89.0, true),      // R101 v2 measured 90.49
+            ("sentences.true", 80.5, true),    // R101 v2 measured 82.62
             ("words.ms", 3.0, false),          // average decode time (ms) — at most
             ("en.kept", 99.0, true),            // English: correctly typed words left alone (%)
             ("en.on", 97.0, true),              // English: σ=0.22 touch noise, what space types is the word (%)
             ("en.top3", 98.0, true),            // English: the word among the first three suggestions (%)
             ("t9.words.top1", 47.0, true),     // 九宫格 (each key = its 3–4 letters), perfect keys
-            ("t9.sentences.top3", 51.5, true), // R100 measured 53.77
-            ("t9.sentences.ms", 45.0, false),  // CI runners vary 5–8× (~3.8 ms locally; R48 hit 30.93 ms under shared macOS load)
-            ("learn.same", 95.5, true),        // sentences typed again after picking them once (%) (R100 measured 96.39)
+            ("t9.sentences.top3", 51.5, true), // R101 v2 measured 53.44
+            ("t9.sentences.ms", 45.0, false),  // CI runners vary 5–8× (~3 ms locally)
+            ("learn.same", 95.5, true),        // sentences typed again after picking them once (%) (R101 measured 96.39)
             ("userword.alone", 98.0, true),    // 自造词 typed again alone: first (%)
-            ("userword.inside", 94.0, true),   // 自造词 inside its sentence: read as that phrase (%)
+            ("userword.inside", 95.5, true),   // R101 measured 97.71
             ("adapt.after", 78.0, true),       // off-centre thumbs, unseen words after 1000 words of use (%)
             ("learn.harm", 1.0, false),        // unseen sentences made worse by what was learned (points) — at most
             ("fuzz.bad", 0.0, false),          // random input: candidates that use no keys, too many, or have no text
             ("fuzz.p99.ms", 55.0, false),      // random input: 99th-percentile decode time (ms) — at most
-            ("extra.sentences.top1", 74.5, true),  // R100 measured 76.72
-            ("mixed.sentences.top1", 72.0, true),  // R100 measured 75.00
-            ("fix.caption.coverage", 98.0, true), // a corrected first candidate says what it changed (%)
-            ("dedupe.pairs", 100.0, false),    // first three readings differing only in a last one-character word (at most two per sentence)
+            ("extra.sentences.top1", 75.0, true),   // R101 measured 77.05
+            ("mixed.sentences.top1", 72.0, true),   // R101 measured 73.75
+            ("fix.caption.coverage", 98.0, true),   // a corrected first candidate says what it changed (%)
+            ("dedupe.pairs", 100.0, false),         // first three readings differing only in a last one-character word
             // R4 按偏一个键 (a quarter key onto a neighbour; the keys as typed still spell something = legal)
             ("slip.words.legal.top1", 79.0, true),
             ("slip.words.legal.top3", 96.5, true),
             ("slip.words.other.top1", 96.5, true),   // control: the keys as typed spell nothing
-            ("slip.sent.legal.top1", 73.0, true),  // R100 measured 74.69
-            ("slip.sent.legal.top3", 84.0, true),
-            ("slip.sent.other.top1", 88.0, true),
+            ("slip.sent.legal.top1", 73.0, true),    // R101 measured 74.25
+            ("slip.sent.legal.top3", 87.0, true),    // R101 measured 90.91
+            ("slip.sent.other.top1", 90.0, true),    // R101 measured 93.71
             ("slip.words.edge.legal.top1", 85.5, true),   // on the key's edge (the gate's touch noise)
             ("slip.words.centre.legal.top1", 40.5, true), // on the neighbour's centre
             ("rare.kept", 99.5, true),         // uncommon words typed on purpose stay first (%)
-            ("missing.sentences.top1", 38.0, true), // R100 measured 40.00
-            ("predict.cold.ms", 250.0, false), // 冷启动首次联想：实测 ~43ms；250ms 留 5x 余量，能拦住全词库懒加载
+            ("missing.sentences.top1", 40.0, true),   // R101 measured 42.30
+            ("transpose.sentences.top1", 53.0, true), // R101 measured 56.51 (R100 was 36.99)
+            ("predict.cold.ms", 250.0, false), // 冷启动首次联想：实测 ~1.8ms；250ms 留裕量拦住全词库懒加载
         ] : [
             ("words.on", 97.0, true),
             ("words.broken", 1.0, false),
-            ("sentences.perfect", 84.0, true), // R100 measured 85.90
-            ("sentences.on", 92.0, true),      // R100 measured 95.74
-            ("sentences.true", 80.5, true),    // R100 measured 82.95
-            ("sentences.ms", 32.0, false),     // CI runners vary 2–5× (1.2 ms locally; #261 hit 23.85 ms under load)
+            ("sentences.perfect", 86.5, true), // R101 v2 measured 88.85 with 48.39 MB Mosto::GramV2
+            ("sentences.on", 93.0, true),      // R101 v2 measured 95.41
+            ("sentences.true", 82.5, true),    // R101 v2 measured 85.25
+            ("sentences.ms", 32.0, false),     // CI runners vary 2–5× (~4.5 ms locally)
             ("t9.words.top1", 66.0, true),
-            ("t9.sentences.top1", 62.5, true), // R100 measured 64.59
+            ("t9.sentences.top1", 65.0, true), // R101 v2 measured 67.60
             ("t9.sentences.ms", 150.0, false),
-            ("learn.same", 95.5, true),        // R100 measured 96.39
+            ("learn.same", 95.5, true),        // R101 measured 96.39
             ("userword.alone", 98.0, true),
-            ("userword.inside", 94.0, true),
+            ("userword.inside", 95.5, true),   // R101 measured 97.66
             ("learn.harm", 1.0, false),
             ("fuzz.bad", 0.0, false),
             ("fuzz.p99.ms", 100.0, false),
-            ("extra.sentences.top1", 79.5, true),  // R100 measured 81.97
-            ("missing.sentences.top1", 41.0, true), // R100 measured 42.95
-            // 78.0 was written before this gate ever ran (the 全拼 gate was dead under pipefail), so it was
-            // never a measured bar. One point under the measured tuning value 77.50 = 76.5; the product
-            // owner approved exactly this number in 2843eaa. Restore it so the rollback tree can ship.
-            ("mixed.sentences.top1", 75.0, true),  // R100 measured 77.50
+            ("extra.sentences.top1", 79.5, true),     // R101 measured 80.98
+            ("missing.sentences.top1", 42.0, true),   // R101 measured 43.93
+            ("transpose.sentences.top1", 70.0, true), // R101 measured 74.01 (R100 was 50.33)
+            ("mixed.sentences.top1", 75.0, true),     // R101 measured 76.25
             ("fix.caption.coverage", 98.0, true),
-            ("extra.tail.top1", 68.5, true),   // R100 measured 71.48
-            ("extra.tail.top3", 80.0, true),   // R100 measured 88.85
-            ("dedupe.pairs", 100.0, false),
+            ("extra.tail.top1", 70.0, true),          // R101 measured 72.79
+            ("extra.tail.top3", 84.0, true),          // R101 measured 88.85
+            ("dedupe.pairs", 100.0, false),           // R101 measured 98.00
             ("slip.words.legal.top1", 85.0, true),
             ("slip.words.legal.top3", 97.5, true),
             ("slip.words.other.top1", 97.5, true),
-            ("slip.sent.legal.top1", 81.0, true),  // R100 measured 82.97
-            ("slip.sent.legal.top3", 86.0, true),
-            ("slip.sent.other.top1", 88.0, true),
+            ("slip.sent.legal.top1", 81.0, true),     // R101 measured 81.95
+            ("slip.sent.legal.top3", 88.0, true),     // R101 measured 93.38
+            ("slip.sent.other.top1", 90.0, true),     // R101 measured 94.41
             ("rare.kept", 99.5, true),
             ("predict.cold.ms", 250.0, false),
         ]

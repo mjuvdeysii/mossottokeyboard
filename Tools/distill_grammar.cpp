@@ -1,7 +1,7 @@
-// Builds the R100 dual-section Rime::Grammar/1.0 language model cleanly offline:
+// Builds the R101 dual-section Mosto::GramV2 8-bit quantized compact CSR-Trie language model offline:
 //   Section 1: Wanxiang teacher + Octagram corroborated 2..4-grams for Viterbi sentence decoding.
-//   Section 2: Pruned Octagram sub-trie appended directly after Section 1 for natural continuations.
-// Copyright notes: darts-clone header is BSD-2-Clause; Octagram is LGPL-3.0; Wanxiang is CC-BY-4.0.
+//   Section 2: Pruned Octagram sub-trie appended in-file for natural continuations.
+// Copyright notes: Octagram source is LGPL-3.0; Wanxiang source is CC-BY-4.0; darts-clone reader header is BSD-2-Clause.
 
 #include <algorithm>
 #include <cmath>
@@ -10,7 +10,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
-#include <string>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -22,16 +21,18 @@
 
 namespace {
 
-constexpr size_t kMaxBundleGrammarBytes = 50855936ULL; // 48.50 MB hard ceiling
+constexpr size_t kMaxBundleGrammarBytes = 50855936ULL; // 48.50 MiB hard ceiling (stays safely < 50 MiB GitHub limit)
+constexpr uint32_t kMaxVocab = 8192;
+constexpr uint16_t kBmpMin = 0x3400;
+constexpr uint16_t kBmpMax = 0x9FFF;
+constexpr size_t kBmpRange = kBmpMax - kBmpMin + 1; // 27,648 entries
 
-struct MMapGram {
+struct MMapGramV1 {
     int fd = -1;
     size_t fsize = 0;
     const uint8_t* base = nullptr;
     const uint32_t* array = nullptr;
     uint32_t size = 0;
-    const uint32_t* pred_array = nullptr;
-    uint32_t pred_size = 0;
 
     bool open_file(const char* path) {
         fd = ::open(path, O_RDONLY);
@@ -50,25 +51,10 @@ struct MMapGram {
         size_t sec1_end = 40ULL + static_cast<size_t>(off) + static_cast<size_t>(size) * 4ULL;
         if (sec1_end > fsize) return false;
         array = reinterpret_cast<const uint32_t*>(base + 40 + off);
-
-        pred_array = array;
-        pred_size = size;
-        if (sec1_end + 44 <= fsize &&
-            std::strncmp(reinterpret_cast<const char*>(base + sec1_end), "Rime::Grammar/", 14) == 0) {
-            uint32_t psize = 0;
-            int32_t poff = 0;
-            std::memcpy(&psize, base + sec1_end + 36, 4);
-            std::memcpy(&poff, base + sec1_end + 40, 4);
-            size_t p_arr_off = sec1_end + 40ULL + static_cast<size_t>(poff);
-            if (poff >= 4 && (p_arr_off % 4) == 0 && p_arr_off + static_cast<size_t>(psize) * 4ULL <= fsize) {
-                pred_array = reinterpret_cast<const uint32_t*>(base + p_arr_off);
-                pred_size = psize;
-            }
-        }
         return true;
     }
 
-    ~MMapGram() {
+    ~MMapGramV1() {
         if (base && base != MAP_FAILED) ::munmap(const_cast<uint8_t*>(base), fsize);
         if (fd >= 0) ::close(fd);
     }
@@ -77,34 +63,26 @@ struct MMapGram {
     static inline uint32_t label(uint32_t u) { return u & ((1U << 31) | 0xFFU); }
     static inline bool has_leaf(uint32_t u) { return ((u >> 8) & 1U) != 0; }
 
-    static bool lookup_in(const uint32_t* arr, uint32_t sz, const uint8_t* key, size_t len, int32_t& out_val) {
+    bool lookup(const uint8_t* key, size_t len, int32_t& out_val) const {
         uint32_t id = 0;
-        uint32_t u = arr[0];
+        uint32_t u = array[0];
         for (size_t i = 0; i < len; ++i) {
             uint32_t c = key[i];
             id ^= offset(u) ^ c;
-            if (id >= sz) return false;
-            u = arr[id];
+            if (id >= size) return false;
+            u = array[id];
             if (label(u) != c) return false;
         }
         if (!has_leaf(u)) return false;
         uint32_t lid = id ^ offset(u);
-        if (lid >= sz) return false;
-        out_val = static_cast<int32_t>(arr[lid] & 0x7FFFFFFFU);
+        if (lid >= size) return false;
+        out_val = static_cast<int32_t>(array[lid] & 0x7FFFFFFFU);
         return true;
-    }
-
-    bool lookup(const uint8_t* key, size_t len, int32_t& out_val) const {
-        return lookup_in(array, size, key, len, out_val);
-    }
-
-    bool lookup_pred(const uint8_t* key, size_t len, int32_t& out_val) const {
-        return lookup_in(pred_array, pred_size, key, len, out_val);
     }
 };
 
 template <typename Fn>
-static void dfs_grammar(const MMapGram& g, Fn&& cb) {
+static void dfs_grammar(const MMapGramV1& g, Fn&& cb) {
     struct Frame { uint32_t id; uint16_t next_c; uint8_t key_len; };
     std::vector<uint8_t> key;
     key.reserve(64);
@@ -120,15 +98,15 @@ static void dfs_grammar(const MMapGram& g, Fn&& cb) {
         }
         uint32_t id = f.id;
         uint32_t u = g.array[id];
-        uint32_t base_xor = id ^ MMapGram::offset(u);
+        uint32_t base_xor = id ^ MMapGramV1::offset(u);
         while (f.next_c <= 255) {
             uint32_t c = f.next_c++;
             uint32_t nid = base_xor ^ c;
-            if (nid < g.size && MMapGram::label(g.array[nid]) == c) {
+            if (nid < g.size && MMapGramV1::label(g.array[nid]) == c) {
                 key.push_back(static_cast<uint8_t>(c));
                 uint32_t nu = g.array[nid];
-                if (MMapGram::has_leaf(nu)) {
-                    uint32_t lid = nid ^ MMapGram::offset(nu);
+                if (MMapGramV1::has_leaf(nu)) {
+                    uint32_t lid = nid ^ MMapGramV1::offset(nu);
                     if (lid < g.size) {
                         int32_t val = static_cast<int32_t>(g.array[lid] & 0x7FFFFFFFU);
                         cb(key, val);
@@ -169,7 +147,7 @@ static inline bool decode_rime_to_han4(const std::vector<uint8_t>& enc, uint16_t
             cp = (static_cast<uint32_t>(b0 - 0x40) << 8) | enc[i + 1];
             i += 2;
         }
-        if (cp < 0x3400 || cp > 0x9FFF || !is_lex_han[cp]) return false;
+        if (cp < kBmpMin || cp > kBmpMax || !is_lex_han[cp]) return false;
         cps[len++] = static_cast<uint16_t>(cp);
     }
     out_len = len;
@@ -269,7 +247,7 @@ struct LexTables {
                 else if ((b0 & 0xE0) == 0xC0 && p + 1 < tlen) { cp = ((b0 & 0x1F) << 6) | (s[p+1] & 0x3F); p += 2; }
                 else if ((b0 & 0xF0) == 0xE0 && p + 2 < tlen) { cp = ((b0 & 0x0F) << 12) | ((s[p+1] & 0x3F) << 6) | (s[p+2] & 0x3F); p += 3; }
                 else { ok = false; break; }
-                if (cp >= 0x3400 && cp <= 0x9FFF) cps[n++] = static_cast<uint16_t>(cp);
+                if (cp >= kBmpMin && cp <= kBmpMax) cps[n++] = static_cast<uint16_t>(cp);
                 else { ok = false; break; }
             }
             if (!ok || n == 0) continue;
@@ -331,82 +309,456 @@ struct Cand {
     float rank;
 };
 
-struct BuiltSection {
-    std::vector<const char*> ptrs;
-    std::vector<std::size_t> lens;
-    std::vector<int> vals;
-    std::vector<uint8_t> arena;
-    size_t by_char[5]{};
-    Darts::DoubleArray da;
+struct alignas(8) GramV2Ovf {
+    uint32_t idx;
+    uint32_t deg;
 };
 
-static bool build_section(const std::vector<std::pair<uint64_t, int32_t>>& items, BuiltSection& sec) {
-    sec.arena.clear();
-    sec.arena.reserve(items.size() * 7ULL);
-    struct Rec { uint32_t off; uint8_t len; uint8_t clen; int32_t val; };
-    std::vector<Rec> recs;
-    recs.reserve(items.size());
+static inline void pack_bits(std::vector<uint8_t>& buf, size_t index, int width, uint32_t val) {
+    size_t bit = index * static_cast<size_t>(width);
+    size_t boff = bit >> 3;
+    uint32_t shift = static_cast<uint32_t>(bit & 7);
+    uint64_t w = 0;
+    std::memcpy(&w, buf.data() + boff, 8);
+    w |= (static_cast<uint64_t>(val) << shift);
+    std::memcpy(buf.data() + boff, &w, 8);
+}
 
-    std::vector<uint8_t> enc;
-    enc.reserve(8);
-    for (const auto& kv : items) {
-        uint16_t cps[4]{};
-        int clen = unpack4(kv.first, cps);
-        enc.clear();
-        for (int i = 0; i < clen; ++i) encode_rime_cp(cps[i], enc);
-        uint32_t off = static_cast<uint32_t>(sec.arena.size());
-        sec.arena.insert(sec.arena.end(), enc.begin(), enc.end());
-        recs.push_back({off, static_cast<uint8_t>(enc.size()), static_cast<uint8_t>(clen), std::max(0, kv.second)});
-    }
+struct BuiltV2Section {
+    std::vector<uint8_t> bytes;
+    uint32_t vocab_size = 0;
+    uint32_t n2 = 0;
+    uint32_t n3 = 0;
+    uint32_t n4 = 0;
+    size_t by_char[5]{};
+    // Sampled expected quantized values for self-verification
+    struct Sample { uint16_t cps[4]; int len; float qval; };
+    std::vector<Sample> samples;
+};
 
-    std::sort(recs.begin(), recs.end(), [&](const Rec& a, const Rec& b) {
-        size_t ml = std::min(a.len, b.len);
-        int cmp = std::memcmp(sec.arena.data() + a.off, sec.arena.data() + b.off, ml);
-        if (cmp != 0) return cmp < 0;
-        if (a.len != b.len) return a.len < b.len;
-        return a.val > b.val;
+static bool build_v2_section(const std::vector<std::pair<uint64_t, int32_t>>& raw_items, BuiltV2Section& sec) {
+    struct Item { uint16_t c[4]; uint8_t len; float lc; };
+    std::vector<Item> items;
+    items.reserve(raw_items.size());
+
+    // Canonical deduplication: sort by key ascending, max val first, keep unique.
+    std::vector<std::pair<uint64_t, int32_t>> sorted = raw_items;
+    std::sort(sorted.begin(), sorted.end(), [](const auto& a, const auto& b) {
+        if (a.first != b.first) return a.first < b.first;
+        return a.second > b.second;
     });
 
-    sec.ptrs.clear();
-    sec.lens.clear();
-    sec.vals.clear();
-    sec.ptrs.reserve(recs.size());
-    sec.lens.reserve(recs.size());
-    sec.vals.reserve(recs.size());
-    std::fill(std::begin(sec.by_char), std::end(sec.by_char), 0);
+    std::vector<uint8_t> used_bmp(kBmpRange, 0);
+    float min2 = 1e30f, max2 = -1e30f;
+    float min3 = 1e30f, max3 = -1e30f;
+    float min4 = 1e30f, max4 = -1e30f;
 
-    const uint8_t* prev_ptr = nullptr;
-    size_t prev_len = 0;
-    for (const auto& r : recs) {
-        const uint8_t* cur = sec.arena.data() + r.off;
-        if (prev_ptr && r.len == prev_len && std::memcmp(cur, prev_ptr, r.len) == 0) continue;
-        prev_ptr = cur;
-        prev_len = r.len;
-        sec.ptrs.push_back(reinterpret_cast<const char*>(cur));
-        sec.lens.push_back(r.len);
-        sec.vals.push_back(r.val);
-        if (r.clen >= 2 && r.clen <= 4) sec.by_char[r.clen]++;
+    uint64_t prev_k = 0;
+    bool has_prev = false;
+    for (const auto& kv : sorted) {
+        if (has_prev && kv.first == prev_k) continue;
+        prev_k = kv.first;
+        has_prev = true;
+
+        uint16_t cps[4]{};
+        int len = unpack4(kv.first, cps);
+        if (len < 2 || len > 4) continue;
+        bool ok = true;
+        for (int i = 0; i < len; ++i) {
+            if (cps[i] < kBmpMin || cps[i] > kBmpMax) { ok = false; break; }
+            used_bmp[cps[i] - kBmpMin] = 1;
+        }
+        if (!ok) continue;
+
+        float lc = std::max(0, kv.second) / 10000.0f;
+        items.push_back({{cps[0], cps[1], cps[2], cps[3]}, static_cast<uint8_t>(len), lc});
+        sec.by_char[len]++;
+        if (len == 2) { min2 = std::min(min2, lc); max2 = std::max(max2, lc); }
+        else if (len == 3) { min3 = std::min(min3, lc); max3 = std::max(max3, lc); }
+        else { min4 = std::min(min4, lc); max4 = std::max(max4, lc); }
+    }
+    std::vector<std::pair<uint64_t, int32_t>>().swap(sorted);
+
+    if (items.empty()) return false;
+    if (min2 > max2) { min2 = 0.0f; max2 = 0.0f; }
+    if (min3 > max3) { min3 = 0.0f; max3 = 0.0f; }
+    if (min4 > max4) { min4 = 0.0f; max4 = 0.0f; }
+
+    float step2 = (max2 > min2) ? (max2 - min2) / 254.0f : 1.0f;
+    float step3 = (max3 > min3) ? (max3 - min3) / 255.0f : 1.0f;
+    float step4 = (max4 > min4) ? (max4 - min4) / 255.0f : 1.0f;
+
+    std::vector<uint16_t> bmp_to_id(kBmpRange, 0xFFFFU);
+    std::vector<uint16_t> id_to_bmp;
+    id_to_bmp.reserve(8192);
+    for (size_t i = 0; i < kBmpRange; ++i) {
+        if (used_bmp[i]) {
+            bmp_to_id[i] = static_cast<uint16_t>(id_to_bmp.size());
+            id_to_bmp.push_back(static_cast<uint16_t>(kBmpMin + i));
+        }
+    }
+    uint32_t V = static_cast<uint32_t>(id_to_bmp.size());
+    if (V == 0 || V > kMaxVocab) {
+        std::fprintf(stderr, "ERROR: vocabSize %u exceeds limit %u\n", V, kMaxVocab);
+        return false;
+    }
+    sec.vocab_size = V;
+
+    // Sort items lexically by (id0, id1, len, id2, id3) so every L1/L2 group is contiguous & sorted.
+    struct EncItem {
+        uint16_t id[4];
+        uint8_t len;
+        uint8_t q;
+        float lc;
+    };
+    std::vector<EncItem> enc;
+    enc.reserve(items.size());
+
+    auto quant2 = [&](float v) -> uint8_t {
+        if (max2 <= min2) return 1;
+        long r = std::lround((static_cast<double>(v) - min2) / step2);
+        return static_cast<uint8_t>(std::clamp<long>(1 + r, 1, 255));
+    };
+    auto quant34 = [&](float v, float mn, float mx, float st) -> uint8_t {
+        if (mx <= mn) return 0;
+        long r = std::lround((static_cast<double>(v) - mn) / st);
+        return static_cast<uint8_t>(std::clamp<long>(r, 0, 255));
+    };
+
+    sec.samples.clear();
+    size_t sample_step = std::max<size_t>(1, items.size() / 300);
+
+    for (size_t i = 0; i < items.size(); ++i) {
+        const auto& it = items[i];
+        EncItem e{};
+        for (int k = 0; k < it.len; ++k) e.id[k] = bmp_to_id[it.c[k] - kBmpMin];
+        e.len = it.len;
+        e.lc = it.lc;
+        if (it.len == 2) e.q = quant2(it.lc);
+        else if (it.len == 3) e.q = quant34(it.lc, min3, max3, step3);
+        else e.q = quant34(it.lc, min4, max4, step4);
+        enc.push_back(e);
+
+        if (i % sample_step == 0 || i < 16) {
+            float qval = (it.len == 2) ? (min2 + (e.q - 1) * step2)
+                       : (it.len == 3) ? (min3 + e.q * step3)
+                                       : (min4 + e.q * step4);
+            sec.samples.push_back({{it.c[0], it.c[1], it.c[2], it.c[3]}, it.len, qval});
+        }
+    }
+    std::vector<Item>().swap(items);
+
+    std::sort(enc.begin(), enc.end(), [](const EncItem& a, const EncItem& b) {
+        if (a.id[0] != b.id[0]) return a.id[0] < b.id[0];
+        if (a.id[1] != b.id[1]) return a.id[1] < b.id[1];
+        if (a.len != b.len) return a.len < b.len;
+        if (a.id[2] != b.id[2]) return a.id[2] < b.id[2];
+        return a.id[3] < b.id[3];
+    });
+
+    // Pass 1: count unique L2 nodes, n3, n4.
+    uint32_t n2 = 0, n3 = 0, n4 = 0;
+    for (size_t i = 0; i < enc.size();) {
+        uint16_t a0 = enc[i].id[0], a1 = enc[i].id[1];
+        size_t j = i;
+        while (j < enc.size() && enc[j].id[0] == a0 && enc[j].id[1] == a1) {
+            if (enc[j].len == 3) n3++;
+            else if (enc[j].len == 4) n4++;
+            j++;
+        }
+        n2++;
+        i = j;
+    }
+    sec.n2 = n2;
+    sec.n3 = n3;
+    sec.n4 = n4;
+
+    std::vector<uint32_t> l1_l2_start(V + 1, 0);
+    std::vector<float> l1_log_mass(V, 0.0f);
+
+    size_t l2_id13_bytes = ((static_cast<size_t>(n2) * 13ULL + 7ULL) / 8ULL) + 8ULL;
+    size_t l3_id13_bytes = ((static_cast<size_t>(n3) * 13ULL + 7ULL) / 8ULL) + 8ULL;
+    size_t l4_k26_bytes  = ((static_cast<size_t>(n4) * 26ULL + 7ULL) / 8ULL) + 8ULL;
+
+    std::vector<uint8_t> l2_id13(l2_id13_bytes, 0);
+    std::vector<uint8_t> l2_val(n2, 0);
+    std::vector<uint8_t> l2_deg3(n2, 0);
+    std::vector<uint8_t> l2_deg4(n2, 0);
+    uint32_t blk_count = (n2 >> 5) + 1;
+    std::vector<uint32_t> l2_blk3(blk_count, 0);
+    std::vector<uint32_t> l2_blk4(blk_count, 0);
+    std::vector<GramV2Ovf> l2_ovf3, l2_ovf4;
+
+    std::vector<uint8_t> l3_id13(l3_id13_bytes, 0);
+    std::vector<uint8_t> l3_val(n3, 0);
+    std::vector<uint8_t> l4_k26(l4_k26_bytes, 0);
+    std::vector<uint8_t> l4_val(n4, 0);
+
+    uint32_t idx2 = 0, idx3 = 0, idx4 = 0;
+    size_t p = 0;
+    for (uint32_t id0 = 0; id0 < V; ++id0) {
+        l1_l2_start[id0] = idx2;
+        double max_l2 = -1e30;
+        uint32_t row_start = idx2;
+        while (p < enc.size() && enc[p].id[0] == id0) {
+            uint16_t id1 = enc[p].id[1];
+            if ((idx2 & 31U) == 0) {
+                l2_blk3[idx2 >> 5] = idx3;
+                l2_blk4[idx2 >> 5] = idx4;
+            }
+            pack_bits(l2_id13, idx2, 13, id1);
+
+            uint8_t q2 = 0;
+            uint32_t d3 = 0, d4 = 0;
+            while (p < enc.size() && enc[p].id[0] == id0 && enc[p].id[1] == id1) {
+                const auto& it = enc[p++];
+                if (it.len == 2) {
+                    q2 = it.q;
+                    double dq = static_cast<double>(min2) + static_cast<double>(q2 - 1) * static_cast<double>(step2);
+                    max_l2 = std::max(max_l2, dq);
+                } else if (it.len == 3) {
+                    pack_bits(l3_id13, idx3, 13, it.id[2]);
+                    l3_val[idx3++] = it.q;
+                    d3++;
+                } else {
+                    uint32_t key26 = (static_cast<uint32_t>(it.id[2]) << 13) | static_cast<uint32_t>(it.id[3]);
+                    pack_bits(l4_k26, idx4, 26, key26);
+                    l4_val[idx4++] = it.q;
+                    d4++;
+                }
+            }
+            l2_val[idx2] = q2;
+            if (d3 < 255) l2_deg3[idx2] = static_cast<uint8_t>(d3);
+            else { l2_deg3[idx2] = 255; l2_ovf3.push_back({idx2, d3}); }
+            if (d4 < 255) l2_deg4[idx2] = static_cast<uint8_t>(d4);
+            else { l2_deg4[idx2] = 255; l2_ovf4.push_back({idx2, d4}); }
+            idx2++;
+        }
+        if (max_l2 > -1e29) {
+            double sum = 0.0;
+            for (uint32_t j = row_start; j < idx2; ++j) {
+                uint8_t q = l2_val[j];
+                if (q != 0) {
+                    double dq = static_cast<double>(min2) + static_cast<double>(q - 1) * static_cast<double>(step2);
+                    sum += std::exp(dq - max_l2);
+                }
+            }
+            l1_log_mass[id0] = static_cast<float>(max_l2 + std::log(sum));
+        }
+    }
+    l1_l2_start[V] = idx2;
+    if ((n2 & 31U) == 0) {
+        l2_blk3[n2 >> 5] = idx3;
+        l2_blk4[n2 >> 5] = idx4;
+    }
+    std::vector<EncItem>().swap(enc);
+
+    // Serialize all 16 sections with 8-byte alignment.
+    sec.bytes.clear();
+    sec.bytes.resize(144, 0);
+    auto append_aligned = [&](const void* ptr, size_t len) -> uint32_t {
+        while (sec.bytes.size() % 8 != 0) sec.bytes.push_back(0);
+        uint32_t off = static_cast<uint32_t>(sec.bytes.size());
+        if (len > 0) {
+            const uint8_t* p8 = reinterpret_cast<const uint8_t*>(ptr);
+            sec.bytes.insert(sec.bytes.end(), p8, p8 + len);
+        }
+        while (sec.bytes.size() % 8 != 0) sec.bytes.push_back(0);
+        return off;
+    };
+
+    uint32_t offs[16]{};
+    offs[0]  = append_aligned(bmp_to_id.data(), bmp_to_id.size() * 2);
+    offs[1]  = append_aligned(id_to_bmp.data(), id_to_bmp.size() * 2);
+    offs[2]  = append_aligned(l1_l2_start.data(), l1_l2_start.size() * 4);
+    offs[3]  = append_aligned(l1_log_mass.data(), l1_log_mass.size() * 4);
+    offs[4]  = append_aligned(l2_id13.data(), l2_id13.size());
+    offs[5]  = append_aligned(l2_val.data(), l2_val.size());
+    offs[6]  = append_aligned(l2_deg3.data(), l2_deg3.size());
+    offs[7]  = append_aligned(l2_blk3.data(), l2_blk3.size() * 4);
+    offs[8]  = append_aligned(l2_ovf3.data(), l2_ovf3.size() * sizeof(GramV2Ovf));
+    offs[9]  = append_aligned(l2_deg4.data(), l2_deg4.size());
+    offs[10] = append_aligned(l2_blk4.data(), l2_blk4.size() * 4);
+    offs[11] = append_aligned(l2_ovf4.data(), l2_ovf4.size() * sizeof(GramV2Ovf));
+    offs[12] = append_aligned(l3_id13.data(), l3_id13.size());
+    offs[13] = append_aligned(l3_val.data(), l3_val.size());
+    offs[14] = append_aligned(l4_k26.data(), l4_k26.size());
+    offs[15] = append_aligned(l4_val.data(), l4_val.size());
+
+    uint32_t total_bytes = static_cast<uint32_t>(sec.bytes.size());
+    uint32_t version = 2;
+    uint32_t ovf3_c = static_cast<uint32_t>(l2_ovf3.size());
+    uint32_t ovf4_c = static_cast<uint32_t>(l2_ovf4.size());
+
+    const char magic[16] = {'M','o','s','t','o',':',':','G','r','a','m','V','2','\0','\0','\0'};
+    std::memcpy(sec.bytes.data() + 0,  magic, 16);
+    std::memcpy(sec.bytes.data() + 16, &version, 4);
+    std::memcpy(sec.bytes.data() + 20, &total_bytes, 4);
+    std::memcpy(sec.bytes.data() + 24, &V, 4);
+    std::memcpy(sec.bytes.data() + 28, &n2, 4);
+    std::memcpy(sec.bytes.data() + 32, &n3, 4);
+    std::memcpy(sec.bytes.data() + 36, &n4, 4);
+    std::memcpy(sec.bytes.data() + 40, &ovf3_c, 4);
+    std::memcpy(sec.bytes.data() + 44, &ovf4_c, 4);
+    std::memcpy(sec.bytes.data() + 48, &min2, 4);
+    std::memcpy(sec.bytes.data() + 52, &step2, 4);
+    std::memcpy(sec.bytes.data() + 56, &min3, 4);
+    std::memcpy(sec.bytes.data() + 60, &step3, 4);
+    std::memcpy(sec.bytes.data() + 64, &min4, 4);
+    std::memcpy(sec.bytes.data() + 68, &step4, 4);
+    std::memcpy(sec.bytes.data() + 72, offs, 64);
+    return true;
+}
+
+struct MMapV2Section {
+    const uint8_t* p = nullptr;
+    uint32_t section_bytes = 0, vocab = 0, n2 = 0, n3 = 0, n4 = 0, ovf3 = 0, ovf4 = 0;
+    float min2 = 0, step2 = 1, min3 = 0, step3 = 1, min4 = 0, step4 = 1;
+    const uint16_t* bmp_to_id = nullptr;
+    const uint32_t* l1_l2_start = nullptr;
+    const uint8_t* l2_id13 = nullptr;
+    const uint8_t* l2_val = nullptr;
+    const uint8_t* l2_deg3 = nullptr;
+    const uint32_t* l2_blk3 = nullptr;
+    const GramV2Ovf* l2_ovf3 = nullptr;
+    const uint8_t* l2_deg4 = nullptr;
+    const uint32_t* l2_blk4 = nullptr;
+    const GramV2Ovf* l2_ovf4 = nullptr;
+    const uint8_t* l3_id13 = nullptr;
+    const uint8_t* l3_val = nullptr;
+    const uint8_t* l4_k26 = nullptr;
+    const uint8_t* l4_val = nullptr;
+
+    bool parse(const uint8_t* base, size_t off, size_t fsize) {
+        if (off + 144 > fsize) return false;
+        const uint8_t* s = base + off;
+        if (std::memcmp(s, "Mosto::GramV2\0", 14) != 0) return false;
+        uint32_t ver = 0;
+        std::memcpy(&ver, s + 16, 4);
+        std::memcpy(&section_bytes, s + 20, 4);
+        if (ver != 2 || section_bytes < 144 || (section_bytes % 8) != 0 || off + section_bytes > fsize) return false;
+        std::memcpy(&vocab, s + 24, 4);
+        std::memcpy(&n2, s + 28, 4);
+        std::memcpy(&n3, s + 32, 4);
+        std::memcpy(&n4, s + 36, 4);
+        std::memcpy(&ovf3, s + 40, 4);
+        std::memcpy(&ovf4, s + 44, 4);
+        std::memcpy(&min2, s + 48, 4);
+        std::memcpy(&step2, s + 52, 4);
+        std::memcpy(&min3, s + 56, 4);
+        std::memcpy(&step3, s + 60, 4);
+        std::memcpy(&min4, s + 64, 4);
+        std::memcpy(&step4, s + 68, 4);
+        uint32_t o[16]{};
+        std::memcpy(o, s + 72, 64);
+        for (int i = 0; i < 16; ++i) {
+            if (o[i] < 144 || o[i] > section_bytes || (o[i] % 8) != 0) return false;
+        }
+        p = s;
+        bmp_to_id   = reinterpret_cast<const uint16_t*>(s + o[0]);
+        l1_l2_start = reinterpret_cast<const uint32_t*>(s + o[2]);
+        l2_id13     = s + o[4];
+        l2_val      = s + o[5];
+        l2_deg3     = s + o[6];
+        l2_blk3     = reinterpret_cast<const uint32_t*>(s + o[7]);
+        l2_ovf3     = reinterpret_cast<const GramV2Ovf*>(s + o[8]);
+        l2_deg4     = s + o[9];
+        l2_blk4     = reinterpret_cast<const uint32_t*>(s + o[10]);
+        l2_ovf4     = reinterpret_cast<const GramV2Ovf*>(s + o[11]);
+        l3_id13     = s + o[12];
+        l3_val      = s + o[13];
+        l4_k26      = s + o[14];
+        l4_val      = s + o[15];
+        return vocab > 0 && vocab <= kMaxVocab;
     }
 
-    int rc = sec.da.build(sec.ptrs.size(), sec.ptrs.data(), sec.lens.data(), sec.vals.data());
-    return rc == 0;
-}
+    static inline uint16_t read13(const uint8_t* arr, uint32_t idx) {
+        size_t bit = static_cast<size_t>(idx) * 13ULL;
+        uint32_t w = 0;
+        std::memcpy(&w, arr + (bit >> 3), 4);
+        return static_cast<uint16_t>((w >> (bit & 7)) & 0x1FFFU);
+    }
 
-static void write_section(FILE* f, const BuiltSection& sec) {
-    char fmt[32]{};
-    std::snprintf(fmt, sizeof(fmt), "Rime::Grammar/1.0");
-    uint32_t checksum = 0;
-    uint32_t arr_sz = static_cast<uint32_t>(sec.da.size());
-    int32_t off_val = 4;
-    std::fwrite(fmt, 1, 32, f);
-    std::fwrite(&checksum, 4, 1, f);
-    std::fwrite(&arr_sz, 4, 1, f);
-    std::fwrite(&off_val, 4, 1, f);
-    std::fwrite(sec.da.array(), 4, arr_sz, f);
-}
+    static inline uint32_t read26(const uint8_t* arr, uint32_t idx) {
+        size_t bit = static_cast<size_t>(idx) * 26ULL;
+        uint64_t w = 0;
+        std::memcpy(&w, arr + (bit >> 3), 8);
+        return static_cast<uint32_t>((w >> (bit & 7)) & 0x03FFFFFFU);
+    }
+
+    static inline uint32_t deg_of(uint32_t idx, const uint8_t* deg, const GramV2Ovf* ovf, uint32_t ovf_n) {
+        uint8_t d = deg[idx];
+        if (d < 255) return d;
+        uint32_t lo = 0, hi = ovf_n;
+        while (lo < hi) {
+            uint32_t mid = lo + (hi - lo) / 2;
+            if (ovf[mid].idx < idx) lo = mid + 1;
+            else hi = mid;
+        }
+        return (lo < ovf_n && ovf[lo].idx == idx) ? ovf[lo].deg : 0;
+    }
+
+    static inline void child_range(uint32_t l2_idx, const uint8_t* deg, const uint32_t* blk,
+                                   const GramV2Ovf* ovf, uint32_t ovf_n, uint32_t& out_s, uint32_t& out_e) {
+        uint32_t b = l2_idx >> 5;
+        uint32_t s = blk[b];
+        for (uint32_t k = b << 5; k < l2_idx; ++k) s += deg_of(k, deg, ovf, ovf_n);
+        out_s = s;
+        out_e = s + deg_of(l2_idx, deg, ovf, ovf_n);
+    }
+
+    bool lookup_cps(const uint16_t cps[4], int len, float& out_lc) const {
+        uint16_t ids[4]{};
+        for (int i = 0; i < len; ++i) {
+            if (cps[i] < kBmpMin || cps[i] > kBmpMax) return false;
+            uint16_t id = bmp_to_id[cps[i] - kBmpMin];
+            if (id >= vocab) return false;
+            ids[i] = id;
+        }
+        uint32_t lo2 = l1_l2_start[ids[0]], hi2 = l1_l2_start[ids[0] + 1];
+        while (lo2 < hi2) {
+            uint32_t mid = lo2 + (hi2 - lo2) / 2;
+            uint16_t v = read13(l2_id13, mid);
+            if (v < ids[1]) lo2 = mid + 1; else hi2 = mid;
+        }
+        if (lo2 >= l1_l2_start[ids[0] + 1] || read13(l2_id13, lo2) != ids[1]) return false;
+        uint32_t idx2 = lo2;
+        if (len == 2) {
+            uint8_t q = l2_val[idx2];
+            if (q == 0) return false;
+            out_lc = min2 + (q - 1) * step2;
+            return true;
+        } else if (len == 3) {
+            uint32_t orig_s = 0, orig_e = 0;
+            child_range(idx2, l2_deg3, l2_blk3, l2_ovf3, ovf3, orig_s, orig_e);
+            uint32_t s = orig_s, e = orig_e;
+            while (s < e) {
+                uint32_t mid = s + (e - s) / 2;
+                uint16_t v = read13(l3_id13, mid);
+                if (v < ids[2]) s = mid + 1; else e = mid;
+            }
+            if (s >= orig_e || read13(l3_id13, s) != ids[2]) return false;
+            out_lc = min3 + l3_val[s] * step3;
+            return true;
+        } else {
+            uint32_t key26 = (static_cast<uint32_t>(ids[2]) << 13) | static_cast<uint32_t>(ids[3]);
+            uint32_t orig_s = 0, orig_e = 0;
+            child_range(idx2, l2_deg4, l2_blk4, l2_ovf4, ovf4, orig_s, orig_e);
+            uint32_t s = orig_s, e = orig_e;
+            while (s < e) {
+                uint32_t mid = s + (e - s) / 2;
+                uint32_t v = read26(l4_k26, mid);
+                if (v < key26) s = mid + 1; else e = mid;
+            }
+            if (s >= orig_e || read26(l4_k26, s) != key26) return false;
+            out_lc = min4 + l4_val[s] * step4;
+            return true;
+        }
+    }
+};
 
 static std::vector<std::pair<uint64_t, int32_t>> build_prediction_items(
-    const MMapGram& stu, const LexTables& lex,
+    const MMapGramV1& stu, const LexTables& lex,
     size_t pred_max3_1ch, size_t pred_max3_2ch, size_t pred_max4_1ch, size_t pred_max4_2ch,
     double pred_lambda) {
 
@@ -490,7 +842,7 @@ static std::vector<std::pair<uint64_t, int32_t>> build_prediction_items(
     cap_soft_ranked(keep3_1ch, pred_max3_1ch);
     cap_soft_ranked(keep3_2ch, pred_max3_2ch);
 
-    // Track kept len=3 prefixes so 2-char len=4 continuations never expose orphan v1==nil internal nodes.
+    // Track kept len=3 prefixes so 2-char len=4 continuations have live v1 internal scores.
     std::unordered_set<uint64_t> kept_p3;
     kept_p3.reserve(keep3_1ch.size() + keep3_2ch.size());
     for (const auto& x : keep3_1ch) kept_p3.insert(x.packed);
@@ -548,17 +900,16 @@ int main(int argc, char** argv) {
     const char* out_path = nullptr;
 
     size_t K2 = 100000;
-    size_t K3 = 2980000;
-    size_t K4 = 2620000;
-    double w_seg = 1.0;
+    size_t K3 = 4300000;
+    size_t K4 = 7320000;
+    double w_seg = 0.0;
     double w_tea = 1.5;
-    double stu_boost = 3.0;
-    size_t pred_max3_1ch = 80000;
-    size_t pred_max3_2ch = 340000;
-    size_t pred_max4_1ch = 160000;
-    size_t pred_max4_2ch = 70000;
+    double stu_boost = 1.5;
+    size_t pred_max3_1ch = 110000;
+    size_t pred_max3_2ch = 480000;
+    size_t pred_max4_1ch = 240000;
+    size_t pred_max4_2ch = 110000;
     double pred_lambda = 1.0;
-    bool pred_only = false;
 
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
@@ -578,7 +929,6 @@ int main(int argc, char** argv) {
         else if (a == "--pred-max4-1ch") pred_max4_1ch = std::stoull(next_s());
         else if (a == "--pred-max4-2ch") pred_max4_2ch = std::stoull(next_s());
         else if (a == "--pred-lambda") pred_lambda = std::stod(next_s());
-        else if (a == "--pred-only") pred_only = true;
         else {
             std::fprintf(stderr, "Unknown flag: %s\n", a.c_str());
             return 1;
@@ -589,7 +939,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    MMapGram stu;
+    MMapGramV1 stu;
     if (!stu.open_file(stu_path)) {
         std::fprintf(stderr, "Failed to open student=%s\n", stu_path);
         return 1;
@@ -599,26 +949,7 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "Failed to load lexicon=%s\n", lex_path);
         return 1;
     }
-
-    if (pred_only) {
-        auto sec2_items = build_prediction_items(stu, lex, pred_max3_1ch, pred_max3_2ch, pred_max4_1ch, pred_max4_2ch, pred_lambda);
-        BuiltSection sec2;
-        if (!build_section(sec2_items, sec2)) {
-            std::fprintf(stderr, "Section 2 Darts build failed\n");
-            return 1;
-        }
-        size_t sec2_bytes = 44ULL + sec2.da.size() * 4ULL;
-        FILE* f = std::fopen(out_path, "wb");
-        if (!f) { std::perror("fopen out"); return 1; }
-        write_section(f, sec2);
-        std::fclose(f);
-        std::printf("PRED_ONLY %s: size=%.2f MB (%zu bytes) keys=%zu (len2=%zu len3=%zu len4=%zu)\n",
-                    out_path, sec2_bytes / 1048576.0, sec2_bytes,
-                    sec2.ptrs.size(), sec2.by_char[2], sec2.by_char[3], sec2.by_char[4]);
-        return 0;
-    }
-
-    MMapGram tea;
+    MMapGramV1 tea;
     if (!tea.open_file(tea_path)) {
         std::fprintf(stderr, "Failed to open teacher=%s\n", tea_path);
         return 1;
@@ -661,64 +992,69 @@ int main(int argc, char** argv) {
     pick_topk(c3, K3);
     pick_topk(c4, K4);
 
-    BuiltSection sec1;
-    if (!build_section(sec1_items, sec1)) {
-        std::fprintf(stderr, "Section 1 Darts build failed\n");
+    BuiltV2Section sec1;
+    if (!build_v2_section(sec1_items, sec1)) {
+        std::fprintf(stderr, "Section 1 V2 build failed\n");
         return 1;
     }
     std::vector<std::pair<uint64_t, int32_t>>().swap(sec1_items);
 
     // Section 2: Pruned Octagram sub-trie for context prediction (continuations).
     auto sec2_items = build_prediction_items(stu, lex, pred_max3_1ch, pred_max3_2ch, pred_max4_1ch, pred_max4_2ch, pred_lambda);
-    BuiltSection sec2;
-    if (!build_section(sec2_items, sec2)) {
-        std::fprintf(stderr, "Section 2 Darts build failed\n");
+    BuiltV2Section sec2;
+    if (!build_v2_section(sec2_items, sec2)) {
+        std::fprintf(stderr, "Section 2 V2 build failed\n");
         return 1;
     }
     std::vector<std::pair<uint64_t, int32_t>>().swap(sec2_items);
 
-    size_t sec1_bytes = 44ULL + sec1.da.size() * 4ULL;
-    size_t sec2_bytes = 44ULL + sec2.da.size() * 4ULL;
+    size_t sec1_bytes = sec1.bytes.size();
+    size_t sec2_bytes = sec2.bytes.size();
     size_t total_bytes = sec1_bytes + sec2_bytes;
     if (total_bytes > kMaxBundleGrammarBytes) {
-        std::fprintf(stderr, "ERROR: output %.2f MB (%zu bytes) = sec1 %.2f MB + sec2 %.2f MB exceeds 48.50 MB hard cap (%zu bytes)!\n",
+        std::fprintf(stderr, "ERROR: output %.2f MB (%zu bytes) = sec1 %.2f MB + sec2 %.2f MB exceeds 48.50 MiB hard cap (%zu bytes)!\n",
                      total_bytes / 1048576.0, total_bytes, sec1_bytes / 1048576.0, sec2_bytes / 1048576.0, kMaxBundleGrammarBytes);
         return 2;
     }
 
     FILE* f = std::fopen(out_path, "wb");
     if (!f) { std::perror("fopen out"); return 1; }
-    write_section(f, sec1);
-    write_section(f, sec2);
+    std::fwrite(sec1.bytes.data(), 1, sec1_bytes, f);
+    std::fwrite(sec2.bytes.data(), 1, sec2_bytes, f);
     std::fclose(f);
 
-    // Self-verify both sections via MMapGram.
-    MMapGram check;
-    if (!check.open_file(out_path) || check.size != sec1.da.size() || check.pred_size != sec2.da.size()) {
-        std::fprintf(stderr, "Self-verify open_file/section header failed!\n");
+    // Mmap self-verify both Mosto::GramV2 sections end-to-end.
+    int vfd = ::open(out_path, O_RDONLY);
+    struct stat vst{};
+    if (vfd < 0 || ::fstat(vfd, &vst) != 0) { std::fprintf(stderr, "Self-verify stat failed\n"); return 1; }
+    const uint8_t* vbase = reinterpret_cast<const uint8_t*>(::mmap(nullptr, vst.st_size, PROT_READ, MAP_PRIVATE, vfd, 0));
+    MMapV2Section chk1, chk2;
+    if (vbase == MAP_FAILED || !chk1.parse(vbase, 0, vst.st_size) || !chk2.parse(vbase, chk1.section_bytes, vst.st_size)) {
+        std::fprintf(stderr, "Self-verify V2 parse failed!\n");
         return 1;
     }
-    auto verify_sec = [&](const BuiltSection& s, bool is_pred) -> bool {
-        size_t step = std::max<size_t>(1, s.ptrs.size() / 200);
-        for (size_t i = 0; i < s.ptrs.size(); i += step) {
-            int32_t got = -1;
-            const uint8_t* ptr = reinterpret_cast<const uint8_t*>(s.ptrs[i]);
-            bool ok = is_pred ? check.lookup_pred(ptr, s.lens[i], got) : check.lookup(ptr, s.lens[i], got);
-            if (!ok || got != s.vals[i]) {
-                std::fprintf(stderr, "Self-verify mismatch sec=%d idx=%zu expected=%d got=%d\n",
-                             is_pred ? 2 : 1, i, s.vals[i], got);
+    auto verify_samples = [&](const MMapV2Section& m, const BuiltV2Section& b, int sec_no) -> bool {
+        for (const auto& s : b.samples) {
+            float got = 0.0f;
+            if (!m.lookup_cps(s.cps, s.len, got) || std::fabs(got - s.qval) > 1e-4f) {
+                std::fprintf(stderr, "Self-verify mismatch sec=%d len=%d expected=%.5f got=%.5f\n",
+                             sec_no, s.len, s.qval, got);
                 return false;
             }
         }
         return true;
     };
-    if (!verify_sec(sec1, false) || !verify_sec(sec2, true)) return 1;
+    if (!verify_samples(chk1, sec1, 1) || !verify_samples(chk2, sec2, 2)) return 1;
+    ::munmap(const_cast<uint8_t*>(vbase), vst.st_size);
+    ::close(vfd);
 
-    std::printf("DISTILLED %s: total=%.2f MB (%zu bytes)\n",
+    std::printf("DISTILLED_V2 %s: total=%.2f MB (%zu bytes)\n",
                 out_path, total_bytes / 1048576.0, total_bytes);
-    std::printf("  section1 (decode ): %.2f MB  keys=%zu (len2=%zu len3=%zu len4=%zu)\n",
-                sec1_bytes / 1048576.0, sec1.ptrs.size(), sec1.by_char[2], sec1.by_char[3], sec1.by_char[4]);
-    std::printf("  section2 (predict): %.2f MB  keys=%zu (len2=%zu len3=%zu len4=%zu)\n",
-                sec2_bytes / 1048576.0, sec2.ptrs.size(), sec2.by_char[2], sec2.by_char[3], sec2.by_char[4]);
+    std::printf("  section1 (decode ): %.2f MB  V=%u n2=%u n3=%u n4=%u keys=%zu (len2=%zu len3=%zu len4=%zu)\n",
+                sec1_bytes / 1048576.0, sec1.vocab_size, sec1.n2, sec1.n3, sec1.n4,
+                sec1.by_char[2] + sec1.by_char[3] + sec1.by_char[4], sec1.by_char[2], sec1.by_char[3], sec1.by_char[4]);
+    std::printf("  section2 (predict): %.2f MB  V=%u n2=%u n3=%u n4=%u keys=%zu (len2=%zu len3=%zu len4=%zu)\n",
+                sec2_bytes / 1048576.0, sec2.vocab_size, sec2.n2, sec2.n3, sec2.n4,
+                sec2.by_char[2] + sec2.by_char[3] + sec2.by_char[4], sec2.by_char[2], sec2.by_char[3], sec2.by_char[4]);
     return 0;
 }
