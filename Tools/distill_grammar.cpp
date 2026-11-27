@@ -1,7 +1,7 @@
-// Builds the R101 dual-section Mosto::GramV2 8-bit quantized compact CSR-Trie language model offline:
-//   Section 1: Wanxiang teacher + Octagram corroborated 2..4-grams for Viterbi sentence decoding.
-//   Section 2: Pruned Octagram sub-trie appended in-file for natural continuations.
-// Copyright notes: Octagram source is LGPL-3.0; Wanxiang source is CC-BY-4.0; darts-clone reader header is BSD-2-Clause.
+// Builds the R105 dual-section Mosto::GramV2 8-bit quantized compact CSR-Trie language model offline:
+//   Section 1: Pure Wanxiang (CC-BY-4.0) 2..4-grams for Viterbi sentence decoding.
+//   Section 2: Pure Wanxiang (CC-BY-4.0) 2-band context continuations appended in-file for natural predictions.
+// Zero third-party headers: Rime::Grammar/ double-array trie reader is self-contained below.
 
 #include <algorithm>
 #include <cmath>
@@ -17,7 +17,6 @@
 #include <unordered_set>
 #include <vector>
 
-#include "darts.h"
 
 namespace {
 
@@ -198,6 +197,17 @@ static inline void encode_rime_cp(uint32_t cp, std::vector<uint8_t>& out) {
 struct LexTables {
     std::vector<uint8_t> is_lex_han;
     std::vector<float> char_score;
+    std::vector<float> zi_log;
+    void load_zi_log(const char* path) {
+        zi_log.assign(0x10000, 0.0f);
+        FILE* f = std::fopen(path, "r");
+        if (!f) return;
+        unsigned cp = 0; float v = 0.0f;
+        while (std::fscanf(f, "%u\t%f", &cp, &v) == 2) {
+            if (cp < 0x10000) zi_log[cp] = v;
+        }
+        std::fclose(f);
+    }
     std::unordered_map<uint32_t, float> word2;
     std::unordered_map<uint64_t, float> word3;
     std::unordered_map<uint64_t, float> word4;
@@ -274,7 +284,7 @@ struct LexTables {
     }
 
     inline float seg_score(const uint16_t* cps, int len) const {
-        constexpr float word_pen = 6.0f;
+        constexpr float word_pen = 22.0f;
         float dp[5] = {0.0f, -1e9f, -1e9f, -1e9f, -1e9f};
         for (int i = 1; i <= len; ++i) {
             float best = dp[i - 1] + char_score[cps[i - 1]] - word_pen;
@@ -300,6 +310,10 @@ struct LexTables {
 
     inline bool has_word2(uint16_t a, uint16_t b) const {
         return word2.find((static_cast<uint32_t>(a) << 16) | b) != word2.end();
+    }
+    inline float word2_score(uint16_t a, uint16_t b) const {
+        auto it = word2.find((static_cast<uint32_t>(a) << 16) | b);
+        return it == word2.end() ? -1e9f : it->second;
     }
 };
 
@@ -757,226 +771,189 @@ struct MMapV2Section {
     }
 };
 
-static std::vector<std::pair<uint64_t, int32_t>> build_prediction_items(
-    const MMapGramV1& stu, const LexTables& lex,
-    size_t pred_max3_1ch, size_t pred_max3_2ch, size_t pred_max4_1ch, size_t pred_max4_2ch,
-    double pred_lambda) {
+struct PrefixItem { uint64_t packed; int32_t val; uint16_t rank; };
 
-    // Soft rank-penalized selection balancing prefix breadth (rank 0..k) and strong multi-slot continuations.
-    struct PrefixItem { uint64_t packed; int32_t val; uint16_t rank; };
-    std::unordered_map<uint16_t, std::vector<PrefixItem>> len2_by_p1;
-    std::unordered_map<uint16_t, std::vector<PrefixItem>> len3_by_p1;
-    std::unordered_map<uint32_t, std::vector<PrefixItem>> len3_by_p2;
-    std::unordered_map<uint32_t, std::vector<PrefixItem>> len4_by_p2;
-    std::unordered_map<uint64_t, std::vector<PrefixItem>> len4_by_p3;
-
-    len2_by_p1.reserve(8192);
-    len3_by_p1.reserve(8192);
-    len3_by_p2.reserve(250000);
-    len4_by_p2.reserve(250000);
-    len4_by_p3.reserve(600000);
-
-    dfs_grammar(stu, [&](const std::vector<uint8_t>& key, int32_t sv) {
-        uint16_t cps[4]{};
-        int len = 0;
-        if (!decode_rime_to_han4(key, cps, len, lex.is_lex_han)) return;
-        uint64_t p = pack4(cps, len);
-        if (len == 2) {
-            if (lex.char_score[cps[1]] >= 13.5f) {
-                len2_by_p1[cps[0]].push_back({p, sv, 0});
-            }
-        } else if (len == 3) {
-            if (lex.char_score[cps[2]] >= 13.5f) {
-                uint32_t p2 = (static_cast<uint32_t>(cps[0]) << 16) | cps[1];
-                len3_by_p2[p2].push_back({p, sv, 0});
-            }
-            if (lex.has_word2(cps[1], cps[2])) {
-                len3_by_p1[cps[0]].push_back({p, sv, 0});
-            }
-        } else if (len == 4) {
-            if (lex.char_score[cps[3]] >= 13.5f) {
-                uint64_t p3 = pack4(cps, 3);
-                len4_by_p3[p3].push_back({p, sv, 0});
-            }
-            if (lex.has_word2(cps[2], cps[3])) {
-                uint32_t p2 = (static_cast<uint32_t>(cps[0]) << 16) | cps[1];
-                len4_by_p2[p2].push_back({p, sv, 0});
-            }
-        }
-    });
-
-    auto keep_top_ranked = [](auto& groups, size_t max_per_prefix, std::vector<PrefixItem>& out) {
-        for (auto& kv : groups) {
-            auto& v = kv.second;
-            size_t k = std::min(max_per_prefix, v.size());
-            if (v.size() > k) {
-                std::partial_sort(v.begin(), v.begin() + k, v.end(),
-                                  [](const PrefixItem& a, const PrefixItem& b) { return a.val > b.val; });
-                v.resize(k);
-            } else {
-                std::sort(v.begin(), v.end(),
+static inline void flush_topk(std::vector<PrefixItem>& cur, size_t max_k, std::vector<PrefixItem>& out) {
+    if (cur.empty()) return;
+    size_t k = std::min(max_k, cur.size());
+    if (cur.size() > k) {
+        std::partial_sort(cur.begin(), cur.begin() + k, cur.end(),
                           [](const PrefixItem& a, const PrefixItem& b) { return a.val > b.val; });
-            }
-            for (size_t r = 0; r < v.size(); ++r) {
-                v[r].rank = static_cast<uint16_t>(r);
-                out.push_back(v[r]);
-            }
-        }
-    };
-
-    auto cap_soft_ranked = [&](std::vector<PrefixItem>& v, size_t max_k) {
-        if (v.size() > max_k) {
-            auto pri = [&](const PrefixItem& x) -> double {
-                return (x.val / 10000.0) - pred_lambda * std::log2(1.0 + static_cast<double>(x.rank));
-            };
-            std::nth_element(v.begin(), v.begin() + max_k, v.end(),
-                             [&](const PrefixItem& a, const PrefixItem& b) { return pri(a) > pri(b); });
-            v.resize(max_k);
-        }
-    };
-
-    std::vector<PrefixItem> keep2, keep3_1ch, keep3_2ch, keep4_1ch, keep4_2ch_raw;
-    keep_top_ranked(len2_by_p1, 24, keep2);
-    keep_top_ranked(len3_by_p1, 16, keep3_1ch);
-    keep_top_ranked(len3_by_p2, 12, keep3_2ch);
-    cap_soft_ranked(keep3_1ch, pred_max3_1ch);
-    cap_soft_ranked(keep3_2ch, pred_max3_2ch);
-
-    // Track kept len=3 prefixes so 2-char len=4 continuations have live v1 internal scores.
-    std::unordered_set<uint64_t> kept_p3;
-    kept_p3.reserve(keep3_1ch.size() + keep3_2ch.size());
-    for (const auto& x : keep3_1ch) kept_p3.insert(x.packed);
-    for (const auto& x : keep3_2ch) kept_p3.insert(x.packed);
-
-    keep_top_ranked(len4_by_p3, 8, keep4_1ch);
-    cap_soft_ranked(keep4_1ch, pred_max4_1ch);
-
-    keep_top_ranked(len4_by_p2, 10, keep4_2ch_raw);
-    std::vector<PrefixItem> keep4_2ch;
-    keep4_2ch.reserve(keep4_2ch_raw.size());
-    for (const auto& x : keep4_2ch_raw) {
-        uint16_t cps[4]{};
-        unpack4(x.packed, cps);
-        if (kept_p3.count(pack4(cps, 3)) > 0) keep4_2ch.push_back(x);
+        cur.resize(k);
+    } else {
+        std::sort(cur.begin(), cur.end(),
+                  [](const PrefixItem& a, const PrefixItem& b) { return a.val > b.val; });
     }
-    cap_soft_ranked(keep4_2ch, pred_max4_2ch);
-
-    // Preserve 2-char v1 scores for prefixes of kept 3-grams (c0, c1) so Grammar.continuations rank<24 holds accurately.
-    std::unordered_set<uint64_t> needed_p2;
-    needed_p2.reserve(keep3_1ch.size());
-    std::vector<uint8_t> enc;
-    enc.reserve(8);
-    std::vector<std::pair<uint64_t, int32_t>> out;
-    out.reserve(keep2.size() + keep3_1ch.size() + keep3_2ch.size() + keep4_1ch.size() + keep4_2ch.size() + 32768);
-
-    for (const auto& x : keep2) out.push_back({x.packed, x.val});
-    for (const auto& x : keep3_1ch) {
-        uint16_t cps[4]{};
-        unpack4(x.packed, cps);
-        needed_p2.insert(pack4(cps, 2));
-        out.push_back({x.packed, x.val});
+    for (size_t r = 0; r < cur.size(); ++r) {
+        cur[r].rank = static_cast<uint16_t>(r);
+        out.push_back(cur[r]);
     }
-    for (uint64_t p2 : needed_p2) {
-        uint16_t cps[4]{};
-        unpack4(p2, cps);
-        enc.clear();
-        encode_rime_cp(cps[0], enc);
-        encode_rime_cp(cps[1], enc);
-        int32_t sv = 0;
-        if (stu.lookup(enc.data(), enc.size(), sv)) out.push_back({p2, sv});
-    }
-    for (const auto& x : keep3_2ch) out.push_back({x.packed, x.val});
-    for (const auto& x : keep4_1ch) out.push_back({x.packed, x.val});
-    for (const auto& x : keep4_2ch) out.push_back({x.packed, x.val});
-    return out;
+    cur.clear();
 }
 
 } // namespace
 
 int main(int argc, char** argv) {
-    const char* stu_path = "/tmp/octagram-base.gram";
     const char* tea_path = "/tmp/wanxiang-lts-zh-hans.gram";
     const char* lex_path = "Keyboard/Resources/lexicon.bin";
     const char* out_path = nullptr;
+    const char* zi_path = nullptr;
 
     size_t K2 = 100000;
     size_t K3 = 4300000;
     size_t K4 = 7320000;
-    double w_seg = 0.0;
-    double w_tea = 1.5;
-    double stu_boost = 1.5;
-    size_t pred_max3_1ch = 110000;
-    size_t pred_max3_2ch = 480000;
-    size_t pred_max4_1ch = 240000;
-    size_t pred_max4_2ch = 110000;
+    size_t pred_max3_1ch = 100000;
+    size_t pred_max3_2ch = 420000;
+    size_t pred_max4_1ch = 200000;
+    size_t pred_max4_2ch = 100000;
     double pred_lambda = 1.0;
 
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         auto next_s = [&]() -> const char* { return (i + 1 < argc) ? argv[++i] : ""; };
-        if (a == "--student" || a == "--stu") stu_path = next_s();
-        else if (a == "--teacher" || a == "--tea") tea_path = next_s();
+        if (a == "--teacher" || a == "--tea" || a == "--source") tea_path = next_s();
         else if (a == "--lexicon" || a == "--lex") lex_path = next_s();
         else if (a == "--out") out_path = next_s();
+        else if (a == "--zi") zi_path = next_s();
         else if (a == "--k2") K2 = std::stoull(next_s());
         else if (a == "--k3") K3 = std::stoull(next_s());
         else if (a == "--k4") K4 = std::stoull(next_s());
-        else if (a == "--w-seg") w_seg = std::stod(next_s());
-        else if (a == "--w-tea") w_tea = std::stod(next_s());
-        else if (a == "--stu-boost") stu_boost = std::stod(next_s());
         else if (a == "--pred-max3-1ch") pred_max3_1ch = std::stoull(next_s());
         else if (a == "--pred-max3-2ch") pred_max3_2ch = std::stoull(next_s());
         else if (a == "--pred-max4-1ch") pred_max4_1ch = std::stoull(next_s());
         else if (a == "--pred-max4-2ch") pred_max4_2ch = std::stoull(next_s());
         else if (a == "--pred-lambda") pred_lambda = std::stod(next_s());
-        else {
-            std::fprintf(stderr, "Unknown flag: %s\n", a.c_str());
-            return 1;
-        }
+        else { std::fprintf(stderr, "Unknown flag: %s\n", a.c_str()); return 1; }
     }
-    if (!out_path) {
-        std::fprintf(stderr, "Usage: distill_grammar --out <output.gram> [--student ... --teacher ... --lexicon ...]\n");
-        return 1;
-    }
+    if (!out_path) return 1;
 
-    MMapGramV1 stu;
-    if (!stu.open_file(stu_path)) {
-        std::fprintf(stderr, "Failed to open student=%s\n", stu_path);
-        return 1;
-    }
     LexTables lex;
-    if (!lex.load(lex_path)) {
-        std::fprintf(stderr, "Failed to load lexicon=%s\n", lex_path);
-        return 1;
-    }
+    if (!lex.load(lex_path)) { std::fprintf(stderr, "Failed to load lexicon=%s\n", lex_path); return 1; }
+    if (zi_path && zi_path[0]) lex.load_zi_log(zi_path);
     MMapGramV1 tea;
-    if (!tea.open_file(tea_path)) {
-        std::fprintf(stderr, "Failed to open teacher=%s\n", tea_path);
-        return 1;
-    }
+    if (!tea.open_file(tea_path)) { std::fprintf(stderr, "Failed to open source=%s\n", tea_path); return 1; }
 
-    // Section 1: Select distilled Wanxiang + Octagram-corroborated 2..4-grams for Viterbi decoding.
-    constexpr double med_len[5] = {0.0, 0.0, 1.6168, 5.6655, 9.7806};
+    // Single-pass DFS over Wanxiang (CC-BY-4.0): collects Section 1 (decode) + streams Section 2 (predict) in O(1) scratch RAM.
     std::vector<Cand> c2, c3, c4;
     c2.reserve(80000);
-    c3.reserve(4300000);
-    c4.reserve(48000000);
+    c3.reserve(4400000);
+    c4.reserve(46000000);
+
+    std::vector<PrefixItem> keep2, keep3_1ch, keep3_2ch, keep4_1ch, keep4_2ch;
+    keep2.reserve(180000);
+    keep3_1ch.reserve(200000);
+    keep3_2ch.reserve(1500000);
+    keep4_1ch.reserve(2500000);
+    keep4_2ch.reserve(800000);
+
+    // Streaming current-prefix buffers (DFS visits every trie prefix contiguously!)
+    uint16_t cur_p1 = 0xFFFF;
+    uint32_t cur_p2 = 0xFFFFFFFFU;
+    uint64_t cur_p3 = 0xFFFFFFFFFFFFFFFFULL;
+    std::vector<PrefixItem> buf2_p1, buf3_p1, buf3_p2, buf4_p2, buf4_p3;
+
+    auto to_i32 = [](float v) -> int32_t {
+        return static_cast<int32_t>(std::lround(std::max(0.01f, v) * 10000.0f));
+    };
 
     dfs_grammar(tea, [&](const std::vector<uint8_t>& key, int32_t val) {
         uint16_t cps[4]{};
         int len = 0;
         if (!decode_rime_to_han4(key, cps, len, lex.is_lex_han)) return;
-        int32_t sv = 0;
-        bool in_stu = stu.lookup(key.data(), key.size(), sv);
-        float tea_lc = val / 10000.0f;
-        float seg = (w_seg != 0.0 && len >= 3) ? lex.seg_score(cps, len) : 0.0f;
-        float rank = static_cast<float>(w_seg * seg + w_tea * (tea_lc - med_len[len]) + (in_stu ? stu_boost : 0.0));
         uint64_t p = pack4(cps, len);
-        if (len == 2) c2.push_back({p, val, rank});
-        else if (len == 3) c3.push_back({p, val, rank});
-        else if (len == 4) c4.push_back({p, val, rank});
-    });
+        float sf = val / 10000.0f;
 
+        // Section 1: Wanxiang score capped at 2+2 tier (18.45) + lexicon seg_score so genuine 2+2 collocations beat rare 2+1+1 chains
+        if (len == 2) c2.push_back({p, val, sf});
+        else if (len == 3) c3.push_back({p, val, sf});
+        else if (len == 4) {
+            int sub3 = 0;
+            if (key.size() == 8) {
+                int32_t tmp = 0;
+                if (tea.lookup(key.data(), 6, tmp)) sub3 += 1;
+                if (tea.lookup(key.data() + 2, 6, tmp)) sub3 += 1;
+            }
+            float rank = std::min(sf, 18.50f) + (sub3 == 2 ? 0.68f : 0.0f);
+            c4.push_back({p, val, rank});
+        }
+
+        // Section 2: streaming per-prefix top-k (since DFS visits p1 -> p2 -> p3 contiguously!)
+        if (cps[0] != cur_p1) {
+            flush_topk(buf4_p3, 8, keep4_1ch);
+            flush_topk(buf4_p2, 10, keep4_2ch);
+            flush_topk(buf3_p2, 12, keep3_2ch);
+            flush_topk(buf3_p1, 16, keep3_1ch);
+            flush_topk(buf2_p1, 24, keep2);
+            cur_p1 = cps[0];
+            cur_p2 = 0xFFFFFFFFU;
+            cur_p3 = 0xFFFFFFFFFFFFFFFFULL;
+        }
+        uint32_t p2 = (static_cast<uint32_t>(cps[0]) << 16) | cps[1];
+        if (p2 != cur_p2) {
+            flush_topk(buf4_p3, 8, keep4_1ch);
+            flush_topk(buf4_p2, 10, keep4_2ch);
+            flush_topk(buf3_p2, 12, keep3_2ch);
+            cur_p2 = p2;
+            cur_p3 = 0xFFFFFFFFFFFFFFFFULL;
+        }
+        if (len == 4) {
+            uint64_t p3 = pack4(cps, 3);
+            if (p3 != cur_p3) {
+                flush_topk(buf4_p3, 8, keep4_1ch);
+                cur_p3 = p3;
+            }
+        }
+
+        auto clamp_band = [](float x) -> float {
+            return std::clamp(x, 0.5f, 6.5f);
+        };
+        auto zi_term = [&](uint16_t cp) -> float {
+            float z = lex.zi_log[cp] > 0.0f ? lex.zi_log[cp] : std::max(0.0f, lex.char_score[cp] - 2.0f);
+            return 0.25f * (std::min(16.0f, z) - 13.0f) + 0.45f * (std::min(17.5f, lex.char_score[cp]) - 15.0f);
+        };
+        if (len == 2) {
+            if (lex.char_score[cps[1]] >= 13.5f) {
+                float sc = clamp_band((sf - 8.0f) + zi_term(cps[1]));
+                buf2_p1.push_back({p, to_i32(sc), 0});
+            }
+        } else if (len == 3) {
+            if (lex.char_score[cps[2]] >= 13.5f) {
+                float sc = clamp_band((sf - 12.6f) + zi_term(cps[2]));
+                buf3_p2.push_back({p, to_i32(sc), 0});
+            }
+            float w2 = lex.word2_score(cps[1], cps[2]);
+            uint16_t lastc = cps[2];
+            bool func_tail = (lastc == 0x7684 || lastc == 0x4E86 || lastc == 0x7740 || lastc == 0x8FC7 || lastc == 0x5417 || lastc == 0x5462);
+            if (w2 >= 10.5f && sf >= 13.5f && sf <= 16.20f && !func_tail) {
+                float sc = clamp_band((sf - 13.6f) + 0.40f * (w2 - 11.5f));
+                buf3_p1.push_back({p, to_i32(sc + 8.0f), 0});
+            }
+        } else if (len == 4) {
+            if (lex.char_score[cps[3]] >= 13.5f && sf >= 16.0f) {
+                float sc = clamp_band((std::min(sf, 18.45f) - 15.0f) + zi_term(cps[3]));
+                buf4_p3.push_back({p, to_i32(sc), 0});
+            }
+            float w2 = lex.word2_score(cps[2], cps[3]);
+            uint16_t lastc = cps[3];
+            bool func_tail = (lastc == 0x7684 || lastc == 0x4E86 || lastc == 0x7740 || lastc == 0x8FC7 || lastc == 0x5417 || lastc == 0x5462);
+            if (w2 >= 10.5f && sf >= 16.5f && sf <= 18.50f && !func_tail) {
+                float sc = clamp_band((sf - 16.0f) + 0.40f * (w2 - 11.5f));
+                buf4_p2.push_back({p, to_i32(sc + 8.0f), 0});
+            }
+        }
+    });
+    flush_topk(buf4_p3, 8, keep4_1ch);
+    flush_topk(buf4_p2, 10, keep4_2ch);
+    flush_topk(buf3_p2, 12, keep3_2ch);
+    flush_topk(buf3_p1, 16, keep3_1ch);
+    flush_topk(buf2_p1, 24, keep2);
+
+    std::printf("DFS done: c2=%zu c3=%zu c4=%zu | pred raw: k2=%zu k3_1=%zu k3_2=%zu k4_1=%zu k4_2=%zu\n",
+                c2.size(), c3.size(), c4.size(),
+                keep2.size(), keep3_1ch.size(), keep3_2ch.size(), keep4_1ch.size(), keep4_2ch.size());
+    std::fflush(stdout);
+
+    // Build Section 1
     std::vector<std::pair<uint64_t, int32_t>> sec1_items;
     sec1_items.reserve(std::min(K2, c2.size()) + std::min(K3, c3.size()) + std::min(K4, c4.size()));
     auto pick_topk = [&](std::vector<Cand>& vec, size_t K) {
@@ -993,32 +970,50 @@ int main(int argc, char** argv) {
     pick_topk(c4, K4);
 
     BuiltV2Section sec1;
-    if (!build_v2_section(sec1_items, sec1)) {
-        std::fprintf(stderr, "Section 1 V2 build failed\n");
-        return 1;
-    }
+    if (!build_v2_section(sec1_items, sec1)) { std::fprintf(stderr, "Section 1 V2 build failed\n"); return 1; }
     std::vector<std::pair<uint64_t, int32_t>>().swap(sec1_items);
 
-    // Section 2: Pruned Octagram sub-trie for context prediction (continuations).
-    auto sec2_items = build_prediction_items(stu, lex, pred_max3_1ch, pred_max3_2ch, pred_max4_1ch, pred_max4_2ch, pred_lambda);
+    // Build Section 2
+    auto cap_soft_ranked = [&](std::vector<PrefixItem>& v, size_t max_k) {
+        if (v.size() > max_k) {
+            auto pri = [&](const PrefixItem& x) -> double {
+                double xv = x.val / 10000.0; if (xv >= 7.5) xv -= 8.0; return xv - pred_lambda * std::log2(1.0 + static_cast<double>(x.rank));
+            };
+            std::nth_element(v.begin(), v.begin() + max_k, v.end(),
+                             [&](const PrefixItem& a, const PrefixItem& b) { return pri(a) > pri(b); });
+            v.resize(max_k);
+        }
+    };
+    cap_soft_ranked(keep3_1ch, pred_max3_1ch);
+    cap_soft_ranked(keep3_2ch, pred_max3_2ch);
+    cap_soft_ranked(keep4_1ch, pred_max4_1ch);
+    cap_soft_ranked(keep4_2ch, pred_max4_2ch);
+
+    std::vector<std::pair<uint64_t, int32_t>> sec2_items;
+    sec2_items.reserve(keep2.size() + keep3_1ch.size() + keep3_2ch.size() + keep4_1ch.size() + keep4_2ch.size());
+    for (const auto& x : keep2) sec2_items.push_back({x.packed, x.val});
+    for (const auto& x : keep3_1ch) sec2_items.push_back({x.packed, x.val});
+    for (const auto& x : keep3_2ch) sec2_items.push_back({x.packed, x.val});
+    for (const auto& x : keep4_1ch) sec2_items.push_back({x.packed, x.val});
+    for (const auto& x : keep4_2ch) sec2_items.push_back({x.packed, x.val});
+    std::vector<PrefixItem>().swap(keep2);
+    std::vector<PrefixItem>().swap(keep3_1ch);
+    std::vector<PrefixItem>().swap(keep3_2ch);
+    std::vector<PrefixItem>().swap(keep4_1ch);
+    std::vector<PrefixItem>().swap(keep4_2ch);
+
     BuiltV2Section sec2;
-    if (!build_v2_section(sec2_items, sec2)) {
-        std::fprintf(stderr, "Section 2 V2 build failed\n");
-        return 1;
-    }
+    if (!build_v2_section(sec2_items, sec2)) { std::fprintf(stderr, "Section 2 V2 build failed\n"); return 1; }
     std::vector<std::pair<uint64_t, int32_t>>().swap(sec2_items);
 
-    size_t sec1_bytes = sec1.bytes.size();
-    size_t sec2_bytes = sec2.bytes.size();
-    size_t total_bytes = sec1_bytes + sec2_bytes;
+    size_t sec1_bytes = sec1.bytes.size(), sec2_bytes = sec2.bytes.size(), total_bytes = sec1_bytes + sec2_bytes;
     if (total_bytes > kMaxBundleGrammarBytes) {
-        std::fprintf(stderr, "ERROR: output %.2f MB (%zu bytes) = sec1 %.2f MB + sec2 %.2f MB exceeds 48.50 MiB hard cap (%zu bytes)!\n",
-                     total_bytes / 1048576.0, total_bytes, sec1_bytes / 1048576.0, sec2_bytes / 1048576.0, kMaxBundleGrammarBytes);
+        std::fprintf(stderr, "ERROR: output %.2f MB = sec1 %.2f + sec2 %.2f exceeds 48.50 MiB\n",
+                     total_bytes / 1048576.0, sec1_bytes / 1048576.0, sec2_bytes / 1048576.0);
         return 2;
     }
-
     FILE* f = std::fopen(out_path, "wb");
-    if (!f) { std::perror("fopen out"); return 1; }
+    if (!f) { std::perror("fopen"); return 1; }
     std::fwrite(sec1.bytes.data(), 1, sec1_bytes, f);
     std::fwrite(sec2.bytes.data(), 1, sec2_bytes, f);
     std::fclose(f);
@@ -1048,13 +1043,12 @@ int main(int argc, char** argv) {
     ::munmap(const_cast<uint8_t*>(vbase), vst.st_size);
     ::close(vfd);
 
-    std::printf("DISTILLED_V2 %s: total=%.2f MB (%zu bytes)\n",
-                out_path, total_bytes / 1048576.0, total_bytes);
+    std::printf("DISTILLED_V2 %s: total=%.2f MB (%zu bytes)\n", out_path, total_bytes / 1048576.0, total_bytes);
     std::printf("  section1 (decode ): %.2f MB  V=%u n2=%u n3=%u n4=%u keys=%zu (len2=%zu len3=%zu len4=%zu)\n",
                 sec1_bytes / 1048576.0, sec1.vocab_size, sec1.n2, sec1.n3, sec1.n4,
-                sec1.by_char[2] + sec1.by_char[3] + sec1.by_char[4], sec1.by_char[2], sec1.by_char[3], sec1.by_char[4]);
+                sec1.by_char[2]+sec1.by_char[3]+sec1.by_char[4], sec1.by_char[2], sec1.by_char[3], sec1.by_char[4]);
     std::printf("  section2 (predict): %.2f MB  V=%u n2=%u n3=%u n4=%u keys=%zu (len2=%zu len3=%zu len4=%zu)\n",
                 sec2_bytes / 1048576.0, sec2.vocab_size, sec2.n2, sec2.n3, sec2.n4,
-                sec2.by_char[2] + sec2.by_char[3] + sec2.by_char[4], sec2.by_char[2], sec2.by_char[3], sec2.by_char[4]);
+                sec2.by_char[2]+sec2.by_char[3]+sec2.by_char[4], sec2.by_char[2], sec2.by_char[3], sec2.by_char[4]);
     return 0;
 }

@@ -6,7 +6,7 @@ import Glibc
 #endif
 
 /// Language model read in place from a memory-mapped `.gram` file — supporting both the R101 compact 8-bit quantized
-/// dual-section `Mosto::GramV2` format and legacy `Rime::Grammar/` double-array tries (darts-clone). Each n-gram up
+/// dual-section `Mosto::GramV2` format and legacy `Rime::Grammar/` double-array tries. Each n-gram up
 /// to four characters stores `ln(count)`. A word is scored against up to three preceding characters (collocations of
 /// three or more characters, or the full query, count in full; shorter ones weakly; missing ones pay `nonCollocationPenalty`).
 public final class Grammar {
@@ -332,7 +332,7 @@ public final class Grammar {
 
     deinit { munmap(UnsafeMutableRawPointer(mutating: base), length) }
 
-    // Legacy darts-clone helpers
+    // Legacy double-array trie helpers
     @inline(__always) private func unit(_ i: Int) -> UInt32 { guard let arr = array else { return 0 }; return i < size ? arr[i] : 0 }
     @inline(__always) private func unit(_ i: Int, in arr: UnsafePointer<UInt32>, count n: Int) -> UInt32 { i < n ? arr[i] : 0 }
     @inline(__always) private func offset(_ u: UInt32) -> Int { Int((u >> 10) << ((u & (1 << 9)) >> 6)) }
@@ -433,6 +433,9 @@ public final class Grammar {
         let suf = Array(context.suffix(3))
         var out: [String: Double] = [:]
         out.reserveCapacity(limit * 4)
+        // Band-tagged Section 2 encodes 2-char-eligible entries in [8.5, 14.5] and 1-char-only entries in [0.5, 6.5].
+        let banded = p.val2[255] <= 7.0 && (p.val3[255] >= 8.0 || p.val4[255] >= 8.0)
+        @inline(__always) func score1(_ v: Double) -> Double { banded && v >= 7.5 ? v - 8.0 : v }
         for n in stride(from: min(3, suf.count), through: 1, by: -1) {
             let bonus = Double(n) * contextBonus
             let ctx = suf.suffix(n)
@@ -448,7 +451,7 @@ public final class Grammar {
                     let k26 = p.read26(j)
                     if (k26 >> 13) != UInt32(id2) { break }
                     let s1 = String(p.char(forID: Int(k26 & 0x1FFF)))
-                    let sc = p.val4[Int(p.l4Val[j])] + bonus
+                    let sc = score1(p.val4[Int(p.l4Val[j])]) + bonus
                     out[s1] = max(out[s1] ?? -.infinity, sc)
                     j += 1
                 }
@@ -456,45 +459,37 @@ public final class Grammar {
                 guard let id1 = p.charID(ctx[ctx.startIndex + 1]),
                       let idx2 = p.findL2(id0: id0, id1: id1) else { continue }
                 let r3 = p.l3Range(idx2)
-                var firsts: [(id2: UInt16, q3: UInt8)] = []
-                firsts.reserveCapacity(r3.count)
-                for j in r3 { firsts.append((p.read13(p.l3ID13, j), p.l3Val[j])) }
-                firsts.sort { $0.q3 > $1.q3 }
-                let r4 = p.l4Range(idx2)
-                for (rank, f) in firsts.enumerated() {
-                    let ch1 = p.char(forID: Int(f.id2))
+                for j in r3 {
+                    let ch1 = p.char(forID: Int(p.read13(p.l3ID13, j)))
                     let s1 = String(ch1)
-                    out[s1] = max(out[s1] ?? -.infinity, p.val3[Int(f.q3)] + bonus)
-                    guard rank < 24 else { continue }
-                    let prefix26 = UInt32(f.id2) << 13
-                    var j = p.lowerBound26(r4.lowerBound, r4.upperBound, prefix26)
-                    while j < r4.upperBound {
-                        let k26 = p.read26(j)
-                        if (k26 >> 13) != UInt32(f.id2) { break }
-                        let s2 = String([ch1, p.char(forID: Int(k26 & 0x1FFF))])
-                        out[s2] = max(out[s2] ?? -.infinity, p.val4[Int(p.l4Val[j])] + bonus)
-                        j += 1
-                    }
+                    out[s1] = max(out[s1] ?? -.infinity, score1(p.val3[Int(p.l3Val[j])]) + bonus)
+                }
+                let r4 = p.l4Range(idx2)
+                for j in r4 {
+                    let v4 = p.val4[Int(p.l4Val[j])]
+                    if banded && v4 < 7.5 { continue }
+                    let k26 = p.read26(j)
+                    let ch1 = p.char(forID: Int(k26 >> 13))
+                    let ch2 = p.char(forID: Int(k26 & 0x1FFF))
+                    let s2 = String([ch1, ch2])
+                    out[s2] = max(out[s2] ?? -.infinity, (banded ? v4 - 8.0 : v4) + bonus)
                 }
             } else {
                 let r2 = p.l2Range(id0: id0)
-                var firsts: [(idx2: Int, id1: UInt16, q2: UInt8)] = []
-                firsts.reserveCapacity(r2.count)
                 for idx2 in r2 {
+                    let ch1 = p.char(forID: Int(p.read13(p.l2ID13, idx2)))
                     let q2 = p.l2Val[idx2]
-                    if q2 != 0 { firsts.append((idx2, p.read13(p.l2ID13, idx2), q2)) }
-                }
-                firsts.sort { $0.q2 > $1.q2 }
-                for (rank, f) in firsts.enumerated() {
-                    let ch1 = p.char(forID: Int(f.id1))
-                    let s1 = String(ch1)
-                    out[s1] = max(out[s1] ?? -.infinity, p.val2[Int(f.q2)] + bonus)
-                    guard rank < 24 else { continue }
-                    let r3 = p.l3Range(f.idx2)
+                    if q2 != 0 {
+                        let s1 = String(ch1)
+                        out[s1] = max(out[s1] ?? -.infinity, p.val2[Int(q2)] + bonus)
+                    }
+                    let r3 = p.l3Range(idx2)
                     for j in r3 {
+                        let v3 = p.val3[Int(p.l3Val[j])]
+                        if banded && v3 < 7.5 { continue }
                         let ch2 = p.char(forID: Int(p.read13(p.l3ID13, j)))
                         let s2 = String([ch1, ch2])
-                        out[s2] = max(out[s2] ?? -.infinity, p.val3[Int(p.l3Val[j])] + bonus)
+                        out[s2] = max(out[s2] ?? -.infinity, (banded ? v3 - 8.0 : v3) + bonus)
                     }
                 }
             }
@@ -603,7 +598,7 @@ public final class Grammar {
     public var massWeight = 0.0
     public var massCenter = 15.0
 
-    /// How well `word` follows `context` (the text before it): Rime's octagram score, in natural-log units.
+    /// How well `word` follows `context` (the text before it): context language-model score, in natural-log units.
     public func query(context: [Character], word: [Character]) -> Double {
         guard !context.isEmpty, !word.isEmpty else { return nonCollocationPenalty }
         if let m = v2Main {

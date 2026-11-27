@@ -19,10 +19,10 @@
 | 表情联想 | 打出的词有对应表情时（哈哈 😂、蛋糕 🎂、加油 💪），在前三个候选之后给出最多两个；表情名称与关键词来自 [Unicode CLDR](https://github.com/unicode-org/cldr)（Unicode License v3） |
 | 小鹤键位提示 | 学习模式：键盘设置里打开后，小鹤方案下字母键上显示它代表的声母与韵母；App 里有面向全拼用户的说明、学习成本与完整键位表 |
 | 输入方案 | 小鹤双拼与全拼（含简拼、半截音节），设置里切换；两种方案都按触点自动纠错 |
-| 词库与语言模型 | 雾凇拼音 rime-ice 的基础、扩展与腾讯词库共 187 万条；整句由万象语法模型读出（[rime-wanxiang-data](https://github.com/amzxyz/rime-wanxiang-data)，作者 amzxyz，约 48 GB 现代中文语料，CC BY 4.0），按前后文判断哪些词常连在一起，句首的词也参考输入框里光标前的字；联想用 Rime 八股文语言模型（[rime-octagram-data](https://github.com/lotem/rime-octagram-data)，LGPL-3.0）。基准（305 句日常短句为调参集，另有 185 句与 158 句只用于检验）：键位全对时整句首选命中 全拼 92.1% / 89.7%（检验集）、小鹤 92.1%；带触点误差 σ=0.22 时整句命中 全拼 89.5% / 88.1%、小鹤 89.2%；九宫格整句 73.8% |
-| 九宫格 | 中文键盘可选九宫格（1 分词、2 ABC … 9 WXYZ；左列 ，。？——打字时换成拼音选择列，点一下即定下对应几个键；右列删除、重输、换行），小鹤双拼与全拼都能用；每个键代表它上面的几个字母，由词库判断。基准（键位全对时首选命中）：全拼 词 66%、句 67%；小鹤双拼 词 49%、句 40%（双拼在九宫格上一键对应的音节多，歧义大） |
-| 英文 | 英文模式按触点自动纠错并给出候选（3.9 万词）：错位、漏字母、多按一键、相邻两字母颠倒都能纠（teh → the、thnaks → thanks），dont → don't、im → I'm；空格或标点时替换，紧接着按删除可撤回。基准（σ=0.22 触点噪声）：照打原样 83.5% → 纠错后 99.1%，正确拼写的词 99.9% 不被改动 |
-| 中英混输 | 中文模式下直接打完整的英文词：ok → OK、ios → iOS、iphone → iPhone、github → GitHub（不做前缀补全）；按词频和中文读法比较排序，de、he、me 等仍然先出中文。英文词表来自 [wordfreq](https://github.com/rspeer/wordfreq)（CC BY-SA 4.0），约 3.9 万词 |
+| 词库与语言模型 | 全部基于 [rime-wanxiang-data](https://github.com/amzxyz/rime-wanxiang-data)（作者 amzxyz，CC BY 4.0）离线整理与压缩蒸馏：词库涵盖 41.3 万条常用单字与 2–8 字词组；`48.3 MB` 8-bit 量化双段内存映射语言模型 `Mosto::GramV2` 同时承担第一段 `1204 万` 条 2–4 元整句解码与第二段 `38 万` 条上下文联想，按前后文判断搭配与句首衔接。基准（305 句日常短句全量门禁与 343 句留出集）：键位全对时整句首选命中 全拼 87.2%、小鹤 88.2%；带触点误差 σ=0.22 时整句命中 全拼 93.8%、小鹤 92.5%；九宫格全拼首选 68.2%（词 73.7%） |
+| 九宫格 | 中文键盘可选九宫格（1 分词、2 ABC … 9 WXYZ；左列 ，。？——打字时换成拼音选择列，点一下即定下对应几个键；右列删除、重输、换行），小鹤双拼与全拼都能用；每个键代表它上面的几个字母，由词库判断。基准（键位全对时首选命中）：全拼 词 73.7%、句 68.2%；小鹤双拼 词 51.7%、句前三 54.4% |
+| 英文 | 英文模式按触点自动纠错并给出候选（4.4 万词）：错位、漏字母、多按一键、相邻两字母颠倒都能纠（teh → the、thnaks → thanks），dont → don't、im → I'm；空格或标点时替换，紧接着按删除可撤回。基准（σ=0.22 触点噪声）：干净拼写 100.0% 保持，照打纠错后 99.0–99.4%，候选前三 99.9% |
+| 中英混输 | 中文模式下直接打完整的英文词：ok → OK、ios → iOS、iphone → iPhone、github → GitHub（不做前缀补全）；按词频和中文读法比较排序，de、he、me 等仍然先出中文。英文词表基于 SymSpell `frequency_dictionary_en_82_765`（MIT；Google Books Ngram CC BY 3.0 与 SCOWL 宽松许可）并融合万象现代英文词表（CC BY 4.0），约 4.4 万词 |
 | 输入展示 | 真实键盘扩展（`.appex`）采用零 `setMarkedText` XPC 架构，不在宿主输入框写入行内拼音，杜绝 Safari/WKWebView 组合态卡顿与光标竞争，按下的原字母（九宫格为读出拼音）实时呈现在候选栏左侧原字母槽内，轻点即直出字母；伴侣 App 提供系统键盘启用引导与真实系统输入框验通 |
 | 表情 | 😊 打开表情页：常用 + 笑脸与人物、动物与自然、食物与饮料、活动、旅行与地点、物品、符号、旗帜，上下滑动，底栏一点跳到分类；只列出当前 iOS 能显示的表情；按住 😊 打开键盘设置。列表来自 [Emojibase](https://github.com/milesj/emojibase)（MIT） |
 | 速度 | 字母键和九宫格键按下即上屏；设置与宫格面板按需懒加载、`.appex` 两阶段就绪（首开毫秒级启用主词库，后台挂载语言模型）、收起保留引擎热缓存且联想支持新键抢占；候选重排与 CoreText 缺字检测均在后台线程，连打 `<130ms` 自动抑制遮挡气泡并用复用池承接慢按/上滑浮标 |
@@ -48,9 +48,13 @@
 
 ## 许可
 
-词库数据来自 [雾凇拼音 rime-ice](https://github.com/iDvel/rime-ice)（GPL-3.0），因此本项目整体按 GPL-3.0 发布，见 `LICENSE`。
+Mosto键盘应用代码、解码算法与 OTTOSSOM 视觉资产为 OTTOSSOM Studio 原创专有作品，见 `LICENSE`。
 
-英文词表（中英混输）来自 [wordfreq](https://github.com/rspeer/wordfreq)，数据按 CC BY-SA 4.0 使用，生成脚本见 `Tools/build_english.py`。App「关于 › 开源许可」列出全部来源；隐私政策与用户协议也在「关于」页签中。
+内置离线数据全部采用宽松开放许可或署名许可（无传染性开源协议），完整许可文本见 `ThirdParty/` 与 App「关于 › 第三方致谢与合规声明」：
+
+- 中文词库与语言模型（整句解码 + 上下文联想）：来自 [万象开放语料 rime-wanxiang-data](https://github.com/amzxyz/rime-wanxiang-data)（CC BY 4.0），经 `Tools/build_lexicon.py` 与 `Tools/distill_grammar.py` 离线整理与量化蒸馏；
+- 英文词表（中英混输与英文纠错）：来自 SymSpell `frequency_dictionary_en_82_765`（MIT，基于 Google Books Ngram CC BY 3.0 与 SCOWL）与万象英文词表（CC BY 4.0），生成脚本见 `Tools/build_english.py` 与 `Tools/build_english_bin.py`；
+- 表情与检索词元数据：[Emojibase](https://github.com/milesj/emojibase)（MIT）与 [Unicode CLDR](https://github.com/unicode-org/cldr)（Unicode-3.0）。
 
 ## 隐私
 

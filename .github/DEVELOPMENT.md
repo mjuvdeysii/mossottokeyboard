@@ -38,18 +38,29 @@ swiftc -O Engine/*.swift EngineCLI/main.swift -o /tmp/engine
 ## 重新生成词库 / 工程
 
 ```sh
-# 词库：rime-ice cn_dicts 的 8105、base、ext 与 tencent（tencent 只有文字，先用 pypinyin 注音）
-python3 Tools/tencent_pinyin.py tencent.dict.yaml tencent_py.dict.yaml     # 需 pip install pypinyin（MIT）
-# 腾讯词库每个词权重都是 100（没有词频）：用语言模型里该词作为相邻两词出现的次数微调（见 build_lexicon.py --calibrate）
-python3 Tools/build_lexicon.py 8105.dict.yaml base.dict.yaml ext.dict.yaml tencent_py.dict.yaml -o /tmp/lex0.bin
-python3 -c "..."  # 列出 base/ext/tencent 中 2–4 字的词（每行一个）→ phrases.txt
-EngineCLI <lexicon.bin> gramcount < phrases.txt > gram_counts.tsv
-python3 Tools/build_lexicon.py 8105.dict.yaml base.dict.yaml ext.dict.yaml tencent_py.dict.yaml --calibrate gram_counts.tsv --demote Tools/data/demote.txt -o Keyboard/Resources/lexicon.bin
-# 语言模型：rime-octagram-data（hans 分支）的 zh-hans-t-essay-bgw.gram，原样复制
-cp zh-hans-t-essay-bgw.gram Keyboard/Resources/grammar.gram
-# 英文词表：Tools/data/english.txt（Tools/build_english.py 生成）→ 内存映射的二进制
+# 1. 下载万象语言模型原表（约 373 MB，CC-BY-4.0）并准备万象辞典 zi/jichu/duoyin/diming/en.dict.yaml
+bash Tools/fetch_sentence_model.sh /tmp/wanxiang-lts-zh-hans.gram
+
+# 2. 构建纯 CC-BY-4.0 中文词库（输出 lexicon.bin、.codes.txt，并导出单字权重 /tmp/zi_standalone.tsv）
+python3 Tools/build_lexicon.py \
+  --wanxiang-dir /tmp/wanxiang-dicts \
+  --gram /tmp/wanxiang-lts-zh-hans.gram \
+  --demote Tools/data/demote.txt \
+  --zi-out /tmp/zi_standalone.tsv \
+  -o Keyboard/Resources/lexicon.bin
+
+# 3. 蒸馏双段 8-bit 量化语言模型 Mosto::GramV2（<= 48.50 MiB）
+python3 Tools/distill_grammar.py \
+  --source /tmp/wanxiang-lts-zh-hans.gram \
+  --lexicon Keyboard/Resources/lexicon.bin \
+  --zi /tmp/zi_standalone.tsv \
+  --out Keyboard/Resources/grammar.gram
+
+# 4. 英文词表（SymSpell MIT + 万象 en.dict.yaml CC-BY-4.0）→ 内存映射二进制
+python3 Tools/build_english.py --symspell /tmp/symspell_en_82k.txt --wanxiang-en /tmp/wanxiang-dicts/en.dict.yaml
 python3 Tools/build_english_bin.py
-# 增删源文件后重新生成 Xcode 工程
+
+# 5. 增删源文件后重新生成 Xcode 工程
 python3 Tools/gen_xcodeproj.py
 ```
 

@@ -13,8 +13,13 @@ Under the following terms:
 - No additional restrictions: You may not apply legal terms or technological measures
   that legally restrict others from doing anything the license permits.
 
-Usage in Mosto键盘:
-- Whole-sentence language grammar tables built from wanxiang-lts-zh-hans are bundled
-  in `Keyboard/Resources/sentence.gram` for offline on-device decoding.
+Usage and adaptations in Mosto键盘:
+- Offline Chinese lexicon (`Keyboard/Resources/lexicon.bin`) is built and rescaled from
+  `zi.dict.yaml`, `jichu.dict.yaml`, `duoyin.dict.yaml`, and `diming.dict.yaml`.
+- Dual-section offline language model (`Keyboard/Resources/grammar.gram`, Section 1
+  Viterbi sentence decoding and Section 2 context continuations) is distilled into the
+  quantized `Mosto::GramV2` format from `wanxiang-lts-zh-hans.gram` and `zi.dict.yaml`.
+- Modern English tech/brand display forms and supplemental English entries in
+  `Keyboard/Resources/english.bin` are adapted from `en.dict.yaml`.
 
 Full legal code: https://creativecommons.org/licenses/by/4.0/legalcode

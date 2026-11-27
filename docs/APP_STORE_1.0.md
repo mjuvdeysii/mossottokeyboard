@@ -15,7 +15,7 @@
 - **技术支持页面**：`https://mossotto.pages.dev/#support`（对应 `docs/index.html#support`）
 - **使用条款页面**：`https://mossotto.pages.dev/terms.html`（对应 `docs/terms.html`）
 - **品牌官网主页**：`https://mossotto.pages.dev/`
-- **参考验证版本**：1.0 Final（R100.5 大众全拼/九宫格体验重构 + R101 8-bit 量化紧凑双段语法引擎 `Mosto::GramV2`（48.39 MB 承载 1164 万解码 + 85 万联想 n-gram）与漏键/换位联合精调；`Keyboard/Resources` 总包 64 MB `<= 75 MB`）
+- **参考验证版本**：1.0 Final（R105 Wave 3 纯净 CC-BY-4.0/MIT 开放语料重构，彻底移除传毒性开源协议以符合 App Store 商用规范；`Mosto::GramV2` `48.28 MB` 承载 `1204 万` 解码 + `38 万` 联想 n-gram；`41.3 万` 中文词条 + `4.4 万` 英文词表；`Keyboard/Resources` 总包 `65 MB <= 75 MB`）
 
 ## 2. 关键词（Keywords，100 字符以内）
 
@@ -96,7 +96,7 @@ Thank you for reviewing Mosto Keyboard (Mosto键盘).
 - [x] **CI 与 SDK 链路核查**：`build` 任务运行于 `macos-15` 负责全量编译、快照与引擎质量门禁；`testflight` 任务运行于 `xcode-27` 负责 Release 归档、自动云端签名与上传 TestFlight。
 - [x] **签名与容器边界**：`.xcodeproj` 零签名改动、零新增 `.entitlements`，`App/PrivacyInfo.xcprivacy` 与 `Keyboard/Resources/PrivacyInfo.xcprivacy` 声明完整，`ITSAppUsesNonExemptEncryption = NO`。
 - [x] **静态门禁全绿**：`Tools/check_offline.py`、`Tools/check_no_sync_tap.py` 与 `Tools/check_ios_keyboard_rules.py` 全量通过。
-- [x] **商业化与合规收口**：隐私政策、用户协议与第三方致谢与合规声明收敛为 3 项清晰入口，品牌链接统一指向 `https://mossotto.pages.dev/` 与 `#support`，伴侣 App 前台无个人账号或开源协议噪音。
+- [x] **商业化与合规收口**：Wave 3 / R105 已将全部内置词库、语言模型与英文词表切换为纯 CC-BY-4.0（`rime-wanxiang-data`）与 MIT / 宽松许可（`SymSpell` / `Emojibase` / `Unicode CLDR`），彻底消除传毒性协议风险并满足 TestFlight 与 App Store 商用分发规范；隐私政策、用户协议与第三方致谢与合规声明收敛为 3 项清晰入口，品牌链接统一指向 `https://mossotto.pages.dev/` 与 `#support`。
 - [ ] 核对 App Store Connect 中隐私政策 URL（`https://mossotto.pages.dev/privacy.html`）、技术支持 URL（`https://mossotto.pages.dev/#support`）线上可访问性。
 - [ ] 核对 App Store Connect 隐私标签已勾选“不收集数据（Data Not Collected）”。
 - [ ] 使用真机（未开启“允许完全访问”）完整复测全拼、九宫格、小鹤双拼、横滑 Emoji/颜文字与中英混输。

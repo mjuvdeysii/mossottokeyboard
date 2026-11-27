@@ -153,16 +153,12 @@ DOCS = [
             (
                 "一、第三方开放数据与构建组件致谢",
                 [
-                    "Mosto键盘坚持完全本机计算、不依赖云端词库。本应用的核心解码器、触点纠错模型与交互视觉为 OTTOSSOM Studio 原创作品；部分词库语料与构建期工具基于以下公开项目合规整理与署名致谢：",
+                    "Mosto键盘坚持完全本机计算、不依赖云端词库。本应用的核心解码器、触点纠错模型与交互视觉为 OTTOSSOM Studio 原创作品；离线词库、语言统计与表情元数据基于以下开放数据项目合规整理与署名致谢：",
                     [
-                        "雾凇拼音（rime-ice）：提供基础中文单字与常用词库语料（GPL-3.0-only）",
-                        "八股文（rime-octagram-data）：提供上下文搭配与词语联想语言模型语料（LGPL-3.0-only）",
-                        "万象语法模型（rime-wanxiang-data）：提供离线整句 N-gram 蒸馏语料参考（CC-BY-4.0）",
-                        "wordfreq：提供公开英文词频统计表，用于中英混输候选排序（CC-BY-SA-4.0）",
+                        "万象开放词库与语法模型（rime-wanxiang-data，作者 amzxyz）：提供基础中文单字词库、现代英文补充词表与整句/联想 N-gram 语言统计语料，经本机离线筛选、重标度与双段压缩蒸馏后使用（CC-BY-4.0）",
+                        "SymSpell 英文词频表（frequency_dictionary_en_82_765）：提供英文基础词频统计，基于 Google Books Ngram（CC-BY-3.0）与 SCOWL（宽松许可）整理，用于中英混输候选排序（MIT）",
                         "Emojibase：提供标准 Unicode Emoji 列表、分组与版本元数据（MIT）",
                         "Unicode CLDR：提供标准中文表情名称与检索词，用于本机表情联想（Unicode-3.0）",
-                        "darts-clone：Double-Array Trie 离线索引构建库，仅于构建期使用（BSD-2-Clause）",
-                        "pypinyin：词库构建期汉语拼音注音映射工具，仅于构建期使用（MIT）",
                     ],
                     "上述公开数据、标准与开源项目的所有权及商标权归原机构或原作者所有，本应用仅作合规署名致谢，不代表原机构或原作者对本应用的背书或合作关系。",
                 ],
@@ -575,7 +571,7 @@ details p{{margin:8px 0 0;color:var(--sub);font-size:14.5px}}
         <span class="pill pill-moss">100% 本机离线 · 零联网</span>
       </div>
       <h1>把每天触碰最多次的屏幕，打磨到硬件级准度</h1>
-      <p>Mosto键盘是 OTTOSSOM 推出的纯离线中文 iOS 键盘。开箱即用全拼全键盘与九宫格全拼，融合触点几何纠错、48.4 MB 本机双段离线引擎与零“完全访问”隐私边界——由手机里的 Mosto，引出你书桌上的 Moss 与 Otto《摸索台灯》。</p>
+      <p>Mosto键盘是 OTTOSSOM 推出的纯离线中文 iOS 键盘。开箱即用全拼全键盘与九宫格全拼，融合触点几何纠错、48.3 MB 本机双段离线引擎与零“完全访问”隐私边界——由手机里的 Mosto，引出你书桌上的 Moss 与 Otto《摸索台灯》。</p>
       <div class="hero-cta">
         <a class="btn btn-primary" href="#support">App Store 即将上架 · 启用指引</a>
         <a class="btn btn-secondary" href="#family">探索《摸索台灯》家族</a>
@@ -621,8 +617,8 @@ details p{{margin:8px 0 0;color:var(--sub);font-size:14.5px}}
     </article>
     <article class="card">
       <div class="icon-box">语</div>
-      <h3>48.4 MB 本机双段离线引擎</h3>
-      <p>单文件 8-bit 量化双段内存映射架构，同时承担 1164 万条 2–4 元整句解码与 85 万条上下文联想，毫秒响应零卡顿。</p>
+      <h3>48.3 MB 本机双段离线引擎</h3>
+      <p>单文件 8-bit 量化双段内存映射架构，同时承担 1204 万条 2–4 元整句解码与 38 万条上下文联想，毫秒响应零卡顿。</p>
     </article>
     <article class="card">
       <div class="icon-box moss">隐</div>

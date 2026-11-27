@@ -56,7 +56,7 @@ public final class Decoder {
     public var correctionEnabled = true
     public var spatialWeight = 1.8
     public var correctionPenalty = 1.5
-    public var wordPenalty = 26.0   // R100 recalibrated for dual-section Wanxiang+Octagram grammar.gram (each word also pays its non-collocation cost)
+    public var wordPenalty = 26.0   // R105 calibrated for pure Wanxiang CC-BY-4.0 lexicon + dual-section grammar.gram (each word also pays its non-collocation cost)
     /// What learning adds. A word the lexicon has gets its own frequency plus  userWeight·ln(1 + times picked),
     /// at most `userCap` (a single character at most a quarter of it) — so picking 得 once in 过得 lifts 得 a little
     /// without pushing 的 out of every other sentence. A phrase of the user's own (not in the lexicon) starts from
@@ -72,7 +72,7 @@ public final class Decoder {
     /// 中英混输: English words for the typed letters, ranked against the Chinese readings by frequency.
     public var english: EnglishLexicon?
     public var englishEnabled = true
-    /// Which words go together (Rime octagram language model): each word of a sentence is scored against the text
+    /// Which words go together (on-device n-gram language model): each word of a sentence is scored against the text
     /// before it — inside the sentence, and for its first word the text already in the field (`leftContext`).
     public var grammar: Grammar?
     /// 联想 reads its own model when set (the sentence model's scores are not counts of what follows a context).
@@ -84,7 +84,9 @@ public final class Decoder {
     /// touch noise (88.85 → 87.54).
     public var grammarCorrectedFactor = 0.45
     /// 小鹤每音节两键，合法误按更需上下文辅助纠偏，与全拼区分设置以免误伤全拼精确读法。
-    public var xiaoheGrammarCorrectedFactor = 0.65
+    public var xiaoheGrammarCorrectedFactor = 0.50
+    /// 小鹤双拼为严格两键一字，奇键长输入必然存在单键漏按或多按，此时保留较高上下文语法权重辅助结构恢复。
+    public var xiaoheOddLengthGrammarFactor = 0.60
     /// The text just before the cursor (a few characters), so the first word is also read in context.
     public var leftContext: [Character] = []
     /// Cost of reading the letters as English in Chinese mode (English is the less likely intent there).
@@ -96,7 +98,7 @@ public final class Decoder {
     /// Words usually written with capitals in Chinese text (iOS, iPhone, OK…) are typed on purpose: a bonus.
     public var englishCasedBonus = 3.0
     /// 中英混输 inside a sentence (an English word among Chinese ones): on/off, and how an English word's frequency
-    /// (wordfreq zipf) maps onto the lexicon's ln-frequency scale (fitted over words both lists have), what being
+    /// (English Zipf frequency) maps onto the lexicon's ln-frequency scale (fitted over words both lists have), what being
     /// English in Chinese mode costs, the bonus for a word written with capitals, the least zipf for a plain word.
     public var mixedEnglish = true
     public var mixedA = 4.67
@@ -392,7 +394,7 @@ public final class Decoder {
     public var dedupeKeep = 2
     /// How far below the best clean path a slip / left-out-key path may start and still be kept.
     public var slipMargin = 2.0
-    public var xiaoheSkipDoublePenalty = 5.5
+    public var xiaoheSkipDoublePenalty = 5.0
     @inline(__always) private func skipCost(_ taps: [Tap], _ k: Int) -> Double {
         let doubled = k > 0 && taps[k - 1].key == taps[k].key || k + 1 < taps.count && taps[k + 1].key == taps[k].key
         if scheme == .xiaohe { return doubled ? xiaoheSkipDoublePenalty : xiaoheSkipPenalty }
@@ -986,7 +988,7 @@ public final class Decoder {
                 let q = grammar.query(context: Array(ctx.suffix(3)), word: wChars)
                 // a corrected word keeps the same baseline but only part of the lift above it
                 let base = grammar.nonCollocationPenalty
-                let gcf = scheme == .xiaohe ? xiaoheGrammarCorrectedFactor : grammarCorrectedFactor
+                let gcf = scheme == .xiaohe ? (n % 2 == 1 ? xiaoheOddLengthGrammarFactor : xiaoheGrammarCorrectedFactor) : grammarCorrectedFactor
                 lift = grammarWeight * (edges[ei].corrected ? base + gcf * (q - base) : q)
                 // The model's counts are joint (how often context + word occur), so they already carry how common the
                 // word is; the lexicon's frequency added on top counts that twice and lets 在 outvote 再 after 可以.

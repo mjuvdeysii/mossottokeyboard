@@ -179,6 +179,7 @@ enum KeyboardTests {
         r101QuantizedGrammarV2AndTuning(window)
         r102Wave1HardeningAndCraft(window)
         r104_1Build428HotfixRegressionTests(window)
+        r105LicenseCleanAndPureWanxiangData(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -4355,7 +4356,7 @@ enum KeyboardTests {
             "boosted=\(boosted) pred=\(predicted) persist=\(persistOk) clear=\(clearedOk) beam=\(beamOk) decode=\(decodeOk)")
     }
 
-    /// R100: Distilled Wanxiang+Octagram dual-section grammar.gram loads offline, serves 2..4-gram decoding and Section 2 continuations.
+    /// R100: Distilled dual-section grammar.gram loads offline, serves 2..4-gram decoding and Section 2 continuations.
     static func r100DistilledDualSectionGrammar(_ window: UIWindow) {
         guard let kb = makeKeyboard(scheme: 0, in: window) else {
             log(false, "r100.setup")
@@ -4872,6 +4873,88 @@ enum KeyboardTests {
         log(kaoAligned && ribbonOk,
             "r104_1.Kaomoji mood ribbon scrolls smoothly clear of Mosto badge and Emoji->Kaomoji swipe aligns with zero gap",
             "aligned=\(kaoAligned) originX=\(ep.collectionOriginXForTests) bounds=\(String(describing: boundsInSelf)) ribbon=\(ribbonOk)")
+    }
+
+    // MARK: - R105: Wave 3 Pure CC-BY-4.0 / MIT Data & Copyleft Elimination
+
+    static func r105LicenseCleanAndPureWanxiangData(_ window: UIWindow) {
+        _ = window
+        let forbiddenTokens = [
+            ["g", "p", "l"].joined(),
+            ["l", "g", "p", "l"].joined(),
+            ["cc-by-", "sa"].joined(),
+            ["cc by-", "sa"].joined(),
+            ["rime", "-ice"].joined(),
+            ["octa", "gram"].joined(),
+            ["word", "freq"].joined(),
+            ["雾", "凇"].joined(),
+            ["八股", "文"].joined(),
+        ]
+        var legalClean = true
+        var noticesJoined = ""
+        for doc in LegalText.docs {
+            let titleLower = doc.title.lowercased()
+            if forbiddenTokens.contains(where: { titleLower.contains($0) }) { legalClean = false }
+            for sec in doc.sections {
+                let headingLower = sec.0.lowercased()
+                if forbiddenTokens.contains(where: { headingLower.contains($0) }) { legalClean = false }
+                for item in sec.1 {
+                    let strings: [String]
+                    switch item {
+                    case .text(let s): strings = [s]
+                    case .bullets(let bs): strings = bs
+                    }
+                    for s in strings {
+                        let low = s.lowercased()
+                        if forbiddenTokens.contains(where: { low.contains($0) }) { legalClean = false }
+                        if doc.id == "notices" { noticesJoined += s + "\n" }
+                    }
+                }
+            }
+        }
+        let attributionOk = noticesJoined.contains("rime-wanxiang-data")
+            && noticesJoined.contains("CC-BY-4.0")
+            && noticesJoined.contains("SymSpell")
+            && noticesJoined.contains("MIT")
+
+        let bundle = KeyboardViewController.resourceBundle
+        let gp = bundle.path(forResource: "grammar", ofType: "gram")
+        let lp = bundle.path(forResource: "lexicon", ofType: "bin")
+        let ep = bundle.path(forResource: "english", ofType: "bin")
+        let gramBytes = gp.flatMap { (try? FileManager.default.attributesOfItem(atPath: $0)[.size] as? NSNumber)?.intValue } ?? 0
+        let sizeOk = gramBytes > 0 && gramBytes <= 50_855_936
+
+        var dataOk = false
+        var englishOk = false
+        var paramOk = false
+        if let gp, let lp, let ep,
+           let lex = try? Lexicon(path: lp),
+           let gram = try? Grammar(path: gp),
+           let eng = try? EnglishLexicon(path: ep) {
+            let dec = Decoder(lexicon: lex)
+            dec.grammar = gram
+            dec.english = eng
+            dec.scheme = .xiaohe
+            let p1 = dec.decode(Array("mddehfhc").map { Tap.exact($0) }).candidates.first?.text == "卖得很好"
+            let p2 = dec.decode(Array("xbhcbuhc").map { Tap.exact($0) }).candidates.first?.text == "信号不好"
+            let predOk = gram.continuations(after: Array("我们"), limit: 8).contains { $0.text == "在" }
+            dataOk = gram.isCompactV2 && p1 && p2 && predOk
+
+            englishOk = eng.exact("iphone")?.display == "iPhone"
+                && eng.exact("linkedin")?.display == "LinkedIn"
+                && eng.exact("email")?.display == "email"
+                && eng.exact("ok")?.display == "OK"
+
+            paramOk = abs(dec.xiaoheGrammarCorrectedFactor - 0.50) < 1e-6
+                && abs(dec.xiaoheOddLengthGrammarFactor - 0.60) < 1e-6
+                && abs(dec.xiaoheSkipDoublePenalty - 5.0) < 1e-6
+                && abs(dec.grammarCorrectedFactor - 0.45) < 1e-6
+                && abs(dec.wordPenalty - 26.0) < 1e-6
+        }
+
+        log(legalClean && attributionOk && sizeOk && dataOk && englishOk && paramOk,
+            "r105.Pure CC-BY-4.0/MIT offline data & LegalText remove copyleft while preserving decode/predict/English accuracy",
+            "legal=\(legalClean) attr=\(attributionOk) size=\(gramBytes) data=\(dataOk) eng=\(englishOk) param=\(paramOk)")
     }
 }
 
