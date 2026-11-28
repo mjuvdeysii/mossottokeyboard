@@ -884,7 +884,7 @@ airbus	3.30	airbus
 aircraft	4.54	aircraft
 aircrew	2.85	aircrew
 airdrie	2.67	airdrie
-airdrop	3.50	AirDrop
+airdrop	4.20	AirDrop
 aired	3.48	aired
 aires	3.69	aires
 airfare	4.00	airfare
@@ -1065,6 +1065,7 @@ alignments	3.06	alignments
 aligns	2.69	aligns
 alike	3.94	alike
 alimony	2.99	alimony
+alipay	4.25	Alipay
 alisa	2.78	alisa
 alisha	2.67	alisha
 alison	3.72	alison
@@ -3961,6 +3962,7 @@ bilbao	3.20	bilbao
 bile	3.28	bile
 bilge	2.76	bilge
 biliary	2.86	biliary
+bilibili	4.20	Bilibili
 bilin	3.50	BiLin
 bilingual	3.68	bilingual
 bilirubin	2.64	bilirubin
@@ -6040,7 +6042,7 @@ carpet	4.24	carpet
 carpeted	2.73	carpeted
 carpeting	3.01	carpeting
 carpets	3.59	carpets
-carplay	3.50	CarPlay
+carplay	4.15	CarPlay
 carpool	2.88	carpool
 carport	2.74	carport
 carr	3.70	carr
@@ -6619,7 +6621,7 @@ chastity	3.06	chastity
 chat	5.07	chat
 chateau	3.64	chateau
 chateaux	2.59	chateaux
-chatgpt	4.00	ChatGPT
+chatgpt	4.35	ChatGPT
 chatham	3.56	chatham
 chatroom	3.26	chatroom
 chats	3.57	chats
@@ -7166,7 +7168,7 @@ classy	3.45	classy
 clatter	3.28	clatter
 clattered	3.09	clattered
 clattering	3.12	clattering
-claude	4.00	Claude
+claude	4.25	Claude
 claudia	3.57	claudia
 claudio	3.20	claudio
 claudius	2.82	claudius
@@ -9799,7 +9801,7 @@ cursed	3.43	cursed
 curses	3.07	curses
 cursing	2.85	cursing
 cursive	2.71	cursive
-cursor	3.86	cursor
+cursor	4.20	Cursor
 cursors	3.15	cursors
 cursory	2.68	cursory
 curt	3.34	curt
@@ -10383,7 +10385,7 @@ deepest	3.43	deepest
 deepl	3.50	DeepL
 deeply	4.03	deeply
 deepmind	3.50	DeepMind
-deepseek	3.50	DeepSeek
+deepseek	4.25	DeepSeek
 deer	4.15	deer
 deere	3.47	deere
 def	4.35	def
@@ -14905,6 +14907,7 @@ fighter	3.98	fighter
 fighters	3.99	fighters
 fighting	4.45	fighting
 fights	3.69	fights
+figma	4.20	Figma
 figs	3.41	figs
 figueroa	2.76	figueroa
 figural	2.75	figural
@@ -16444,7 +16447,7 @@ gelding	2.79	gelding
 geller	2.84	geller
 gels	3.28	gels
 gem	3.93	gem
-gemini	3.66	gemini
+gemini	4.25	Gemini
 gemma	2.93	gemma
 gems	3.80	gems
 gemstone	3.62	gemstone
@@ -16725,7 +16728,7 @@ gitbook	3.50	GitBook
 gitbucket	3.50	GitBucket
 gitbutler	3.50	GitButler
 gites	2.61	gites
-github	4.00	GitHub
+github	4.30	GitHub
 gitlab	3.50	GitLab
 giuliani	2.91	giuliani
 giuseppe	3.26	giuseppe
@@ -19260,7 +19263,7 @@ ices	2.95	ices
 icily	2.82	icily
 icing	3.25	icing
 icky	2.60	icky
-icloud	4.00	iCloud
+icloud	4.25	iCloud
 icon	4.68	icon
 iconic	2.98	iconic
 iconography	2.60	iconography
@@ -26883,7 +26886,7 @@ notifies	3.07	notifies
 notify	4.51	notify
 notifying	3.19	notifying
 noting	3.74	noting
-notion	4.01	notion
+notion	4.20	Notion
 notional	2.85	notional
 notions	3.54	notions
 notoriety	2.68	notoriety
@@ -27117,7 +27120,7 @@ obsessed	3.42	obsessed
 obsession	3.54	obsession
 obsessions	2.80	obsessions
 obsessive	3.26	obsessive
-obsidian	2.97	obsidian
+obsidian	4.15	Obsidian
 obsolescence	2.76	obsolescence
 obsolete	3.71	obsolete
 obsoleted	2.76	obsoleted
@@ -32022,6 +32025,7 @@ rawhide	2.89	rawhide
 rawlings	3.10	rawlings
 ray	4.65	ray
 rayburn	2.81	rayburn
+raycast	4.10	Raycast
 rayleigh	2.84	rayleigh
 raymond	4.03	raymond
 rayon	3.12	rayon
@@ -34943,6 +34947,7 @@ scurried	3.05	scurried
 scuttle	2.81	scuttle
 scuttled	3.05	scuttled
 scylladb	3.50	ScyllaDB
+sdk	4.20	SDK
 sea	4.93	sea
 seabed	2.71	seabed
 seabirds	2.59	seabirds
@@ -38814,7 +38819,7 @@ swept	3.56	swept
 swerved	3.02	swerved
 swift	3.91	swift
 swiftly	3.25	swiftly
-swiftui	3.50	SwiftUI
+swiftui	4.15	SwiftUI
 swig	2.72	swig
 swim	4.09	swim
 swimmer	3.09	swimmer
@@ -39603,7 +39608,7 @@ tested	4.49	tested
 tester	3.67	tester
 testers	3.65	testers
 testes	2.68	testes
-testflight	4.00	TestFlight
+testflight	4.20	TestFlight
 testicle	2.67	testicle
 testicles	3.03	testicles
 testicular	3.05	testicular
@@ -43204,7 +43209,7 @@ websphere	3.50	WebSphere
 webster	4.07	webster
 webstorm	3.50	WebStorm
 webview	3.50	WebView
-wechat	4.00	WeChat
+wechat	4.35	WeChat
 wed	4.97	wed
 wedded	2.63	wedded
 wedding	4.93	wedding
@@ -43982,6 +43987,7 @@ wynn	3.19	wynn
 wyoming	4.37	wyoming
 xanadu	2.66	xanadu
 xavier	3.58	xavier
+xcode	4.20	Xcode
 xemacs	3.57	XEmacs
 xenia	2.69	xenia
 xenon	3.29	xenon

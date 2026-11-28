@@ -238,7 +238,7 @@ struct FamilyLampStageView: View {
                     Circle()
                         .fill(model.activeMember.accentColor)
                         .frame(width: 6, height: 6)
-                    Text("OTTOSSOM 桌面伙伴")
+                    Text("桌面伙伴")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(darkStage ? Color.white.opacity(0.66) : MossOttoStyle.inkSecondary)
                 }

@@ -1,6 +1,6 @@
 # Mosto键盘 v1.0 App Store Connect 逐项合规上架资料包
 
-> 核对日期：2026-11-28 · 适用版本：iOS 1.0（参考基线 Build 433 / R106 收口版） · 开发者：温树垚（OTTOSSOM Studio）
+> 核对日期：2026-11-28 · 适用版本：iOS 1.0（参考基线 Build 433 / R106 收口版） · 开发者：温树垚（Mosto Works）
 > 规范依据：[Apple App Store Connect App Information](https://developer.apple.com/help/app-store-connect/reference/app-information/app-information/)、[Platform Version Information](https://developer.apple.com/help/app-store-connect/reference/app-information/platform-version-information/)、[Screenshot Specifications](https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications/)。
 > 商业法务原则：严格遵循顶级商用收敛规范，应用名、副标题、宣传文本、关键词与商店截图均**不出现**第三方方案商标词「小鹤」，仅在描述中以「可选双拼方案」中性呈现。
 
@@ -41,7 +41,7 @@
 **应用描述（Description，上限 4000 字符，当前 728 字符，纯文本无 HTML/Emoji）**
 
 ```
-每天被触碰最多次的交互面，值得与硬件同等级的准度、手势节奏与隐私边界。Mosto键盘是 OTTOSSOM Studio 出品的纯离线中文 iOS 键盘——安静、克制，所有输入计算 100% 在你的设备本机完成。
+每天被触碰最多次的交互面，值得与硬件同等级的准度、手势节奏与隐私边界。Mosto键盘是 Mosto Works 出品的纯离线中文 iOS 键盘——安静、克制，所有输入计算 100% 在你的设备本机完成。
 
 【全拼与九宫格主角体验】
 开箱即用标准全拼全键盘与单手九宫格（T9），原生优化日常整句输入、首字母简拼（如 bzd、nh）与中英自然混输；九宫格提供左侧实时拼音微调与右侧同位符号面板，单手切换零学习成本。
@@ -89,7 +89,7 @@ pinyin,chinese keyboard,t9,offline keyboard,autocorrect,privacy,shuangpin,no ads
 **Description（上限 4000 字符，当前 1094 字符）**
 
 ```
-The surface you touch most often every day deserves hardware-grade precision, calm rhythm, and strict privacy boundaries. Mosto Keyboard by OTTOSSOM Studio is a 100% offline Chinese iOS keyboard crafted around Full Pinyin (QWERTY) and ergonomic 9-key T9, with an optional Shuangpin layout in Settings.
+The surface you touch most often every day deserves hardware-grade precision, calm rhythm, and strict privacy boundaries. Mosto Keyboard by Mosto Works is a 100% offline Chinese iOS keyboard crafted around Full Pinyin (QWERTY) and ergonomic 9-key T9, with an optional Shuangpin layout in Settings.
 
 Key Features
 - Mainstream Full Pinyin & 9-Key T9: Fast whole-sentence Full Pinyin decoding, initials shorthand, inline mixed Chinese-English typing, and one-handed 9-key T9 with live syllable tuning.
@@ -109,7 +109,7 @@ Every character you type stays strictly on your device. Mosto Keyboard never con
 | ----- | ----- | 
 | **技术支持网址（Support URL）** | `https://mosto-keyboard.pages.dev/#support` | 
 | **营销网址（Marketing URL）** | `https://mosto-keyboard.pages.dev/` | 
-| **版权（Copyright）** | `© 2026 温树垚`（或 `© 2026 OTTOSSOM Studio`） | 
+| **版权（Copyright）** | `© 2026 Mosto Works` | 
 | **版本号（Version）** | `1.0`（与 `MARKETING_VERSION = 1.0` 一致） | 
 | **出口合规（Export Compliance）** | `ITSAppUsesNonExemptEncryption = NO`（已在工程配置，免交加密文档） | 
 | **发布方式** | 手动发布此版本（Manual Release） | 

@@ -684,7 +684,7 @@ struct GestureAtlasContent: View {
                 atlasRow(
                     symbol: "waveform",
                     title: "原生模糊音（可选）",
-                    chips: ["z/zh · c/ch · s/sh · n/l", "an/ang · en/eng · in/ing", "键盘设置内开启"]
+                    chips: ["z/zh · c/ch · s/sh · n/l · f/h · r/l", "an/ang · en/eng · in/ing", "键盘设置内开启"]
                 )
             }
 
@@ -875,7 +875,7 @@ struct AboutCompanionContent: View {
                         Text("Mosto键盘")
                             .font(.title3.weight(.bold))
                             .foregroundStyle(MossOttoStyle.inkPrimary)
-                        Text("OTTOSSOM Studio · 纯离线键盘")
+                        Text("纯离线中文输入法")
                             .font(.caption)
                             .foregroundStyle(MossOttoStyle.inkSecondary)
                     }
@@ -944,7 +944,7 @@ struct AboutCompanionContent: View {
                 }
             }
 
-            Card(title: "OTTOSSOM 家族") {
+            Card(title: "桌面伙伴") {
                 ForEach(Array(FamilyMember.allCases.enumerated()), id: \.element.id) { idx, member in
                     if idx > 0 { Divider() }
                     Button {
@@ -1120,7 +1120,7 @@ private struct MostoStoryCard: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 if expanded {
-                    Text("住在地基最左下角的紫色小魔王 Mosto，源自 OTTOSSOM 书桌故事宇宙。白天它安静守在你的指尖扶正偏键，夜晚自然引出守在床头的同门伙伴 Moss 与 Otto（《摸索台灯》）。")
+                    Text("住在键盘左下角的紫色小魔王 Mosto，白天安静守在你的指尖扶正偏键；夜晚回到书桌旁，与同门《摸索台灯》里的 Moss 和 Otto 一起温柔陪伴。")
                         .font(.caption)
                         .foregroundStyle(MossOttoStyle.inkSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1148,7 +1148,7 @@ private struct MostoStoryCard: View {
 private struct StudioVersionFooter: View {
     private var versionLine: String {
         let short = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
-        return "Mosto键盘 v\(short) · OTTOSSOM Studio 原创作品 · 纯离线零追踪"
+        return "Mosto键盘 v\(short) · 独立开发 · 纯离线零追踪"
     }
 
     var body: some View {
@@ -1156,7 +1156,7 @@ private struct StudioVersionFooter: View {
             Text(versionLine)
                 .font(.caption2.weight(.medium).monospacedDigit())
                 .foregroundStyle(MossOttoStyle.inkSecondary.opacity(0.85))
-            Text("© 2026 OTTOSSOM Studio")
+            Text("© 2026 Mosto Works")
                 .font(.caption2)
                 .foregroundStyle(MossOttoStyle.inkSecondary.opacity(0.6))
         }

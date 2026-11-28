@@ -5032,6 +5032,8 @@ enum KeyboardTests {
                 ("fanzeng", "反正"),
                 ("cenggong", "成功"),
                 ("liunai", "牛奶"),
+                ("funan", "湖南"),
+                ("luguo", "如果"),
             ]
             var fMiss: [String] = []
             for (k, want) in fCases {
@@ -5039,13 +5041,13 @@ enum KeyboardTests {
                 if got != want { fMiss.append("\(k)->\(got)(want \(want))") }
             }
             fuzzyOk = fMiss.isEmpty
-            fDetail = fMiss.isEmpty ? "all-6-fuzzy-top1" : fMiss.joined(separator: ",")
+            fDetail = fMiss.isEmpty ? "all-8-fuzzy-top1" : fMiss.joined(separator: ",")
 
             dec.fuzzyPinyin = false
             let sCases: [(String, String)] = [
                 ("wsm", "为什么"),
                 ("bhys", "不好意思"),
-                ("mgs", "没关系"),
+                ("mgx", "没关系"),
                 ("xkl", "辛苦了"),
                 ("zml", "怎么了"),
             ]
@@ -5064,7 +5066,7 @@ enum KeyboardTests {
         KeyboardSettings.shared.fuzzyPinyin = prevFuzzy
 
         log(fuzzyOk && shorthandOk && settingOk,
-            "r109.Native fuzzy pinyin (6/6), IM shorthand top-1 (5/5), and fuzzy settings toggle hold",
+            "r109.Native 9-pair fuzzy pinyin (8/8), IM shorthand top-1 (5/5), and fuzzy settings toggle hold",
             "fuzzy=\(fDetail) shorthand=\(sDetail) setting=\(settingOk)")
     }
 }

@@ -26,7 +26,7 @@ DOCS = [
             (
                 "一、适用范围与运营主体",
                 [
-                    "本隐私政策适用于 iOS 应用「Mosto键盘」及其配套系统键盘扩展（以下合称“本应用”）。本应用的开发者与运营主体以 Apple App Store 商品页公示的开发者主体（OTTOSSOM Studio）为准。",
+                    "本隐私政策适用于 iOS 应用「Mosto键盘」及其配套系统键盘扩展（以下合称“本应用”）。本应用的开发者与运营主体以 Apple App Store 商品页公示的Mosto Works为准。",
                     "本应用无需注册账号，不包含广告、数据统计分析、崩溃上报或任何第三方追踪 SDK。依据《常见类型移动互联网应用程序必要个人信息范围规定》，输入法类基本功能服务无需提供任何个人信息即可完整使用。",
                 ],
             ),
@@ -87,7 +87,7 @@ DOCS = [
             ),
         ],
         [
-            ("官方支持与反馈", "前往 OTTOSSOM 官网支持中心", SUPPORT_URL),
+            ("官方支持与反馈", "前往 Mosto键盘 官网支持中心", SUPPORT_URL),
             ("在浏览器中查看隐私政策", "打开独立网页版本", SITE + "/privacy.html"),
         ],
     ),
@@ -98,7 +98,7 @@ DOCS = [
             (
                 "一、条款适用与服务性质",
                 [
-                    "本协议约定你与 OTTOSSOM Studio（下称“开发者”）之间就下载、安装与使用 Mosto键盘（下称“本应用”）所形成的权利义务。安装或继续使用本应用，即表示你已阅读并同意本协议。",
+                    "本协议约定你与 Mosto Works（下称“开发者”）之间就下载、安装与使用 Mosto键盘（下称“本应用”）所形成的权利义务。安装或继续使用本应用，即表示你已阅读并同意本协议。",
                     "本应用为免费提供的纯离线商业工具软件，不含广告、订阅或应用内购买；后续版本更新通过 Apple App Store 统一分发。",
                 ],
             ),
@@ -120,8 +120,8 @@ DOCS = [
             (
                 "四、原创知识产权与品牌归属",
                 [
-                    "Mosto键盘的核心中文输入解码引擎、触点概率纠错模型、双段内存映射索引架构、滑键与游标手势交互体系、实体键帽与夜间光效视觉规范，均系 OTTOSSOM Studio 原创设计作品与著作权资产。",
-                    "OTTOSSOM IP 家族原创角色形象（Moss、Otto 与 Mosto）、3D/2D 造型、界面视觉与名称“Mosto键盘”“摸索台灯”“OTTOSSOM”归开发者所有，未经书面授权不得用于商业混淆、复制或仿冒。",
+                    "Mosto键盘的核心中文输入解码引擎、触点概率纠错模型、双段内存映射索引架构、滑键与游标手势交互体系、实体键帽与夜间光效视觉规范，均系开发者原创设计作品与著作权资产。",
+                    "原创角色形象（Moss、Otto 与 Mosto）、3D/2D 造型、界面视觉与名称“Mosto键盘”“摸索台灯”归开发者所有，未经书面授权不得用于商业混淆、复制或仿冒。",
                     "本应用在构建中合规引用的第三方开放语言数据与构建组件，详见“第三方致谢与合规声明”。",
                 ],
             ),
@@ -153,7 +153,7 @@ DOCS = [
             (
                 "一、第三方开放数据与构建组件致谢",
                 [
-                    "Mosto键盘坚持完全本机计算、不依赖云端词库。本应用的核心解码器、触点纠错模型与交互视觉为 OTTOSSOM Studio 原创作品；离线词库、语言统计与表情元数据基于以下开放数据项目合规整理与署名致谢：",
+                    "Mosto键盘坚持完全本机计算、不依赖云端词库。本应用的核心解码器、触点纠错模型与交互视觉为开发者原创作品；离线词库、语言统计与表情元数据基于以下开放数据项目合规整理与署名致谢：",
                     [
                         "万象开放词库与语法模型（rime-wanxiang-data，作者 amzxyz）：提供基础中文单字词库、现代英文补充词表与整句/联想 N-gram 语言统计语料，经本机离线筛选、重标度与双段压缩蒸馏后使用（CC-BY-4.0）",
                         "SymSpell 英文词频表（frequency_dictionary_en_82_765）：提供英文基础词频统计，基于 Google Books Ngram（CC-BY-3.0）与 SCOWL（宽松许可）整理，用于中英混输候选排序（MIT）",
@@ -177,14 +177,14 @@ DOCS = [
             (
                 "三、同门产品与官方支持",
                 [
-                    "同门系列作品：《摸索台灯》（Mossling）是一款面向 0–3 岁亲子共玩与床头夜灯陪伴的 iOS 应用，Moss、Otto 与 Mosto 同属于 OTTOSSOM 设计宇宙。",
+                    "同门系列作品：《摸索台灯》（Mossling）是一款面向 0–3 岁亲子共玩与床头夜灯陪伴的 iOS 应用，Moss、Otto 与 Mosto 均由同一独立开发者创作。",
                     "如需获取使用帮助、查阅最新说明或提交意见反馈，请通过下方官方支持中心联系我们。",
                 ],
             ),
         ],
         [
-            ("访问 OTTOSSOM 官网与支持", "查看《摸索台灯》与官方帮助", SUPPORT_URL),
-            ("在 App Store 查看《摸索台灯》", "OTTOSSOM 同门床头夜灯应用", MOSSLING_STORE),
+            ("访问 Mosto键盘 官网与支持", "查看《摸索台灯》与官方帮助", SUPPORT_URL),
+            ("在 App Store 查看《摸索台灯》", "同门床头夜灯与亲子陪伴应用", MOSSLING_STORE),
             ("查看 CC-BY-4.0 许可协议", "Creative Commons 官方条款", "https://creativecommons.org/licenses/by/4.0/"),
         ],
     ),
@@ -362,7 +362,7 @@ def nav_html(current="index"):
         nav_items.append(f'<a href="{href}"{cur}>{html.escape(label)}</a>')
     return (
         '<header class="topbar"><div class="topbar-inner">'
-        '<a class="brand" href="index.html"><span class="brand-dot"></span><span>OTTOSSOM · Mosto键盘</span></a>'
+        '<a class="brand" href="index.html"><span class="brand-dot"></span><span>Mosto键盘</span></a>'
         f'<nav>{"".join(nav_items)}</nav>'
         "</div></header>"
     )
@@ -371,7 +371,7 @@ def nav_html(current="index"):
 def footer_html():
     return (
         "<footer>"
-        "<div>Mosto键盘 · OTTOSSOM Studio 原创作品 · 纯离线零追踪 · © 2026 OTTOSSOM Studio</div>"
+        "<div>Mosto键盘 · 独立开发 · 纯离线零追踪 · © 2026 Mosto Works</div>"
         '<div class="footer-links">'
         '<a href="privacy.html">隐私政策</a>'
         '<a href="terms.html">用户协议</a>'
@@ -417,7 +417,7 @@ LEGAL_PAGE = """<!doctype html>
 {nav}
 <main class="wrap narrow">
   <div class="doc-head">
-    <span class="pill">OTTOSSOM Studio 官方文档</span>
+    <span class="pill">Mosto键盘 官方文档</span>
     <h1>{title}</h1>
     <div class="doc-meta">生效日期：{effective}</div>
   </div>
@@ -463,8 +463,8 @@ def render_index_html():
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mosto键盘 · 全拼九宫格离线精准中文输入法 · OTTOSSOM</title>
-<meta name="description" content="Mosto键盘是 OTTOSSOM Studio 出品的纯离线 iOS 中文输入法，原生支持全拼全键盘与单手九宫格，并内置可选双拼方案，以触点几何纠错与零联网隐私守护每天的高频输入。">
+<title>Mosto键盘 · 全拼九宫格离线精准中文输入法</title>
+<meta name="description" content="Mosto键盘是一款纯离线 iOS 中文输入法，原生支持全拼全键盘与单手九宫格，并内置可选双拼方案，以触点几何纠错与零联网隐私守护每天的高频输入。">
 <style>
 {SHARED_CSS}
 .hero{{
@@ -572,7 +572,7 @@ details p{{margin:8px 0 0;color:var(--sub);font-size:14.5px}}
         <span class="pill pill-moss">100% 本机离线 · 零联网</span>
       </div>
       <h1>把每天触碰最多次的屏幕，打磨到硬件级准度</h1>
-      <p>Mosto键盘是 OTTOSSOM 推出的纯离线中文 iOS 键盘。开箱即用全拼全键盘与九宫格全拼，融合触点几何纠错、48.3 MB 本机双段离线引擎与零“完全访问”隐私边界——由手机里的 Mosto，引出你书桌上的 Moss 与 Otto《摸索台灯》。</p>
+      <p>Mosto键盘是一款独立打造的纯离线中文 iOS 键盘。开箱即用全拼全键盘与九宫格全拼，融合触点几何纠错、48.3 MB 本机双段离线引擎与零“完全访问”隐私边界——由手机里的 Mosto，引出你书桌上的 Moss 与 Otto《摸索台灯》。</p>
       <div class="hero-cta">
         <a class="btn btn-primary" href="#support">App Store 即将上架 · 启用指引</a>
         <a class="btn btn-secondary" href="#family">探索《摸索台灯》家族</a>
@@ -634,7 +634,7 @@ details p{{margin:8px 0 0;color:var(--sub);font-size:14.5px}}
   </section>
 
   <div id="family" class="section-head">
-    <span class="pill pill-amber">OTTOSSOM IP 宇宙</span>
+    <span class="pill pill-amber">Mosto键盘 IP 宇宙</span>
     <h2>认识住在键盘与书桌上的三位伙伴</h2>
     <p>Mosto键盘是《摸索台灯》的日常高频入口先锋，在同一套日光暖瓷与夜间微光设计语言下陪伴左右。</p>
   </div>
@@ -681,7 +681,7 @@ details p{{margin:8px 0 0;color:var(--sub);font-size:14.5px}}
         <li>在任意输入框长按地球键切换至 Mosto键盘即可使用（不开启“允许完全访问”也可正常完成全部输入与纠错）。</li>
       </ol>
       <div style="margin-top:16px;padding:12px 14px;border-radius:14px;background:var(--surface-muted);font-size:14px;color:var(--sub)">
-        反馈与协助：请通过 <strong>App Store 商品页支持入口</strong> 或 <strong>TestFlight 反馈功能</strong> 与 OTTOSSOM Studio 取得联系，我们会在第一时间跟进处理。
+        反馈与协助：请通过 <strong>App Store 商品页支持入口</strong> 或 <strong>TestFlight 反馈功能</strong> 与 Mosto Works 取得联系，我们会在第一时间跟进处理。
       </div>
     </div>
     <div class="card">

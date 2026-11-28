@@ -148,7 +148,7 @@ public final class Decoder {
     public var longBeam = 6
     /// 九宫格 keeps more partial sentences per position (each key reads several ways; measured better, full keyboard not)
     public var t9Beam = 18
-    /// 模糊音 (全拼 & 九宫格): z/zh, c/ch, s/sh, n/l, an/ang, en/eng, in/ing (default off).
+    /// 模糊音 (全拼 & 九宫格): z/zh, c/ch, s/sh, n/l, f/h, r/l, an/ang, en/eng, in/ing (default off).
     public var fuzzyPinyin = false
     public var fuzzyPenalty = 1.15
     /// 全拼: cost of a syllable typed as its initial only (简拼), and of a half-typed last syllable.
@@ -425,7 +425,7 @@ public final class Decoder {
         return root
     }()
 
-    /// Precomputed O(1) fuzzy syllable table for z/zh, c/ch, s/sh, n/l, an/ang, en/eng, in/ing.
+    /// Precomputed O(1) fuzzy syllable table for z/zh, c/ch, s/sh, n/l, f/h, r/l, an/ang, en/eng, in/ing.
     private lazy var fuzzySyllableMap: [[UInt16]] = {
         let idByName = Dictionary(uniqueKeysWithValues: lexicon.syllables.enumerated().map { ($1, UInt16($0)) })
         return lexicon.syllables.enumerated().map { (idx, syl) in
@@ -440,7 +440,13 @@ public final class Decoder {
                 else if base.hasPrefix("sh") { initVariants.insert("s" + base.dropFirst(2)) }
                 else if base.hasPrefix("s") { initVariants.insert("sh" + base.dropFirst(1)) }
                 else if base.hasPrefix("n") { initVariants.insert("l" + base.dropFirst(1)) }
-                else if base.hasPrefix("l") { initVariants.insert("n" + base.dropFirst(1)) }
+                else if base.hasPrefix("l") {
+                    initVariants.insert("n" + base.dropFirst(1))
+                    initVariants.insert("r" + base.dropFirst(1))
+                }
+                else if base.hasPrefix("r") { initVariants.insert("l" + base.dropFirst(1)) }
+                else if base.hasPrefix("f") { initVariants.insert("h" + base.dropFirst(1)) }
+                else if base.hasPrefix("h") { initVariants.insert("f" + base.dropFirst(1)) }
             }
             variants.formUnion(initVariants)
             // Final swaps: ang<->an, eng<->en, ing<->in
