@@ -180,6 +180,7 @@ enum KeyboardTests {
         r102Wave1HardeningAndCraft(window)
         r104_1Build428HotfixRegressionTests(window)
         r105LicenseCleanAndPureWanxiangData(window)
+        r108ColloquialAndRecencyGate(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -4955,6 +4956,54 @@ enum KeyboardTests {
         log(legalClean && attributionOk && sizeOk && dataOk && englishOk && paramOk,
             "r105.Pure CC-BY-4.0/MIT offline data & LegalText remove copyleft while preserving decode/predict/English accuracy",
             "legal=\(legalClean) attr=\(attributionOk) size=\(gramBytes) data=\(dataOk) eng=\(englishOk) param=\(paramOk)")
+    }
+
+    /// R108: Colloquial & shorthand top-1 regression lock, commercial convergence, and UserDictionary recency decay.
+    static func r108ColloquialAndRecencyGate(_ window: UIWindow) {
+        let bundle = KeyboardViewController.resourceBundle
+        let gp = bundle.path(forResource: "grammar", ofType: "gram")
+        let lp = bundle.path(forResource: "lexicon", ofType: "bin")
+
+        var colloquialOk = false
+        var detail = "missing-bundle"
+        if let gp, let lp,
+           let lex = try? Lexicon(path: lp),
+           let gram = try? Grammar(path: gp) {
+            let dec = Decoder(lexicon: lex)
+            dec.grammar = gram
+            dec.scheme = .quanpin
+            let cases: [(String, String)] = [
+                ("hh", "哈哈"),
+                ("en", "嗯"),
+                ("enen", "嗯嗯"),
+                ("zoulo", "走咯"),
+                ("zouluo", "走咯"),
+                ("lailo", "来咯"),
+                ("lailuo", "来咯"),
+                ("haolo", "好咯"),
+                ("hhhhh", "哈哈哈哈哈"),
+            ]
+            var misses: [String] = []
+            for (keys, want) in cases {
+                let got = dec.decode(Array(keys).map { Tap.exact($0) }).candidates.first?.text ?? ""
+                if got != want { misses.append("\(keys)->\(got)(want \(want))") }
+            }
+            colloquialOk = misses.isEmpty
+            detail = misses.isEmpty ? "all-9-top1" : misses.joined(separator: ",")
+        }
+
+        let now = 1_800_000_000.0
+        let rNow = UserDictionary.recencyFactor(lastUsed: now, now: now)
+        let r30 = UserDictionary.recencyFactor(lastUsed: now - 30.0 * 86400.0, now: now)
+        let r180 = UserDictionary.recencyFactor(lastUsed: now - 180.0 * 86400.0, now: now)
+        let recencyOk = abs(rNow - 1.0) < 1e-6 && abs(r30 - 0.625) < 1e-6 && r180 > 0.25 && r180 < 0.30
+
+        let brandOk = LegalText.site == "https://mosto-keyboard.pages.dev"
+            && GuideSection.xiaohe.title == "双拼练习"
+
+        log(colloquialOk && recencyOk && brandOk,
+            "r108.Colloquial/shorthand top-1 gate, UserDictionary 30d recency decay, and commercial domain convergence hold",
+            "colloquial=\(detail) recency=\(recencyOk) brand=\(brandOk)")
     }
 }
 

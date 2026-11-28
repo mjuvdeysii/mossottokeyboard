@@ -108,9 +108,17 @@ public final class UserDictionary {
     public var count: Int { items.count }
     public var bigramCountForTests: Int { bigramCount }
 
-    func candidates(first: UInt16) -> [(ids: [UInt16], text: String, count: Int, lex: Int16?)] {
+    /// Smooth exponential recency weight (30-day half-life, 0.25 floor) so fresh colloquial picks rank promptly
+    /// while stale habits gently yield over weeks without being erased.
+    public static func recencyFactor(lastUsed: Double, now: Double = Date().timeIntervalSince1970, halfLifeDays: Double = 30.0) -> Double {
+        guard lastUsed > 0, now > lastUsed, halfLifeDays > 0 else { return 1.0 }
+        let ageDays = (now - lastUsed) / 86400.0
+        return 0.25 + 0.75 * pow(0.5, ageDays / halfLifeDays)
+    }
+
+    func candidates(first: UInt16) -> [(ids: [UInt16], text: String, count: Int, lex: Int16?, lastUsed: Double)] {
         guard let list = byFirst[first] else { return [] }
-        return list.compactMap { e in items[e.key].map { (e.ids, $0.t, $0.c, lexScore(e.key, e.ids, $0.t)) } }
+        return list.compactMap { e in items[e.key].map { (e.ids, $0.t, $0.c, lexScore(e.key, e.ids, $0.t), $0.u) } }
     }
 
     public func learn(syllables ids: [UInt16], text: String) {
@@ -170,10 +178,12 @@ public final class UserDictionary {
               let lastPrev = context.last, bigramPrevEndChars.contains(lastPrev),
               let firstWord = word.first, bigramNextStartChars.contains(firstWord),
               let list = byNext[String(word)] else { return 0 }
+        let now = Date().timeIntervalSince1970
         var best = 0.0
         for entry in list where context.count >= entry.prev.count && context.suffix(entry.prev.count).elementsEqual(entry.prev) {
             let scale = (entry.prev.count == 1 || word.count == 1) ? 0.5 : 1.0
-            let bonus = min(cap, weight * log(1.0 + Double(entry.c))) * scale
+            let effCount = Double(entry.c) * Self.recencyFactor(lastUsed: entry.u, now: now)
+            let bonus = min(cap, weight * log(1.0 + effCount)) * scale
             if bonus > best { best = bonus }
         }
         return best

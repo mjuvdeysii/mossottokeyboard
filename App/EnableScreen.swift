@@ -61,7 +61,7 @@ struct EnableContent: View {
             VStack(spacing: 10) {
                 EnableStepRow(step: 1, title: "打开设置", detail: "设置 › 通用 › 键盘 › 键盘", art: .settings)
                 EnableStepRow(step: 2, title: "添加 Mosto", detail: "添加新键盘 › 选中 Mosto键盘", art: .add)
-                EnableStepRow(step: 3, title: "地球键切换", detail: "长按地球键切换 · 全拼与九宫格即开即用，无需完全访问", art: .globe)
+                EnableStepRow(step: 3, title: "地球键切换", detail: "长按地球键切换；不开完全访问照常完整打字", art: .globe)
             }
 
             if let url = URL(string: UIApplication.openSettingsURLString) {
@@ -109,17 +109,32 @@ struct EnableContent: View {
                             .background(Capsule().fill(added ? MossOttoStyle.violet.opacity(0.12) : MossOttoStyle.surfaceMuted))
                     }
                 }
-                if SnapshotRenderer.requested {
-                    Text("全拼输入 nihao 或切换九宫格打一句“你好”试试")
-                        .font(.subheadline)
-                        .foregroundStyle(MossOttoStyle.inkSecondary.opacity(0.65))
-                        .frame(maxWidth: .infinity, minHeight: 38, alignment: .topLeading)
-                } else {
-                    TextField("全拼输入 nihao 或切换九宫格打一句“你好”试试", text: $text, axis: .vertical)
-                        .lineLimit(2...4)
-                        .focused(typing)
-                        .font(.subheadline)
+                Group {
+                    if SnapshotRenderer.requested {
+                        Text("全拼输入 nihao 或切换九宫格打一句“你好”试试")
+                            .font(.subheadline)
+                            .foregroundStyle(MossOttoStyle.inkSecondary.opacity(0.68))
+                            .frame(maxWidth: .infinity, minHeight: 38, alignment: .topLeading)
+                    } else {
+                        TextField("全拼输入 nihao 或切换九宫格打一句“你好”试试", text: $text, axis: .vertical)
+                            .lineLimit(2...4)
+                            .focused(typing)
+                            .font(.subheadline)
+                    }
                 }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(MossOttoStyle.canvas)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(
+                            verified ? MossOttoStyle.moss.opacity(0.65) : (typing.wrappedValue ? MossOttoStyle.violet.opacity(0.55) : MossOttoStyle.hairline),
+                            lineWidth: (typing.wrappedValue || verified) ? 1.2 : 0.8
+                        )
+                )
             }
             .padding(16)
             .background(
@@ -177,7 +192,7 @@ private struct EnableStatusHero: View {
 
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 8) {
-                    Text(verified ? "Mosto键盘已验通" : (added ? "Mosto键盘已就绪" : "三步启用 Mosto键盘"))
+                    Text(verified ? "Mosto键盘已验通" : (added ? "已添加 · 请试打验证" : "三步启用 Mosto键盘"))
                         .font(.headline)
                         .foregroundStyle(MossOttoStyle.inkPrimary)
                     Spacer(minLength: 4)

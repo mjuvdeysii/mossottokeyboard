@@ -921,12 +921,15 @@ public final class Decoder {
                 }
 
                 if let user {
+                    let now = Date().timeIntervalSince1970
                     for u in user.candidates(first: first.id) {
                         let L = u.ids.count
                         if first.kind == 2 && L == 1 { continue }
                         if first.kind == 1 && L > 1 { continue }
-                        let gain = L == 1 ? min(userCap / 4, userWeight * log(1 + Double(u.count)))
-                                          : min(userCap, userWordBoost + userWeight * log(1 + Double(u.count)))
+                        let decay = UserDictionary.recencyFactor(lastUsed: u.lastUsed, now: now)
+                        let effCount = Double(u.count) * decay
+                        let gain = L == 1 ? min(userCap / 4, userWeight * log(1 + effCount))
+                                          : min(userCap, userWordBoost * decay + userWeight * log(1 + effCount))
                         let base = (u.lex.map { Double($0) / 100 } ?? userPhraseScore) - wordPenalty + gain
                         chains({ u.ids[$0] }, count: L, first: first, base: base) { end, sp, corr, cuts, kinds in
                             // a learned word's boost never pays for reading a key as a slip (it would take over
