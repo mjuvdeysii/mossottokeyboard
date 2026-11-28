@@ -1128,7 +1128,7 @@ final class KeyboardViewController: UIInputViewController {
             : nil
         let spaceSchemeLabel: String? = isSecureField
             ? "password"
-            : (!chinese ? "English" : (pinyinGridOn ? "九宫格" : (scheme == .xiaohe ? "小鹤" : "全拼")))
+            : (!chinese ? "English" : (pinyinGridOn ? "九宫格" : (scheme == .xiaohe ? "双拼" : "全拼")))
         let ctx = LayoutContext(page: page, chinese: chinese, showGlobe: cachedShowGlobe,
                                          returnLabel: label, returnIsAccent: accent,
                                          shifted: shifted, capsLock: capsLock,

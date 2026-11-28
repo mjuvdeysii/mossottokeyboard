@@ -4521,7 +4521,7 @@ enum KeyboardTests {
         let handleNeedle = ["mjuv", "deysii"].joined()
         let legalClean = !LegalText.site.contains(handleNeedle)
             && !LegalText.site.contains("github.io")
-            && LegalText.supportURL == "https://mossotto.pages.dev/#support"
+            && LegalText.supportURL == "https://mosto.mossotto.pages.dev/#support"
             && LegalText.docs.allSatisfy { doc in
                 !doc.actions.isEmpty && doc.sections.allSatisfy { sec in
                     sec.1.allSatisfy { item in
@@ -4676,7 +4676,7 @@ enum KeyboardTests {
 
         // 1. Default Return is calm .function; host action returnIsAccent is .accent; Space shows scheme + bottom notch
         let idleRows = Layouts.rows(LayoutContext(page: .letters, chinese: true, showGlobe: false, returnLabel: nil, returnIsAccent: false, shifted: false, capsLock: false, keyBorders: true, spaceSchemeLabel: "全拼"))
-        let sendRows = Layouts.rows(LayoutContext(page: .letters, chinese: true, showGlobe: false, returnLabel: "发送", returnIsAccent: true, shifted: false, capsLock: false, keyBorders: true, spaceSchemeLabel: "小鹤"))
+        let sendRows = Layouts.rows(LayoutContext(page: .letters, chinese: true, showGlobe: false, returnLabel: "发送", returnIsAccent: true, shifted: false, capsLock: false, keyBorders: true, spaceSchemeLabel: "双拼"))
         let defaultRetFunction = idleRows[3].last?.style == .function
         let sendRetAccent = sendRows[3].last?.style == .accent
         let spaceHasLabel = idleRows[3].first(where: { $0.action == .space })?.label == "全拼"

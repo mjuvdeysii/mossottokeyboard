@@ -465,6 +465,21 @@ def build_wanxiang_scores(wanxiang_dir: str, gram_path: str, demote_path: str, g
     for k in list(scores):
         if k[0] in demote or any(c in demote for c in k[0]):
             scores[k] = min(scores[k], -500)
+    boost_path = os.path.join(ROOT, "Tools/data/colloquial_boost.tsv")
+    if os.path.exists(boost_path):
+        with open(boost_path, encoding="utf-8") as bf:
+            for ln in bf:
+                ln = ln.strip()
+                if not ln or ln.startswith("#"):
+                    continue
+                parts = ln.split("\t")
+                if len(parts) < 3:
+                    continue
+                bt, bsy, bsc = parts[0].strip(), tuple(parts[1].strip().split()), int(parts[2].strip())
+                if all(sy in CANONICAL_SYLLABLES and code_for(sy) is not None for sy in bsy):
+                    k = (bt, bsy)
+                    if k not in scores or scores[k] < bsc:
+                        scores[k] = bsc
     return scores, skipped
 
 

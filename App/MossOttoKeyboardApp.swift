@@ -335,7 +335,7 @@ struct CompanionCapabilitiesSection: View {
             icon: "keyboard",
             tint: MossOttoStyle.violet,
             title: "全拼与九宫格",
-            detail: "全键盘整句顺打与九宫格单手速输，兼顾小鹤双拼。",
+            detail: "全键盘整句顺打与九宫格单手速输，支持按需开启双拼。",
             linkLabel: "看技巧"
         ),
         Item(
@@ -447,7 +447,7 @@ enum GuideSection: Int, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .atlas: return "输入与手势"
-        case .xiaohe: return "小鹤双拼"
+        case .xiaohe: return "双拼练习"
         }
     }
 }

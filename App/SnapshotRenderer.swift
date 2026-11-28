@@ -163,7 +163,7 @@ enum SnapshotRenderer {
                                            xiaoheGuide: isGuideShot,
                                            xiaohePendingInitial: chordInitial,
                                            spaceOverride: shot.state == "smart_space" ? "跳出 》" : nil,
-                                           spaceSchemeLabel: isEn ? nil : (isGuideShot ? "小鹤" : "全拼")))
+                                           spaceSchemeLabel: isEn ? nil : (isGuideShot ? "双拼" : "全拼")))
                 // 九宫格 keys have no neighbours to slip onto: its first candidate carries no correction
                 let t9Shot = isT9
                 var composing = candidates(["你好", "尼好", "泥好", "拟好", "你", "尼", "泥", "拟", "逆", "腻", "nihc"], correctedFirst: !t9Shot)

@@ -10,7 +10,7 @@ struct XiaoheGuideView: View {
                 .padding(.vertical, 12)
         }
         .background(MossOttoStyle.canvas.ignoresSafeArea())
-        .navigationTitle("小鹤双拼")
+        .navigationTitle("双拼练习")
         .navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -55,7 +55,7 @@ struct XiaoheGuideContent: View {
 
                     VStack(alignment: .leading, spacing: 8) {
                         KeystrokeMeterRow(label: "全拼", ratio: 1.0, metric: "~3.0 键/字", highlight: false)
-                        KeystrokeMeterRow(label: "小鹤", ratio: 2.0 / 3.0, metric: "固定 2 键 · 省 33%", highlight: true)
+                        KeystrokeMeterRow(label: "双拼", ratio: 2.0 / 3.0, metric: "固定 2 键 · 省 33%", highlight: true)
                     }
                 }
             }
@@ -100,7 +100,7 @@ struct XiaoheGuideContent: View {
                     Image(systemName: "info.circle")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(MossOttoStyle.violet)
-                    Text("学习成本与名称权利声明（小鹤方案 · 万象开放词库）")
+                    Text("学习成本与名称权利声明（可选双拼方案 · 开放语料）")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(MossOttoStyle.inkPrimary)
                     Spacer()

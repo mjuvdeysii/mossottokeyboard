@@ -1,0 +1,168 @@
+# Mosto Keyboard R106 Colloquial & IM High-Frequency Boost Dictionary
+# Format: text<TAB>space_separated_pinyin<TAB>min_score (ln_freq * 100)
+# Exempts high-frequency chat words from written-corpus pruning (c < 260) and <900 tail penalty.
+哈哈	ha ha	1305
+哈哈哈	ha ha ha	1280
+哈哈哈哈	ha ha ha ha	1265
+嗯嗯	en en	1275
+哦哦	o o	1260
+啊啊	a a	1240
+嘿嘿	hei hei	1255
+嘻嘻	xi xi	1245
+呵呵	he he	1248
+呜呜	wu wu	1220
+啧啧	ze ze	1195
+走咯	zou lo	1245
+来咯	lai lo	1245
+好咯	hao lo	1240
+去咯	qu lo	1235
+吃咯	chi lo	1235
+睡咯	shui lo	1235
+到咯	dao lo	1235
+买咯	mai lo	1225
+回咯	hui lo	1225
+行咯	xing lo	1225
+对咯	dui lo	1230
+玩咯	wan lo	1220
+看咯	kan lo	1220
+懂咯	dong lo	1220
+走啦	zou la	1250
+来啦	lai la	1255
+好啦	hao la	1260
+去啦	qu la	1245
+吃啦	chi la	1240
+睡啦	shui la	1245
+到啦	dao la	1250
+回啦	hui la	1235
+行啦	xing la	1240
+对啦	dui la	1245
+好呀	hao ya	1255
+来呀	lai ya	1240
+走呀	zou ya	1235
+去呀	qu ya	1235
+吃呀	chi ya	1230
+看呀	kan ya	1230
+对呀	dui ya	1255
+是呀	shi ya	1255
+行呀	xing ya	1240
+好吧	hao ba	1275
+行吧	xing ba	1260
+走吧	zou ba	1265
+去吧	qu ba	1255
+来吧	lai ba	1255
+吃吧	chi ba	1245
+睡吧	shui ba	1250
+算吧	suan ba	1220
+好嘛	hao ma	1235
+行嘛	xing ma	1225
+干嘛	gan ma	1265
+干嘛呢	gan ma ne	1250
+干啥	gan sha	1250
+干啥呢	gan sha ne	1240
+啥呀	sha ya	1235
+啥啊	sha a	1235
+咋了	za le	1245
+咋办	za ban	1240
+咋样	za yang	1240
+咋啦	za la	1235
+没事	mei shi	1290
+没事儿	mei shi er	1245
+没事啦	mei shi la	1240
+没关系	mei guan xi	1285
+没问题	mei wen ti	1280
+没毛病	mei mao bing	1235
+好的	hao de	1305
+好的呢	hao de ne	1245
+好滴	hao di	1245
+好哒	hao da	1245
+好嘞	hao lei	1255
+行嘞	xing lei	1235
+得嘞	dei lei	1230
+收到	shou dao	1295
+知道了	zhi dao le	1285
+懂了	dong le	1260
+明白	ming bai	1285
+可以的	ke yi de	1265
+可以啊	ke yi a	1250
+行啊	xing a	1255
+好啊	hao a	1270
+对啊	dui a	1270
+是啊	shi a	1275
+不是吧	bu shi ba	1250
+真的吗	zhen de ma	1255
+真的假的	zhen de jia de	1245
+怎么了	zen me le	1275
+怎么啦	zen me la	1255
+在吗	zai ma	1260
+在呢	zai ne	1255
+在干嘛	zai gan ma	1255
+拜拜	bai bai	1265
+晚安	wan an	1285
+早安	zao an	1275
+早上好	zao shang hao	1270
+晚上好	wan shang hao	1260
+辛苦了	xin ku le	1275
+麻烦了	ma fan le	1260
+不好意思	bu hao yi si	1285
+不用谢	bu yong xie	1255
+太好了	tai hao le	1275
+太棒了	tai bang le	1260
+笑死	xiao si	1255
+笑死我了	xiao si wo le	1240
+确实	que shi	1285
+离谱	li pu	1235
+绝了	jue le	1235
+稳了	wen le	1230
+服了	fu le	1240
+冲冲冲	chong chong chong	1220
+加油	jia you	1290
+马上	ma shang	1290
+稍等	shao deng	1270
+等下	deng xia	1275
+等一下	deng yi xia	1275
+待会	dai hui	1260
+待会儿	dai hui er	1240
+一会	yi hui	1265
+一会儿	yi hui er	1260
+刚才	gang cai	1275
+回头	hui tou	1260
+困了	kun le	1245
+饿了	e le	1255
+到了	dao le	1285
+走了	zou le	1280
+来了	lai le	1285
+好了	hao le	1290
+去了	qu le	1275
+吃了	chi le	1275
+睡了	shui le	1270
+醒了	xing le	1245
+买了	mai le	1265
+回了	hui le	1250
+下了	xia le	1245
+快点	kuai dian	1265
+快点儿	kuai dian er	1230
+慢点	man dian	1250
+注意点	zhu yi dian	1235
+早点睡	zao dian shui	1250
+别忘了	bie wang le	1255
+记得	ji de	1285
+放心	fang xin	1280
+放心吧	fang xin ba	1255
+随便	sui bian	1275
+都行	dou xing	1265
+都可以	dou ke yi	1270
+无所谓	wu suo wei	1260
+算了	suan le	1280
+算了吧	suan le ba	1255
+我去	wo qu	1260
+我天	wo tian	1240
+天呐	tian na	1245
+天哪	tian na	1245
+哇塞	wa sai	1230
+牛逼	niu bi	1220
+厉害	li hai	1285
+厉害了	li hai le	1255
+可以	ke yi	1308
+不要	bu yao	1302
+不会	bu hui	1302
+真的	zhen de	1309
