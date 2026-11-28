@@ -4521,7 +4521,7 @@ enum KeyboardTests {
         let handleNeedle = ["mjuv", "deysii"].joined()
         let legalClean = !LegalText.site.contains(handleNeedle)
             && !LegalText.site.contains("github.io")
-            && LegalText.supportURL == "https://mosto.mossotto.pages.dev/#support"
+            && LegalText.supportURL == "https://mosto-keyboard.pages.dev/#support"
             && LegalText.docs.allSatisfy { doc in
                 !doc.actions.isEmpty && doc.sections.allSatisfy { sec in
                     sec.1.allSatisfy { item in

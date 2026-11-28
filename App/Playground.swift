@@ -263,19 +263,19 @@ struct FamilyLampStageView: View {
                 .fill(darkStage ? Color.white.opacity(0.08) : MossOttoStyle.hairline)
                 .frame(height: 0.5)
 
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 10) {
-                    footerText
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(alignment: .center, spacing: 8) {
+                    Text(model.activeMember.displayName + " · " + model.activeMember.chineseRole)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(darkStage ? Color.white.opacity(0.94) : MossOttoStyle.inkPrimary)
+                        .lineLimit(1)
                     Spacer(minLength: 6)
                     footerLampButton
                 }
-                VStack(alignment: .leading, spacing: 8) {
-                    footerText
-                    HStack {
-                        Spacer(minLength: 0)
-                        footerLampButton
-                    }
-                }
+                Text(model.statusLine)
+                    .font(.caption2)
+                    .foregroundStyle(darkStage ? Color.white.opacity(0.72) : MossOttoStyle.inkSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 11)
@@ -291,18 +291,6 @@ struct FamilyLampStageView: View {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .strokeBorder(darkStage ? Color.white.opacity(0.12) : MossOttoStyle.hairline, lineWidth: 0.5)
         )
-    }
-
-    private var footerText: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(model.activeMember.displayName + " · " + model.activeMember.chineseRole)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(darkStage ? Color.white.opacity(0.92) : MossOttoStyle.inkPrimary)
-            Text(model.statusLine)
-                .font(.caption2)
-                .foregroundStyle(darkStage ? Color.white.opacity(0.68) : MossOttoStyle.inkSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
     }
 
     private var footerLampButton: some View {

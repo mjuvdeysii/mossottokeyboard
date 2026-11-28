@@ -205,7 +205,10 @@ struct CompanionEnableCard: View {
                             .padding(.horizontal, 12)
                             .padding(.vertical, 7)
                             .background(
-                                Capsule().fill(added ? MossOttoStyle.violet.opacity(0.12) : MossOttoStyle.violet)
+                                Capsule().fill(added ? MossOttoStyle.violet.opacity(0.16) : MossOttoStyle.violet)
+                            )
+                            .overlay(
+                                Capsule().strokeBorder(added ? MossOttoStyle.violet.opacity(0.32) : Color.clear, lineWidth: 0.75)
                             )
                     }
                 }
@@ -278,11 +281,14 @@ struct CompanionEnableCard: View {
                 .padding(.vertical, 8)
                 .background(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(MossOttoStyle.surfaceMuted)
+                        .fill(MossOttoStyle.canvas)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(verified ? MossOttoStyle.moss.opacity(0.55) : Color.clear, lineWidth: 1)
+                        .strokeBorder(
+                            verified ? MossOttoStyle.moss.opacity(0.65) : (typing.wrappedValue ? MossOttoStyle.violet.opacity(0.55) : MossOttoStyle.hairline),
+                            lineWidth: (typing.wrappedValue || verified) ? 1.2 : 0.8
+                        )
                 )
                 .onChange(of: verified) { passed in
                     if passed {
@@ -593,7 +599,7 @@ struct GestureAtlasContent: View {
                             .accessibilityAddTraits(.isButton)
                             .accessibilityLabel("底栏 Mosto 超级键，单击表情，双击颜文字，按住打开设置")
 
-                        Text(selectedMosto?.badge ?? "底栏 Mosto 单击表情 · 双击颜文字 · 按住设置")
+                        Text(selectedMosto?.badge ?? "点按下方动作或左侧 Mosto 预览反馈")
                             .font(.caption2.weight(.medium))
                             .foregroundStyle(previewNight ? Color.white.opacity(0.74) : MossOttoStyle.inkSecondary)
                             .lineLimit(1)
@@ -700,16 +706,10 @@ struct GestureAtlasContent: View {
                 Text(title)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(MossOttoStyle.inkPrimary)
-                WrapLayout(spacing: 5, lineSpacing: 4) {
-                    ForEach(chips, id: \.self) { chip in
-                        Text(chip)
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(MossOttoStyle.inkSecondary)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 2.5)
-                            .background(Capsule().fill(MossOttoStyle.surfaceMuted))
-                    }
-                }
+                Text(chips.joined(separator: "  ·  "))
+                    .font(.caption)
+                    .foregroundStyle(MossOttoStyle.inkSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
         }

@@ -2990,7 +2990,7 @@ final class SettingsPanelView: UIView {
             value: s.scheme == 0 ? "双拼" : "全拼",
             active: s.scheme == 0,
             isModeSelector: true,
-            spoken: "输入方案：\(s.scheme == 0 ? "小鹤双拼" : "全拼")"
+            spoken: "输入方案：\(s.scheme == 0 ? "双拼（小鹤兼容键位）" : "全拼")"
         )
         layoutTile.configure(
             icon: s.pinyinGrid ? "square.grid.3x3" : "keyboard",

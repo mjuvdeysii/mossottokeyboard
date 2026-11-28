@@ -106,8 +106,9 @@ struct LampConeBackdrop: View {
                         endRadius: 110
                     )
                 )
-                .frame(width: 210, height: 64)
-                .offset(y: -26)
+                .frame(width: 230, height: 76)
+                .offset(y: -30)
+                .blur(radius: 12)
                 .opacity(dimmerOpacity)
             VStack(spacing: 0) {
                 Spacer(minLength: 0)
