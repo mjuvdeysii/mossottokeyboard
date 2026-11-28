@@ -1,0 +1,314 @@
+FAILURES 1
+PASS xiaohe.marked shows the keys
+PASS xiaohe.space commits 你好
+PASS xiaohe.odd keys: keyil → 可以了
+PASS xiaohe.delete takes back one key
+PASS xiaohe.delete all keys leaves the text
+PASS xiaohe.delete then deletes text
+PASS xiaohe.return commits the letters
+PASS xiaohe.tap the second candidate
+PASS xiaohe.中/英 mid-word commits the letters
+PASS xiaohe.tap first candidate before decode returns still commits
+PASS xiaohe.tapping a candidate never blocks the main thread
+PASS quanpin.nihao → 你好
+PASS quanpin.abbreviation nh → 你好
+PASS style.简洁 types as before
+PASS style.back to Mosto
+PASS continuous.，commits the reading first
+PASS continuous.。 after the next words
+PASS quanpin.one key too many: jintianttianqihenhao → 今天天气很好
+PASS quanpin.undo chip offers the keys as typed
+PASS quanpin.undo chip puts the keys back
+PASS quanpin.after undo, space commits the keys read without correction
+PASS quanpin.one key left out: woxiangqumaidonxi → 我想去买东西
+PASS mixed.woyongiphonedazi → 我用iPhone打字
+PASS english.teh → the
+PASS english.delete undoes the correction
+PASS english.double space types a full stop
+PASS mixed.ok → OK
+PASS numbers.。 after a digit is a decimal point
+PASS predict.suggestions after 你好
+PASS predict.tap types the suggestion
+PASS emoji.蛋糕 offers 🎂 after the words
+PASS predict.a key ends the suggestions
+PASS predict.marks setup
+PASS predict.strip marks these as guesses
+PASS predict.a guess is never labelled as a correction
+PASS predict.thinking and shift/globe keep the suggestions
+PASS predict.a letter still ends the suggestions
+PASS moved.delete after moving the cursor deletes one character
+PASS mosto.tap mid-word commits the word first
+PASS t9.keys compose with the pinyin shown
+PASS t9.64426 → 你好
+PASS t9.重输 drops the keys
+PASS app.focusFamilyMember switches from about to companion and greets member
+PASS app.clearInput leaves undo chip
+PASS clearSwipe.discardComposition leaves clean field without stale undo chip
+PASS app.swipe left from delete clears composing keys into restorable undo chip
+PASS app.tapping undo chip restores cleared keys
+PASS cursor.100 pt / 0.5 s: 8 characters (build 225's steps), 2 ticks, 1 cursor mode
+PASS cursor.300 pt / 0.25 s: 80 characters (build 225's steps), 3 ticks (≤ 3), gaps 100,100 ms (≥ 100)
+PASS cursor.50 pt/s for 1.2 s: 5 characters (build 225's steps), 1 ticks, 1.1 a second (want 1.9 ± 1), at most 1 in a second
+PASS cursor.100 pt/s for 1.2 s: 10 characters (build 225's steps), 3 ticks, 3.1 a second (want 3.7 ± 1), at most 3 in a second
+PASS cursor.200 pt/s for 1.2 s: 24 characters (build 225's steps), 8 ticks, 7.4 a second (want 7.4 ± 1), at most 8 in a second
+PASS cursor.400 pt/s for 1.2 s: 51 characters (build 225's steps), 11 ticks, 9.7 a second (want 10.0 ± 1), at most 10 in a second
+PASS cursor.800 pt/s for 1.2 s: 172 characters (build 225's steps), 12 ticks, 10.3 a second (want 10.0 ± 1), at most 10 in a second
+PASS cursor.1200 pt/s for 1.2 s: 405 characters (build 225's steps), 12 ticks, 10.3 a second (want 10.0 ± 1), at most 10 in a second
+PASS cursor.2000 pt/s for 1.2 s: 685 characters (build 225's steps), 12 ticks, 10.1 a second (want 10.0 ± 1), at most 10 in a second
+PASS cursor.still 0.3 s, then 9.5 pt: 1 character(s), 1 tick
+PASS cursor.turning back: the first character back ticks (1 tick on the way back)
+PASS cursor.at the end: 0 characters and 0 ticks; back 60 pt: 5 characters, 2 ticks
+PASS cursor.drag on space while composing: no cursor mode, 0 ticks, the space goes in as before
+PASS feedback.table letter
+PASS feedback.table 九宫格 key
+PASS feedback.table space
+PASS feedback.table delete
+PASS feedback.table return
+PASS feedback.table shift
+PASS feedback.table candidate
+PASS feedback.table undo chip
+PASS feedback.table other characters shown
+PASS feedback.table other character chosen
+PASS feedback.table cursor mode
+PASS feedback.table cursor step
+PASS feedback.table cursor boundary
+PASS feedback.table word delete
+PASS feedback.table clear armed
+PASS feedback.table clear
+PASS feedback.table Mosto
+PASS feedback.inside the app: allowed
+PASS feedback.a: one light tap and a click
+PASS feedback.delete: one firm tap and the delete click
+PASS feedback.Mosto: soft
+PASS feedback.no key is soft
+PASS feedback.震动 off: only the click
+PASS feedback.按键音 off: only the tap
+PASS feedback.without full access: nothing
+PASS feedback.diagnostics say 完全访问 未开
+PASS feedback.long press ，: the key (light + 1104), then 1 tick as the choices show, no other tap, one click
+PASS feedback.long press ，, slide to the second choice: 1 more tick
+PASS feedback.cursor drag 100 pt / 0.5 s: 2 ticks played, as the cursor group counted; space and cursor mode firm
+PASS feedback.candidate: nothing as the finger lands, one light tap and 1104 as it lifts and selects
+PASS feedback.slide 60 pt on the candidates, then lift: nothing felt, nothing typed
+PASS feedback.nihap (p toward o), space: 你好 goes in corrected, ↩ nihap offered
+PASS feedback.nihap, space: 5 light taps for the letters, then only the space key's firm tap and 1104 (nothing for the correction)
+PASS feedback.↩ after the correction: one firm tap and 1155
+PASS feedback.the correction, start to undo: nothing soft
+PASS strip.300 candidates: only the first screens are laid out, ⌄ shown
+PASS strip.300 candidates: scrolled to the end, the last is the keys as typed, the row's length is the items' widths
+PASS strip.one refresh of 300 candidates: median 0.272 ms (≤ 2.0 ms, 100 refreshes)
+PASS strip.another list starts from the beginning
+PASS strip.the same list again leaves the row where it was
+PASS strip.swipe left 30 pt from the first choice: nothing typed
+PASS strip.swipe left 30 pt from the first choice (scrolling): nothing typed
+PASS strip.swipe left 60 pt from the first choice: nothing typed
+PASS strip.swipe left 60 pt from the first choice (scrolling): nothing typed
+PASS strip.swipe left 120 pt from the first choice: nothing typed
+PASS strip.swipe left 120 pt from the first choice (scrolling): nothing typed
+PASS strip.slow slide 60 pt over 0.8 s: no 删除已学词语
+PASS strip.(control) a finger held still 0.6 s is a hold
+PASS strip.tap (6 pt drift, 0.25 s) types the word under the finger
+PASS strip.scrolled to the 9th, a tap types the 9th
+PASS strip.a tap while the row glides types nothing
+PASS strip.after scrolling, the next key starts the row from the beginning
+PASS strip.right 120 pt then left 120 pt on the strip: nothing typed, nothing cleared
+PASS clearSwipe.typing: 5000 keys (letters 82%, delete 8%, space 10%, seed 4d6f73746f523302): 0 clears, field as without the swipe
+PASS clearSwipe.delete dragged 30 pt left: one key deleted
+PASS clearSwipe.held 0.6 s then 80 pt left: held delete as before, no clear
+PASS clearSwipe.up-left Δx −60 Δy −40: no clear
+PASS clearSwipe.nothing composed: 60 pt left deletes one character
+PASS clearSwipe.from m to delete and back: as before, no clear
+PASS clearSwipe.space right 60 then left 60: as before (commits), no clear
+PASS clearSwipe.armed then cancelled by the system: one key deleted, no clear
+PASS clearSwipe.armed then back over delete: one key deleted, no clear, 2 ticks
+PASS clearSwipe.long press ， and slide: as before, no clear
+PASS clearSwipe.one finger still on delete, another sliding on the letters: as before, no clear
+PASS clearSwipe.portrait: 60/60 swipes inside the definition clear
+PASS clearSwipe.portrait: ↩ brings back the same keys and the same first twenty candidates after every clear (60/60)
+PASS feedback.swipe that clears: delete (firm + 1155), tick, clear (firm + 1156)
+PASS clearSwipe.cleared: the field keeps 你好, the chip shows jintian
+PASS feedback.↩ after a clear: firm + 1155
+PASS clearSwipe.after a clear, delete deletes a character and the chip goes
+PASS clearSwipe.after a clear, a letter starts a new composition and the chip goes
+PASS clearSwipe.a long composition: the chip reads woxian…ongxi
+PASS clearSwipe.landscape: 30/30 swipes inside the definition clear
+PASS clearSwipe.landscape: 30 grid swipes end within 12 pt of the key's edge (outside the definition) and do not clear
+PASS clearSwipe.landscape: ↩ brings back the same keys and the same first twenty candidates after every clear (30/30)
+PASS clearSwipe.九宫格: 60/60 swipes inside the definition clear
+PASS clearSwipe.九宫格: ↩ brings back the same keys and the same first twenty candidates after every clear (60/60)
+PASS clearSwipe.九宫格 重输 leaves the chip with the pinyin
+PASS clearSwipe.九宫格 ↩ after 重输 brings the keys back
+PASS r48.comma flick-up emits 。 while tap & pull-back keep ，
+PASS r48.xiaohe pill keeps exact raw letters with 2-key breathing kerning
+PASS r48.2pt correction glow bar shows when slot 0 is corrected
+PASS r48.2pt correction glow bar hides when slot 0 is not corrected
+PASS r48.prediction mode hides both glow bar and raw-letter pill
+PASS r48.grid single-char filter shows only 1-char candidates and emits real index
+PASS r48.grid hides single-char filter when all candidates are already 1-char
+PASS r49.english period flick-up emits comma while tap & pull-back keep period
+PASS r49.t9 comma flick-up emits 、
+PASS r49.live dock uses right-anchored left fade within 110pt cap
+PASS r49.setClearPreview dims live dock alongside strip
+PASS r49.expanded candidate grid widens live dock across toolbar
+PASS r49.kaomoji library enriched (>= 170) with zero duplicates
+PASS r49.grid preserves single-char filter when preserveFilter is true
+PASS r49.xianzai offers HH:mm dynamic time candidate
+PASS r49.xiageyue offers next month dynamic candidate
+PASS r50.Theme.font caches identical font instances across keystrokes
+PASS r50.AmbientLightView uses zero offscreen full-screen layer mask
+PASS r50.settings & grid panels remain lazy before opening while diagnostics stay readable
+PASS r50.sculpted KeyViews each hold a single CAGradientLayer surface
+PASS r50.velocity-adaptive preview shows on slow tap and suppresses occluding popup during rapid burst (<130ms)
+PASS r51.KeyView skips redundant apply work when KeySpec and borders are unchanged
+PASS r51.CandidateBarView preserves word width cache across commits
+PASS r52.SettingsPanelView exposes 6 hardware tiles, toggles scheme cleanly, and switches secondary drawer
+PASS r52.EmojiPanelView organizes kaomoji into mood tape while preserving unique expressions
+PASS r52.KeyView optically nudges fullwidth CJK comma right toward key center
+PASS r53.CandidateGridView long-press emits real candidate index under single-char filter
+PASS r53.Theme.plain hides light and kaomoji pills when clearInput undo chip is shown
+PASS r53.English suggestion tap preserves double-space period across selectionDidChange
+PASS r54.KeyboardView Leica optical trackpad ruler shows & translates on cursor drag and hides cleanly
+PASS r54.ClearSwipe continuous progress drives CandidateBarView amber filament cleanly
+PASS r54.HapticProfile distinct tuning & SettingsPanelView 4-state tactile cycling
+PASS r54.EmojiPanelView keeps uncluttered Kaomoji dock with centered Emoji/Kaomoji switch
+PASS r55.KeyView exposes sub-glyph corner legends across punctuation/symbol pages while keeping letters pure
+PASS r55.Flick-up pre-arm & engagement couple KeyView corner legend and KeyPreview cleanly
+PASS r55.Trailing arithmetic tags candidate with 心算 and commits without language prediction follow-up
+PASS r56.mosto demoYawn leaves day pose
+PASS r56.mosto hiding mid-yawn in day mode restores day pose
+PASS r56.xiaohe slip sentence jbtmtmqohfhc commits expected phrase
+PASS r56.xiaohe missing-key sentence jbtmtmqihfh → 今天天气很好
+PASS r57.FamilyAtmosphere toggles cleanly across day <-> night and LampPullCordSwitch exposes valid threshold
+PASS r57.KeyView 2D CoreText opticalOffset centers fullwidth 。 horizontally and lifts it vertically
+PASS r57.Symbol key × separates cleanly below its top-right ÷ corner legend
+PASS r58.correctionPinpoint isolates slipped, extra, and omitted key indices accurately
+PASS r58.CandidateBarView preeditDock lights slipped Xiaohe key and resets cleanly on next keystroke
+PASS r58.Flick-up pull-back emits bidirectional detent feedback on engage and snap-back
+PASS r58.Controller reports live correction pinpoint while composing and clears on commit
+PASS r59.Trackpad shows live relative step pill during cursor drag and hides cleanly on release
+PASS r59.Trackpad clamps at end with rubber-band, single boundary detent, and unlocks on reversal
+PASS r59.Trackpad pulses .cursorBoundary and marks newline symbol when stepping over line break
+PASS r59.Trackpad treats unavailable host context as free scroll without false boundary clamp
+PASS r60.English ClearSwipe clears active word with filament and ↩ restores word + suggestions
+PASS r60.Held delete clutch shows progressive filament, engages word-delete, and ↩ restores deleted words
+PASS r60.Next key dismisses word-delete ↩ chip
+PASS r60.Cancelled held delete resets clutch filament without leaving ↩ chip
+PASS r60.Held word-delete over newline displays ↵ on ↩ chip and restores exact newline
+PASS r60.Xiaohe recovers [1+2] first-syllable missing key sentence (jtmtmqihfhc -> 今天天气很好) with missing pinpoint
+PASS r60.Xiaohe recovers full sentences with mid-sentence missing keys
+PASS r60.Xiaohe preserves normal odd-length next-syllable prediction (keyil / nihcm)
+PASS r61.Smart CJK bracket overtypes closing mark without duplicating it
+PASS r61.English session undo twice stops autocorrect from fighting intentional spelling
+PASS r61.Returning from Kaomoji panel and tapping Delete removes the full kaomoji in one tap
+PASS r61.CandidateGridView renders correctionBar accent under corrected slot 0
+PASS r62.Nested CJK pair stack overtypes & unwinds cleanly without duplicate closing marks
+PASS r62.Trailing arithmetic evaluates expressions containing Chinese fullwidth parentheses
+PASS r62.EmojiPanelView couples mood pose, Mosto shortcut toggle, and live 常用 kaomoji sync
+PASS r63.Metrics locks single calibrated portrait/landscape heights and optical font scale
+PASS r63.SettingsPanelView renders hardware deck and utility row cleanly at calibrated height
+PASS r63.KeyboardViewController locks calibrated fixed portrait and landscape heights
+PASS r63.KeyboardView scales letter cap typography optically across cap heights
+PASS r63.Metrics maintains calibrated portrait and landscape totals
+PASS r64.Single-finger Shift glide types uppercase letter in Chinese mode and springs back; pull-back cancels
+PASS r64.Two-finger Shift chord types uppercase run and resets Shift on release
+PASS r64.123 spring-loaded glide, #+= secondary hop, edge-block safety, and two-finger chord
+PASS r64.Numpad 123 spring-loaded glide inserts digit and returns to letters
+PASS r65.招牌 kaomoji group is deduplicated to 12 distinct expressions across 229+ unique items
+PASS r65.EmojiPanelView fits whole kaomoji rows cleanly across compact..tall tiers
+PASS r65.SettingsPanelView caps tile height on tall views and avoids utilityRow overlap at 375x226
+PASS r65.FamilyAtmosphere captions avoid internal milestone jargon
+PASS r66.SettingsPanelView keeps accessBanner and utilityRow non-overlapping at 480x186 compact landscape
+PASS r66.CandidateGridView shows bottom dock close button and triggers onClose on tap
+PASS r66.XiaoheDrill interactive key inspector returns verified 2-key examples for zh/sh/liang keys
+PASS r67.pinyinPad punctuation keys expose rich moreAlts for brackets and marks
+PASS r67.Row-0 AltPopup clamps inside host keyboard bounds without top clipping
+PASS r67.Sliding across Row-0 九宫格 AltPopup inserts matching smart pair with cursor inside
+PASS r67.Controller triggers live trailing arithmetic candidate 383
+PASS r67.Controller reproduces live autocorrect pinpoint state
+PASS r68.Space commits trailing math result cleanly and chains subsequent calculations
+PASS r68.CandidateBarView.offerForget stages exclusive non-overlapping overlay and restores cleanly on cancel
+PASS r68.ClearArmed micro-cue displays only for armed delete-left swipe and resets cleanly
+PASS r68.EmojiPanelView applies soft bottom fade, keeps portrait dock lightbulb unclipped, and opens Kaomoji in 1 tap
+PASS r69.KeyboardSettings persists preferences reliably in UserDefaults.standard without App Group drops
+PASS r69.KeyboardViewController holds calibrated portrait height across settings close, updateViewConstraints, and viewWillAppear
+PASS r69.Visual Hardware Console renders tile icons cleanly and avoids utilityRow overlap on compact screens
+PASS r69.FamilyStageModel syncs keySound cleanly without clobbering persisted keyboard settings
+PASS r70.EmojiPanelView keeps uncluttered switcher and Mosto tab completely visible inside Kaomoji dock
+PASS r70.CandidateGridView filters all/phrases/single-char with live badge, real index mapping, and non-overlapping dock
+PASS r70.CandidateGridView enables dynamic bottom fade only when vertical candidates overflow
+PASS r71.XiaoheScheme.allSyllables matches lexicon.bin 100% and round-trips every 2-key code
+PASS r71.XiaoheScheme.chordHint discriminates dual-final keys and zero-initial completions accurately
+PASS r71.Live Xiaohe Chord Lighting tracks odd/even beats, backspaces, and Companion App inspector
+PASS r72.KeyView balances CJK bracket glyph weight and keeps corner hints separated
+PASS r72.SettingsPanelView secondary drawer formats telemetry chips cleanly and fits compactly
+PASS r72.Companion App provides 3 focused tabs and 3 OTTOSSOM IP family members
+PASS r73.CandidateBarView replaces duplicate grid row-1 strip with wide preedit dock in Mosto mode
+PASS r73.ClearArmed cue stays opaque and strictly non-overlapping with stripBox
+PASS r74.KeyboardViewController holds portrait height rock-steady across transient host frames and mutates once per orientation flip
+PASS r74.SyllablePickerView renders ceramic tuner slot card, active bar, and separator lines
+PASS r74.EmojiPanelView keeps bottom-left return key visually consistent across Emoji and Kaomoji
+PASS r75.CandidateBarView renders non-overlapping delete-clutch count + preview capsules and yields Mosto
+PASS r75.Held-delete clutch fires gear-shift detent, tracks deleted chars live without idle collision, and hands off to ↩
+PASS r75.Single-key ClearSwipe suppresses idle pills during armed preview and restores via ↩
+PASS r76.CandidateBarView renders non-overlapping cursor scrub HUD, boundary stop, and cleanly restores idle state
+PASS r76.Live spacebar trackpad scrubbing drives cursor telemetry HUD, suppresses idle chrome, and restores on finger up
+PASS r76.KeyView optically sizes 【】 brackets (<=21pt PingFangSC-Regular) with extra corner hint clearance
+PASS r77.KeyView uses clean borderless squircle caps with tactile bottom lip and EmojiPanelView triggers tactile feedback
+PASS r78.EmojiPanelView prevents trailing dock icon half-slicing and syncs Kaomoji Mosto ceramic badge
+PASS r78.SettingsPanelView integrates back capsule cleanly in header with streamlined secondary drawer
+PASS r78.XiaoheGuideContent dual-slot watermarks & condensed comparison meter render cleanly
+PASS r79.Spacebar honestly morphs for CJK smart-pair exit, clears on cursor leave, and previews trailing math
+PASS r80.violet CTA foreground passes WCAG AA in Day and Night
+PASS r80.Companion capabilities and consumer privacy cards provide focused 4-item summaries
+PASS r80.globe spacebar preserves homing bar without affecting numpad space label
+PASS r81.trackpad ruler floats cleanly over smoked-glass dimmed keycaps
+PASS r81.smart spacebar illuminates accent rim and resets to standard hairline
+PASS r81.numbers quotes center via CoreText bounds and CJK parens clear bracket hints
+PASS r82.globe numpad keeps 0 aligned vertically under 2 5 8 spine
+PASS r82.landscape emoji dock relaxes targets without affecting portrait slot snap
+PASS r82.EnableScreen dark Canvas palette meets WCAG AA and detects 你好 verification
+PASS r83.KeyboardViewController binds view.heightAnchor directly and clamps oversized host frames bottom-up
+PASS r83.CandidateBarView keeps minimalist single-gear idle top bar across Mosto and 简洁 styles
+PASS r83.KeyboardView breathes inside rounded Liquid Glass with full-width edge hit zones and dark-glass day softening
+PASS r84.Idle moon icon satisfies WCAG AA contrast across light and dark glass
+PASS r84.CandidateBarView shows recessed rangefinder track and center home tick during cursor scrub
+PASS r84.IP family sound interaction triggers directly without volume gate and GestureAtlas mirrors live idle bar
+PASS r85.OTTOSSOM IP family sprites (Moss, Otto, Mosto) load at full studio resolution
+PASS r85.FamilyStageModel synchronizes Moss/Otto/Mosto states and night lamp chemistry
+PASS r85.Commercial Companion copy excludes developer jargon
+PASS r85.3-tab Companion views and FamilyLampStageView render cleanly with ImageRenderer
+PASS r86.OTTOSSOM IP family interactions trigger cross-character chemistry
+PASS r86.LegalText reflects App Store 1.0 release wording and OTTOSSOM IP ownership
+PASS r87.WeChat 294/301/326pt hosts fill flush with zero top gap, pure-frame Settings returns cleanly, and 258pt Notes stays calibrated
+PASS r90.All keycaps across Mosto/简洁 and Day/Night omit top highlight line and border strokes while preserving smart-space rim
+PASS r91.Refactored BrandMark asset, Bento navigation deep-links, and commercial Companion views render cleanly
+PASS r92.Sculpted gradient keycaps, feathered contact shadows, light-glass night softening, and calibrated icons work cleanly
+PASS r93.Settings Hardware Console, Popups, CandidateGrid, CandidateBar pills, and Emoji badges use borderless sculpted craft
+PASS r94.Four-corner alignment locks Return bottom-right, 中/英 next-to-right, and T9 idle ！ / composing 重输
+PASS r94.T9 符号 tap opens SymbolPanelView in Chinese and closes cleanly back to T9
+PASS r94.Numpad 符号 tap opens SymbolPanelView without firing Return or inserting newline
+PASS r94.English starts lowercase cleanly and double-tap Shift locks Caps Lock in 2 taps
+PASS r95.Bottom-row Mosto super-key stays locked to identical X coordinate across T9, QWERTY, and Symbols
+PASS r95.Mosto super-key 0ms opens Emoji, <350ms double-tap upgrades to Kaomoji, and same-spot closes with Send visible
+PASS r95.SettingsPanelView uses top-right gearshape.fill and 0pt-drift bottom Mosto return anchor
+PASS r96.Quick reopen after closing Emoji upgrades directly into Mosto Kaomoji
+PASS r96.Offline MostoRunEngine jumps, flips Day/Night every 100 pts, and persists local high score
+PASS r96.Triple-tapping Mosto on FamilyStageModel wakes offline Mosto Run easter egg
+PASS r96.Mossling sister-app card binds Apple ID 6825856138 and renders cleanly
+PASS r97.Official MosslingAppIcon loads and MostoRunController steps in-place without view churn
+PASS r99.Local word-pair bigram persists, boosts continuations/lattice, resets cleanly, and adaptive longBeam decodes long sequences
+PASS r100.Dual-section grammar.gram decodes distilled phrases and serves Section 2 context continuations
+PASS r100_5.EmojiPanelView supports bidirectional horizontal swipe, adaptive kaomoji widths, and 4-row grid density
+PASS r100_5.MostoRunEngine v2 handles variable jump, double jump, combo multiplier, mint shield, and paper airplanes
+PASS r100_5.Companion defaults to Pinyin/T9 guide and converged commercial LegalText has zero bare URLs or personal handle
+PASS r101.Mosto::GramV2 loads dual quantized tries and improves Xiaohe/Quanpin missing & transpose decoding
+PASS r102.Default return key uses function style, host actions use accent, and spacebar carries subtle scheme label
+PASS r102.AltPopup keeps selection slot container centered independently of optical glyph offset
+PASS r102.T9 swipe-up emits digit, toggleLanguage keeps clean tap switching, and sideways drift avoids accidental flick
+PASS r102.Clean idle bar omits 9/26 pill while domain punctuation, Pangu spacing, and isSecureTextEntry isolation behave cleanly
+PASS r104_1.Day/Night sync prioritizes host.keyboardAppearance, prevents split themes, and keeps forced backdrop clear
+PASS r104_1.Kaomoji mood ribbon scrolls smoothly clear of Mosto badge and Emoji->Kaomoji swipe aligns with zero gap
+PASS r105.Pure CC-BY-4.0/MIT offline data & LegalText remove copyleft while preserving decode/predict/English accuracy
+PASS r108.Colloquial/shorthand top-1 gate, UserDictionary 30d recency decay, and commercial domain convergence hold
+FAIL r109.Native 9-pair fuzzy pinyin (8/8), IM shorthand top-1 (5/5), and fuzzy settings toggle hold  fuzzy=luguo->路过(want 如果) shorthand=all-5-shorthand-top1 setting=true
+PASS fuzz.3600 random keys keep the field and the composition in step

@@ -1,0 +1,38 @@
+preedit: ni hao da jia   (67.2 ms)
+-34.14 你好大家 taps=8 
+-46.07 你好打架 taps=8 
+-48.09 你好打假 taps=8 
+-13.24 你好 taps=4 
+-19.42 你号 taps=4 
+ -9.72 你 taps=2 
+-13.35 尼 taps=2 
+-13.87 泥 taps=2 
+-13.98 拟 taps=2 
+-14.17 逆 taps=2 
+-14.32 腻 taps=2 
+-15.57 匿 taps=2 
+-15.69 妮 taps=2 
+-16.21 溺 taps=2 
+-16.60 倪 taps=2 
+
+== words: n=1500  perfect-keys top1 == intended text: 1339  avg decode 0.24 ms
+   (σ=0.22, correction on, top1 == intended text: 87.5%)
+touch σ=0.22 key | key error rate 2.6% | top1 correction OFF 86.8%  ON 97.8% | ON top3 99.7% | items with mistyped keys recovered 168/198 | clean items broken by correction 3/1302
+touch σ=0.30 key | key error rate 12.3% | top1 correction OFF 49.3%  ON 88.4% | ON top3 95.9% | items with mistyped keys recovered 588/761 | clean items broken by correction 1/739
+
+== sentences: n=305  perfect-keys top1 == intended text: 269  avg decode 0.75 ms
+   (σ=0.22, correction on, top1 == intended text: 83.0%)
+touch σ=0.22 key | key error rate 2.7% | top1 correction OFF 64.9%  ON 92.8% | ON top3 97.7% | items with mistyped keys recovered 93/108 | clean items broken by correction 7/197
+touch σ=0.30 key | key error rate 12.3% | top1 correction OFF 15.7%  ON 74.1% | ON top3 84.9% | items with mistyped keys recovered 182/259 | clean items broken by correction 2/46
+== 九宫格 words: top1 49.1%  top3 64.4%  2.09 ms
+== 九宫格 sentences: top1 38.4%  top3 55.4%  8.24 ms
+== 中英混输 sentences: top1 76.2% (n=80)
+== first three readings differing only in their last character: 7 pairs with one-character last words, 30 in all
+== two keys wrong (one too many or left out, in each half): sentences top1 41.0%  top3 54.1%  (n=305)
+== corrections that say what changed: 100.0% (301 of 301)
+== one key missing: sentences top1 43.0%
+== one key too many: sentences top1 77.7%  top3 79.3%  (n=305)
+== touch adaptation (thumbs off-centre): unseen words 81.0% → 84.6% after 1000 words (offset 0.01, 0.13)
+== 自造词: alone top1 100.0% (n=128) | inside its sentence 96.9% (n=128)
+== learning: picks/sentence 1.09 | typed again 98.0% | unseen after learning 87.6% (nothing learned 86.3%)
+== English: clean words kept 100.0% | touch σ=0.22: as typed 83.6%, with autocorrect 99.7% (fixed 241/246), suggestions top3 99.8% | 0.05 ms

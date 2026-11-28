@@ -1,0 +1,314 @@
+    iPhone 16 Pro (0C95D7BB-B55C-4EE0-ACB9-8616BB736183) (Shutdown) 
+    iPhone 16 Pro Max (A0B108A0-F23E-4C6A-85E2-D023C832F0D2) (Shutdown) 
+    iPhone 16e (B2178D2A-3501-491D-9110-87AF6AAEB69B) (Shutdown) 
+    iPhone 16 (E60E0F56-3267-4D04-A12E-6645AD9F21FC) (Shutdown) 
+    iPhone 16 Plus (78191A4E-2972-4330-B231-2B3A23EF11C6) (Shutdown) 
+    iPhone SE (3rd generation) (C59E15B8-453D-41C9-920C-F7243CE13AD7) (Shutdown) 
+    iPhone 16 Pro (8B3A7E70-F8D8-4B70-BE38-9A8CF246C44B) (Shutdown) 
+    iPhone 16 Pro Max (D8F824F6-9B2F-4B6D-8FD5-DC6C38403570) (Shutdown) 
+    iPhone 16e (F526E3EE-23B1-47AC-ACCF-2DC09C8CE86C) (Shutdown) 
+    iPhone 16 (BEC21AC1-C5D2-4D3D-9E2D-4CE9FAC98ED2) (Shutdown) 
+    iPhone 16 Plus (985BA952-F5AE-4AC2-BDDB-D0E704C0AB3C) (Shutdown) 
+    iPhone SE (3rd generation) (2816AFA0-03A5-4B98-AE3E-D0601D6DF9CF) (Shutdown) 
+    iPhone 17 Pro (DABFC2CD-4A35-4ECA-B5ED-C2C2289034AF) (Shutdown) 
+    iPhone 17 Pro Max (4A6D9F77-7F5C-4DA0-A0F0-57798F2F61DE) (Shutdown) 
+    iPhone Air (650C2EF2-7A8C-4247-9557-C23B3E512624) (Shutdown) 
+    iPhone 17 (FC8E814A-F1EB-431A-8DDB-7C312184219F) (Shutdown) 
+    iPhone 16 Pro (DB264CB5-D349-4FB0-8D76-3CBF16325CE5) (Shutdown) 
+    iPhone 16 Pro Max (6E0F5880-F207-48DF-BA6D-E8204198DB96) (Shutdown) 
+    iPhone 16e (D1FDCB00-A98E-438F-8E78-5880B9F3DF6C) (Shutdown) 
+    iPhone 16 (17C62993-819D-4BAF-A012-D9C32873EB99) (Shutdown) 
+::notice title=Simulator::40A21894-B2EA-46E8-86C3-96B6C28B749F
+app: build/dd/Build/Products/Debug-iphonesimulator/MossOttoKeyboard.app
+-- footprint --
+FOOTPRINT load + first decode 25.2 ms, warm p99 70.8 ms, max 120.4 ms; memory before 965.8 MB, engine loaded +0.0 MB, after 400 decodes +0.1 MB
+-- app console (tail) --
+PASS quanpin.one key left out: woxiangqumaidonxi → 我想去买东西
+PASS mixed.woyongiphonedazi → 我用iPhone打字
+PASS english.teh → the
+PASS english.delete undoes the correction
+PASS english.double space types a full stop
+PASS mixed.ok → OK
+PASS numbers.。 after a digit is a decimal point
+PASS predict.suggestions after 你好
+PASS predict.tap types the suggestion
+PASS emoji.蛋糕 offers 🎂 after the words
+PASS predict.a key ends the suggestions
+PASS predict.marks setup
+PASS predict.strip marks these as guesses
+PASS predict.a guess is never labelled as a correction
+PASS predict.thinking and shift/globe keep the suggestions
+PASS predict.a letter still ends the suggestions
+PASS moved.delete after moving the cursor deletes one character
+PASS mosto.tap mid-word commits the word first
+PASS t9.keys compose with the pinyin shown
+PASS t9.64426 → 你好
+PASS t9.重输 drops the keys
+PASS app.focusFamilyMember switches from about to companion and greets member
+PASS app.clearInput leaves undo chip
+PASS clearSwipe.discardComposition leaves clean field without stale undo chip
+PASS app.swipe left from delete clears composing keys into restorable undo chip
+PASS app.tapping undo chip restores cleared keys
+PASS cursor.100 pt / 0.5 s: 8 characters (build 225's steps), 2 ticks, 1 cursor mode
+PASS cursor.300 pt / 0.25 s: 80 characters (build 225's steps), 3 ticks (≤ 3), gaps 100,100 ms (≥ 100)
+PASS cursor.50 pt/s for 1.2 s: 5 characters (build 225's steps), 1 ticks, 1.1 a second (want 1.9 ± 1), at most 1 in a second
+PASS cursor.100 pt/s for 1.2 s: 10 characters (build 225's steps), 3 ticks, 3.1 a second (want 3.7 ± 1), at most 3 in a second
+PASS cursor.200 pt/s for 1.2 s: 24 characters (build 225's steps), 8 ticks, 7.4 a second (want 7.4 ± 1), at most 8 in a second
+PASS cursor.400 pt/s for 1.2 s: 51 characters (build 225's steps), 11 ticks, 9.7 a second (want 10.0 ± 1), at most 10 in a second
+PASS cursor.800 pt/s for 1.2 s: 172 characters (build 225's steps), 12 ticks, 10.3 a second (want 10.0 ± 1), at most 10 in a second
+PASS cursor.1200 pt/s for 1.2 s: 405 characters (build 225's steps), 12 ticks, 10.3 a second (want 10.0 ± 1), at most 10 in a second
+PASS cursor.2000 pt/s for 1.2 s: 685 characters (build 225's steps), 12 ticks, 10.1 a second (want 10.0 ± 1), at most 10 in a second
+PASS cursor.still 0.3 s, then 9.5 pt: 1 character(s), 1 tick
+PASS cursor.turning back: the first character back ticks (1 tick on the way back)
+PASS cursor.at the end: 0 characters and 0 ticks; back 60 pt: 5 characters, 2 ticks
+PASS cursor.drag on space while composing: no cursor mode, 0 ticks, the space goes in as before
+PASS feedback.table letter
+PASS feedback.table 九宫格 key
+PASS feedback.table space
+PASS feedback.table delete
+PASS feedback.table return
+PASS feedback.table shift
+PASS feedback.table candidate
+PASS feedback.table undo chip
+PASS feedback.table other characters shown
+PASS feedback.table other character chosen
+PASS feedback.table cursor mode
+PASS feedback.table cursor step
+PASS feedback.table cursor boundary
+PASS feedback.table word delete
+PASS feedback.table clear armed
+PASS feedback.table clear
+PASS feedback.table Mosto
+PASS feedback.inside the app: allowed
+PASS feedback.a: one light tap and a click
+SNAPSHOTS /Users/runner/Library/Developer/CoreSimulator/Devices/40A21894-B2EA-46E8-86C3-96B6C28B749F/data/Containers/Data/Application/90E4F9C0-C742-41B3-BB2D-803BAFAF626C/Documents/snapshots
+app.mossling.keyboard: 16197
+-- crash reports --
+total 95472
+drwxr-xr-x  112 runner  staff    3584 Nov 28 15:24 .
+drwxr-xr-x    4 runner  staff     128 Nov 28 15:28 ..
+-rw-r--r--    1 runner  staff  251266 Nov 28 15:24 day_app_atlas.png
+-rw-r--r--    1 runner  staff  108431 Nov 28 15:24 day_app_enable.png
+-rw-r--r--    1 runner  staff  254715 Nov 28 15:24 day_app_home0.png
+-rw-r--r--    1 runner  staff   87969 Nov 28 15:24 day_app_home1.png
+-rw-r--r--    1 runner  staff  433597 Nov 28 15:24 day_app_home3.png
+-rw-r--r--    1 runner  staff  153467 Nov 28 15:24 day_app_privacy.png
+-rw-r--r--    1 runner  staff  454998 Nov 28 15:24 day_app_xiaohe.png
+-rw-r--r--    1 runner  staff  571000 Nov 28 15:24 day_clear_armed.png
+-rw-r--r--    1 runner  staff  550537 Nov 28 15:24 day_cleared_undo.png
+-rw-r--r--    1 runner  staff  307586 Nov 28 15:24 day_cursor_drag.png
+-rw-r--r--    1 runner  staff  564991 Nov 28 15:24 day_delete_clutch.png
+-rw-r--r--    1 runner  staff  572082 Nov 28 15:24 day_emoji.png
+-rw-r--r--    1 runner  staff  552610 Nov 28 15:24 day_en_autocorrect.png
+-rw-r--r--    1 runner  staff  408999 Nov 28 15:24 day_forced_idle.png
+-rw-r--r--    1 runner  staff  429744 Nov 28 15:24 day_forced_light.png
+-rw-r--r--    1 runner  staff  562591 Nov 28 15:24 day_forget_word.png
+-rw-r--r--    1 runner  staff  580728 Nov 28 15:24 day_globe_letters.png
+-rw-r--r--    1 runner  staff  572085 Nov 28 15:24 day_globe_numbers.png
+-rw-r--r--    1 runner  staff  471430 Nov 28 15:24 day_globe_numpad.png
+-rw-r--r--    1 runner  staff  526584 Nov 28 15:24 day_globe_t9.png
+-rw-r--r--    1 runner  staff  174860 Nov 28 15:24 day_grid.png
+-rw-r--r--    1 runner  staff  611191 Nov 28 15:24 day_land_emoji.png
+-rw-r--r--    1 runner  staff  616896 Nov 28 15:24 day_land_letters.png
+-rw-r--r--    1 runner  staff  611033 Nov 28 15:24 day_land_numbers.png
+-rw-r--r--    1 runner  staff  582174 Nov 28 15:24 day_land_t9.png
+-rw-r--r--    1 runner  staff  568993 Nov 28 15:24 day_letters_composing.png
+-rw-r--r--    1 runner  staff  559815 Nov 28 15:24 day_letters_english.png
+-rw-r--r--    1 runner  staff  613863 Nov 28 15:24 day_letters_guide_chord.png
+-rw-r--r--    1 runner  staff  597065 Nov 28 15:24 day_letters_guide.png
+-rw-r--r--    1 runner  staff  548857 Nov 28 15:24 day_letters_idle.png
+-rw-r--r--    1 runner  staff  562773 Nov 28 15:24 day_letters_predict.png
+-rw-r--r--    1 runner  staff  555544 Nov 28 15:24 day_letters_shift.png
+-rw-r--r--    1 runner  staff  572903 Nov 28 15:24 day_letters_undo.png
+-rw-r--r--    1 runner  staff  600619 Nov 28 15:24 day_longpress_comma.png
+-rw-r--r--    1 runner  staff  205988 Nov 28 15:24 day_mosto_kaomoji.png
+-rw-r--r--    1 runner  staff  548469 Nov 28 15:24 day_mosto_yawn.png
+-rw-r--r--    1 runner  staff  560212 Nov 28 15:24 day_numbers.png
+-rw-r--r--    1 runner  staff  523587 Nov 28 15:24 day_numpad_press_5.png
+-rw-r--r--    1 runner  staff  458994 Nov 28 15:24 day_numpad.png
+-rw-r--r--    1 runner  staff  570744 Nov 28 15:24 day_plain_appex_pill.png
+-rw-r--r--    1 runner  staff  569884 Nov 28 15:24 day_plain_composing.png
+-rw-r--r--    1 runner  staff  386822 Nov 28 15:24 day_plain_forced_idle.png
+-rw-r--r--    1 runner  staff  549030 Nov 28 15:24 day_plain_idle.png
+-rw-r--r--    1 runner  staff  564720 Nov 28 15:24 day_plain_numbers.png
+-rw-r--r--    1 runner  staff  620155 Nov 28 15:24 day_press_comma_numbers.png
+-rw-r--r--    1 runner  staff  631093 Nov 28 15:24 day_press_g.png
+-rw-r--r--    1 runner  staff  610704 Nov 28 15:24 day_press_q.png
+-rw-r--r--    1 runner  staff  346779 Nov 28 15:24 day_settings_full.png
+-rw-r--r--    1 runner  staff  381365 Nov 28 15:24 day_settings_noaccess.png
+-rw-r--r--    1 runner  staff  391123 Nov 28 15:24 day_settings.png
+-rw-r--r--    1 runner  staff  552035 Nov 28 15:24 day_smart_space.png
+-rw-r--r--    1 runner  staff  567798 Nov 28 15:24 day_strip_scrolled.png
+-rw-r--r--    1 runner  staff  556810 Nov 28 15:24 day_symbols.png
+-rw-r--r--    1 runner  staff  514026 Nov 28 15:24 day_t9_composing.png
+-rw-r--r--    1 runner  staff  514537 Nov 28 15:24 day_t9_idle.png
+-rw-r--r--    1 runner  staff  255873 Nov 28 15:24 night_app_atlas.png
+-rw-r--r--    1 runner  staff  111325 Nov 28 15:24 night_app_enable.png
+-rw-r--r--    1 runner  staff  304644 Nov 28 15:24 night_app_home0.png
+-rw-r--r--    1 runner  staff   88319 Nov 28 15:24 night_app_home1.png
+-rw-r--r--    1 runner  staff  448876 Nov 28 15:24 night_app_home3.png
+-rw-r--r--    1 runner  staff  158925 Nov 28 15:24 night_app_privacy.png
+-rw-r--r--    1 runner  staff  466405 Nov 28 15:24 night_app_xiaohe.png
+-rw-r--r--    1 runner  staff  416915 Nov 28 15:24 night_clear_armed.png
+-rw-r--r--    1 runner  staff  392209 Nov 28 15:24 night_cleared_undo.png
+-rw-r--r--    1 runner  staff  269726 Nov 28 15:24 night_cursor_drag.png
+-rw-r--r--    1 runner  staff  409769 Nov 28 15:24 night_delete_clutch.png
+-rw-r--r--    1 runner  staff  555776 Nov 28 15:24 night_emoji.png
+-rw-r--r--    1 runner  staff  393997 Nov 28 15:24 night_en_autocorrect.png
+-rw-r--r--    1 runner  staff  725605 Nov 28 15:24 night_forced_idle.png
+-rw-r--r--    1 runner  staff  746100 Nov 28 15:24 night_forced_light.png
+-rw-r--r--    1 runner  staff  403622 Nov 28 15:24 night_forget_word.png
+-rw-r--r--    1 runner  staff  419202 Nov 28 15:24 night_globe_letters.png
+-rw-r--r--    1 runner  staff  411737 Nov 28 15:24 night_globe_numbers.png
+-rw-r--r--    1 runner  staff  347034 Nov 28 15:24 night_globe_numpad.png
+-rw-r--r--    1 runner  staff  402892 Nov 28 15:24 night_globe_t9.png
+-rw-r--r--    1 runner  staff  163988 Nov 28 15:24 night_grid.png
+-rw-r--r--    1 runner  staff  603881 Nov 28 15:24 night_land_emoji.png
+-rw-r--r--    1 runner  staff  442399 Nov 28 15:24 night_land_letters.png
+-rw-r--r--    1 runner  staff  435383 Nov 28 15:24 night_land_numbers.png
+-rw-r--r--    1 runner  staff  439594 Nov 28 15:24 night_land_t9.png
+-rw-r--r--    1 runner  staff  410461 Nov 28 15:24 night_letters_composing.png
+-rw-r--r--    1 runner  staff  401728 Nov 28 15:24 night_letters_english.png
+-rw-r--r--    1 runner  staff  457169 Nov 28 15:24 night_letters_guide_chord.png
+-rw-r--r--    1 runner  staff  438382 Nov 28 15:24 night_letters_guide.png
+-rw-r--r--    1 runner  staff  389783 Nov 28 15:24 night_letters_idle.png
+-rw-r--r--    1 runner  staff  404238 Nov 28 15:24 night_letters_predict.png
+-rw-r--r--    1 runner  staff  395483 Nov 28 15:24 night_letters_shift.png
+-rw-r--r--    1 runner  staff  414476 Nov 28 15:24 night_letters_undo.png
+-rw-r--r--    1 runner  staff  426194 Nov 28 15:24 night_longpress_comma.png
+-rw-r--r--    1 runner  staff  181848 Nov 28 15:24 night_mosto_kaomoji.png
+-rw-r--r--    1 runner  staff  389783 Nov 28 15:24 night_mosto_yawn.png
+-rw-r--r--    1 runner  staff  403116 Nov 28 15:24 night_numbers.png
+-rw-r--r--    1 runner  staff  379404 Nov 28 15:24 night_numpad_press_5.png
+-rw-r--r--    1 runner  staff  337723 Nov 28 15:24 night_numpad.png
+-rw-r--r--    1 runner  staff  389715 Nov 28 15:24 night_plain_appex_pill.png
+-rw-r--r--    1 runner  staff  388132 Nov 28 15:24 night_plain_composing.png
+-rw-r--r--    1 runner  staff  695259 Nov 28 15:24 night_plain_forced_idle.png
+-rw-r--r--    1 runner  staff  370897 Nov 28 15:24 night_plain_idle.png
+-rw-r--r--    1 runner  staff  383618 Nov 28 15:24 night_plain_numbers.png
+-rw-r--r--    1 runner  staff  444764 Nov 28 15:24 night_press_comma_numbers.png
+-rw-r--r--    1 runner  staff  456338 Nov 28 15:24 night_press_g.png
+-rw-r--r--    1 runner  staff  442091 Nov 28 15:24 night_press_q.png
+-rw-r--r--    1 runner  staff  353142 Nov 28 15:24 night_settings_full.png
+-rw-r--r--    1 runner  staff  328200 Nov 28 15:24 night_settings_noaccess.png
+-rw-r--r--    1 runner  staff  329398 Nov 28 15:24 night_settings.png
+-rw-r--r--    1 runner  staff  394435 Nov 28 15:24 night_smart_space.png
+-rw-r--r--    1 runner  staff  408004 Nov 28 15:24 night_strip_scrolled.png
+-rw-r--r--    1 runner  staff  398513 Nov 28 15:24 night_symbols.png
+-rw-r--r--    1 runner  staff  406754 Nov 28 15:24 night_t9_composing.png
+-rw-r--r--    1 runner  staff  394461 Nov 28 15:24 night_t9_idle.png
+day_app_atlas.png
+day_app_enable.png
+day_app_home0.png
+day_app_home1.png
+day_app_home3.png
+day_app_privacy.png
+day_app_xiaohe.png
+day_clear_armed.png
+day_cleared_undo.png
+day_cursor_drag.png
+day_delete_clutch.png
+day_emoji.png
+day_en_autocorrect.png
+day_forced_idle.png
+day_forced_light.png
+day_forget_word.png
+day_globe_letters.png
+day_globe_numbers.png
+day_globe_numpad.png
+day_globe_t9.png
+day_grid.png
+day_land_emoji.png
+day_land_letters.png
+day_land_numbers.png
+day_land_t9.png
+day_letters_composing.png
+day_letters_english.png
+day_letters_guide_chord.png
+day_letters_guide.png
+day_letters_idle.png
+day_letters_predict.png
+day_letters_shift.png
+day_letters_undo.png
+day_longpress_comma.png
+day_mosto_kaomoji.png
+day_mosto_yawn.png
+day_numbers.png
+day_numpad_press_5.png
+day_numpad.png
+day_plain_appex_pill.png
+day_plain_composing.png
+day_plain_forced_idle.png
+day_plain_idle.png
+day_plain_numbers.png
+day_press_comma_numbers.png
+day_press_g.png
+day_press_q.png
+day_settings_full.png
+day_settings_noaccess.png
+day_settings.png
+day_smart_space.png
+day_strip_scrolled.png
+day_symbols.png
+day_t9_composing.png
+day_t9_idle.png
+night_app_atlas.png
+night_app_enable.png
+night_app_home0.png
+night_app_home1.png
+night_app_home3.png
+night_app_privacy.png
+night_app_xiaohe.png
+night_clear_armed.png
+night_cleared_undo.png
+night_cursor_drag.png
+night_delete_clutch.png
+night_emoji.png
+night_en_autocorrect.png
+night_forced_idle.png
+night_forced_light.png
+night_forget_word.png
+night_globe_letters.png
+night_globe_numbers.png
+night_globe_numpad.png
+night_globe_t9.png
+night_grid.png
+night_land_emoji.png
+night_land_letters.png
+night_land_numbers.png
+night_land_t9.png
+night_letters_composing.png
+night_letters_english.png
+night_letters_guide_chord.png
+night_letters_guide.png
+night_letters_idle.png
+night_letters_predict.png
+night_letters_shift.png
+night_letters_undo.png
+night_longpress_comma.png
+night_mosto_kaomoji.png
+night_mosto_yawn.png
+night_numbers.png
+night_numpad_press_5.png
+night_numpad.png
+night_plain_appex_pill.png
+night_plain_composing.png
+night_plain_forced_idle.png
+night_plain_idle.png
+night_plain_numbers.png
+night_press_comma_numbers.png
+night_press_g.png
+night_press_q.png
+night_settings_full.png
+night_settings_noaccess.png
+night_settings.png
+night_smart_space.png
+night_strip_scrolled.png
+night_symbols.png
+night_t9_composing.png
+night_t9_idle.png
+FAILURES 1
+PASS xiaohe.marked shows the keys
+PASS xiaohe.space commits 你好
+PASS xiaohe.odd keys: keyil → 可以了
+PASS xiaohe.delete takes back one key
