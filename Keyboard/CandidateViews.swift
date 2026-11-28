@@ -2472,6 +2472,7 @@ final class SettingsPanelView: UIView {
 
     private let numberControl = UISegmentedControl(items: ["完整页", "九宫格"])
     private let englishSwitch = UISwitch()
+    private let fuzzySwitch = UISwitch()
     private let panguSwitch = UISwitch()
     private let appearance = UISegmentedControl(items: ["自动", "日光", "夜灯"])
     private let styleControl = UISegmentedControl(items: ["Mosto", "简洁"])
@@ -2500,6 +2501,7 @@ final class SettingsPanelView: UIView {
         backgroundColor = Theme.touchable
         tintColor = Theme.selection
         englishSwitch.onTintColor = Theme.selection
+        fuzzySwitch.onTintColor = Theme.selection
         panguSwitch.onTintColor = Theme.selection
         for i in 0..<numberControl.numberOfSegments { numberControl.setWidth(78, forSegmentAt: i) }
         for sc in [numberControl, appearance, styleControl] {
@@ -2607,6 +2609,7 @@ final class SettingsPanelView: UIView {
 
         addSection("输入与按键", rows: [
             makeControlRow("中英混输", icon: "globe", control: englishSwitch),
+            makeControlRow("模糊音", icon: "waveform", control: fuzzySwitch),
             makeControlRow("中英自动留白", icon: "space", control: panguSwitch),
             makeControlRow("123 数字键", icon: "number.square", control: numberControl),
         ])
@@ -2675,6 +2678,7 @@ final class SettingsPanelView: UIView {
         numberControl.addTarget(self, action: #selector(numberChanged), for: .valueChanged)
         for c in [appearance, styleControl] { c.addTarget(self, action: #selector(drawerChanged), for: .valueChanged) }
         englishSwitch.addTarget(self, action: #selector(drawerChanged), for: .valueChanged)
+        fuzzySwitch.addTarget(self, action: #selector(drawerChanged), for: .valueChanged)
         panguSwitch.addTarget(self, action: #selector(drawerChanged), for: .valueChanged)
 
         styleChrome()
@@ -2711,6 +2715,7 @@ final class SettingsPanelView: UIView {
             sc.setTitleTextAttributes([.foregroundColor: Theme.keyText, .font: Theme.font(13, .medium)], for: .normal)
         }
         englishSwitch.onTintColor = Theme.selection
+        fuzzySwitch.onTintColor = Theme.selection
         panguSwitch.onTintColor = Theme.selection
         let red = destructiveRedColor(for: t)
         resetButton.setTitleColor(red, for: .normal)
@@ -3044,6 +3049,7 @@ final class SettingsPanelView: UIView {
 
         numberControl.selectedSegmentIndex = s.numberPad ? 1 : 0
         englishSwitch.isOn = s.english
+        fuzzySwitch.isOn = s.fuzzyPinyin
         panguSwitch.isOn = s.panguSpacing
         appearance.selectedSegmentIndex = s.appearance
         styleControl.selectedSegmentIndex = s.style
@@ -3239,6 +3245,7 @@ final class SettingsPanelView: UIView {
         if canProvideHaptic { UISelectionFeedbackGenerator().selectionChanged() }
         let s = KeyboardSettings.shared
         s.english = englishSwitch.isOn
+        s.fuzzyPinyin = fuzzySwitch.isOn
         s.panguSpacing = panguSwitch.isOn
         if appearance.selectedSegmentIndex >= 0 {
             s.appearance = appearance.selectedSegmentIndex
@@ -3413,7 +3420,7 @@ final class KeyboardSettings {
         if FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: Self.appGroupID) != nil,
            let group = UserDefaults(suiteName: Self.appGroupID) {
             if !group.bool(forKey: "migratedToAppGroup") {
-                let keys = ["scheme", "autocorrect", "xiaoheGuide", "english", "panguSpacing", "pinyinGrid", "numberPad", "style", "appearance", "feedback", "hapticProfile", "keySound", "keyOffsets", "offsetX", "offsetY"]
+                let keys = ["scheme", "autocorrect", "xiaoheGuide", "english", "fuzzyPinyin", "panguSpacing", "pinyinGrid", "numberPad", "style", "appearance", "feedback", "hapticProfile", "keySound", "keyOffsets", "offsetX", "offsetY"]
                 for k in keys where group.object(forKey: k) == nil {
                     if let v = standard.object(forKey: k) { group.set(v, forKey: k) }
                 }
@@ -3454,6 +3461,11 @@ final class KeyboardSettings {
     var english: Bool {
         get { d.object(forKey: "english") as? Bool ?? true }
         set { d.set(newValue, forKey: "english"); notify() }
+    }
+    /// 模糊音（平翘舌 z/zh, c/ch, s/sh, n/l 与前后鼻音 an/ang, en/eng, in/ing，默认关闭）.
+    var fuzzyPinyin: Bool {
+        get { d.object(forKey: "fuzzyPinyin") as? Bool ?? false }
+        set { d.set(newValue, forKey: "fuzzyPinyin"); notify() }
     }
     /// 中英混排自动留白（Pangu spacing，默认关闭，开启后在中英文边界自动加空格）.
     var panguSpacing: Bool {

@@ -1016,7 +1016,7 @@ final class KeyboardViewController: UIInputViewController {
         let newScheme = PinyinScheme(rawValue: s.scheme) ?? .xiaohe
         if newScheme != scheme, !taps.isEmpty { commitRaw() }     // keys typed under the other scheme mean something else
         scheme = newScheme
-        engine.configure(scheme: newScheme, correction: s.autocorrect, english: s.english)
+        engine.configure(scheme: newScheme, correction: s.autocorrect, english: s.english, fuzzy: s.fuzzyPinyin)
         hapticsOn = s.feedback
         (feedbackPlayer as? SystemFeedbackPlayer)?.profile = HapticProfile(rawValue: s.hapticProfile) ?? .crisp
         guideOn = s.xiaoheGuide

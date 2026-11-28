@@ -147,7 +147,10 @@ public final class Decoder {
     /// Long sentences (≥ 6 taps) widen the beam slightly so early ambiguities survive for later collocation scoring.
     public var longBeam = 6
     /// 九宫格 keeps more partial sentences per position (each key reads several ways; measured better, full keyboard not)
-    public var t9Beam = 12
+    public var t9Beam = 18
+    /// 模糊音 (全拼 & 九宫格): z/zh, c/ch, s/sh, n/l, an/ang, en/eng, in/ing (default off).
+    public var fuzzyPinyin = false
+    public var fuzzyPenalty = 1.15
     /// 全拼: cost of a syllable typed as its initial only (简拼), and of a half-typed last syllable.
     public var abbreviationPenalty = 6.0
     public var prefixPenalty = 0.4
@@ -421,6 +424,38 @@ public final class Decoder {
         }
         return root
     }()
+
+    /// Precomputed O(1) fuzzy syllable table for z/zh, c/ch, s/sh, n/l, an/ang, en/eng, in/ing.
+    private lazy var fuzzySyllableMap: [[UInt16]] = {
+        let idByName = Dictionary(uniqueKeysWithValues: lexicon.syllables.enumerated().map { ($1, UInt16($0)) })
+        return lexicon.syllables.enumerated().map { (idx, syl) in
+            var variants: Set<String> = [syl]
+            // Initial swaps: zh<->z, ch<->c, sh<->s, n<->l
+            var initVariants: Set<String> = [syl]
+            for base in [syl] {
+                if base.hasPrefix("zh") { initVariants.insert("z" + base.dropFirst(2)) }
+                else if base.hasPrefix("z") { initVariants.insert("zh" + base.dropFirst(1)) }
+                else if base.hasPrefix("ch") { initVariants.insert("c" + base.dropFirst(2)) }
+                else if base.hasPrefix("c") { initVariants.insert("ch" + base.dropFirst(1)) }
+                else if base.hasPrefix("sh") { initVariants.insert("s" + base.dropFirst(2)) }
+                else if base.hasPrefix("s") { initVariants.insert("sh" + base.dropFirst(1)) }
+                else if base.hasPrefix("n") { initVariants.insert("l" + base.dropFirst(1)) }
+                else if base.hasPrefix("l") { initVariants.insert("n" + base.dropFirst(1)) }
+            }
+            variants.formUnion(initVariants)
+            // Final swaps: ang<->an, eng<->en, ing<->in
+            for v in Array(variants) {
+                if v.hasSuffix("ang") { variants.insert(String(v.dropLast(1))) }
+                else if v.hasSuffix("an") { variants.insert(v + "g") }
+                else if v.hasSuffix("eng") { variants.insert(String(v.dropLast(1))) }
+                else if v.hasSuffix("en") { variants.insert(v + "g") }
+                else if v.hasSuffix("ing") { variants.insert(String(v.dropLast(1))) }
+                else if v.hasSuffix("in") { variants.insert(v + "g") }
+            }
+            variants.remove(syl)
+            return variants.compactMap { idByName[$0] }.filter { Int($0) != idx }.sorted()
+        }
+    }()
     private static let initials: Set<Character> = Set("bpmfdtnlgkhjqxrzcswy")
     private static let vowels: Set<Character> = Set("aeiouv")
     /// 全拼: extra cost of growing a fully spelled syllable into a longer one (xian → xiang).
@@ -501,7 +536,14 @@ public final class Decoder {
                 swap(&j1, &j2)
                 for st in next {
                     let cost = st.score - (st.corrected ? correctionPenalty : 0)
-                    for id in st.node.ids { emit(Span(end: pos, id: id, spatial: cost, corrected: st.corrected, kind: st.skipped ? 3 : 0)) }
+                    for id in st.node.ids {
+                        emit(Span(end: pos, id: id, spatial: cost, corrected: st.corrected, kind: st.skipped ? 3 : 0))
+                        if fuzzyPinyin, !st.corrected {
+                            for fid in fuzzySyllableMap[Int(id)] {
+                                emit(Span(end: pos, id: fid, spatial: cost - fuzzyPenalty, corrected: false, kind: 0))
+                            }
+                        }
+                    }
                     if pos == n {
                         // still typing the last syllable: anything it can grow into — but when the keys already spell
                         // a whole syllable (xian), that syllable comes first and the longer ones (xiang) after

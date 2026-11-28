@@ -299,11 +299,12 @@ final class EngineHost {
     }
 
     /// Settings that change how keys are read (applied in order with the decodes).
-    func configure(scheme: PinyinScheme, correction: Bool, english: Bool) {
+    func configure(scheme: PinyinScheme, correction: Bool, english: Bool, fuzzy: Bool = false) {
         queue.async {
             self.decoder?.scheme = scheme
             self.decoder?.correctionEnabled = correction
             self.decoder?.englishEnabled = english
+            self.decoder?.fuzzyPinyin = fuzzy
         }
     }
 

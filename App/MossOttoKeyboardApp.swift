@@ -107,6 +107,8 @@ private struct CompanionHomeScreen: View {
             VStack(alignment: .leading, spacing: 16) {
                 FamilyLampStageView(model: family)
 
+                CompanionSpecStrip()
+
                 CompanionEnableCard(
                     added: added,
                     verifyText: $verifyText,
@@ -158,15 +160,85 @@ private struct CompanionHomeScreen: View {
     }
 }
 
-/// Real system-keyboard enablement guidance and native `TextField` verification (no fake typing sandbox).
+/// Hardware-grade 3-metric offline authority strip beneath the Home studio stage.
+private struct CompanionSpecStrip: View {
+    private let metrics: [(value: String, label: String)] = [
+        ("48.3 MB", "本机双段引擎"),
+        ("41.3 万", "离线中文词库"),
+        ("0 KB", "云端联网上传"),
+    ]
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(metrics.enumerated()), id: \.offset) { idx, item in
+                if idx > 0 {
+                    Rectangle()
+                        .fill(MossOttoStyle.hairline)
+                        .frame(width: 0.6, height: 28)
+                }
+                VStack(spacing: 2) {
+                    Text(item.value)
+                        .font(.subheadline.weight(.bold).monospacedDigit())
+                        .foregroundStyle(idx == 2 ? MossOttoStyle.moss : MossOttoStyle.inkPrimary)
+                    Text(item.label)
+                        .font(.caption2)
+                        .foregroundStyle(MossOttoStyle.inkSecondary)
+                }
+                .frame(maxWidth: .infinity)
+                .accessibilityElement(children: .combine)
+            }
+        }
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(MossOttoStyle.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(MossOttoStyle.hairline, lineWidth: 0.6)
+        )
+    }
+}
+
+private enum TypingChallenge: Int, CaseIterable, Identifiable {
+    case greeting, typo, colloquial, mixed
+    var id: Int { rawValue }
+    var chip: String {
+        switch self {
+        case .greeting: return "快速上手"
+        case .typo: return "偏键纠错"
+        case .colloquial: return "口语简拼"
+        case .mixed: return "中英混输"
+        }
+    }
+    var prompt: String {
+        switch self {
+        case .greeting: return "切换 Mosto键盘，全拼打 nihao 或九宫格输入“你好”"
+        case .typo: return "刻意按偏打 jintina，看引擎自动扶正为“今天”"
+        case .colloquial: return "直接打 zouluo 或 hh，体验“走咯 / 哈哈”首选直出"
+        case .mixed: return "连续输入 woyongiphone，体验中英免切顺打"
+        }
+    }
+    func isPassed(_ text: String) -> Bool {
+        switch self {
+        case .greeting: return EnableContent.isVerificationPassed(text)
+        case .typo: return text.contains("今天")
+        case .colloquial: return text.contains("走咯") || text.contains("哈哈")
+        case .mixed: return text.lowercased().contains("iphone")
+        }
+    }
+}
+
+/// Real system-keyboard enablement guidance and interactive native `TextField` verification (no fake typing sandbox).
 struct CompanionEnableCard: View {
     let added: Bool
     @Binding var verifyText: String
     var typing: FocusState<Bool>.Binding
     var onVerified: () -> Void = {}
+    @State private var challenge: TypingChallenge = .greeting
 
     private var verified: Bool {
-        EnableContent.isVerificationPassed(verifyText)
+        challenge.isPassed(verifyText)
     }
 
     var body: some View {
@@ -249,15 +321,41 @@ struct CompanionEnableCard: View {
                     }
                 }
 
+                HStack(spacing: 6) {
+                    ForEach(TypingChallenge.allCases) { item in
+                        let selected = challenge == item
+                        Button {
+                            UISelectionFeedbackGenerator().selectionChanged()
+                            challenge = item
+                            verifyText = ""
+                        } label: {
+                            Text(item.chip)
+                                .font(.caption2.weight(selected ? .semibold : .medium))
+                                .foregroundStyle(selected ? MossOttoStyle.violet : MossOttoStyle.inkSecondary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 5)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .fill(selected ? MossOttoStyle.violet.opacity(0.12) : MossOttoStyle.canvas)
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .strokeBorder(selected ? MossOttoStyle.violet.opacity(0.32) : MossOttoStyle.hairline, lineWidth: 0.6)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
                 Group {
                     if SnapshotRenderer.requested {
-                        Text("切换到 Mosto 键盘，全拼打 nihao 或用九宫格输入“你好”")
+                        Text(challenge.prompt)
                             .font(.subheadline)
                             .foregroundStyle(MossOttoStyle.inkSecondary.opacity(0.68))
                             .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
                     } else {
                         HStack(spacing: 8) {
-                            TextField("切换到 Mosto 键盘，全拼打 nihao 或用九宫格输入“你好”", text: $verifyText)
+                            TextField(challenge.prompt, text: $verifyText)
                                 .focused(typing)
                                 .font(.subheadline)
                                 .frame(minHeight: 34)
@@ -352,7 +450,7 @@ struct CompanionCapabilitiesSection: View {
             icon: "slider.horizontal.3",
             tint: MossOttoStyle.lampAmber,
             title: "键盘内即时定制",
-            detail: "点顶栏齿轮或长按 Mosto，随手切布局与光效。",
+            detail: "点齿轮或按住 Mosto，切布局与光效。",
             linkLabel: "探双拼"
         ),
         Item(
@@ -579,8 +677,14 @@ struct GestureAtlasContent: View {
                 Divider()
                 atlasRow(
                     cap: "bzd",
-                    title: "首字母简拼与自造词",
-                    chips: ["bzd → 不知道", "长按候选可忘词"]
+                    title: "高频简拼与日常口语",
+                    chips: ["hh → 哈哈", "wsm → 为什么", "zouluo → 走咯", "长按候选忘词"]
+                )
+                Divider()
+                atlasRow(
+                    symbol: "waveform",
+                    title: "原生模糊音（可选）",
+                    chips: ["z/zh · c/ch · s/sh · n/l", "an/ang · en/eng · in/ing", "键盘设置内开启"]
                 )
             }
 
@@ -771,7 +875,7 @@ struct AboutCompanionContent: View {
                         Text("Mosto键盘")
                             .font(.title3.weight(.bold))
                             .foregroundStyle(MossOttoStyle.inkPrimary)
-                        Text("OTTOSSOM Studio · 纯离线中文输入法")
+                        Text("OTTOSSOM Studio · 纯离线键盘")
                             .font(.caption)
                             .foregroundStyle(MossOttoStyle.inkSecondary)
                     }
@@ -888,6 +992,8 @@ struct AboutCompanionContent: View {
                 }
             }
 
+            MostoStoryCard()
+
             MosslingSisterAppCard(
                 onOpenWebsite: { showMosslingWebsite = true },
                 onOpenStore: { showMosslingStore = true }
@@ -995,6 +1101,47 @@ struct AboutCompanionContent: View {
                 .foregroundStyle(MossOttoStyle.inkSecondary.opacity(0.5))
         }
         .contentShape(Rectangle())
+    }
+}
+
+/// Restrained editorial creation-story card giving Mosto Keyboard authentic studio depth.
+private struct MostoStoryCard: View {
+    @State private var expanded = false
+
+    var body: some View {
+        Card(title: "创作故事") {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("为什么从零重写一把纯离线键盘")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(MossOttoStyle.inkPrimary)
+                Text("手机上陪伴时间最长的界面，是每天升起数百次的键盘。我们用 Swift 原生写下触点几何纠错与 48.3 MB 本机双段离线引擎，只为把安静、准确与零联网边界还给每一次敲击。")
+                    .font(.caption)
+                    .foregroundStyle(MossOttoStyle.inkSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if expanded {
+                    Text("住在地基最左下角的紫色小魔王 Mosto，源自 OTTOSSOM 书桌故事宇宙。白天它安静守在你的指尖扶正偏键，夜晚自然引出守在床头的同门伙伴 Moss 与 Otto（《摸索台灯》）。")
+                        .font(.caption)
+                        .foregroundStyle(MossOttoStyle.inkSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 2)
+                }
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { expanded.toggle() }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(expanded ? "收起故事" : "阅读完整故事")
+                        Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 10, weight: .bold))
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(MossOttoStyle.violet)
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 2)
+            }
+        }
     }
 }
 

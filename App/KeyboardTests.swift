@@ -181,6 +181,7 @@ enum KeyboardTests {
         r104_1Build428HotfixRegressionTests(window)
         r105LicenseCleanAndPureWanxiangData(window)
         r108ColloquialAndRecencyGate(window)
+        r109FuzzyPinyinAndShorthandGate(window)
         fuzz(window)
         KeyboardSettings.shared.scheme = saved.0; KeyboardSettings.shared.pinyinGrid = saved.1; KeyboardSettings.shared.english = saved.2
         report.insert(failures == 0 ? "ALL PASS (\(report.count) checks)" : "FAILURES \(failures)", at: 0)
@@ -5004,6 +5005,67 @@ enum KeyboardTests {
         log(colloquialOk && recencyOk && brandOk,
             "r108.Colloquial/shorthand top-1 gate, UserDictionary 30d recency decay, and commercial domain convergence hold",
             "colloquial=\(detail) recency=\(recencyOk) brand=\(brandOk)")
+    }
+
+    /// R109: Native fuzzy pinyin (z/zh, c/ch, s/sh, n/l, an/ang, en/eng, in/ing), T9 beam, and IM shorthand gate.
+    static func r109FuzzyPinyinAndShorthandGate(_ window: UIWindow) {
+        let bundle = KeyboardViewController.resourceBundle
+        let gp = bundle.path(forResource: "grammar", ofType: "gram")
+        let lp = bundle.path(forResource: "lexicon", ofType: "bin")
+
+        var fuzzyOk = false
+        var shorthandOk = false
+        var fDetail = "missing-bundle"
+        var sDetail = "missing-bundle"
+        if let gp, let lp,
+           let lex = try? Lexicon(path: lp),
+           let gram = try? Grammar(path: gp) {
+            let dec = Decoder(lexicon: lex)
+            dec.grammar = gram
+            dec.scheme = .quanpin
+
+            dec.fuzzyPinyin = true
+            let fCases: [(String, String)] = [
+                ("zidao", "知道"),
+                ("senme", "什么"),
+                ("jinyan", "经验"),
+                ("fanzeng", "反正"),
+                ("cenggong", "成功"),
+                ("liunai", "牛奶"),
+            ]
+            var fMiss: [String] = []
+            for (k, want) in fCases {
+                let got = dec.decode(Array(k).map { Tap.exact($0) }).candidates.first?.text ?? ""
+                if got != want { fMiss.append("\(k)->\(got)(want \(want))") }
+            }
+            fuzzyOk = fMiss.isEmpty
+            fDetail = fMiss.isEmpty ? "all-6-fuzzy-top1" : fMiss.joined(separator: ",")
+
+            dec.fuzzyPinyin = false
+            let sCases: [(String, String)] = [
+                ("wsm", "为什么"),
+                ("bhys", "不好意思"),
+                ("mgs", "没关系"),
+                ("xkl", "辛苦了"),
+                ("zml", "怎么了"),
+            ]
+            var sMiss: [String] = []
+            for (k, want) in sCases {
+                let got = dec.decode(Array(k).map { Tap.exact($0) }).candidates.first?.text ?? ""
+                if got != want { sMiss.append("\(k)->\(got)(want \(want))") }
+            }
+            shorthandOk = sMiss.isEmpty
+            sDetail = sMiss.isEmpty ? "all-5-shorthand-top1" : sMiss.joined(separator: ",")
+        }
+
+        let prevFuzzy = KeyboardSettings.shared.fuzzyPinyin
+        KeyboardSettings.shared.fuzzyPinyin = true
+        let settingOk = KeyboardSettings.shared.fuzzyPinyin == true
+        KeyboardSettings.shared.fuzzyPinyin = prevFuzzy
+
+        log(fuzzyOk && shorthandOk && settingOk,
+            "r109.Native fuzzy pinyin (6/6), IM shorthand top-1 (5/5), and fuzzy settings toggle hold",
+            "fuzzy=\(fDetail) shorthand=\(sDetail) setting=\(settingOk)")
     }
 }
 
