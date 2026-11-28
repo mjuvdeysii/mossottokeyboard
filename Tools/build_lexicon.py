@@ -52,6 +52,27 @@ FINAL_KEY = {
     "iao": "n", "ian": "m",
 }
 ZERO_INITIAL = {"a", "ai", "an", "ang", "ao", "e", "ei", "en", "eng", "er", "o", "ou"}
+CANONICAL_SYLLABLES = set((
+    "a ai an ang ao ba bai ban bang bao bei ben beng bi bian biang biao bie bin bing bo bu "
+    "ca cai can cang cao ce cei cen ceng cha chai chan chang chao che chen cheng chi chong chou chu chua chuai chuan chuang chui chun chuo ci cong cou cu cuan cui cun cuo "
+    "da dai dan dang dao de dei den deng di dia dian diao die ding diu dong dou du duan dui dun duo "
+    "e ei en eng er fa fan fang fei fen feng fiao fo fou fu "
+    "ga gai gan gang gao ge gei gen geng gong gou gu gua guai guan guang gui gun guo "
+    "ha hai han hang hao he hei hen heng hong hou hu hua huai huan huang hui hun huo "
+    "ji jia jian jiang jiao jie jin jing jiong jiu ju juan jue jun "
+    "ka kai kan kang kao ke kei ken keng kong kou ku kua kuai kuan kuang kui kun kuo "
+    "la lai lan lang lao le lei leng li lia lian liang liao lie lin ling liu lo long lou lu luan lun luo lv lve "
+    "ma mai man mang mao me mei men meng mi mian miao mie min ming miu mo mou mu "
+    "na nai nan nang nao ne nei nen neng ni nian niang niao nie nin ning niu nong nou nu nuan nuo nv nve "
+    "o ou pa pai pan pang pao pei pen peng pi pian piao pie pin ping po pou pu "
+    "qi qia qian qiang qiao qie qin qing qiong qiu qu quan que qun "
+    "ran rang rao re ren reng ri rong rou ru rua ruan rui run ruo "
+    "sa sai san sang sao se sen seng sha shai shan shang shao she shei shen sheng shi shou shu shua shuai shuan shuang shui shun shuo si song sou su suan sui sun suo "
+    "ta tai tan tang tao te tei teng ti tian tiao tie ting tong tou tu tuan tui tun tuo "
+    "wa wai wan wang wei wen weng wo wu xi xia xian xiang xiao xie xin xing xiong xiu xu xuan xue xun "
+    "ya yan yang yao ye yi yin ying yo yong you yu yuan yue yun "
+    "za zai zan zang zao ze zei zen zeng zha zhai zhan zhang zhao zhe zhei zhen zheng zhi zhong zhou zhu zhua zhuai zhuan zhuang zhui zhun zhuo zi zong zou zu zuan zui zun zuo"
+).split())
 
 
 def code_for(py: str):
@@ -311,7 +332,7 @@ def build_wanxiang_scores(wanxiang_dir: str, gram_path: str, demote_path: str, g
         if not all(0x3400 <= ord(ch) <= 0x9FFF for ch in t):
             skipped += 1
             continue
-        if any(code_for(s) is None for s in syls):
+        if any(s not in CANONICAL_SYLLABLES or code_for(s) is None for s in syls):
             skipped += 1
             continue
         # Drop low-count colloquial zhei/nei variants so zhe/na lead reliably.
@@ -397,12 +418,12 @@ def build_wanxiang_scores(wanxiang_dir: str, gram_path: str, demote_path: str, g
     for (t, syls), c in wx_zi.items():
         if len(t) != 1 or len(syls) != 1:
             continue
-        if not (0x3400 <= ord(t) <= 0x9FFF) or code_for(syls[0]) is None:
+        if not (0x3400 <= ord(t) <= 0x9FFF) or syls[0] not in CANONICAL_SYLLABLES or code_for(syls[0]) is None:
             continue
         tot = c + 0.60 * char_syl_in_words.get((t, syls[0]), 0)
         single_by_char[t].append((syls, int(round(100.0 * math.log(tot + 1))), tot))
     for (ch, sy), wocc in char_syl_in_words.items():
-        if not (0x3400 <= ord(ch) <= 0x9FFF) or code_for(sy) is None:
+        if not (0x3400 <= ord(ch) <= 0x9FFF) or sy not in CANONICAL_SYLLABLES or code_for(sy) is None:
             continue
         if not any(s == (sy,) for s, _, _ in single_by_char.get(ch, [])) and wocc >= 500:
             tot = 0.60 * wocc
@@ -424,6 +445,23 @@ def build_wanxiang_scores(wanxiang_dir: str, gram_path: str, demote_path: str, g
         for syls, sc, _ in single_by_char[ch]:
             scores[(ch, syls)] = sc
     scores.update(kept_multi)
+
+    # Guarantee 100% coverage of XiaoheScheme.allSyllables (e.g. cei/biang/rua outside BMP or top-8080).
+    covered_syls = {s for (_, syls) in scores for s in syls}
+    missing_syls = sorted(CANONICAL_SYLLABLES - covered_syls)
+    if missing_syls:
+        best_by_syl = {}
+        for (t, syls), c in wx_zi.items():
+            if len(t) == 1 and len(syls) == 1 and syls[0] in missing_syls:
+                prev = best_by_syl.get(syls[0])
+                if prev is None or c > prev[0]:
+                    best_by_syl[syls[0]] = (c, t)
+        for ms in missing_syls:
+            if ms not in best_by_syl:
+                raise RuntimeError(f"Canonical syllable missing from Wanxiang zi.dict.yaml: {ms}")
+            c, t = best_by_syl[ms]
+            scores[(t, (ms,))] = max(69, int(round(100.0 * math.log(c + 1))))
+
     for k in list(scores):
         if k[0] in demote or any(c in demote for c in k[0]):
             scores[k] = min(scores[k], -500)
@@ -433,6 +471,11 @@ def build_wanxiang_scores(wanxiang_dir: str, gram_path: str, demote_path: str, g
 def write_lexicon(out_path, scores):
     """Write the XHLX v3 binary lexicon from (text, syllables) -> score (ln-frequency * 100)."""
     syllables = sorted({s for (_, syls) in scores for s in syls})
+    assert set(syllables) == CANONICAL_SYLLABLES, (
+        len(syllables),
+        sorted(set(syllables) - CANONICAL_SYLLABLES),
+        sorted(CANONICAL_SYLLABLES - set(syllables)),
+    )
     sid = {s: i for i, s in enumerate(syllables)}
 
     for s in syllables:

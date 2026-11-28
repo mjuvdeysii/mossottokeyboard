@@ -13,6 +13,7 @@ ben	bf
 beng	bg
 bi	bi
 bian	bm
+biang	bl
 biao	bn
 bie	bp
 bin	bb
@@ -25,6 +26,7 @@ can	cj
 cang	ch
 cao	cc
 ce	ce
+cei	cw
 cen	cf
 ceng	cg
 cha	ia
@@ -229,7 +231,6 @@ nong	ns
 nou	nz
 nu	nu
 nuan	nr
-nun	ny
 nuo	no
 nv	nv
 nve	nt
@@ -276,6 +277,7 @@ ri	ri
 rong	rs
 rou	rz
 ru	ru
+rua	rx
 ruan	rr
 rui	rv
 run	ry

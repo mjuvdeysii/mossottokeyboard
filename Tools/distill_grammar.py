@@ -25,11 +25,11 @@ def main() -> None:
     ap.add_argument("--k2", type=int, default=100000)
     ap.add_argument("--k3", type=int, default=4300000)
     ap.add_argument("--k4", type=int, default=7710000)
-    ap.add_argument("--pred-max3-1ch", type=int, default=70000)
-    ap.add_argument("--pred-max3-2ch", type=int, default=180000)
-    ap.add_argument("--pred-max4-1ch", type=int, default=90000)
-    ap.add_argument("--pred-max4-2ch", type=int, default=55000)
-    ap.add_argument("--pred-lambda", type=float, default=1.0)
+    ap.add_argument("--pred-max3-1ch", type=int, default=65000)
+    ap.add_argument("--pred-max3-2ch", type=int, default=155000)
+    ap.add_argument("--pred-max4-1ch", type=int, default=55000)
+    ap.add_argument("--pred-max4-2ch", type=int, default=115000)
+    ap.add_argument("--pred-lambda", type=float, default=0.85)
     args = ap.parse_args()
 
     if not os.path.exists(args.source):

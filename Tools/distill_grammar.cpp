@@ -315,6 +315,16 @@ struct LexTables {
         auto it = word2.find((static_cast<uint32_t>(a) << 16) | b);
         return it == word2.end() ? -1e9f : it->second;
     }
+    inline float word3_score(uint16_t a, uint16_t b, uint16_t c) const {
+        uint16_t cps[4] = {a, b, c, 0};
+        auto it = word3.find(pack4(cps, 3));
+        return it == word3.end() ? -1e9f : it->second;
+    }
+    inline float word4_score(uint16_t a, uint16_t b, uint16_t c, uint16_t d) const {
+        uint16_t cps[4] = {a, b, c, d};
+        auto it = word4.find(pack4(cps, 4));
+        return it == word4.end() ? -1e9f : it->second;
+    }
 };
 
 struct Cand {
@@ -846,14 +856,69 @@ int main(int argc, char** argv) {
     keep4_1ch.reserve(2500000);
     keep4_2ch.reserve(800000);
 
-    // Streaming current-prefix buffers (DFS visits every trie prefix contiguously!)
+    // Streaming current-prefix buffers + pre-order subtree fan-out accumulators
     uint16_t cur_p1 = 0xFFFF;
     uint32_t cur_p2 = 0xFFFFFFFFU;
     uint64_t cur_p3 = 0xFFFFFFFFFFFFFFFFULL;
     std::vector<PrefixItem> buf2_p1, buf3_p1, buf3_p2, buf4_p2, buf4_p3;
 
+    bool cur2_valid = false;
+    uint64_t cur2_p = 0;
+    uint16_t cur2_c0 = 0, cur2_c1 = 0;
+    float cur2_sf = 0.0f;
+    uint32_t cur2_deg3_all = 0, cur2_deg3_hi = 0;
+
+    bool cur3_valid = false;
+    uint64_t cur3_p = 0;
+    uint16_t cur3_c0 = 0, cur3_c1 = 0, cur3_c2 = 0;
+    float cur3_sf = 0.0f;
+    uint32_t cur3_deg4_all = 0, cur3_deg4_hi = 0;
+
     auto to_i32 = [](float v) -> int32_t {
         return static_cast<int32_t>(std::lround(std::max(0.01f, v) * 10000.0f));
+    };
+    auto clamp_band = [](float x) -> float {
+        return std::clamp(x, 0.5f, 6.5f);
+    };
+    auto is_func_tail = [](uint16_t cp) -> bool {
+        return cp == 0x7684 || cp == 0x4E86 || cp == 0x7740 || cp == 0x8FC7 || cp == 0x5417 || cp == 0x5462;
+    };
+
+    auto flush_cur3 = [&]() {
+        if (!cur3_valid) return;
+        if (lex.char_score[cur3_c2] >= 13.5f) {
+            float tier = (cur3_sf >= 15.0f) ? 1.6f : ((cur3_sf >= 13.5f) ? 0.5f : 0.0f);
+            float sc = tier
+                + 0.65f * std::log(1.0f + static_cast<float>(cur3_deg4_all))
+                + 0.25f * std::log(1.0f + static_cast<float>(cur3_deg4_hi))
+                - 0.80f;
+            float w3 = lex.word3_score(cur3_c0, cur3_c1, cur3_c2);
+            if (w3 > 9.0f) sc += 0.25f * (w3 - 9.0f);
+            buf3_p2.push_back({cur3_p, to_i32(clamp_band(sc)), 0});
+        }
+        float w2 = lex.word2_score(cur3_c1, cur3_c2);
+        if (w2 >= 10.5f && cur3_sf >= 13.5f && cur3_sf <= 16.20f && !is_func_tail(cur3_c2)) {
+            float tier3 = (cur3_sf >= 15.0f) ? 1.5f : 0.5f;
+            float sc2 = 1.40f + tier3 + 0.40f * (w2 - 10.5f);
+            float w3 = lex.word3_score(cur3_c0, cur3_c1, cur3_c2);
+            if (w3 > 9.0f) sc2 += 0.35f * (w3 - 9.0f);
+            buf3_p1.push_back({cur3_p, to_i32(clamp_band(sc2) + 8.0f), 0});
+        }
+        cur3_valid = false;
+    };
+
+    auto flush_cur2 = [&]() {
+        if (!cur2_valid) return;
+        if (lex.char_score[cur2_c1] >= 13.5f) {
+            float sc = 2.0f * (cur2_sf - 10.0f)
+                + 0.20f * std::log(1.0f + static_cast<float>(cur2_deg3_all))
+                + 0.15f * std::log(1.0f + static_cast<float>(cur2_deg3_hi))
+                - 1.0f;
+            float w2 = lex.word2_score(cur2_c0, cur2_c1);
+            if (w2 > 9.0f) sc += 0.70f * (w2 - 9.0f);
+            buf2_p1.push_back({cur2_p, to_i32(clamp_band(sc)), 0});
+        }
+        cur2_valid = false;
     };
 
     dfs_grammar(tea, [&](const std::vector<uint8_t>& key, int32_t val) {
@@ -877,8 +942,10 @@ int main(int argc, char** argv) {
             c4.push_back({p, val, rank});
         }
 
-        // Section 2: streaming per-prefix top-k (since DFS visits p1 -> p2 -> p3 contiguously!)
+        // Section 2: streaming per-prefix top-k (since DFS visits p1 -> p2 -> p3 subtrees contiguously!)
         if (cps[0] != cur_p1) {
+            flush_cur3();
+            flush_cur2();
             flush_topk(buf4_p3, 8, keep4_1ch);
             flush_topk(buf4_p2, 10, keep4_2ch);
             flush_topk(buf3_p2, 12, keep3_2ch);
@@ -890,58 +957,66 @@ int main(int argc, char** argv) {
         }
         uint32_t p2 = (static_cast<uint32_t>(cps[0]) << 16) | cps[1];
         if (p2 != cur_p2) {
+            flush_cur3();
+            flush_cur2();
             flush_topk(buf4_p3, 8, keep4_1ch);
             flush_topk(buf4_p2, 10, keep4_2ch);
             flush_topk(buf3_p2, 12, keep3_2ch);
             cur_p2 = p2;
             cur_p3 = 0xFFFFFFFFFFFFFFFFULL;
         }
-        if (len == 4) {
+        if (len >= 3) {
             uint64_t p3 = pack4(cps, 3);
             if (p3 != cur_p3) {
+                flush_cur3();
                 flush_topk(buf4_p3, 8, keep4_1ch);
                 cur_p3 = p3;
             }
         }
 
-        auto clamp_band = [](float x) -> float {
-            return std::clamp(x, 0.5f, 6.5f);
-        };
-        auto zi_term = [&](uint16_t cp) -> float {
-            float z = lex.zi_log[cp] > 0.0f ? lex.zi_log[cp] : std::max(0.0f, lex.char_score[cp] - 2.0f);
-            return 0.25f * (std::min(16.0f, z) - 13.0f) + 0.45f * (std::min(17.5f, lex.char_score[cp]) - 15.0f);
-        };
         if (len == 2) {
-            if (lex.char_score[cps[1]] >= 13.5f) {
-                float sc = clamp_band((sf - 8.0f) + zi_term(cps[1]));
-                buf2_p1.push_back({p, to_i32(sc), 0});
-            }
+            cur2_valid = true;
+            cur2_p = p;
+            cur2_c0 = cps[0];
+            cur2_c1 = cps[1];
+            cur2_sf = sf;
+            cur2_deg3_all = 0;
+            cur2_deg3_hi = 0;
         } else if (len == 3) {
-            if (lex.char_score[cps[2]] >= 13.5f) {
-                float sc = clamp_band((sf - 12.6f) + zi_term(cps[2]));
-                buf3_p2.push_back({p, to_i32(sc), 0});
+            if (cur2_valid) {
+                cur2_deg3_all++;
+                if (sf >= 15.0f) cur2_deg3_hi++;
             }
-            float w2 = lex.word2_score(cps[1], cps[2]);
-            uint16_t lastc = cps[2];
-            bool func_tail = (lastc == 0x7684 || lastc == 0x4E86 || lastc == 0x7740 || lastc == 0x8FC7 || lastc == 0x5417 || lastc == 0x5462);
-            if (w2 >= 10.5f && sf >= 13.5f && sf <= 16.20f && !func_tail) {
-                float sc = clamp_band((sf - 13.6f) + 0.40f * (w2 - 11.5f));
-                buf3_p1.push_back({p, to_i32(sc + 8.0f), 0});
-            }
+            cur3_valid = true;
+            cur3_p = p;
+            cur3_c0 = cps[0];
+            cur3_c1 = cps[1];
+            cur3_c2 = cps[2];
+            cur3_sf = sf;
+            cur3_deg4_all = 0;
+            cur3_deg4_hi = 0;
         } else if (len == 4) {
-            if (lex.char_score[cps[3]] >= 13.5f && sf >= 16.0f) {
-                float sc = clamp_band((std::min(sf, 18.45f) - 15.0f) + zi_term(cps[3]));
-                buf4_p3.push_back({p, to_i32(sc), 0});
+            if (cur3_valid) {
+                cur3_deg4_all++;
+                if (sf >= 18.0f) cur3_deg4_hi++;
+            }
+            if (lex.char_score[cps[3]] >= 13.5f && sf >= 16.5f) {
+                float tier = (sf >= 18.0f) ? 2.0f : 0.7f;
+                float sc = 1.0f + tier + 0.15f * (lex.char_score[cps[3]] - 14.0f);
+                buf4_p3.push_back({p, to_i32(clamp_band(sc)), 0});
             }
             float w2 = lex.word2_score(cps[2], cps[3]);
-            uint16_t lastc = cps[3];
-            bool func_tail = (lastc == 0x7684 || lastc == 0x4E86 || lastc == 0x7740 || lastc == 0x8FC7 || lastc == 0x5417 || lastc == 0x5462);
-            if (w2 >= 10.5f && sf >= 16.5f && sf <= 18.50f && !func_tail) {
-                float sc = clamp_band((sf - 16.0f) + 0.40f * (w2 - 11.5f));
-                buf4_p2.push_back({p, to_i32(sc + 8.0f), 0});
+            if (w2 >= 10.5f && sf >= 16.5f && sf <= 18.50f && !is_func_tail(cps[3])) {
+                float tier4 = (sf >= 18.0f) ? 1.8f : 0.6f;
+                float sc2 = 1.70f + tier4 + 0.45f * (w2 - 10.5f);
+                float w4 = lex.word4_score(cps[0], cps[1], cps[2], cps[3]);
+                if (w4 > 9.0f) sc2 += 0.35f * (w4 - 9.0f);
+                buf4_p2.push_back({p, to_i32(clamp_band(sc2) + 8.0f), 0});
             }
         }
     });
+    flush_cur3();
+    flush_cur2();
     flush_topk(buf4_p3, 8, keep4_1ch);
     flush_topk(buf4_p2, 10, keep4_2ch);
     flush_topk(buf3_p2, 12, keep3_2ch);
