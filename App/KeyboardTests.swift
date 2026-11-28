@@ -5033,7 +5033,7 @@ enum KeyboardTests {
                 ("cenggong", "成功"),
                 ("liunai", "牛奶"),
                 ("funan", "湖南"),
-                ("luguo", "如果"),
+                ("luhe", "如何"),
             ]
             var fMiss: [String] = []
             for (k, want) in fCases {
